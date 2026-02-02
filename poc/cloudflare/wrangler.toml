@@ -1,0 +1,28 @@
+name = "durable-streams-poc"
+main = "src/worker.ts"
+compatibility_date = "2026-02-02"
+
+[durable_objects]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["StreamDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "durable_streams_poc"
+database_id = "local"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams-poc"
+
+[vars]
+# Optional: set to require auth
+# AUTH_TOKEN = "replace-with-token"
+
+[observability]
+enabled = true
