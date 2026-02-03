@@ -33,6 +33,7 @@
 - Stream deletion now wakes long-poll waiters and closes active SSE clients.
 - Content-Length mismatches now rejected to prevent truncated writes.
 - Conformance suite remains green (239/239).
+- Snapshot reads now prefer R2 (fallback to D1 on truncation/missing object).
 
 ## Current Baseline
 - POC passes the server conformance suite locally with `wrangler dev --local` and D1/R2.
@@ -61,6 +62,7 @@ Deliverables
 - `docs/cloudflare-poc-status.md` with current command set and conformance pass note.
 Current status
 - `docs/cloudflare-poc-status.md` added with local command set + test status.
+- Perf smoke test added (local p50/p95 tracking; CF budget target ~10ms).
 
 ## Phase 1: Module Boundaries
 - Split the monolithic Durable Object into focused modules.
@@ -224,6 +226,7 @@ Current status
 - Implementation tests now spin up a local worker automatically when no
   `IMPLEMENTATION_TEST_URL` is provided.
 - Added tests for aborted append safety and SSE reconnect after restart.
+- Perf smoke test reports p50/p95; budget enforcement is opt-in via env vars.
 
 ## Phase 6: Docs and Ops
 - Document the module layout and extension points.
@@ -236,6 +239,24 @@ Deliverables
 Current status
 - `docs/cloudflare-architecture.md` added.
 - Registry stream + CORS header exposure documented in `poc/cloudflare/README.md`.
+
+## Remaining Work (Key Gaps)
+Characterization + perf
+- Add a small characterization suite for SSE CRLF handling, long-poll timeout headers,
+  and producer fencing edge cases (locks in protocol output).
+- Add a perf run mode that targets a deployed Worker (using `PERF_BASE_URL`) and
+  treats the 10ms CF budget as a hard gate in CI.
+
+Implementation tests
+- Add TTL-pruning coverage for producer cleanup (ensure active producers survive).
+- Add cold storage correctness tests once R2 read/segment index is implemented
+  (truncation fallback, boundary alignment).
+- Add randomized property/invariant checks (append/read/delete/close sequences).
+
+Protocol/storage
+- Decide on offset format migration for cold storage rotation (if we adopt
+  `readSeq_byteOffset`, document and test).
+- Implement R2 compaction/rotation path if we want CDN-backed catch-up reads.
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.

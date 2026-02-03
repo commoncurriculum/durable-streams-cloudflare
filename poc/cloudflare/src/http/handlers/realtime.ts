@@ -9,7 +9,7 @@ import { generateResponseCursor } from "../../protocol/cursor";
 import { encodeOffset } from "../../protocol/offsets";
 import { LONG_POLL_TIMEOUT_MS, MAX_CHUNK_BYTES, SSE_RECONNECT_MS } from "../../protocol/limits";
 import { buildSseControlEvent, buildSseDataEvent } from "../../live/sse";
-import { buildLongPollHeaders, readFromOffset } from "../../engine/stream";
+import { buildLongPollHeaders } from "../../engine/stream";
 import type { StreamMeta } from "../../storage/storage";
 import type { StreamContext } from "../context";
 import type { SseClient } from "../../live/types";
@@ -40,7 +40,7 @@ export async function handleLongPoll(
     return new Response(null, { status: 204, headers });
   }
 
-  const initialRead = await readFromOffset(ctx.storage, streamId, meta, offset, MAX_CHUNK_BYTES);
+  const initialRead = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (initialRead.error) return initialRead.error;
 
   if (initialRead.hasData) {
@@ -70,7 +70,7 @@ export async function handleLongPoll(
     return new Response(null, { status: 204, headers });
   }
 
-  const read = await readFromOffset(ctx.storage, streamId, current, offset, MAX_CHUNK_BYTES);
+  const read = await ctx.readFromOffset(streamId, current, offset, MAX_CHUNK_BYTES);
   if (read.error) return read.error;
 
   const headers = buildLongPollHeaders({
@@ -197,7 +197,7 @@ async function runSseSession(
 ): Promise<void> {
   try {
     let currentOffset = client.offset;
-    let read = await readFromOffset(ctx.storage, streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+    let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
     if (read.error) {
       await closeSseClient(ctx, client);
       return;
@@ -209,7 +209,7 @@ async function runSseSession(
       client.offset = currentOffset;
 
       while (!read.upToDate && !read.closedAtTail) {
-        read = await readFromOffset(ctx.storage, streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+        read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
         if (read.error) break;
         if (!read.hasData) break;
         await writeSseData(client, read.body, read.nextOffset, read.upToDate, read.closedAtTail);

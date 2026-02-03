@@ -131,6 +131,7 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 - R2 is used only for cold storage snapshots on close.
 - Snapshot objects are stored with length-prefixed message framing (Caddy parity).
 - Snapshot keys use base64url-encoded stream ids for safe paths.
+- Catch-up reads prefer R2 snapshots when present (fallback to D1 if missing or truncated).
 
 ## Registry Stream
 The worker emits create/delete events to a system stream named `__registry__`.

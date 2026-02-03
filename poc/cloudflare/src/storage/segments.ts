@@ -41,6 +41,40 @@ export function encodeSegmentMessages(messages: Uint8Array[]): Uint8Array {
   return out;
 }
 
+export function decodeSegmentMessages(data: Uint8Array): {
+  messages: Uint8Array[];
+  truncated: boolean;
+} {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const messages: Uint8Array[] = [];
+  let offset = 0;
+  let truncated = false;
+
+  while (offset + LENGTH_PREFIX_BYTES <= data.byteLength) {
+    const length = view.getUint32(offset);
+    offset += LENGTH_PREFIX_BYTES;
+
+    if (length > MAX_SEGMENT_MESSAGE_BYTES) {
+      truncated = true;
+      break;
+    }
+
+    if (offset + length > data.byteLength) {
+      truncated = true;
+      break;
+    }
+
+    messages.push(data.slice(offset, offset + length));
+    offset += length;
+  }
+
+  if (offset !== data.byteLength) {
+    truncated = true;
+  }
+
+  return { messages, truncated };
+}
+
 export const segmentFormat = {
   lengthPrefixBytes: LENGTH_PREFIX_BYTES,
   maxMessageBytes: MAX_SEGMENT_MESSAGE_BYTES,

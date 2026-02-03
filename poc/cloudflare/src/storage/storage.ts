@@ -46,6 +46,15 @@ export type SnapshotInput = {
   createdAt: number;
 };
 
+export type SnapshotRecord = {
+  stream_id: string;
+  r2_key: string;
+  start_offset: number;
+  end_offset: number;
+  content_type: string;
+  created_at: number;
+};
+
 export interface StreamStorage {
   prepare(sql: string): D1PreparedStatement;
   batch(statements: D1PreparedStatement[]): Promise<void>;
@@ -98,4 +107,5 @@ export interface StreamStorage {
   selectAllOps(streamId: string): Promise<ReadChunk[]>;
 
   insertSnapshot(input: SnapshotInput): Promise<void>;
+  getLatestSnapshot(streamId: string): Promise<SnapshotRecord | null>;
 }

@@ -37,3 +37,4 @@ Set `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to enforce the CF budget locally.
 ## Notes
 - Local R2 is enabled via `wrangler dev --local`.
 - D1 migrations are idempotent; re-running may fail on existing columns.
+- R2 snapshots are now used for catch-up reads when available (fallback to D1).
