@@ -236,6 +236,7 @@ Current status
 - Added tests for aborted append safety and SSE reconnect after restart.
 - Added tests for producer TTL pruning, R2 truncation fallback, and randomized invariants.
 - Added characterization tests for long-poll cursor behavior and producer gap headers.
+- Added characterization tests for SSE CRLF handling.
 - Added segment alignment test for multi-segment reads.
 - Added characterization tests for long-poll cursor behavior and producer gap headers.
 - Perf smoke test reports p50/p95; budget enforcement is opt-in via env vars.
@@ -254,8 +255,6 @@ Current status
 
 ## Remaining Work (Key Gaps)
 Characterization + perf
-- Add a small characterization suite for SSE CRLF handling, long-poll timeout headers,
-  and producer fencing edge cases (locks in protocol output).
 
 Implementation tests
 - Add segment boundary alignment tests for multi-segment reads. (done)
