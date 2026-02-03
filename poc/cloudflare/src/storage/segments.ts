@@ -13,9 +13,14 @@ export function encodeStreamPathBase64Url(path: string): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-export function buildSnapshotKey(streamId: string, timestampMs: number): string {
+export function buildSegmentKey(
+  streamId: string,
+  startOffset: number,
+  endOffset: number,
+  timestampMs: number,
+): string {
   const encoded = encodeStreamPathBase64Url(streamId);
-  return `stream/${encoded}/snapshot-${timestampMs}.seg`;
+  return `stream/${encoded}/segment-${startOffset}-${endOffset}-${timestampMs}.seg`;
 }
 
 export function encodeSegmentMessages(messages: Uint8Array[]): Uint8Array {

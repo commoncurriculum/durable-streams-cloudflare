@@ -29,7 +29,7 @@ export function parseJsonMessages(bodyBytes: Uint8Array): JsonParseResult {
   const messages = values.map((value) => {
     const serialized = JSON.stringify(value);
     const encoded = encoder.encode(serialized);
-    return { body: encoded.buffer, sizeBytes: encoded.byteLength };
+    return { body: encoded.slice().buffer, sizeBytes: encoded.byteLength };
   });
 
   return { messages, emptyArray: false };
@@ -41,9 +41,9 @@ export function buildJsonArray(
   const decoder = new TextDecoder();
   const parts = messages.map((msg) => decoder.decode(toUint8Array(msg.body)));
   const joined = `[${parts.join(",")}]`;
-  return new TextEncoder().encode(joined).buffer;
+  return new TextEncoder().encode(joined).slice().buffer;
 }
 
 export function emptyJsonArray(): ArrayBuffer {
-  return new TextEncoder().encode("[]").buffer;
+  return new TextEncoder().encode("[]").slice().buffer;
 }

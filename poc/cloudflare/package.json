@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
     "dev": "wrangler dev --local --port 8787",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
+    "format:check": "oxfmt --check src test",
     "conformance": "CONFORMANCE_TEST_URL=http://localhost:8787 pnpm exec vitest run --config vitest.conformance.config.ts",
+    "test": "pnpm run test:implementation",
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
-    "perf": "pnpm exec vitest run --config vitest.performance.config.ts"
+    "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

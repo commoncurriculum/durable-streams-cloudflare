@@ -104,8 +104,18 @@ export interface StreamStorage {
 
   selectOverlap(streamId: string, offset: number): Promise<ReadChunk | null>;
   selectOpsFrom(streamId: string, offset: number): Promise<ReadChunk[]>;
+  selectOpsRange(streamId: string, startOffset: number, endOffset: number): Promise<ReadChunk[]>;
   selectAllOps(streamId: string): Promise<ReadChunk[]>;
+  deleteOpsThrough(streamId: string, endOffset: number): Promise<void>;
 
   insertSnapshot(input: SnapshotInput): Promise<void>;
   getLatestSnapshot(streamId: string): Promise<SnapshotRecord | null>;
+  getSnapshotCoveringOffset(streamId: string, offset: number): Promise<SnapshotRecord | null>;
+  listSnapshots(streamId: string): Promise<SnapshotRecord[]>;
+
+  updateProducerLastUpdated(
+    streamId: string,
+    producerId: string,
+    lastUpdated: number,
+  ): Promise<boolean>;
 }

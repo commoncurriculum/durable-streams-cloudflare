@@ -3,3 +3,7 @@ export const MAX_APPEND_BYTES = 8 * 1024 * 1024;
 export const OFFSET_WIDTH = 16;
 export const SSE_RECONNECT_MS = 55_000;
 export const LONG_POLL_TIMEOUT_MS = 4_000;
+export const R2_COMPACT_MIN_BYTES = 256 * 1024;
+export const R2_COMPACT_MIN_MESSAGES = 512;
+export const R2_HOT_BYTES = 64 * 1024;
+export const R2_HOT_MESSAGES = 256;

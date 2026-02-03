@@ -5,16 +5,15 @@ Cloudflare-only proof of concept for the Durable Streams protocol with **low-lat
 ## What This POC Includes
 - Worker router with optional bearer token auth.
 - Durable Object per stream for ordering and live fan-out.
-- D1 schema for stream metadata, ops log, producer state, and snapshots.
+- D1 schema for stream metadata, ops log, producer state, and snapshot index.
 - Protocol behaviors for PUT/POST/GET/HEAD/DELETE, long-poll, and SSE.
 - JSON mode support (flatten arrays, validate JSON, return arrays on GET).
 - TTL/Expires-At enforcement.
-- Optional R2 snapshot on stream close (cold storage, length-prefixed segment format).
+- R2 segments for cold storage (length-prefixed segment format + snapshot index).
 - Full server conformance coverage (239/239).
 
 ## What It Does Not Include (Yet)
-- R2 restore/compaction or background log pruning.
-- Segment index for cold reads.
+- Background compaction scheduling (runs opportunistically on writes).
 - Global stream listing/search.
 - Multi-tenant auth or per-stream ACLs.
 
@@ -72,17 +71,10 @@ pnpm run perf
 ```
 Notes:
 - Uses `PERF_BASE_URL` if set, otherwise spins up a local worker automatically.
-- Set `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to enforce a 10ms CF budget.
-
-## Performance Smoke Test
-Run a local perf sweep (does not fail unless you set a budget):
-```bash
-pnpm run perf
-```
-Optional env vars:
-- `PERF_BASE_URL` to target an existing worker.
-- `PERF_ITERATIONS` to change sample count (default 25).
-- `PERF_BUDGET_MS` + `PERF_ENFORCE=1` to fail if p95 exceeds a budget.
+- If `PERF_BASE_URL` is set, the test enforces the budget by default.
+- Optional env vars:
+  - `PERF_ITERATIONS` to change sample count (default 25).
+  - `PERF_BUDGET_MS` + `PERF_ENFORCE=1` to override the budget behavior.
 
 ## Stream URL
 ```
@@ -128,10 +120,11 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 ## Durability and Latency
 - Writes are ACKed only after a D1 transaction commits.
 - This is the low-latency, strongly consistent path.
-- R2 is used only for cold storage snapshots on close.
-- Snapshot objects are stored with length-prefixed message framing (Caddy parity).
-- Snapshot keys use base64url-encoded stream ids for safe paths.
-- Catch-up reads prefer R2 snapshots when present (fallback to D1 if missing or truncated).
+- R2 stores cold segments; D1 keeps the hot tail + segment index.
+- Segment objects use length-prefixed message framing (Caddy parity).
+- Segment keys use base64url-encoded stream ids for safe paths.
+- Catch-up reads prefer R2 segments when present (fallback to D1 if missing or truncated).
+- Compaction runs opportunistically on writes and flushes the tail on close.
 
 ## Registry Stream
 The worker emits create/delete events to a system stream named `__registry__`.

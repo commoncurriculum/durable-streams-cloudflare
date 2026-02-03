@@ -2,7 +2,7 @@
 
 ## Baseline (2026-02-03)
 - Conformance suite: **239/239** (local `wrangler dev --local`).
-- Implementation tests: **7/7** (local worker, real D1/R2).
+- Implementation tests: **11/11** (local worker, real D1/R2).
 - Perf smoke: append p95 ~7ms, read p95 ~6ms (local dev run; non‑gating).
 
 ## Commands (local)
@@ -32,9 +32,11 @@ pnpm run perf
 `IMPLEMENTATION_TEST_URL` is not set.
 `pnpm run perf` will start a local worker automatically unless `PERF_BASE_URL`
 is set.
-Set `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to enforce the CF budget locally.
+If `PERF_BASE_URL` is set, the test enforces the budget by default. Set
+`PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to override locally.
 
 ## Notes
 - Local R2 is enabled via `wrangler dev --local`.
 - D1 migrations are idempotent; re-running may fail on existing columns.
-- R2 snapshots are now used for catch-up reads when available (fallback to D1).
+- R2 segments are used for catch-up reads when available (fallback to D1).
+- Compaction runs opportunistically on writes and flushes the tail on close.

@@ -34,6 +34,9 @@
 - Content-Length mismatches now rejected to prevent truncated writes.
 - Conformance suite remains green (239/239).
 - Snapshot reads now prefer R2 (fallback to D1 on truncation/missing object).
+- In-flight read coalescing added in the DO for identical reads when CDN caching
+  is private or auth-fragmented.
+- R2 compaction/rotation implemented with snapshot index + hot tail retention.
 
 ## Current Baseline
 - POC passes the server conformance suite locally with `wrangler dev --local` and D1/R2.
@@ -150,6 +153,8 @@ Deliverables
 ## Phase 4: Live Modes
 - Keep SSE and long-poll stable and safe.
 - Ensure SSE control/data events are emitted atomically.
+- Collapse identical in-flight reads inside the DO when CDN caching is private
+  or auth-fragmented (prevents thundering herd on long-poll/catch-up).
 
 Work items
 - Extract SSE formatting into `src/live/sse.ts`.
@@ -170,7 +175,7 @@ Deliverables
 - Encode R2 keys using base64url path encoding for safety. (done)
 - Evaluate offset format shift to `readSeq_byteOffset` if we decide to support
   segment rotation in R2 (document if we intentionally keep hex offsets).
-- Implement segment framing for cold storage (length‑prefixed messages). (done for snapshots)
+- Implement segment framing for cold storage (length‑prefixed messages). (done)
 
 ## Phase 5: Test Strategy (No Stubs)
 - Keep all integration tests running against real local bindings.
@@ -206,6 +211,9 @@ Targets (Cloudflare-specific)
   - Multiple readers during append should see either before or after state,
     never partial data (especially for JSON streams).
   - Concurrent producers with gaps/duplicates should return correct headers.
+- **In-flight coalescing safety**
+  - Identical long-poll/catch-up reads should share a single storage read and
+    return consistent data under concurrency.
 - **Resource cleanup**
   - Delete stream while long-poll/SSE active; clients should close cleanly.
   - Ensure producers table is pruned per TTL without affecting active producers.
@@ -226,6 +234,7 @@ Current status
 - Implementation tests now spin up a local worker automatically when no
   `IMPLEMENTATION_TEST_URL` is provided.
 - Added tests for aborted append safety and SSE reconnect after restart.
+- Added tests for producer TTL pruning, R2 truncation fallback, and randomized invariants.
 - Perf smoke test reports p50/p95; budget enforcement is opt-in via env vars.
 
 ## Phase 6: Docs and Ops
@@ -244,19 +253,14 @@ Current status
 Characterization + perf
 - Add a small characterization suite for SSE CRLF handling, long-poll timeout headers,
   and producer fencing edge cases (locks in protocol output).
-- Add a perf run mode that targets a deployed Worker (using `PERF_BASE_URL`) and
-  treats the 10ms CF budget as a hard gate in CI.
 
 Implementation tests
-- Add TTL-pruning coverage for producer cleanup (ensure active producers survive).
-- Add cold storage correctness tests once R2 read/segment index is implemented
-  (truncation fallback, boundary alignment).
-- Add randomized property/invariant checks (append/read/delete/close sequences).
+- Add segment boundary alignment tests for multi-segment reads.
 
 Protocol/storage
 - Decide on offset format migration for cold storage rotation (if we adopt
   `readSeq_byteOffset`, document and test).
-- Implement R2 compaction/rotation path (required for CDN-backed catch-up reads at scale).
+- Validate segment retention + delete policy for long-lived streams.
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.

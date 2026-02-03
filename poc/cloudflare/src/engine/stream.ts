@@ -85,7 +85,7 @@ export async function buildAppendBatch(
         error: errorResponse(400, "empty body"),
       };
     }
-    messages = [{ body: bodyBytes.buffer, sizeBytes: bodyBytes.byteLength }];
+    messages = [{ body: bodyBytes.slice().buffer, sizeBytes: bodyBytes.byteLength }];
   }
 
   let tailOffset = meta.tail_offset;
@@ -315,12 +315,22 @@ export function readFromMessages(params: {
   maxChunkBytes: number;
   tailOffset: number;
   closed: boolean;
+  segmentStart?: number;
 }): ReadResult {
-  const { messages, contentType, offset, maxChunkBytes, tailOffset, closed } = params;
+  const {
+    messages,
+    contentType,
+    offset,
+    maxChunkBytes,
+    tailOffset,
+    closed,
+    segmentStart = 0,
+  } = params;
   const chunks: Array<{ body: Uint8Array; sizeBytes: number }> = [];
 
   if (isJsonContentType(contentType)) {
-    if (offset > messages.length) {
+    const relativeOffset = offset - segmentStart;
+    if (relativeOffset < 0 || relativeOffset > messages.length) {
       return {
         body: new ArrayBuffer(0),
         nextOffset: offset,
@@ -332,7 +342,7 @@ export function readFromMessages(params: {
     }
 
     let bytes = 0;
-    for (let i = offset; i < messages.length; i += 1) {
+    for (let i = relativeOffset; i < messages.length; i += 1) {
       const message = messages[i];
       if (bytes + message.byteLength > maxChunkBytes && bytes > 0) break;
       chunks.push({ body: message, sizeBytes: message.byteLength });
@@ -361,7 +371,7 @@ export function readFromMessages(params: {
   }
 
   let bytes = 0;
-  let cursor = 0;
+  let cursor = segmentStart;
   for (const message of messages) {
     const end = cursor + message.byteLength;
     if (end <= offset) {
