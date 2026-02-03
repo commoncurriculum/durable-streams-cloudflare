@@ -29,7 +29,7 @@ export async function closeStreamOnly(
   }
 
   if (producer) {
-    await storage.upsertProducer(meta.stream_id, producer, meta.tail_offset);
+    await storage.upsertProducer(meta.stream_id, producer, meta.tail_offset, Date.now());
   }
 
   const headers = baseHeaders({

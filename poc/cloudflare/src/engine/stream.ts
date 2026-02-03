@@ -131,7 +131,7 @@ export async function buildAppendBatch(
   statements.push(storage.updateStreamStatement(streamId, updateFields, updateValues));
 
   if (opts.producer) {
-    statements.push(storage.producerUpsertStatement(streamId, opts.producer, tailOffset));
+    statements.push(storage.producerUpsertStatement(streamId, opts.producer, tailOffset, now));
   }
 
   const ssePayload = isJsonContentType(contentType)

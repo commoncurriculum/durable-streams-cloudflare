@@ -15,6 +15,7 @@ export type ProducerState = {
   epoch: number;
   last_seq: number;
   last_offset: number;
+  last_updated: number | null;
 };
 
 export type ReadChunk = {
@@ -56,12 +57,15 @@ export interface StreamStorage {
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
+    lastUpdated: number,
   ): D1PreparedStatement;
   upsertProducer(
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
+    lastUpdated: number,
   ): Promise<void>;
+  deleteProducer(streamId: string, producerId: string): Promise<void>;
 
   insertOpStatement(input: {
     streamId: string;

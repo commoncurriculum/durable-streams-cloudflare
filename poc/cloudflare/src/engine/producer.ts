@@ -25,6 +25,8 @@ export type ProducerEval =
   | { kind: "duplicate"; state: ProducerState }
   | { kind: "error"; response: Response };
 
+const PRODUCER_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function parseProducerHeaders(
   request: Request,
 ): { value?: ProducerInput; error?: Response } | null {
@@ -55,7 +57,14 @@ export async function evaluateProducer(
   streamId: string,
   producer: ProducerInput,
 ): Promise<ProducerEval> {
-  const existing = await storage.getProducer(streamId, producer.id);
+  let existing = await storage.getProducer(streamId, producer.id);
+  if (existing?.last_updated) {
+    const now = Date.now();
+    if (now - existing.last_updated > PRODUCER_STATE_TTL_MS) {
+      await storage.deleteProducer(streamId, producer.id);
+      existing = null;
+    }
+  }
   if (!existing) {
     if (producer.seq !== 0) {
       return { kind: "error", response: errorResponse(400, "Producer-Seq must start at 0") };
