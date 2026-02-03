@@ -66,12 +66,12 @@ CREATE INDEX ops_stream_offset ON ops(stream_id, start_offset);
 
 ## Offset Encoding
 - Internally store offsets as **monotonic integers** in D1.
-- Encode for the protocol as fixed-width base32 or hex with zero-padding.
+- Encode for the protocol as fixed-width decimal `readSeq_byteOffset`.
 - Must be **lexicographically sortable** and **opaque**.
 - Never emit reserved sentinel values `-1` or `now`.
 
 Example encoding:
-- Integer `42` -> `000000000000002A` (hex, fixed width)
+- Integer `42` -> `0000000000000000_0000000000000042`
 
 ## Append Flow (POST)
 1. Worker routes request to DO instance for the stream.

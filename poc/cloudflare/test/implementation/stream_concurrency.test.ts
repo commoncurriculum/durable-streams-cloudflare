@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("stream concurrency", () => {
@@ -11,7 +12,7 @@ describe("stream concurrency", () => {
 
     await Promise.all(chunks.map((chunk) => client.appendStream(streamId, chunk, "text/plain")));
 
-    const text = await client.readAllText(streamId, "0");
+    const text = await client.readAllText(streamId, ZERO_OFFSET);
 
     expect(text.length).toBe(chunks.length);
     const seen = new Set(text.split(""));

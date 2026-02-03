@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("SSE CRLF handling", () => {
@@ -9,7 +10,7 @@ describe("SSE CRLF handling", () => {
     await client.createStream(streamId, "", "text/plain");
     await client.appendStream(streamId, "line1\r\nline2", "text/plain");
 
-    const response = await fetch(client.streamUrl(streamId, { offset: "0", live: "sse" }));
+    const response = await fetch(client.streamUrl(streamId, { offset: ZERO_OFFSET, live: "sse" }));
 
     expect(response.status).toBe(200);
     const reader = response.body?.getReader();

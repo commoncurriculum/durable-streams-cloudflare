@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, delay, uniqueStreamId, waitForReaderDone } from "./helpers";
 
 describe("stream cleanup", () => {
@@ -7,7 +8,7 @@ describe("stream cleanup", () => {
     const streamId = uniqueStreamId("sse-delete");
     await client.createStream(streamId, "hello", "text/plain");
 
-    const response = await fetch(client.streamUrl(streamId, { live: "sse", offset: "0" }), {
+    const response = await fetch(client.streamUrl(streamId, { live: "sse", offset: ZERO_OFFSET }), {
       headers: {
         Accept: "text/event-stream",
       },

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 import { createPersistDir, getAvailablePort, startWorker } from "./worker_harness";
 
@@ -20,7 +21,7 @@ describe("worker restart", () => {
     await client.createStream(streamId, "hello", "text/plain");
     await client.appendStream(streamId, "world", "text/plain");
 
-    const before = await client.readAllText(streamId, "0");
+    const before = await client.readAllText(streamId, ZERO_OFFSET);
     expect(before).toBe("helloworld");
 
     await worker.stop();
@@ -28,7 +29,7 @@ describe("worker restart", () => {
     worker = await startWorker({ port, persistDir });
     const restartedClient = createClient(worker.baseUrl);
 
-    const after = await restartedClient.readAllText(streamId, "0");
+    const after = await restartedClient.readAllText(streamId, ZERO_OFFSET);
     expect(after).toBe("helloworld");
 
     await worker.stop();
@@ -74,7 +75,7 @@ describe("worker restart", () => {
     expect(duplicateAppend.status).toBe(204);
     expect(duplicateAppend.headers.get("Stream-Next-Offset")).toBe(firstOffset);
 
-    const finalText = await restartedClient.readAllText(streamId, "0");
+    const finalText = await restartedClient.readAllText(streamId, ZERO_OFFSET);
     expect(finalText).toBe("A");
 
     await worker.stop();

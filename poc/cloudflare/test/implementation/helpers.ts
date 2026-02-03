@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 const STREAM_PREFIX = "/v1/stream/";
@@ -74,7 +75,7 @@ export function createClient(baseUrl = BASE_URL): {
     deleteStream: async (streamId) => {
       return await fetch(buildStreamUrl(baseUrl, streamId), { method: "DELETE" });
     },
-    readAllText: async (streamId, offset = "0") => {
+    readAllText: async (streamId, offset = ZERO_OFFSET) => {
       const response = await fetch(buildStreamUrl(baseUrl, streamId, { offset }));
       if (response.status !== 200) {
         throw new Error(`GET failed: ${response.status} ${await response.text()}`);

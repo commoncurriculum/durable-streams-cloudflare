@@ -1,5 +1,6 @@
 import net from "node:net";
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, delay, uniqueStreamId } from "./helpers";
 
 async function sendTruncatedBody(baseUrl: string, path: string, body: string): Promise<void> {
@@ -41,11 +42,11 @@ describe("abort handling", () => {
     await sendTruncatedBody(url.origin, url.pathname, "B");
     await delay(100);
 
-    const text = await client.readAllText(streamId, "0");
+    const text = await client.readAllText(streamId, ZERO_OFFSET);
     expect(text).toBe("A");
 
     await client.appendStream(streamId, "B", "text/plain");
-    const finalText = await client.readAllText(streamId, "0");
+    const finalText = await client.readAllText(streamId, ZERO_OFFSET);
     expect(finalText).toBe("AB");
   });
 });

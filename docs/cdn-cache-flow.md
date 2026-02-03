@@ -14,7 +14,7 @@ Assumptions
 ### Hot read (tail, long‑poll)
 Request
 ```
-GET /v1/stream/doc-123?offset=5000&live=long-poll&cursor=ab12
+GET /v1/stream/doc-123?offset=0000000000000000_0000000000005000&live=long-poll&cursor=ab12
 Authorization: Bearer <token>
 ```
 
@@ -29,7 +29,7 @@ Flow
 Example response
 ```
 200 OK
-Stream-Next-Offset: 5005
+Stream-Next-Offset: 0000000000000000_0000000000005005
 Stream-Up-To-Date: 0
 Stream-Cursor: ab13
 Cache-Control: public, max-age=2
@@ -38,7 +38,7 @@ Cache-Control: public, max-age=2
 ### Cold read (far behind)
 Request
 ```
-GET /v1/stream/doc-123?offset=200
+GET /v1/stream/doc-123?offset=0000000000000000_0000000000000200
 Authorization: Bearer <token>
 ```
 
@@ -51,7 +51,7 @@ Flow
 Example response
 ```
 200 OK
-Stream-Next-Offset: 1200
+Stream-Next-Offset: 0000000000000000_0000000000001200
 Stream-Up-To-Date: 0
 Cache-Control: public, max-age=300
 ```
@@ -61,7 +61,7 @@ Cache-Control: public, max-age=300
 ### Hot read (tail, long‑poll)
 Request
 ```
-GET /v1/stream/doc-123?offset=5000&live=long-poll&cursor=ab12
+GET /v1/stream/doc-123?offset=0000000000000000_0000000000005000&live=long-poll&cursor=ab12
 Authorization: Bearer <user‑specific>
 ```
 
@@ -74,7 +74,7 @@ Flow
 Example response
 ```
 200 OK
-Stream-Next-Offset: 5005
+Stream-Next-Offset: 0000000000000000_0000000000005005
 Stream-Up-To-Date: 0
 Stream-Cursor: ab13
 Cache-Control: private, no-store
@@ -83,7 +83,7 @@ Cache-Control: private, no-store
 ### Cold read (far behind)
 Request
 ```
-GET /v1/stream/doc-123?offset=200
+GET /v1/stream/doc-123?offset=0000000000000000_0000000000000200
 Authorization: Bearer <user‑specific>
 ```
 
@@ -95,7 +95,7 @@ Flow
 Example response
 ```
 200 OK
-Stream-Next-Offset: 1200
+Stream-Next-Offset: 0000000000000000_0000000000001200
 Stream-Up-To-Date: 0
 Cache-Control: private, no-store
 ```

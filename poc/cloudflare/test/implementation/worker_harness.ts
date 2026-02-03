@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKER_CWD = path.resolve(__dirname, "..", "..");
@@ -112,7 +113,7 @@ export async function startWorker(options?: {
   );
 
   const baseUrl = `http://localhost:${port}`;
-  await waitForReady(`${baseUrl}/v1/stream/__health__?offset=0`);
+  await waitForReady(`${baseUrl}/v1/stream/__health__?offset=${ZERO_OFFSET}`);
 
   return {
     baseUrl,

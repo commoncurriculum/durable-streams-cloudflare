@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "../implementation/helpers";
 import { startWorker } from "../implementation/worker_harness";
 
@@ -35,7 +36,7 @@ describe("performance smoke", () => {
       appendTimes.push(performance.now() - startAppend);
 
       const startRead = performance.now();
-      await client.readAllText(streamId, "0");
+      await client.readAllText(streamId, ZERO_OFFSET);
       readTimes.push(performance.now() - startRead);
     }
 
