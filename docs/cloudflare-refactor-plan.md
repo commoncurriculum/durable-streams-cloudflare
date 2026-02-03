@@ -13,6 +13,14 @@
 - Introducing alternate storage backends in this refactor (D1 + R2 stay primary).
 - Reducing correctness checks to optimize perf.
 
+## Progress (as of 2026-02-03)
+- Extracted protocol helpers into `src/protocol/*` (headers/offsets/cursor/encoding/expiry/etag/validation).
+- Randomized cursor jitter implemented to match reference behavior.
+- Standardized SSE encoding header to `Stream-SSE-Data-Encoding`.
+- Added CORS handling and exposed Stream/Producer headers in `worker.ts`.
+- Added registry stream hooks (`__registry__`) for create/delete events.
+- Conformance suite remains green (239/239).
+
 ## Current Baseline
 - POC passes the server conformance suite locally with `wrangler dev --local` and D1/R2.
 - Logic is concentrated in `poc/cloudflare/src/stream_do.ts` and `poc/cloudflare/src/worker.ts`.
@@ -66,6 +74,9 @@ Proposed module layout
 Deliverables
 - `stream_do.ts` becomes a thin shell that wires storage + engine + live helpers.
 - `worker.ts` remains unchanged except imports.
+Current status
+- `headers.ts`, `offsets.ts`, `cursor.ts`, `encoding.ts`, `expiry.ts`, `etag.ts`,
+  and `validation.ts` extracted.
 
 ## Phase 2: Storage Interface (D1-First)
 - Define the exact storage surface the engine needs.
@@ -122,10 +133,10 @@ Deliverables
 - Zero changes to observed protocol output.
 
 ## Phase 4.5: Reference Parity Improvements (Cloudflare-Specific)
-- Add CORS + exposed headers in `worker.ts` (Stream-* and Producer-* headers).
+- Add CORS + exposed headers in `worker.ts` (Stream-* and Producer-* headers). (done)
 - Add producer state TTL cleanup (periodic + on access).
-- Adopt randomized cursor jitter (1–3600s) for CDN collision handling.
-- Add registry stream (`__registry__`) for create/delete discovery.
+- Adopt randomized cursor jitter (1–3600s) for CDN collision handling. (done)
+- Add registry stream (`__registry__`) for create/delete discovery. (done)
 - Encode R2 keys using base64url path encoding for safety.
 - Evaluate offset format shift to `readSeq_byteOffset` if we decide to support
   segment rotation in R2 (document if we intentionally keep hex offsets).
