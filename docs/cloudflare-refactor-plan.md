@@ -140,10 +140,39 @@ Approach
 - Add integration tests that spin a local worker and use real D1/R2.
 - For pure helpers (offset encoding, JSON batching, SSE formatting), add unit
   tests that do not hit storage and do not use mocks.
+- Add implementation tests (white-box) focused on durability and race
+  conditions, adapted from `IMPLEMENTATION_TESTING.md`.
 
 Deliverables
 - `pnpm run conformance` remains the gate.
 - Optional `pnpm run test:integration` that uses local Wrangler bindings.
+
+## Phase 5.5: Implementation Testing (Durability & Races)
+Informed by `IMPLEMENTATION_TESTING.md`, add a second suite aimed at internal
+failure modes that conformance can’t exercise.
+
+Targets (Cloudflare-specific)
+- **Crash recovery / restart safety**
+  - Simulate DO restarts mid-stream and ensure offsets + data remain consistent.
+  - Repeated restart cycles should remain idempotent (no dupes/rewinds).
+- **Concurrent access**
+  - Multiple readers during append should see either before or after state,
+    never partial data (especially for JSON streams).
+  - Concurrent producers with gaps/duplicates should return correct headers.
+- **Resource cleanup**
+  - Delete stream while long-poll/SSE active; clients should close cleanly.
+  - Ensure producers table is pruned per TTL without affecting active producers.
+- **Cold storage correctness**
+  - If R2 segment read fails or is truncated, fallback to last valid boundary
+    and return consistent data (no corrupted bytes).
+  - Segment index should match offsets exactly after compaction.
+- **Property/invariant checks**
+  - Randomized operation sequences (append/read/delete/close) maintain
+    monotonic offsets and data immutability.
+
+Deliverables
+- `pnpm run test:implementation` running against local `wrangler dev --local`.
+- Clear separation from conformance tests (no mocks, real D1/R2).
 
 ## Phase 6: Docs and Ops
 - Document the module layout and extension points.
