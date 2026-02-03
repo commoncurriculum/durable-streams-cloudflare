@@ -6,8 +6,12 @@ import {
 } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
 import { generateResponseCursor } from "../../protocol/cursor";
-import { encodeOffset } from "../../protocol/offsets";
-import { LONG_POLL_TIMEOUT_MS, MAX_CHUNK_BYTES, SSE_RECONNECT_MS } from "../../protocol/limits";
+import {
+  LONG_POLL_CACHE_SECONDS,
+  LONG_POLL_TIMEOUT_MS,
+  MAX_CHUNK_BYTES,
+  SSE_RECONNECT_MS,
+} from "../../protocol/limits";
 import { buildSseControlEvent, buildSseDataEvent } from "../../live/sse";
 import { buildLongPollHeaders } from "../../engine/stream";
 import type { StreamMeta } from "../../storage/storage";
@@ -23,7 +27,7 @@ export async function handleLongPoll(
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
 
-  const resolved = ctx.resolveOffset(meta, offsetParam);
+  const resolved = await ctx.resolveOffset(streamId, meta, offsetParam);
   if (resolved.error) return resolved.error;
 
   const offset = resolved.offset;
@@ -31,12 +35,12 @@ export async function handleLongPoll(
   if (meta.closed === 1 && offset >= meta.tail_offset) {
     const headers = buildLongPollHeaders({
       meta,
-      nextOffset: meta.tail_offset,
+      nextOffsetHeader: ctx.encodeTailOffset(meta),
       upToDate: true,
       closedAtTail: true,
       cursor: null,
     });
-    headers.set("Cache-Control", "no-store");
+    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
     return new Response(null, { status: 204, headers });
   }
 
@@ -46,11 +50,12 @@ export async function handleLongPoll(
   if (initialRead.hasData) {
     const headers = buildLongPollHeaders({
       meta,
-      nextOffset: initialRead.nextOffset,
+      nextOffsetHeader: await ctx.encodeOffset(streamId, meta, initialRead.nextOffset),
       upToDate: initialRead.upToDate,
       closedAtTail: initialRead.closedAtTail,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
+    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
     return new Response(initialRead.body, { status: 200, headers });
   }
 
@@ -61,12 +66,12 @@ export async function handleLongPoll(
   if (timedOut) {
     const headers = buildLongPollHeaders({
       meta: current,
-      nextOffset: current.tail_offset,
+      nextOffsetHeader: ctx.encodeTailOffset(current),
       upToDate: true,
       closedAtTail: current.closed === 1 && current.tail_offset === offset,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
-    headers.set("Cache-Control", "no-store");
+    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
     return new Response(null, { status: 204, headers });
   }
 
@@ -75,17 +80,18 @@ export async function handleLongPoll(
 
   const headers = buildLongPollHeaders({
     meta: current,
-    nextOffset: read.nextOffset,
+    nextOffsetHeader: await ctx.encodeOffset(streamId, current, read.nextOffset),
     upToDate: read.upToDate,
     closedAtTail: read.closedAtTail,
     cursor: generateResponseCursor(url.searchParams.get("cursor")),
   });
 
   if (!read.hasData) {
-    headers.set("Cache-Control", "no-store");
+    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
     return new Response(null, { status: 204, headers });
   }
 
+  headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
   return new Response(read.body, { status: 200, headers });
 }
 
@@ -98,7 +104,7 @@ export async function handleSse(
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
 
-  const resolved = ctx.resolveOffset(meta, offsetParam);
+  const resolved = await ctx.resolveOffset(streamId, meta, offsetParam);
   if (resolved.error) return resolved.error;
 
   const offset = resolved.offset;
@@ -131,7 +137,7 @@ export async function handleSse(
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: ctx.encodeTailOffset(meta),
   });
 
   if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");
@@ -148,6 +154,8 @@ export async function handleSse(
 
 export async function broadcastSse(
   ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
   contentType: string,
   payload: ArrayBuffer | null,
   nextOffset: number,
@@ -155,10 +163,11 @@ export async function broadcastSse(
 ): Promise<void> {
   if (!payload) return;
 
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
   for (const client of entries) {
     if (client.closed) continue;
-    await writeSseData(client, payload, nextOffset, true, streamClosed);
+    await writeSseData(client, payload, nextOffsetHeader, true, streamClosed);
     client.offset = nextOffset;
     if (streamClosed) {
       await closeSseClient(ctx, client);
@@ -168,13 +177,16 @@ export async function broadcastSse(
 
 export async function broadcastSseControl(
   ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
   nextOffset: number,
   streamClosed: boolean,
 ): Promise<void> {
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
   for (const client of entries) {
     if (client.closed) continue;
-    await writeSseControl(client, nextOffset, true, streamClosed);
+    await writeSseControl(client, nextOffsetHeader, true, streamClosed);
     client.offset = nextOffset;
     if (streamClosed) {
       await closeSseClient(ctx, client);
@@ -204,7 +216,8 @@ async function runSseSession(
     }
 
     if (read.hasData) {
-      await writeSseData(client, read.body, read.nextOffset, read.upToDate, read.closedAtTail);
+      const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
+      await writeSseData(client, read.body, nextOffsetHeader, read.upToDate, read.closedAtTail);
       currentOffset = read.nextOffset;
       client.offset = currentOffset;
 
@@ -212,14 +225,16 @@ async function runSseSession(
         read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
         if (read.error) break;
         if (!read.hasData) break;
-        await writeSseData(client, read.body, read.nextOffset, read.upToDate, read.closedAtTail);
+        const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
+        await writeSseData(client, read.body, header, read.upToDate, read.closedAtTail);
         currentOffset = read.nextOffset;
         client.offset = currentOffset;
       }
     } else {
+      const header = await ctx.encodeOffset(streamId, meta, currentOffset);
       await writeSseControl(
         client,
-        currentOffset,
+        header,
         true,
         meta.closed === 1 && currentOffset >= meta.tail_offset,
       );
@@ -247,14 +262,14 @@ async function closeSseClient(ctx: StreamContext, client: SseClient): Promise<vo
 async function writeSseData(
   client: SseClient,
   payload: ArrayBuffer,
-  nextOffset: number,
+  nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
 ): Promise<void> {
   const encoder = new TextEncoder();
   const dataEvent = buildSseDataEvent(payload, client.useBase64);
   const control = buildSseControlEvent({
-    nextOffset,
+    nextOffset: nextOffsetHeader,
     upToDate,
     streamClosed,
     cursor: client.cursor,
@@ -265,13 +280,13 @@ async function writeSseData(
 
 async function writeSseControl(
   client: SseClient,
-  nextOffset: number,
+  nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
 ): Promise<void> {
   const encoder = new TextEncoder();
   const control = buildSseControlEvent({
-    nextOffset,
+    nextOffset: nextOffsetHeader,
     upToDate,
     streamClosed,
     cursor: client.cursor,

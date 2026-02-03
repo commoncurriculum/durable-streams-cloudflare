@@ -1,6 +1,5 @@
 import { generateResponseCursor } from "../protocol/cursor";
 import { base64Encode } from "../protocol/encoding";
-import { encodeOffset } from "../protocol/offsets";
 
 export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): string {
   let output = "event: data\n";
@@ -21,13 +20,13 @@ export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): str
 }
 
 export function buildSseControlEvent(params: {
-  nextOffset: number;
+  nextOffset: string;
   upToDate: boolean;
   streamClosed: boolean;
   cursor: string;
 }): { payload: string; nextCursor: string | null } {
   const control: Record<string, unknown> = {
-    streamNextOffset: encodeOffset(params.nextOffset),
+    streamNextOffset: params.nextOffset,
   };
 
   if (params.streamClosed) {

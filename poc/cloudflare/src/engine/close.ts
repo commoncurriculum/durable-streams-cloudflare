@@ -26,8 +26,9 @@ export async function closeStreamOnly(
       meta.closed_by_epoch === producer.epoch &&
       meta.closed_by_seq === producer.seq
     ) {
+      const nextOffsetHeader = encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
       const headers = baseHeaders({
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+        [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
         [HEADER_STREAM_CLOSED]: "true",
         [HEADER_PRODUCER_EPOCH]: producer.epoch.toString(),
         [HEADER_PRODUCER_SEQ]: producer.seq.toString(),
@@ -35,7 +36,13 @@ export async function closeStreamOnly(
       return { headers };
     }
 
-    return { headers: baseHeaders(), error: buildClosedConflict(meta) };
+    return {
+      headers: baseHeaders(),
+      error: buildClosedConflict(
+        meta,
+        encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq),
+      ),
+    };
   }
 
   if (!meta.closed) {
@@ -47,7 +54,7 @@ export async function closeStreamOnly(
   }
 
   const headers = baseHeaders({
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq),
     [HEADER_STREAM_CLOSED]: "true",
   });
 

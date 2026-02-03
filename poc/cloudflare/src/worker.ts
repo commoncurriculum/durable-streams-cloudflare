@@ -2,9 +2,9 @@ import { StreamDO } from "./stream_do";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
-  DB: D1Database;
   AUTH_TOKEN?: string;
   R2?: R2Bucket;
+  ADMIN_DB?: D1Database;
 }
 
 const STREAM_PREFIX = "/v1/stream/";

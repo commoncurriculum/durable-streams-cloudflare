@@ -1,38 +1,41 @@
 import { errorResponse } from "./protocol/errors";
 import { isExpired } from "./protocol/expiry";
-import { decodeOffset } from "./protocol/offsets";
-import { concatBuffers, toUint8Array } from "./protocol/encoding";
+import { decodeOffsetParts, encodeOffset } from "./protocol/offsets";
+import { toUint8Array } from "./protocol/encoding";
 import { isJsonContentType } from "./protocol/headers";
-import {
-  R2_COMPACT_MIN_BYTES,
-  R2_COMPACT_MIN_MESSAGES,
-  R2_HOT_BYTES,
-  R2_HOT_MESSAGES,
-} from "./protocol/limits";
+import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "./protocol/limits";
 import { LongPollQueue } from "./live/long_poll";
 import type { SseState } from "./live/types";
-import { D1Storage } from "./storage/d1";
-import { buildSegmentKey, decodeSegmentMessages, encodeSegmentMessages } from "./storage/segments";
+import { DoSqliteStorage } from "./storage/do_sqlite";
+import { buildSegmentKey, encodeSegmentMessages, readSegmentMessages } from "./storage/segments";
 import type { StreamMeta } from "./storage/storage";
 import { routeRequest } from "./http/router";
-import { readFromMessages, readFromOffset } from "./engine/stream";
+import { readFromMessages, readFromOffset, type ReadResult } from "./engine/stream";
+import { emptyJsonArray } from "./protocol/json";
 import type { StreamContext, StreamEnv, ResolveOffsetResult } from "./http/context";
 
 export type Env = StreamEnv;
 
+const COALESCE_CACHE_MS = 25;
+
 export class StreamDO {
   private state: DurableObjectState;
   private env: Env;
-  private storage: D1Storage;
+  private storage: DoSqliteStorage;
   private longPoll = new LongPollQueue();
   private sseState: SseState = { clients: new Map(), nextId: 0 };
   private inFlightReads = new Map<string, ReturnType<typeof readFromOffset>>();
+  private recentReads = new Map<string, { result: ReadResult; expiresAt: number }>();
   private readStats = { internalReads: 0 };
+  private rotating = false;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
-    this.storage = new D1Storage(env.DB);
+    this.storage = new DoSqliteStorage(state.storage.sql);
+    this.state.blockConcurrencyWhile(async () => {
+      this.storage.initSchema();
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -66,8 +69,10 @@ export class StreamDO {
       sseState: this.sseState,
       getStream: this.getStream.bind(this),
       resolveOffset: this.resolveOffset.bind(this),
+      encodeOffset: this.encodeOffset.bind(this),
+      encodeTailOffset: this.encodeTailOffset.bind(this),
       readFromOffset: this.readFromOffset.bind(this),
-      compactToR2: this.compactToR2.bind(this),
+      rotateSegment: this.rotateSegment.bind(this),
     };
 
     return routeRequest(ctx, streamId, request);
@@ -89,80 +94,183 @@ export class StreamDO {
     await this.storage.deleteStreamData(streamId);
   }
 
-  private resolveOffset(meta: StreamMeta, offsetParam: string | null): ResolveOffsetResult {
-    if (offsetParam === null || offsetParam === "-1") {
-      return { offset: 0, isNow: false };
-    }
-
-    if (offsetParam === "now") {
-      return { offset: meta.tail_offset, isNow: true };
-    }
-
-    const decoded = decodeOffset(offsetParam);
-    if (decoded === null) {
-      return { offset: 0, isNow: false, error: errorResponse(400, "invalid offset") };
-    }
-
-    if (decoded > meta.tail_offset) {
-      return { offset: 0, isNow: false, error: errorResponse(400, "offset beyond tail") };
-    }
-
-    return { offset: decoded, isNow: false };
+  private encodeTailOffset(meta: StreamMeta): string {
+    return encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
   }
 
-  private async compactToR2(
+  private async resolveOffset(
     streamId: string,
-    options?: { force?: boolean; retainOps?: boolean; flushToTail?: boolean },
+    meta: StreamMeta,
+    offsetParam: string | null,
+  ): Promise<ResolveOffsetResult> {
+    if (offsetParam === null) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "offset is required"),
+      };
+    }
+
+    const decoded = decodeOffsetParts(offsetParam);
+    if (!decoded) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    const { readSeq, byteOffset } = decoded;
+    if (readSeq > meta.read_seq) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    if (readSeq === meta.read_seq) {
+      const offset = meta.segment_start + byteOffset;
+      if (offset > meta.tail_offset) {
+        return {
+          offset: 0,
+          error: errorResponse(400, "offset beyond tail"),
+        };
+      }
+      return { offset };
+    }
+
+    const segment = await this.storage.getSegmentByReadSeq(streamId, readSeq);
+    if (!segment) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    const offset = segment.start_offset + byteOffset;
+    if (offset > segment.end_offset) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    if (offset > meta.tail_offset) {
+      return {
+        offset: 0,
+        error: errorResponse(400, "offset beyond tail"),
+      };
+    }
+
+    return { offset };
+  }
+
+  private async encodeOffset(streamId: string, meta: StreamMeta, offset: number): Promise<string> {
+    if (offset >= meta.segment_start) {
+      return encodeOffset(offset - meta.segment_start, meta.read_seq);
+    }
+
+    const segment = await this.storage.getSegmentCoveringOffset(streamId, offset);
+    if (segment) {
+      return encodeOffset(offset - segment.start_offset, segment.read_seq);
+    }
+
+    const starting = await this.storage.getSegmentStartingAt(streamId, offset);
+    if (starting) {
+      return encodeOffset(0, starting.read_seq);
+    }
+
+    return encodeOffset(0, meta.read_seq);
+  }
+
+  private async rotateSegment(
+    streamId: string,
+    options?: { force?: boolean; retainOps?: boolean },
   ): Promise<void> {
     if (!this.env.R2) return;
-    const meta = await this.storage.getStream(streamId);
-    if (!meta) return;
+    if (this.rotating) return;
+    this.rotating = true;
+    try {
+      const meta = await this.storage.getStream(streamId);
+      if (!meta) return;
 
-    const isJson = isJsonContentType(meta.content_type);
-    const minSegment = isJson ? R2_COMPACT_MIN_MESSAGES : R2_COMPACT_MIN_BYTES;
-    const hotWindow = options?.flushToTail ? 0 : isJson ? R2_HOT_MESSAGES : R2_HOT_BYTES;
-    const deleteOps = this.env.R2_DELETE_OPS !== "0" && !options?.retainOps;
+      const segmentMaxMessages = this.segmentMaxMessages();
+      const segmentMaxBytes = this.segmentMaxBytes();
+      const shouldRotate =
+        options?.force ||
+        meta.segment_messages >= segmentMaxMessages ||
+        meta.segment_bytes >= segmentMaxBytes;
+      if (!shouldRotate) return;
 
-    const latest = await this.storage.getLatestSnapshot(streamId);
-    const segmentStart = latest?.end_offset ?? 0;
-    const hotCutoff = Math.max(0, meta.tail_offset - hotWindow);
+      const deleteOps = this.env.R2_DELETE_OPS !== "0" && !options?.retainOps;
 
-    if (hotCutoff <= segmentStart) return;
+      const segmentStart = meta.segment_start;
+      const segmentEnd = meta.tail_offset;
 
-    const ops = await this.storage.selectOpsRange(streamId, segmentStart, hotCutoff);
-    if (ops.length === 0) return;
-    if (ops[0].start_offset !== segmentStart) return;
+      if (segmentEnd <= segmentStart) return;
 
-    for (let i = 1; i < ops.length; i += 1) {
-      if (ops[i].start_offset !== ops[i - 1].end_offset) {
-        return;
+      const ops = await this.storage.selectOpsRange(streamId, segmentStart, segmentEnd);
+      if (ops.length === 0) return;
+      if (ops[0].start_offset !== segmentStart) return;
+
+      for (let i = 1; i < ops.length; i += 1) {
+        if (ops[i].start_offset !== ops[i - 1].end_offset) {
+          return;
+        }
       }
-    }
 
-    const segmentEnd = ops[ops.length - 1].end_offset;
-    if (!options?.force && segmentEnd - segmentStart < minSegment) {
-      return;
-    }
+      const resolvedEnd = ops[ops.length - 1].end_offset;
+      if (resolvedEnd !== segmentEnd) return;
 
-    const messages = ops.map((chunk) => toUint8Array(chunk.body));
-    const body = encodeSegmentMessages(messages);
+      const now = Date.now();
+      const messages = ops.map((chunk) => toUint8Array(chunk.body));
+      const body = encodeSegmentMessages(messages);
+      const sizeBytes = messages.reduce((sum, message) => sum + message.byteLength, 0);
+      const messageCount = messages.length;
 
-    const key = buildSegmentKey(streamId, segmentStart, segmentEnd, Date.now());
-    await this.env.R2.put(key, body, {
-      httpMetadata: { contentType: meta.content_type },
-    });
+      const key = buildSegmentKey(streamId, meta.read_seq);
+      await this.env.R2.put(key, body, {
+        httpMetadata: { contentType: meta.content_type },
+      });
 
-    await this.storage.insertSnapshot({
-      streamId,
-      r2Key: key,
-      startOffset: segmentStart,
-      endOffset: segmentEnd,
-      contentType: meta.content_type,
-      createdAt: Date.now(),
-    });
+      const expiresAt = meta.expires_at ?? null;
+      await this.storage.insertSegment({
+        streamId,
+        r2Key: key,
+        startOffset: segmentStart,
+        endOffset: segmentEnd,
+        readSeq: meta.read_seq,
+        contentType: meta.content_type,
+        createdAt: now,
+        expiresAt,
+        sizeBytes,
+        messageCount,
+      });
 
-    if (deleteOps) {
-      await this.storage.deleteOpsThrough(streamId, segmentEnd);
+      const remainingStats = await this.storage.getOpsStatsFrom(streamId, segmentEnd);
+      await this.storage.batch([
+        this.storage.updateStreamStatement(
+          streamId,
+          ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
+          [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
+        ),
+      ]);
+
+      await this.recordAdminSegment(streamId, {
+        readSeq: meta.read_seq,
+        startOffset: segmentStart,
+        endOffset: segmentEnd,
+        r2Key: key,
+        contentType: meta.content_type,
+        createdAt: now,
+        expiresAt,
+        sizeBytes,
+        messageCount,
+      });
+
+      if (deleteOps) {
+        await this.storage.deleteOpsThrough(streamId, segmentEnd);
+      }
+    } finally {
+      this.rotating = false;
     }
   }
 
@@ -173,10 +281,23 @@ export class StreamDO {
     maxChunkBytes: number,
   ): ReturnType<typeof readFromOffset> {
     const key = this.readKey(streamId, meta, offset, maxChunkBytes);
+    const cached = this.recentReads.get(key);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.result;
+    }
+
     const existing = this.inFlightReads.get(key);
     if (existing) return await existing;
 
-    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes);
+    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes).then(
+      (result) => {
+        if (!result.error) {
+          this.recentReads.set(key, { result, expiresAt: Date.now() + COALESCE_CACHE_MS });
+        }
+        return result;
+      },
+    );
     this.inFlightReads.set(key, pending);
 
     try {
@@ -202,107 +323,170 @@ export class StreamDO {
     maxChunkBytes: number,
   ): ReturnType<typeof readFromOffset> {
     this.readStats.internalReads += 1;
-    if (!this.env.R2) {
+    if (!this.env.R2 || offset >= meta.segment_start) {
       return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
     }
 
-    const snapshot = await this.storage.getSnapshotCoveringOffset(streamId, offset);
-    if (!snapshot) {
-      return await this.readFromOffsetFallback(streamId, meta, offset, maxChunkBytes);
-    }
-
-    if (offset < snapshot.start_offset || offset >= snapshot.end_offset) {
-      return await this.readFromOffsetFallback(streamId, meta, offset, maxChunkBytes);
-    }
-
-    const object = await this.env.R2.get(snapshot.r2_key);
-    if (!object) {
-      return await this.readFromOffsetFallback(streamId, meta, offset, maxChunkBytes);
-    }
-
-    const buffer = new Uint8Array(await object.arrayBuffer());
-    const decoded = decodeSegmentMessages(buffer);
-    if (decoded.truncated) {
-      return await this.readFromOffsetFallback(streamId, meta, offset, maxChunkBytes);
-    }
-
-    const isJson = isJsonContentType(snapshot.content_type);
-    if (isJson) {
-      let messages = decoded.messages;
-      if (snapshot.end_offset < meta.tail_offset) {
-        const tailOps = await this.storage.selectOpsFrom(streamId, snapshot.end_offset);
-        if (tailOps.length > 0) {
-          messages = messages.concat(tailOps.map((chunk) => toUint8Array(chunk.body)));
-        }
+    const segment = await this.storage.getSegmentCoveringOffset(streamId, offset);
+    if (!segment) {
+      const starting = await this.storage.getSegmentStartingAt(streamId, offset);
+      if (starting) {
+        const closedAtTail = meta.closed === 1 && offset === meta.tail_offset;
+        return {
+          body: new ArrayBuffer(0),
+          nextOffset: offset,
+          upToDate: false,
+          closedAtTail,
+          hasData: false,
+        };
       }
-      return readFromMessages({
-        messages,
-        contentType: snapshot.content_type,
-        offset,
-        maxChunkBytes,
-        tailOffset: meta.tail_offset,
-        closed: meta.closed === 1,
-        segmentStart: snapshot.start_offset,
-      });
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail: false,
+        hasData: false,
+        error: errorResponse(500, "segment unavailable"),
+      };
     }
 
-    const segmentResult = readFromMessages({
+    if (offset < segment.start_offset || offset > segment.end_offset) {
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail: false,
+        hasData: false,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    if (offset === segment.end_offset) {
+      const closedAtTail = meta.closed === 1 && offset === meta.tail_offset;
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail,
+        hasData: false,
+      };
+    }
+
+    const object = await this.env.R2.get(segment.r2_key);
+    if (!object || !object.body) {
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail: false,
+        hasData: false,
+        error: errorResponse(500, "segment missing"),
+      };
+    }
+
+    const isJson = isJsonContentType(segment.content_type);
+    const decoded = await readSegmentMessages({
+      body: object.body,
+      offset,
+      segmentStart: segment.start_offset,
+      maxChunkBytes,
+      isJson,
+    });
+
+    if (decoded.truncated) {
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail: false,
+        hasData: false,
+        error: errorResponse(500, "segment truncated"),
+      };
+    }
+
+    if (decoded.messages.length === 0) {
+      const closedAtTail = meta.closed === 1 && offset === meta.tail_offset;
+      return {
+        body: isJson ? emptyJsonArray() : new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: offset === meta.tail_offset,
+        closedAtTail,
+        hasData: false,
+      };
+    }
+
+    return readFromMessages({
       messages: decoded.messages,
-      contentType: snapshot.content_type,
+      contentType: segment.content_type,
       offset,
       maxChunkBytes,
       tailOffset: meta.tail_offset,
       closed: meta.closed === 1,
-      segmentStart: snapshot.start_offset,
+      segmentStart: decoded.segmentStart,
     });
-
-    if (
-      !segmentResult.hasData ||
-      segmentResult.upToDate ||
-      segmentResult.body.byteLength >= maxChunkBytes
-    ) {
-      return segmentResult;
-    }
-
-    const remaining = maxChunkBytes - segmentResult.body.byteLength;
-    const tailResult = await readFromOffset(
-      this.storage,
-      streamId,
-      meta,
-      segmentResult.nextOffset,
-      remaining,
-    );
-
-    if (!tailResult.hasData || tailResult.error) return segmentResult;
-
-    const combined = concatBuffers([
-      new Uint8Array(segmentResult.body),
-      new Uint8Array(tailResult.body),
-    ]);
-
-    return {
-      body: combined,
-      nextOffset: tailResult.nextOffset,
-      upToDate: tailResult.upToDate,
-      closedAtTail: tailResult.closedAtTail,
-      hasData: true,
-    };
   }
 
-  private async readFromOffsetFallback(
+  private segmentMaxMessages(): number {
+    const raw = this.env.SEGMENT_MAX_MESSAGES;
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_MESSAGES_DEFAULT;
+  }
+
+  private segmentMaxBytes(): number {
+    const raw = this.env.SEGMENT_MAX_BYTES;
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_BYTES_DEFAULT;
+  }
+
+  private recordAdminSegment(
     streamId: string,
-    meta: StreamMeta,
-    offset: number,
-    maxChunkBytes: number,
-  ): ReturnType<typeof readFromOffset> {
-    const fallback = await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
-    if (!fallback.hasData && offset < meta.tail_offset && !fallback.error) {
-      return {
-        ...fallback,
-        error: errorResponse(500, "cold segment unavailable"),
-      };
-    }
-    return fallback;
+    segment: {
+      readSeq: number;
+      startOffset: number;
+      endOffset: number;
+      r2Key: string;
+      contentType: string;
+      createdAt: number;
+      expiresAt: number | null;
+      sizeBytes: number;
+      messageCount: number;
+    },
+  ): void {
+    if (!this.env.ADMIN_DB) return;
+    const db = this.env.ADMIN_DB;
+    this.state.waitUntil(
+      db
+        .prepare(
+          `
+            INSERT INTO segments_admin (
+              stream_id,
+              read_seq,
+              start_offset,
+              end_offset,
+              r2_key,
+              content_type,
+              created_at,
+              expires_at,
+              size_bytes,
+              message_count
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+        )
+        .bind(
+          streamId,
+          segment.readSeq,
+          segment.startOffset,
+          segment.endOffset,
+          segment.r2Key,
+          segment.contentType,
+          segment.createdAt,
+          segment.expiresAt,
+          segment.sizeBytes,
+          segment.messageCount,
+        )
+        .run(),
+    );
   }
 
   private async handleDebugAction(
@@ -337,21 +521,21 @@ export class StreamDO {
     }
 
     if (action === "compact-retain") {
-      await this.compactToR2(streamId, { force: true, retainOps: true, flushToTail: true });
+      await this.rotateSegment(streamId, { force: true, retainOps: true });
       return new Response(null, { status: 204 });
     }
 
     if (action === "truncate-latest") {
       if (!this.env.R2) return errorResponse(400, "R2 unavailable");
-      const snapshot = await this.storage.getLatestSnapshot(streamId);
-      if (!snapshot) return errorResponse(404, "snapshot not found");
-      const object = await this.env.R2.get(snapshot.r2_key);
-      if (!object) return errorResponse(404, "snapshot object missing");
+      const segment = await this.storage.getLatestSegment(streamId);
+      if (!segment) return errorResponse(404, "segment not found");
+      const object = await this.env.R2.get(segment.r2_key);
+      if (!object) return errorResponse(404, "segment object missing");
       const buffer = new Uint8Array(await object.arrayBuffer());
-      if (buffer.byteLength <= 1) return errorResponse(400, "snapshot too small");
+      if (buffer.byteLength <= 1) return errorResponse(400, "segment too small");
       const truncated = buffer.slice(0, buffer.byteLength - 1);
-      await this.env.R2.put(snapshot.r2_key, truncated, {
-        httpMetadata: { contentType: snapshot.content_type },
+      await this.env.R2.put(segment.r2_key, truncated, {
+        httpMetadata: { contentType: segment.content_type },
       });
       return new Response(null, { status: 204 });
     }

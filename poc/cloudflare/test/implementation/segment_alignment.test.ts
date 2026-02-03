@@ -36,6 +36,22 @@ describe("segment boundary alignment", () => {
     const response = await fetch(client.streamUrl(streamId, { offset: encodeOffset(1000) }));
     expect(response.status).toBe(200);
     const body = await response.text();
-    expect(body).toBe(`${"x".repeat(200)}${"y".repeat(1200)}`);
+    expect(body).toBe("x".repeat(200));
+
+    const nextOffset = response.headers.get("Stream-Next-Offset");
+    expect(nextOffset).toBeTruthy();
+
+    const response2 = await fetch(client.streamUrl(streamId, { offset: nextOffset! }));
+    expect(response2.status).toBe(200);
+    const body2 = await response2.text();
+    expect(body2).toBe("y".repeat(1000));
+
+    const nextOffset2 = response2.headers.get("Stream-Next-Offset");
+    expect(nextOffset2).toBeTruthy();
+
+    const response3 = await fetch(client.streamUrl(streamId, { offset: nextOffset2! }));
+    expect(response3.status).toBe(200);
+    const body3 = await response3.text();
+    expect(body3).toBe("y".repeat(200));
   });
 });
