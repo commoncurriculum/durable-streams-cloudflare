@@ -30,6 +30,7 @@
 - Producer state TTL cleanup (7d) implemented with `last_updated` (on access).
 - Closed-by producer tuple persisted for idempotent close-only retries.
 - Introduced HTTP router + handler modules (mutation/catchup/realtime); `stream_do.ts` slimmed.
+- Stream deletion now wakes long-poll waiters and closes active SSE clients.
 - Conformance suite remains green (239/239).
 
 ## Current Baseline
@@ -179,7 +180,7 @@ Approach
 
 Deliverables
 - `pnpm run conformance` remains the gate.
-- Optional `pnpm run test:integration` that uses local Wrangler bindings.
+- `pnpm run test:implementation` running against local Wrangler bindings.
 
 ## Phase 5.5: Implementation Testing (Durability & Races)
 Informed by `IMPLEMENTATION_TESTING.md`, add a second suite aimed at internal
@@ -207,6 +208,8 @@ Targets (Cloudflare-specific)
 Deliverables
 - `pnpm run test:implementation` running against local `wrangler dev --local`.
 - Clear separation from conformance tests (no mocks, real D1/R2).
+Current status
+- Added implementation tests for delete cleanup (SSE/long-poll) + concurrent appends.
 
 ## Phase 6: Docs and Ops
 - Document the module layout and extension points.
@@ -216,6 +219,8 @@ Deliverables
 - `docs/cloudflare-architecture.md`.
 - Update `poc/cloudflare/README.md` with module layout and test commands.
 - Document registry stream behavior and header exposure for browser clients.
+Current status
+- `docs/cloudflare-architecture.md` added.
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.
