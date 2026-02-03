@@ -57,6 +57,13 @@ pnpm run conformance
 ```
 Note: `pnpm run dev` must be running in another shell.
 
+## Implementation Tests
+Run durability/concurrency tests against the local worker:
+```bash
+pnpm run test:implementation
+```
+Note: `pnpm run dev` must be running in another shell.
+
 ## Stream URL
 ```
 /v1/stream/<stream-id>
@@ -115,3 +122,4 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 - `src/live/*`
 - `src/protocol/*`
 - `src/storage/*`
+- `test/implementation/*`

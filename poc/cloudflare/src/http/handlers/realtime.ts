@@ -182,6 +182,13 @@ export async function broadcastSseControl(
   }
 }
 
+export async function closeAllSseClients(ctx: StreamContext): Promise<void> {
+  const entries = Array.from(ctx.sseState.clients.values());
+  for (const client of entries) {
+    await closeSseClient(ctx, client);
+  }
+}
+
 async function runSseSession(
   ctx: StreamContext,
   streamId: string,

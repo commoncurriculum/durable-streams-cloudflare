@@ -33,4 +33,13 @@ export class LongPollQueue {
       waiter.resolve({ timedOut: false });
     }
   }
+
+  notifyAll(): void {
+    const current = this.waiters;
+    this.waiters = [];
+    for (const waiter of current) {
+      clearTimeout(waiter.timer);
+      waiter.resolve({ timedOut: false });
+    }
+  }
 }

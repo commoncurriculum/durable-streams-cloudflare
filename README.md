@@ -5,6 +5,7 @@ Durable Streams implementation workspace.
 ## What’s Here
 - `poc/cloudflare/` — Cloudflare Worker + Durable Object + D1 + R2 proof‑of‑concept implementation.
 - `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare POC.
+- `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare POC.
 
 ## Cloudflare POC (quick start)
 ```bash

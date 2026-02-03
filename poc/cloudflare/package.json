@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --local --port 8787",
-    "lint": "oxlint src",
-    "format": "oxfmt --write src",
-    "conformance": "CONFORMANCE_TEST_URL=http://localhost:8787 pnpm exec vitest run --config vitest.conformance.config.ts"
+    "lint": "oxlint src test",
+    "format": "oxfmt --write src test",
+    "conformance": "CONFORMANCE_TEST_URL=http://localhost:8787 pnpm exec vitest run --config vitest.conformance.config.ts",
+    "test:implementation": "IMPLEMENTATION_TEST_URL=http://localhost:8787 pnpm exec vitest run --config vitest.implementation.config.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

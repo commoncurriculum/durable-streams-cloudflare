@@ -29,7 +29,7 @@ import {
   type ProducerEval,
 } from "../../engine/producer";
 import type { StreamContext } from "../context";
-import { broadcastSse, broadcastSseControl } from "./realtime";
+import { broadcastSse, broadcastSseControl, closeAllSseClients } from "./realtime";
 
 export async function handlePut(
   ctx: StreamContext,
@@ -250,6 +250,8 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     if (!meta) return errorResponse(404, "stream not found");
 
     await ctx.storage.deleteStreamData(streamId);
+    ctx.longPoll.notifyAll();
+    await closeAllSseClients(ctx);
 
     return new Response(null, { status: 204, headers: baseHeaders() });
   });
