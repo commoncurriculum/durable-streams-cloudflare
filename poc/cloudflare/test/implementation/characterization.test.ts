@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("characterization", () => {
@@ -9,7 +10,7 @@ describe("characterization", () => {
     await client.createStream(streamId, "", "text/plain");
 
     const response = await fetch(
-      client.streamUrl(streamId, { offset: "0", live: "long-poll", cursor: "test" }),
+      client.streamUrl(streamId, { offset: ZERO_OFFSET, live: "long-poll", cursor: "test" }),
     );
 
     expect(response.status).toBe(204);

@@ -173,8 +173,8 @@ Deliverables
 - Adopt randomized cursor jitter (1–3600s) for CDN collision handling. (done)
 - Add registry stream (`__registry__`) for create/delete discovery. (done)
 - Encode R2 keys using base64url path encoding for safety. (done)
-- Evaluate offset format shift to `readSeq_byteOffset` if we decide to support
-  segment rotation in R2 (document if we intentionally keep hex offsets).
+- Switch offset encoding to fixed-width decimal `readSeq_byteOffset` (Caddy/Node parity). (done)
+- `readSeq` remains `0` for now; rotation support requires a schema change.
 - Implement segment framing for cold storage (length‑prefixed messages). (done)
 
 ## Phase 5: Test Strategy (No Stubs)
@@ -260,8 +260,7 @@ Implementation tests
 - Add segment boundary alignment tests for multi-segment reads. (done)
 
 Protocol/storage
-- Decide on offset format migration for cold storage rotation (if we adopt
-  `readSeq_byteOffset`, document and test).
+- Keep `readSeq` reserved for rotation (schema change if/when we reset byte offsets).
 - Validate segment retention + delete policy for long-lived streams.
 
 ## Milestones

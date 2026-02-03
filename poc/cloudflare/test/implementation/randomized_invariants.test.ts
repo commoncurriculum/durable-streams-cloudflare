@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeOffset } from "../../src/protocol/offsets";
+import { decodeOffset, encodeOffset } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 function seededRandom(seed: number): () => number {
@@ -12,9 +12,11 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-function decodeOffsetHex(value: string | null): number {
+function decodeOffsetValue(value: string | null): number {
   if (!value) return 0;
-  return Number.parseInt(value, 16);
+  const decoded = decodeOffset(value);
+  if (decoded === null) throw new Error(`Invalid offset: ${value}`);
+  return decoded;
 }
 
 describe("randomized invariants", () => {
@@ -47,7 +49,7 @@ describe("randomized invariants", () => {
       expect(body).toBe(expectedSlice);
 
       const nextOffsetHeader = response.headers.get("Stream-Next-Offset");
-      const nextOffset = decodeOffsetHex(nextOffsetHeader);
+      const nextOffset = decodeOffsetValue(nextOffsetHeader);
       expect(nextOffset).toBe(offset + body.length);
     }
   });

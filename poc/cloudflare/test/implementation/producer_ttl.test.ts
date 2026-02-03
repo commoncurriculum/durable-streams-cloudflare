@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 const PRODUCER_HEADERS = {
@@ -50,7 +51,7 @@ describe("producer TTL pruning", () => {
 
     expect(second.status).toBe(200);
 
-    const text = await client.readAllText(streamId, "0");
+    const text = await client.readAllText(streamId, ZERO_OFFSET);
     expect(text).toBe("AB");
   });
 });

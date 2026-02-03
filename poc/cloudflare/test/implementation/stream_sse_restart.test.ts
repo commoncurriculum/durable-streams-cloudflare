@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId, waitForReaderDone } from "./helpers";
 import { createPersistDir, getAvailablePort, startWorker } from "./worker_harness";
 
@@ -98,9 +99,12 @@ describe("sse reconnect", () => {
     const afterA = appendResponse.headers.get("Stream-Next-Offset");
     expect(afterA).toBeTruthy();
 
-    const sseResponse = await fetch(client.streamUrl(streamId, { live: "sse", offset: "0" }), {
-      headers: { Accept: "text/event-stream" },
-    });
+    const sseResponse = await fetch(
+      client.streamUrl(streamId, { live: "sse", offset: ZERO_OFFSET }),
+      {
+        headers: { Accept: "text/event-stream" },
+      },
+    );
 
     expect(sseResponse.status).toBe(200);
     const streamReader = sseResponse.body!.getReader();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 type DebugStats = {
@@ -12,7 +13,7 @@ describe("in-flight read coalescing", () => {
 
     await client.createStream(streamId, "hello");
 
-    const url = client.streamUrl(streamId, { offset: "0" });
+    const url = client.streamUrl(streamId, { offset: ZERO_OFFSET });
 
     const getStats = async (): Promise<DebugStats> => {
       const response = await fetch(url, {

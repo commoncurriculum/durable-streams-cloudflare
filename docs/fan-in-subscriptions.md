@@ -83,7 +83,7 @@ Each message in the fan-in stream is JSON:
 ```json
 {
   "stream": "doc-abc",
-  "offset": "0000000000003f10",
+  "offset": "0000000000000000_0000000000010000",
   "type": "data",
   "payload": { "op": "insert", "text": "hello" }
 }

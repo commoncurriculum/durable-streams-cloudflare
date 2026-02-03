@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("R2 truncation fallback", () => {
@@ -26,7 +27,7 @@ describe("R2 truncation fallback", () => {
     });
     expect(truncate.status).toBe(204);
 
-    const text = await client.readAllText(streamId, "0");
+    const text = await client.readAllText(streamId, ZERO_OFFSET);
     expect(text).toBe("helloworld");
   });
 });

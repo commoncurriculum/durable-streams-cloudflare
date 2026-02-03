@@ -104,17 +104,18 @@ curl "http://localhost:8787/v1/stream/doc-123?offset=-1"
 
 Long-poll:
 ```bash
-curl "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=long-poll"
+curl "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000&live=long-poll"
 ```
 
 SSE:
 ```bash
-curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=sse"
+curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
 ## Notes on Offsets
 - Offsets are opaque, lexicographically sortable strings.
-- This POC uses fixed-width hex encoding of a monotonic integer.
+- This POC uses fixed-width decimal `readSeq_byteOffset` encoding (Caddy/Node parity).
+- `readSeq` is currently `0` for all offsets (reserved for future segment rotation).
 - JSON streams increment offsets by **message count**; non-JSON streams increment by **byte length**.
 
 ## Durability and Latency
