@@ -29,6 +29,7 @@
 - R2 snapshot keys now base64url-encode stream ids (safer paths, CDN-friendly).
 - Producer state TTL cleanup (7d) implemented with `last_updated` (on access).
 - Closed-by producer tuple persisted for idempotent close-only retries.
+- Introduced HTTP router + handler modules (mutation/catchup/realtime); `stream_do.ts` slimmed.
 - Conformance suite remains green (239/239).
 
 ## Current Baseline
@@ -77,9 +78,13 @@ Proposed module layout
 - `src/engine/producer.ts` – producer fencing/epoch/seq logic.
 - `src/engine/close.ts` – stream close semantics.
 - `src/http/router.ts` – method dispatch (called by `StreamDO.fetch`).
- - `src/http/auth.ts` – auth/tenant boundary enforcement (Worker vs DO).
- - `src/http/cors.ts` – CORS + expose headers at Worker boundary.
- - `src/observability/metrics.ts` – minimal timing/log hooks (optional).
+- `src/http/handlers/` – hybrid structure: verb entrypoints grouped by behavior.
+  - `catchup.ts` – `handleGet` + `handleHead` (offsets, etag, cache headers).
+  - `realtime.ts` – `handleSse` + `handleLongPoll` (live orchestration).
+  - `mutation.ts` – `handlePut` + `handlePost` + `handleDelete`.
+- `src/http/auth.ts` – auth/tenant boundary enforcement (Worker vs DO).
+- `src/http/cors.ts` – CORS + expose headers at Worker boundary.
+- `src/observability/metrics.ts` – minimal timing/log hooks (optional).
 
 Deliverables
 - `stream_do.ts` becomes a thin shell that wires storage + engine + live helpers.
