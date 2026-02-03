@@ -14,5 +14,6 @@ export default defineConfig({
     ],
     exclude: ["**/.git/**"],
     passWithNoTests: false,
+    globalSetup: [path.resolve(__dirname, "test/conformance/global-setup.ts")],
   },
 })

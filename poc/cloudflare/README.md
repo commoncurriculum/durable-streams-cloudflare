@@ -69,7 +69,9 @@ Run the server conformance suite against the local worker:
 ```bash
 pnpm run conformance
 ```
-Note: `pnpm run dev` must be running in another shell.
+Notes:
+- If `CONFORMANCE_TEST_URL` is not set, the test runner will start a local worker automatically.
+- Set `CONFORMANCE_TEST_URL` to target an existing server.
 
 ## Implementation Tests
 Run durability/concurrency tests against the local worker:
@@ -90,6 +92,11 @@ Notes:
 - Optional env vars:
   - `PERF_ITERATIONS` to change sample count (default 25).
   - `PERF_BUDGET_MS` + `PERF_ENFORCE=1` to override the budget behavior.
+  - `PERF_LONGPOLL_TIMEOUT=1` to include a single long‑poll timeout measurement.
+
+## Debug Timing
+Add `X-Debug-Timing: 1` on a request (or set `DEBUG_TIMING=1` in the Worker env)
+to emit `Server-Timing` headers for edge + DO timings.
 
 ## Stream URL
 ```
@@ -140,6 +147,11 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000
 - Segment keys use base64url-encoded stream ids for safe paths.
 - Catch-up reads prefer R2 segments when present.
 - Segment rotation runs opportunistically on writes and flushes the tail on close.
+
+## CDN Auth + Cache
+- Worker validates bearer auth, then uses a **canonical cache key** (URL only).
+- The edge cache is only used for `GET`/`HEAD` requests without `If-None-Match`.
+- Cacheability is controlled by `Cache-Control` headers set by the DO.
 
 ## Registry Stream
 The worker emits create/delete events to a system stream named `__registry__`.
