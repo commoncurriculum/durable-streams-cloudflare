@@ -40,38 +40,14 @@ import { decodeOffset, encodeOffset } from "./protocol/offsets";
 import { isInteger } from "./protocol/validation";
 import { LongPollQueue } from "./live/long_poll";
 import { buildSseControlEvent, buildSseDataEvent } from "./live/sse";
-
-type StreamMeta = {
-  stream_id: string;
-  content_type: string;
-  closed: number;
-  tail_offset: number;
-  last_stream_seq: string | null;
-  ttl_seconds: number | null;
-  expires_at: number | null;
-  created_at: number;
-  closed_at: number | null;
-};
-
-type ProducerState = {
-  producer_id: string;
-  epoch: number;
-  last_seq: number;
-  last_offset: number;
-};
+import { D1Storage } from "./storage/d1";
+import type { ProducerState, ReadChunk, StreamMeta } from "./storage/storage";
 
 type ProducerEval =
   | { kind: "none" }
   | { kind: "ok"; state: ProducerState | null }
   | { kind: "duplicate"; state: ProducerState }
   | { kind: "error"; response: Response };
-
-type ReadChunk = {
-  start_offset: number;
-  end_offset: number;
-  size_bytes: number;
-  body: ArrayBuffer | Uint8Array | string | number[];
-};
 
 type SseClient = {
   id: number;
@@ -92,6 +68,7 @@ export interface Env {
 export class StreamDO {
   private state: DurableObjectState;
   private env: Env;
+  private storage: D1Storage;
   private longPoll = new LongPollQueue();
   private sseClients: Map<number, SseClient> = new Map();
   private sseClientId = 0;
@@ -99,6 +76,7 @@ export class StreamDO {
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+    this.storage = new D1Storage(env.DB);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -187,18 +165,14 @@ export class StreamDO {
 
       const contentType = headerContentType ?? "application/octet-stream";
 
-      await this.env.DB.prepare(
-        "INSERT INTO streams (stream_id, content_type, closed, tail_offset, last_stream_seq, ttl_seconds, expires_at, created_at) VALUES (?, ?, ?, 0, NULL, ?, ?, ?)",
-      )
-        .bind(
-          streamId,
-          contentType,
-          requestedClosed ? 1 : 0,
-          ttlSeconds.value,
-          effectiveExpiresAt,
-          now,
-        )
-        .run();
+      await this.storage.insertStream({
+        streamId,
+        contentType,
+        closed: requestedClosed,
+        ttlSeconds: ttlSeconds.value,
+        expiresAt: effectiveExpiresAt,
+        createdAt: now,
+      });
 
       let tailOffset = 0;
 
@@ -218,7 +192,7 @@ export class StreamDO {
         });
 
         if (append.error) return append.error;
-        await this.env.DB.batch(append.statements);
+        await this.storage.batch(append.statements);
         tailOffset = append.newTailOffset;
       }
 
@@ -278,15 +252,11 @@ export class StreamDO {
         }
 
         if (!meta.closed) {
-          await this.env.DB.prepare(
-            "UPDATE streams SET closed = 1, closed_at = ? WHERE stream_id = ?",
-          )
-            .bind(Date.now(), streamId)
-            .run();
+          await this.storage.closeStream(streamId, Date.now());
         }
 
         if (producer?.value) {
-          await this.producerUpsertStatement(streamId, producer.value, meta.tail_offset).run();
+          await this.storage.upsertProducer(streamId, producer.value, meta.tail_offset);
         }
 
         const headers = baseHeaders({
@@ -335,7 +305,7 @@ export class StreamDO {
 
       if (append.error) return append.error;
 
-      await this.env.DB.batch(append.statements);
+      await this.storage.batch(append.statements);
 
       const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(append.newTailOffset),
@@ -570,9 +540,7 @@ export class StreamDO {
   }
 
   private async getStream(streamId: string): Promise<StreamMeta | null> {
-    const result = await this.env.DB.prepare("SELECT * FROM streams WHERE stream_id = ?")
-      .bind(streamId)
-      .first<StreamMeta>();
+    const result = await this.storage.getStream(streamId);
 
     if (!result) return null;
     if (isExpired(result)) {
@@ -584,12 +552,7 @@ export class StreamDO {
   }
 
   private async deleteStreamData(streamId: string): Promise<void> {
-    await this.env.DB.batch([
-      this.env.DB.prepare("DELETE FROM snapshots WHERE stream_id = ?").bind(streamId),
-      this.env.DB.prepare("DELETE FROM ops WHERE stream_id = ?").bind(streamId),
-      this.env.DB.prepare("DELETE FROM producers WHERE stream_id = ?").bind(streamId),
-      this.env.DB.prepare("DELETE FROM streams WHERE stream_id = ?").bind(streamId),
-    ]);
+    await this.storage.deleteStreamData(streamId);
   }
 
   private parseProducerHeaders(
@@ -687,20 +650,18 @@ export class StreamDO {
         : messageStart + message.sizeBytes;
 
       statements.push(
-        this.env.DB.prepare(
-          "INSERT INTO ops (stream_id, start_offset, end_offset, size_bytes, stream_seq, producer_id, producer_epoch, producer_seq, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ).bind(
+        this.storage.insertOpStatement({
           streamId,
-          messageStart,
-          messageEnd,
-          message.sizeBytes,
-          opts.streamSeq ?? null,
-          opts.producer?.id ?? null,
-          opts.producer?.epoch ?? null,
-          opts.producer?.seq ?? null,
-          message.body,
-          now,
-        ),
+          startOffset: messageStart,
+          endOffset: messageEnd,
+          sizeBytes: message.sizeBytes,
+          streamSeq: opts.streamSeq ?? null,
+          producerId: opts.producer?.id ?? null,
+          producerEpoch: opts.producer?.epoch ?? null,
+          producerSeq: opts.producer?.seq ?? null,
+          body: message.body,
+          createdAt: now,
+        }),
       );
 
       tailOffset = messageEnd;
@@ -719,16 +680,10 @@ export class StreamDO {
       updateValues.push(now);
     }
 
-    updateValues.push(streamId);
-
-    statements.push(
-      this.env.DB.prepare(`UPDATE streams SET ${updateFields.join(", ")} WHERE stream_id = ?`).bind(
-        ...updateValues,
-      ),
-    );
+    statements.push(this.storage.updateStreamStatement(streamId, updateFields, updateValues));
 
     if (opts.producer) {
-      statements.push(this.producerUpsertStatement(streamId, opts.producer, tailOffset));
+      statements.push(this.storage.producerUpsertStatement(streamId, opts.producer, tailOffset));
     }
 
     const ssePayload = isJsonContentType(contentType)
@@ -741,13 +696,7 @@ export class StreamDO {
   }
 
   private async getProducer(streamId: string, producerId: string): Promise<ProducerState | null> {
-    const result = await this.env.DB.prepare(
-      "SELECT * FROM producers WHERE stream_id = ? AND producer_id = ?",
-    )
-      .bind(streamId, producerId)
-      .first<ProducerState>();
-
-    return result ?? null;
+    return await this.storage.getProducer(streamId, producerId);
   }
 
   private async evaluateProducer(
@@ -812,16 +761,6 @@ export class StreamDO {
     return new Response("stream is closed", { status: 409, headers });
   }
 
-  private producerUpsertStatement(
-    streamId: string,
-    producer: { id: string; epoch: number; seq: number },
-    lastOffset: number,
-  ): D1PreparedStatement {
-    return this.env.DB.prepare(
-      "INSERT INTO producers (stream_id, producer_id, epoch, last_seq, last_offset) VALUES (?, ?, ?, ?, ?) ON CONFLICT(stream_id, producer_id) DO UPDATE SET epoch = excluded.epoch, last_seq = excluded.last_seq, last_offset = excluded.last_offset",
-    ).bind(streamId, producer.id, producer.epoch, producer.seq, lastOffset);
-  }
-
   private resolveOffset(
     meta: StreamMeta,
     offsetParam: string | null,
@@ -861,11 +800,7 @@ export class StreamDO {
     const chunks: ReadChunk[] = [];
 
     if (offset > 0) {
-      const overlap = await this.env.DB.prepare(
-        "SELECT start_offset, end_offset, size_bytes, body FROM ops WHERE stream_id = ? AND start_offset < ? AND end_offset > ? ORDER BY start_offset DESC LIMIT 1",
-      )
-        .bind(streamId, offset, offset)
-        .first<ReadChunk>();
+      const overlap = await this.storage.selectOverlap(streamId, offset);
 
       if (overlap) {
         if (isJsonContentType(meta.content_type) && overlap.start_offset !== offset) {
@@ -890,14 +825,10 @@ export class StreamDO {
       }
     }
 
-    const rows = await this.env.DB.prepare(
-      "SELECT start_offset, end_offset, size_bytes, body FROM ops WHERE stream_id = ? AND start_offset >= ? ORDER BY start_offset ASC LIMIT 200",
-    )
-      .bind(streamId, offset)
-      .all<ReadChunk>();
+    const rows = await this.storage.selectOpsFrom(streamId, offset);
     let bytes = chunks.reduce((sum, chunk) => sum + chunk.size_bytes, 0);
 
-    for (const row of rows.results ?? []) {
+    for (const row of rows) {
       if (bytes + row.size_bytes > MAX_CHUNK_BYTES && bytes > 0) break;
       const body = toUint8Array(row.body);
       chunks.push({
@@ -1045,13 +976,7 @@ export class StreamDO {
     endOffset: number,
   ): Promise<void> {
     if (!this.env.R2) return;
-    const rows = await this.env.DB.prepare(
-      "SELECT start_offset, end_offset, size_bytes, body FROM ops WHERE stream_id = ? ORDER BY start_offset ASC",
-    )
-      .bind(streamId)
-      .all<ReadChunk>();
-
-    const chunks = rows.results ?? [];
+    const chunks = await this.storage.selectAllOps(streamId);
     let body: ArrayBuffer;
     if (isJsonContentType(contentType)) {
       body = buildJsonArray(
@@ -1064,11 +989,14 @@ export class StreamDO {
     const key = `stream/${encodeURIComponent(streamId)}/snapshot-${Date.now()}`;
     await this.env.R2.put(key, body);
 
-    await this.env.DB.prepare(
-      "INSERT INTO snapshots (stream_id, r2_key, start_offset, end_offset, content_type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-      .bind(streamId, key, 0, endOffset, contentType, Date.now())
-      .run();
+    await this.storage.insertSnapshot({
+      streamId,
+      r2Key: key,
+      startOffset: 0,
+      endOffset,
+      contentType,
+      createdAt: Date.now(),
+    });
   }
 
   private async writeSseData(
