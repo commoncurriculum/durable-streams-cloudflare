@@ -57,6 +57,8 @@
 Deliverables
 - `docs/cloudflare-refactor-plan.md` (this plan).
 - `docs/cloudflare-poc-status.md` with current command set and conformance pass note.
+Current status
+- `docs/cloudflare-poc-status.md` added with local command set + test status.
 
 ## Phase 1: Module Boundaries
 - Split the monolithic Durable Object into focused modules.
