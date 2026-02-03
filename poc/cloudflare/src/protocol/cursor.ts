@@ -3,6 +3,12 @@ const CURSOR_INTERVAL_SECONDS = 20;
 const MIN_JITTER_SECONDS = 1;
 const MAX_JITTER_SECONDS = 3600;
 
+function generateJitterIntervals(intervalSeconds: number): number {
+  const jitterSeconds =
+    MIN_JITTER_SECONDS + Math.floor(Math.random() * (MAX_JITTER_SECONDS - MIN_JITTER_SECONDS + 1));
+  return Math.max(1, Math.ceil(jitterSeconds / intervalSeconds));
+}
+
 export function generateCursor(): string {
   const now = Date.now();
   const intervalMs = CURSOR_INTERVAL_SECONDS * 1000;
@@ -10,7 +16,7 @@ export function generateCursor(): string {
   return intervalNumber.toString(10);
 }
 
-export function generateResponseCursor(clientCursor: string): string {
+export function generateResponseCursor(clientCursor: string | null | undefined): string {
   const current = generateCursor();
   const currentInterval = parseInt(current, 10);
 
@@ -21,7 +27,6 @@ export function generateResponseCursor(clientCursor: string): string {
     return current;
   }
 
-  const jitterSeconds = Math.floor((MIN_JITTER_SECONDS + MAX_JITTER_SECONDS) / 2);
-  const jitterIntervals = Math.max(1, Math.floor(jitterSeconds / CURSOR_INTERVAL_SECONDS));
+  const jitterIntervals = generateJitterIntervals(CURSOR_INTERVAL_SECONDS);
   return (clientInterval + jitterIntervals).toString(10);
 }
