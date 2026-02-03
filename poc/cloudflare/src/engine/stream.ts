@@ -308,6 +308,108 @@ export async function readFromOffset(
   return { body, nextOffset, upToDate, closedAtTail, hasData: true };
 }
 
+export function readFromMessages(params: {
+  messages: Uint8Array[];
+  contentType: string;
+  offset: number;
+  maxChunkBytes: number;
+  tailOffset: number;
+  closed: boolean;
+}): ReadResult {
+  const { messages, contentType, offset, maxChunkBytes, tailOffset, closed } = params;
+  const chunks: Array<{ body: Uint8Array; sizeBytes: number }> = [];
+
+  if (isJsonContentType(contentType)) {
+    if (offset > messages.length) {
+      return {
+        body: new ArrayBuffer(0),
+        nextOffset: offset,
+        upToDate: false,
+        closedAtTail: false,
+        hasData: false,
+        error: errorResponse(400, "invalid offset"),
+      };
+    }
+
+    let bytes = 0;
+    for (let i = offset; i < messages.length; i += 1) {
+      const message = messages[i];
+      if (bytes + message.byteLength > maxChunkBytes && bytes > 0) break;
+      chunks.push({ body: message, sizeBytes: message.byteLength });
+      bytes += message.byteLength;
+      if (bytes >= maxChunkBytes) break;
+    }
+
+    if (chunks.length === 0) {
+      const upToDate = offset === tailOffset;
+      const closedAtTail = closed && upToDate;
+      return { body: emptyJsonArray(), nextOffset: offset, upToDate, closedAtTail, hasData: false };
+    }
+
+    const nextOffset = offset + chunks.length;
+    const upToDate = nextOffset === tailOffset;
+    const closedAtTail = closed && upToDate;
+    return {
+      body: buildJsonArray(
+        chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.sizeBytes })),
+      ),
+      nextOffset,
+      upToDate,
+      closedAtTail,
+      hasData: true,
+    };
+  }
+
+  let bytes = 0;
+  let cursor = 0;
+  for (const message of messages) {
+    const end = cursor + message.byteLength;
+    if (end <= offset) {
+      cursor = end;
+      continue;
+    }
+
+    let sliceStart = 0;
+    if (offset > cursor) {
+      sliceStart = offset - cursor;
+    }
+
+    let slice = message.slice(sliceStart);
+    if (bytes + slice.byteLength > maxChunkBytes && bytes > 0) break;
+    if (bytes + slice.byteLength > maxChunkBytes) {
+      slice = slice.slice(0, maxChunkBytes - bytes);
+    }
+    chunks.push({ body: slice, sizeBytes: slice.byteLength });
+    bytes += slice.byteLength;
+    cursor = end;
+    if (bytes >= maxChunkBytes) break;
+  }
+
+  if (chunks.length === 0) {
+    const upToDate = offset === tailOffset;
+    const closedAtTail = closed && upToDate;
+    return {
+      body: new ArrayBuffer(0),
+      nextOffset: offset,
+      upToDate,
+      closedAtTail,
+      hasData: false,
+    };
+  }
+
+  const nextOffset = offset + bytes;
+  const upToDate = nextOffset === tailOffset;
+  const closedAtTail = closed && upToDate;
+
+  return {
+    body: concatBuffers(chunks.map((chunk) => chunk.body)),
+    nextOffset,
+    upToDate,
+    closedAtTail,
+    hasData: true,
+  };
+}
+
 export function parseContentType(request: Request): string | null {
   return normalizeContentType(request.headers.get("Content-Type"));
 }

@@ -3,6 +3,7 @@ import type {
   ProducerState,
   ReadChunk,
   SnapshotInput,
+  SnapshotRecord,
   StreamMeta,
   StreamStorage,
 } from "./storage";
@@ -195,5 +196,15 @@ export class D1Storage implements StreamStorage {
         input.createdAt,
       )
       .run();
+  }
+
+  async getLatestSnapshot(streamId: string): Promise<SnapshotRecord | null> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM snapshots WHERE stream_id = ? ORDER BY end_offset DESC, created_at DESC LIMIT 1",
+      )
+      .bind(streamId)
+      .first<SnapshotRecord>();
+    return result ?? null;
   }
 }

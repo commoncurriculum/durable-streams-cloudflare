@@ -1,10 +1,5 @@
 import { errorResponse } from "../../protocol/errors";
-import {
-  buildNowResponse,
-  buildReadResponse,
-  buildHeadResponse,
-  readFromOffset,
-} from "../../engine/stream";
+import { buildNowResponse, buildReadResponse, buildHeadResponse } from "../../engine/stream";
 import { MAX_CHUNK_BYTES } from "../../protocol/limits";
 import type { StreamContext } from "../context";
 import { handleLongPoll, handleSse } from "./realtime";
@@ -37,7 +32,7 @@ export async function handleGet(
     return buildNowResponse(meta);
   }
 
-  const read = await readFromOffset(ctx.storage, streamId, meta, offset, MAX_CHUNK_BYTES);
+  const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (read.error) return read.error;
 
   const response = buildReadResponse({

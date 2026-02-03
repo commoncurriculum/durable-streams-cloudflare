@@ -5,9 +5,10 @@ import { toUint8Array } from "./protocol/encoding";
 import { LongPollQueue } from "./live/long_poll";
 import type { SseState } from "./live/types";
 import { D1Storage } from "./storage/d1";
-import { buildSnapshotKey, encodeSegmentMessages } from "./storage/segments";
+import { buildSnapshotKey, decodeSegmentMessages, encodeSegmentMessages } from "./storage/segments";
 import type { StreamMeta } from "./storage/storage";
 import { routeRequest } from "./http/router";
+import { readFromMessages, readFromOffset } from "./engine/stream";
 import type { StreamContext, StreamEnv, ResolveOffsetResult } from "./http/context";
 
 export type Env = StreamEnv;
@@ -39,6 +40,7 @@ export class StreamDO {
       sseState: this.sseState,
       getStream: this.getStream.bind(this),
       resolveOffset: this.resolveOffset.bind(this),
+      readFromOffset: this.readFromOffset.bind(this),
       snapshotToR2: this.snapshotToR2.bind(this),
     };
 
@@ -104,6 +106,46 @@ export class StreamDO {
       endOffset,
       contentType,
       createdAt: Date.now(),
+    });
+  }
+
+  private async readFromOffset(
+    streamId: string,
+    meta: StreamMeta,
+    offset: number,
+    maxChunkBytes: number,
+  ): Promise<ReturnType<typeof readFromOffset>> {
+    if (!this.env.R2) {
+      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+    }
+
+    const snapshot = await this.storage.getLatestSnapshot(streamId);
+    if (!snapshot) {
+      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+    }
+
+    if (offset >= snapshot.end_offset) {
+      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+    }
+
+    const object = await this.env.R2.get(snapshot.r2_key);
+    if (!object) {
+      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+    }
+
+    const buffer = new Uint8Array(await object.arrayBuffer());
+    const decoded = decodeSegmentMessages(buffer);
+    if (decoded.truncated) {
+      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+    }
+
+    return readFromMessages({
+      messages: decoded.messages,
+      contentType: snapshot.content_type,
+      offset,
+      maxChunkBytes,
+      tailOffset: meta.tail_offset,
+      closed: meta.closed === 1,
     });
   }
 }
