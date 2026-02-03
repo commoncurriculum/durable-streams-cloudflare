@@ -1,3 +1,42 @@
+import {
+  HEADER_PRODUCER_EPOCH,
+  HEADER_PRODUCER_EXPECTED_SEQ,
+  HEADER_PRODUCER_ID,
+  HEADER_PRODUCER_RECEIVED_SEQ,
+  HEADER_PRODUCER_SEQ,
+  HEADER_SSE_DATA_ENCODING,
+  HEADER_STREAM_CLOSED,
+  HEADER_STREAM_CURSOR,
+  HEADER_STREAM_EXPIRES_AT,
+  HEADER_STREAM_NEXT_OFFSET,
+  HEADER_STREAM_SEQ,
+  HEADER_STREAM_TTL,
+  HEADER_STREAM_UP_TO_DATE,
+  baseHeaders,
+  isJsonContentType,
+  isTextual,
+  normalizeContentType,
+} from "./protocol/headers";
+import {
+  LONG_POLL_TIMEOUT_MS,
+  MAX_APPEND_BYTES,
+  MAX_CHUNK_BYTES,
+  SSE_RECONNECT_MS,
+} from "./protocol/constants";
+import {
+  applyExpiryHeaders,
+  cacheControlFor,
+  isExpired,
+  parseExpiresAt,
+  parseTtlSeconds,
+  ttlMatches,
+} from "./protocol/expiry";
+import { buildEtag } from "./protocol/etag";
+import { generateResponseCursor } from "./protocol/cursor";
+import { base64Encode, concatBuffers, toUint8Array } from "./protocol/encoding";
+import { decodeOffset, encodeOffset } from "./protocol/offsets";
+import { isInteger } from "./protocol/validation";
+
 type StreamMeta = {
   stream_id: string;
   content_type: string;
@@ -51,31 +90,6 @@ export interface Env {
   DB: D1Database;
   R2?: R2Bucket;
 }
-
-const MAX_CHUNK_BYTES = 256 * 1024;
-const MAX_APPEND_BYTES = 8 * 1024 * 1024;
-const OFFSET_WIDTH = 16;
-const SSE_RECONNECT_MS = 55_000;
-const LONG_POLL_TIMEOUT_MS = 4_000;
-
-const CURSOR_EPOCH_MS = Date.UTC(2024, 9, 9, 0, 0, 0, 0);
-const CURSOR_INTERVAL_SECONDS = 20;
-const MIN_JITTER_SECONDS = 1;
-const MAX_JITTER_SECONDS = 3600;
-
-const HEADER_STREAM_NEXT_OFFSET = "Stream-Next-Offset";
-const HEADER_STREAM_UP_TO_DATE = "Stream-Up-To-Date";
-const HEADER_STREAM_CLOSED = "Stream-Closed";
-const HEADER_STREAM_CURSOR = "Stream-Cursor";
-const HEADER_STREAM_SEQ = "Stream-Seq";
-const HEADER_STREAM_TTL = "Stream-TTL";
-const HEADER_STREAM_EXPIRES_AT = "Stream-Expires-At";
-const HEADER_PRODUCER_ID = "Producer-Id";
-const HEADER_PRODUCER_EPOCH = "Producer-Epoch";
-const HEADER_PRODUCER_SEQ = "Producer-Seq";
-const HEADER_PRODUCER_EXPECTED_SEQ = "Producer-Expected-Seq";
-const HEADER_PRODUCER_RECEIVED_SEQ = "Producer-Received-Seq";
-const HEADER_SSE_DATA_ENCODING = "stream-sse-data-encoding";
 
 export class StreamDO {
   private state: DurableObjectState;
@@ -164,7 +178,7 @@ export class StreamDO {
           return this.err(409, "stream TTL/expiry mismatch");
         }
 
-        const headers = this.baseHeaders({
+        const headers = baseHeaders({
           "Content-Type": existing.content_type,
           [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(existing.tail_offset),
         });
@@ -210,7 +224,7 @@ export class StreamDO {
         tailOffset = append.newTailOffset;
       }
 
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         "Content-Type": contentType,
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(tailOffset),
       });
@@ -277,7 +291,7 @@ export class StreamDO {
           await this.producerUpsertStatement(streamId, producer.value, meta.tail_offset).run();
         }
 
-        const headers = this.baseHeaders({
+        const headers = baseHeaders({
           [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
           [HEADER_STREAM_CLOSED]: "true",
         });
@@ -325,7 +339,7 @@ export class StreamDO {
 
       await this.env.DB.batch(append.statements);
 
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(append.newTailOffset),
       });
 
@@ -367,7 +381,7 @@ export class StreamDO {
     const { offset, isNow } = resolved;
 
     if (isNow) {
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         "Content-Type": meta.content_type,
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
       });
@@ -382,7 +396,7 @@ export class StreamDO {
     const read = await this.readFromOffset(streamId, meta, offset);
     if (read.error) return read.error;
 
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       "Content-Type": meta.content_type,
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(read.nextOffset),
     });
@@ -413,7 +427,7 @@ export class StreamDO {
     const offset = resolved.offset;
 
     if (meta.closed === 1 && offset >= meta.tail_offset) {
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
         [HEADER_STREAM_UP_TO_DATE]: "true",
         [HEADER_STREAM_CLOSED]: "true",
@@ -427,7 +441,7 @@ export class StreamDO {
     if (initialRead.error) return initialRead.error;
 
     if (initialRead.hasData) {
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         "Content-Type": meta.content_type,
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(initialRead.nextOffset),
         [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
@@ -443,7 +457,7 @@ export class StreamDO {
     if (!current) return this.err(404, "stream not found");
 
     if (timedOut) {
-      const headers = this.baseHeaders({
+      const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(current.tail_offset),
         [HEADER_STREAM_UP_TO_DATE]: "true",
         [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
@@ -460,7 +474,7 @@ export class StreamDO {
     const read = await this.readFromOffset(streamId, current, offset);
     if (read.error) return read.error;
 
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       "Content-Type": current.content_type,
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(read.nextOffset),
       [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
@@ -510,7 +524,7 @@ export class StreamDO {
       await this.closeSseClient(client);
     }, SSE_RECONNECT_MS) as unknown as number;
 
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
@@ -534,7 +548,7 @@ export class StreamDO {
     const meta = await this.getStream(streamId);
     if (!meta) return this.err(404, "stream not found");
 
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       "Content-Type": meta.content_type,
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
       "Cache-Control": "no-store",
@@ -553,7 +567,7 @@ export class StreamDO {
 
       await this.deleteStreamData(streamId);
 
-      return new Response(null, { status: 204, headers: this.baseHeaders() });
+      return new Response(null, { status: 204, headers: baseHeaders() });
     });
   }
 
@@ -792,7 +806,7 @@ export class StreamDO {
   }
 
   private producerDuplicateResponse(state: ProducerState, streamClosed: boolean): Response {
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(state.last_offset),
       [HEADER_PRODUCER_EPOCH]: state.epoch.toString(),
       [HEADER_PRODUCER_SEQ]: state.last_seq.toString(),
@@ -804,7 +818,7 @@ export class StreamDO {
   }
 
   private closedConflict(meta: StreamMeta): Response {
-    const headers = this.baseHeaders({
+    const headers = baseHeaders({
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
       [HEADER_STREAM_CLOSED]: "true",
     });
@@ -1165,160 +1179,8 @@ export class StreamDO {
     await client.writer.write(encoder.encode(payload));
   }
 
-  private baseHeaders(extra: Record<string, string> = {}): Headers {
-    const headers = new Headers(extra);
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Cross-Origin-Resource-Policy", "cross-origin");
-    return headers;
-  }
-
   private err(status: number, message: string): Response {
-    const headers = this.baseHeaders({ "Cache-Control": "no-store" });
+    const headers = baseHeaders({ "Cache-Control": "no-store" });
     return new Response(message, { status, headers });
   }
-}
-
-function parseTtlSeconds(value: string | null): { value: number | null; error?: string } {
-  if (!value) return { value: null };
-  if (!/^(0|[1-9]\d*)$/.test(value)) {
-    return { value: null, error: "invalid Stream-TTL" };
-  }
-  return { value: parseInt(value, 10) };
-}
-
-function parseExpiresAt(value: string | null): { value: number | null; error?: string } {
-  if (!value) return { value: null };
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return { value: null, error: "invalid Stream-Expires-At" };
-  }
-  return { value: parsed };
-}
-
-function ttlMatches(
-  meta: StreamMeta,
-  ttlSeconds: number | null,
-  expiresAt: number | null,
-): boolean {
-  if (meta.ttl_seconds !== null) {
-    return ttlSeconds !== null && meta.ttl_seconds === ttlSeconds;
-  }
-  if (meta.expires_at !== null) {
-    return expiresAt !== null && meta.expires_at === expiresAt;
-  }
-  return ttlSeconds === null && expiresAt === null;
-}
-
-function applyExpiryHeaders(headers: Headers, meta: StreamMeta): void {
-  if (meta.ttl_seconds !== null) {
-    const remaining = remainingTtlSeconds(meta);
-    if (remaining !== null) headers.set(HEADER_STREAM_TTL, remaining.toString());
-  }
-  if (meta.expires_at !== null) {
-    headers.set(HEADER_STREAM_EXPIRES_AT, new Date(meta.expires_at).toISOString());
-  }
-}
-
-function remainingTtlSeconds(meta: StreamMeta): number | null {
-  if (meta.expires_at === null) return meta.ttl_seconds;
-  const remainingMs = meta.expires_at - Date.now();
-  return Math.max(0, Math.floor(remainingMs / 1000));
-}
-
-function cacheControlFor(meta: StreamMeta): string {
-  const remaining = remainingTtlSeconds(meta);
-  if (remaining === null) return "public, max-age=60, stale-while-revalidate=300";
-  const maxAge = Math.min(60, Math.max(0, remaining));
-  return `public, max-age=${maxAge}, stale-while-revalidate=300`;
-}
-
-function isExpired(meta: StreamMeta): boolean {
-  if (meta.expires_at === null) return false;
-  return Date.now() >= meta.expires_at;
-}
-
-function normalizeContentType(value: string | null): string | null {
-  if (!value) return null;
-  return value.split(";")[0]?.trim().toLowerCase() ?? null;
-}
-
-function isJsonContentType(value: string): boolean {
-  return normalizeContentType(value) === "application/json";
-}
-
-function isTextual(value: string): boolean {
-  const normalized = normalizeContentType(value);
-  return normalized?.startsWith("text/") || normalized === "application/json";
-}
-
-function isInteger(value: string): boolean {
-  return /^(0|[1-9]\d*)$/.test(value);
-}
-
-function encodeOffset(offset: number): string {
-  if (offset < 0) return "0".repeat(OFFSET_WIDTH);
-  return offset.toString(16).toUpperCase().padStart(OFFSET_WIDTH, "0");
-}
-
-function decodeOffset(token: string): number | null {
-  if (!/^[0-9a-fA-F]+$/.test(token)) return null;
-  const parsed = parseInt(token, 16);
-  if (Number.isNaN(parsed)) return null;
-  return parsed;
-}
-
-function buildEtag(streamId: string, start: number, end: number, closed: boolean): string {
-  return `"${streamId}:${start}:${end}${closed ? ":c" : ""}"`;
-}
-
-function generateCursor(): string {
-  const now = Date.now();
-  const intervalMs = CURSOR_INTERVAL_SECONDS * 1000;
-  const intervalNumber = Math.floor((now - CURSOR_EPOCH_MS) / intervalMs);
-  return intervalNumber.toString(10);
-}
-
-function generateResponseCursor(clientCursor: string): string {
-  const current = generateCursor();
-  const currentInterval = parseInt(current, 10);
-
-  if (!clientCursor) return current;
-
-  const clientInterval = parseInt(clientCursor, 10);
-  if (!Number.isFinite(clientInterval) || clientInterval < currentInterval) {
-    return current;
-  }
-
-  const jitterSeconds = Math.floor((MIN_JITTER_SECONDS + MAX_JITTER_SECONDS) / 2);
-  const jitterIntervals = Math.max(1, Math.floor(jitterSeconds / CURSOR_INTERVAL_SECONDS));
-  return (clientInterval + jitterIntervals).toString(10);
-}
-
-function concatBuffers(chunks: Uint8Array[]): ArrayBuffer {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out.buffer;
-}
-
-function toUint8Array(body: ArrayBuffer | Uint8Array | string | number[]): Uint8Array {
-  if (body instanceof Uint8Array) return body;
-  if (body instanceof ArrayBuffer) return new Uint8Array(body);
-  if (Array.isArray(body)) return new Uint8Array(body);
-  return new TextEncoder().encode(body);
-}
-
-function base64Encode(bytes: Uint8Array): string {
-  if (bytes.length === 0) return "";
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
 }
