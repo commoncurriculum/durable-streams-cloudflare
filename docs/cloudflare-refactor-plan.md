@@ -256,7 +256,7 @@ Implementation tests
 Protocol/storage
 - Decide on offset format migration for cold storage rotation (if we adopt
   `readSeq_byteOffset`, document and test).
-- Implement R2 compaction/rotation path if we want CDN-backed catch-up reads.
+- Implement R2 compaction/rotation path (required for CDN-backed catch-up reads at scale).
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.
