@@ -34,10 +34,12 @@ import {
 import { errorResponse } from "./protocol/errors";
 import { buildEtag } from "./protocol/etag";
 import { generateResponseCursor } from "./protocol/cursor";
-import { base64Encode, concatBuffers, toUint8Array } from "./protocol/encoding";
+import { concatBuffers, toUint8Array } from "./protocol/encoding";
 import { buildJsonArray, emptyJsonArray, parseJsonMessages } from "./protocol/json";
 import { decodeOffset, encodeOffset } from "./protocol/offsets";
 import { isInteger } from "./protocol/validation";
+import { LongPollQueue } from "./live/long_poll";
+import { buildSseControlEvent, buildSseDataEvent } from "./live/sse";
 
 type StreamMeta = {
   stream_id: string;
@@ -71,12 +73,6 @@ type ReadChunk = {
   body: ArrayBuffer | Uint8Array | string | number[];
 };
 
-type Waiter = {
-  offset: number;
-  resolve: (result: { timedOut: boolean }) => void;
-  timer: number;
-};
-
 type SseClient = {
   id: number;
   writer: WritableStreamDefaultWriter<Uint8Array>;
@@ -96,7 +92,7 @@ export interface Env {
 export class StreamDO {
   private state: DurableObjectState;
   private env: Env;
-  private waiters: Waiter[] = [];
+  private longPoll = new LongPollQueue();
   private sseClients: Map<number, SseClient> = new Map();
   private sseClientId = 0;
 
@@ -303,7 +299,7 @@ export class StreamDO {
           headers.set(HEADER_PRODUCER_SEQ, producer.value.seq.toString());
         }
 
-        this.notifyWaiters(meta.tail_offset);
+        this.longPoll.notify(meta.tail_offset);
         await this.broadcastSseControl(meta.tail_offset, true);
         this.state.waitUntil(this.snapshotToR2(streamId, meta.content_type, meta.tail_offset));
         return new Response(null, { status: 204, headers });
@@ -352,7 +348,7 @@ export class StreamDO {
 
       if (closeStream) headers.set(HEADER_STREAM_CLOSED, "true");
 
-      this.notifyWaiters(append.newTailOffset);
+      this.longPoll.notify(append.newTailOffset);
       this.broadcastSse(contentType, append.ssePayload, append.newTailOffset, closeStream);
       if (closeStream) {
         this.state.waitUntil(this.snapshotToR2(streamId, contentType, append.newTailOffset));
@@ -454,7 +450,7 @@ export class StreamDO {
       return new Response(initialRead.body, { status: 200, headers });
     }
 
-    const timedOut = await this.waitForData(offset, LONG_POLL_TIMEOUT_MS);
+    const timedOut = await this.longPoll.waitForData(offset, LONG_POLL_TIMEOUT_MS);
     const current = await this.getStream(streamId);
     if (!current) return errorResponse(404, "stream not found");
 
@@ -946,33 +942,6 @@ export class StreamDO {
     return { body, nextOffset, upToDate, closedAtTail, hasData: true };
   }
 
-  private async waitForData(offset: number, timeoutMs: number): Promise<boolean> {
-    return await new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.waiters = this.waiters.filter((w) => w.timer !== timer);
-        resolve(true);
-      }, timeoutMs);
-
-      const waiter: Waiter = {
-        offset,
-        timer: timer as unknown as number,
-        resolve: (result) => resolve(result.timedOut),
-      };
-
-      this.waiters.push(waiter);
-    });
-  }
-
-  private notifyWaiters(newTail: number): void {
-    const ready = this.waiters.filter((w) => newTail > w.offset);
-    this.waiters = this.waiters.filter((w) => newTail <= w.offset);
-
-    for (const waiter of ready) {
-      clearTimeout(waiter.timer);
-      waiter.resolve({ timedOut: false });
-    }
-  }
-
   private async broadcastSse(
     contentType: string,
     payload: ArrayBuffer | null,
@@ -1110,44 +1079,15 @@ export class StreamDO {
     streamClosed: boolean,
   ): Promise<void> {
     const encoder = new TextEncoder();
-    let output = "event: data\n";
-
-    if (client.useBase64) {
-      const encoded = base64Encode(new Uint8Array(payload));
-      output += `data:${encoded}\n\n`;
-    } else {
-      const text = new TextDecoder().decode(payload);
-      const lines = text.split(/\r\n|\n|\r/);
-      for (const line of lines) {
-        output += `data:${line}\n`;
-      }
-      output += "\n";
-    }
-
-    output += this.buildSseControlEvent(client, nextOffset, upToDate, streamClosed);
-    await client.writer.write(encoder.encode(output));
-  }
-
-  private buildSseControlEvent(
-    client: SseClient,
-    nextOffset: number,
-    upToDate: boolean,
-    streamClosed: boolean,
-  ): string {
-    const control: Record<string, unknown> = {
-      streamNextOffset: encodeOffset(nextOffset),
-    };
-
-    if (streamClosed) {
-      control.streamClosed = true;
-    } else {
-      const nextCursor = generateResponseCursor(client.cursor);
-      client.cursor = nextCursor;
-      control.streamCursor = nextCursor;
-      if (upToDate) control.upToDate = true;
-    }
-
-    return `event: control\n` + `data:${JSON.stringify(control)}\n\n`;
+    const dataEvent = buildSseDataEvent(payload, client.useBase64);
+    const control = buildSseControlEvent({
+      nextOffset,
+      upToDate,
+      streamClosed,
+      cursor: client.cursor,
+    });
+    if (control.nextCursor) client.cursor = control.nextCursor;
+    await client.writer.write(encoder.encode(dataEvent + control.payload));
   }
 
   private async writeSseControl(
@@ -1157,7 +1097,13 @@ export class StreamDO {
     streamClosed: boolean,
   ): Promise<void> {
     const encoder = new TextEncoder();
-    const payload = this.buildSseControlEvent(client, nextOffset, upToDate, streamClosed);
-    await client.writer.write(encoder.encode(payload));
+    const control = buildSseControlEvent({
+      nextOffset,
+      upToDate,
+      streamClosed,
+      cursor: client.cursor,
+    });
+    if (control.nextCursor) client.cursor = control.nextCursor;
+    await client.writer.write(encoder.encode(control.payload));
   }
 }

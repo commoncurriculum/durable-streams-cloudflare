@@ -16,6 +16,7 @@
 ## Progress (as of 2026-02-03)
 - Extracted protocol helpers into `src/protocol/*` (headers/offsets/cursor/encoding/expiry/etag/validation).
 - Added `src/protocol/errors.ts`, `src/protocol/json.ts`, and `src/protocol/limits.ts`.
+- Extracted live helpers into `src/live/long_poll.ts` and `src/live/sse.ts`.
 - Randomized cursor jitter implemented to match reference behavior.
 - Standardized SSE encoding header to `Stream-SSE-Data-Encoding`.
 - Added CORS handling and exposed Stream/Producer headers in `worker.ts`.
@@ -78,6 +79,7 @@ Deliverables
 Current status
 - `headers.ts`, `offsets.ts`, `cursor.ts`, `encoding.ts`, `expiry.ts`, `etag.ts`,
   `validation.ts`, `errors.ts`, `json.ts`, and `limits.ts` extracted.
+- `live/long_poll.ts` and `live/sse.ts` extracted.
 
 ## Phase 2: Storage Interface (D1-First)
 - Define the exact storage surface the engine needs.
