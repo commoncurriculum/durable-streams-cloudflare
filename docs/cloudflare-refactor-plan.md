@@ -223,6 +223,7 @@ Deliverables
 - Document registry stream behavior and header exposure for browser clients.
 Current status
 - `docs/cloudflare-architecture.md` added.
+- Registry stream + CORS header exposure documented in `poc/cloudflare/README.md`.
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.

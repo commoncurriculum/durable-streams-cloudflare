@@ -112,6 +112,29 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 - Snapshot objects are stored with length-prefixed message framing (Caddy parity).
 - Snapshot keys use base64url-encoded stream ids for safe paths.
 
+## Registry Stream
+The worker emits create/delete events to a system stream named `__registry__`.
+Events are JSON messages of the form:
+```json
+{
+  "type": "stream",
+  "key": "my-stream-id",
+  "value": {
+    "path": "my-stream-id",
+    "contentType": "application/json",
+    "createdAt": 1738591200000
+  },
+  "headers": { "operation": "insert" }
+}
+```
+Delete events omit `value` and set `operation` to `delete`.
+
+## CORS / Browser Headers
+The worker exposes these response headers for browser clients:
+`Stream-Next-Offset`, `Stream-Cursor`, `Stream-Up-To-Date`, `Stream-Closed`,
+`ETag`, `Location`, `Producer-Epoch`, `Producer-Seq`,
+`Producer-Expected-Seq`, `Producer-Received-Seq`, `Stream-SSE-Data-Encoding`.
+
 ## Files
 - `wrangler.toml`
 - `migrations/0001_init.sql`
