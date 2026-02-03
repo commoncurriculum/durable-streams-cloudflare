@@ -104,7 +104,13 @@ export class StreamDO {
     await this.storage.deleteStreamData(streamId);
   }
 
-  private encodeTailOffset(meta: StreamMeta): string {
+  private async encodeTailOffset(streamId: string, meta: StreamMeta): Promise<string> {
+    if (meta.closed === 1 && meta.segment_start >= meta.tail_offset && meta.read_seq > 0) {
+      const previous = await this.storage.getSegmentByReadSeq(streamId, meta.read_seq - 1);
+      if (previous) {
+        return encodeOffset(meta.tail_offset - previous.start_offset, previous.read_seq);
+      }
+    }
     return encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
   }
 

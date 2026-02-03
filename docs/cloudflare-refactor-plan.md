@@ -8,7 +8,8 @@
 - Keep **D1 optional** for a global admin segment index only.
 
 ## Decisions (locked)
-- Offsets are **`readSeq_byteOffset` only** (no legacy `-1`/`now`).
+- Offsets are **`readSeq_byteOffset` only**. The server accepts `-1` and `now`
+  as **sentinel inputs** but never emits them.
 - No cross-segment stitching within a single GET.
 - Segment rotation triggers on **message count or byte size**.
 

@@ -12,6 +12,7 @@ import {
   MAX_CHUNK_BYTES,
   SSE_RECONNECT_MS,
 } from "../../protocol/limits";
+import { ZERO_OFFSET } from "../../protocol/offsets";
 import { buildSseControlEvent, buildSseDataEvent } from "../../live/sse";
 import { buildLongPollHeaders } from "../../engine/stream";
 import type { StreamMeta } from "../../storage/storage";
@@ -26,16 +27,23 @@ export async function handleLongPoll(
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
-
-  const resolved = await ctx.resolveOffset(streamId, meta, offsetParam);
-  if (resolved.error) return resolved.error;
-
-  const offset = resolved.offset;
+  let offset: number;
+  if (offsetParam === "now") {
+    offset = meta.tail_offset;
+  } else {
+    const resolved = await ctx.resolveOffset(
+      streamId,
+      meta,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+    );
+    if (resolved.error) return resolved.error;
+    offset = resolved.offset;
+  }
 
   if (meta.closed === 1 && offset >= meta.tail_offset) {
     const headers = buildLongPollHeaders({
       meta,
-      nextOffsetHeader: ctx.encodeTailOffset(meta),
+      nextOffsetHeader: await ctx.encodeTailOffset(streamId, meta),
       upToDate: true,
       closedAtTail: true,
       cursor: null,
@@ -68,7 +76,7 @@ export async function handleLongPoll(
   if (timedOut) {
     const headers = buildLongPollHeaders({
       meta: current,
-      nextOffsetHeader: ctx.encodeTailOffset(current),
+      nextOffsetHeader: await ctx.encodeTailOffset(streamId, current),
       upToDate: true,
       closedAtTail: current.closed === 1 && current.tail_offset === offset,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
@@ -105,11 +113,18 @@ export async function handleSse(
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
-
-  const resolved = await ctx.resolveOffset(streamId, meta, offsetParam);
-  if (resolved.error) return resolved.error;
-
-  const offset = resolved.offset;
+  let offset: number;
+  if (offsetParam === "now") {
+    offset = meta.tail_offset;
+  } else {
+    const resolved = await ctx.resolveOffset(
+      streamId,
+      meta,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+    );
+    if (resolved.error) return resolved.error;
+    offset = resolved.offset;
+  }
   const contentType = meta.content_type;
   const useBase64 = !isTextual(contentType);
 
@@ -139,7 +154,7 @@ export async function handleSse(
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
-    [HEADER_STREAM_NEXT_OFFSET]: ctx.encodeTailOffset(meta),
+    [HEADER_STREAM_NEXT_OFFSET]: await ctx.encodeTailOffset(streamId, meta),
   });
 
   if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");

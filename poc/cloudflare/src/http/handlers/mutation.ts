@@ -90,7 +90,7 @@ export async function handlePut(
         return errorResponse(409, "stream TTL/expiry mismatch");
       }
 
-      const headers = buildPutHeaders(existing, ctx.encodeTailOffset(existing));
+      const headers = buildPutHeaders(existing, await ctx.encodeTailOffset(streamId, existing));
       return new Response(null, { status: 200, headers });
     }
 
@@ -153,7 +153,7 @@ export async function handlePut(
       closed_by_epoch: closedBy?.epoch ?? null,
       closed_by_seq: closedBy?.seq ?? null,
     };
-    const headers = buildPutHeaders(createdMeta, ctx.encodeTailOffset(createdMeta));
+    const headers = buildPutHeaders(createdMeta, await ctx.encodeTailOffset(streamId, createdMeta));
     headers.set("Location", request.url);
 
     ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: requestedClosed }));
@@ -209,7 +209,7 @@ export async function handlePost(
     }
 
     if (meta.closed === 1) {
-      return buildClosedConflict(meta, ctx.encodeTailOffset(meta));
+      return buildClosedConflict(meta, await ctx.encodeTailOffset(streamId, meta));
     }
 
     const contentType = parseContentType(request);
