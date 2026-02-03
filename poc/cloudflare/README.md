@@ -9,11 +9,12 @@ Cloudflare-only proof of concept for the Durable Streams protocol with **low-lat
 - Protocol behaviors for PUT/POST/GET/HEAD/DELETE, long-poll, and SSE.
 - JSON mode support (flatten arrays, validate JSON, return arrays on GET).
 - TTL/Expires-At enforcement.
-- Optional R2 snapshot on stream close (cold storage).
+- Optional R2 snapshot on stream close (cold storage, length-prefixed segment format).
 - Full server conformance coverage (239/239).
 
 ## What It Does Not Include (Yet)
 - R2 restore/compaction or background log pruning.
+- Segment index for cold reads.
 - Global stream listing/search.
 - Multi-tenant auth or per-stream ACLs.
 
@@ -97,6 +98,8 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 - Writes are ACKed only after a D1 transaction commits.
 - This is the low-latency, strongly consistent path.
 - R2 is used only for cold storage snapshots on close.
+- Snapshot objects are stored with length-prefixed message framing (Caddy parity).
+- Snapshot keys use base64url-encoded stream ids for safe paths.
 
 ## Files
 - `wrangler.toml`
@@ -104,3 +107,7 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000&live=ss
 - `migrations/0002_expiry_snapshots.sql`
 - `src/worker.ts`
 - `src/stream_do.ts`
+- `src/engine/*`
+- `src/live/*`
+- `src/protocol/*`
+- `src/storage/*`

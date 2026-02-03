@@ -20,10 +20,13 @@
 - Added `src/storage/storage.ts` interface + `src/storage/d1.ts` implementation.
 - Extracted producer parsing/evaluation into `src/engine/producer.ts`.
 - Extracted core stream operations into `src/engine/stream.ts`.
+- Extracted close-only semantics into `src/engine/close.ts`.
 - Randomized cursor jitter implemented to match reference behavior.
 - Standardized SSE encoding header to `Stream-SSE-Data-Encoding`.
 - Added CORS handling and exposed Stream/Producer headers in `worker.ts`.
 - Added registry stream hooks (`__registry__`) for create/delete events.
+- R2 snapshots now use length-prefixed segment framing (Caddy parity).
+- R2 snapshot keys now base64url-encode stream ids (safer paths, CDN-friendly).
 - Conformance suite remains green (239/239).
 
 ## Current Baseline
@@ -88,6 +91,7 @@ Current status
 - `engine/producer.ts` extracted; `stream_do.ts` delegates producer parsing +
   validation there.
 - `engine/stream.ts` extracted; `stream_do.ts` delegates append/read/headers logic.
+- `engine/close.ts` extracted; `stream_do.ts` delegates close-only logic there.
 
 ## Phase 2: Storage Interface (D1-First)
 - Define the exact storage surface the engine needs.
@@ -146,12 +150,13 @@ Deliverables
 ## Phase 4.5: Reference Parity Improvements (Cloudflare-Specific)
 - Add CORS + exposed headers in `worker.ts` (Stream-* and Producer-* headers). (done)
 - Add producer state TTL cleanup (periodic + on access).
+- Track `closed_by` producer tuple for idempotent close-only retries (Caddy/Node parity).
 - Adopt randomized cursor jitter (1–3600s) for CDN collision handling. (done)
 - Add registry stream (`__registry__`) for create/delete discovery. (done)
-- Encode R2 keys using base64url path encoding for safety.
+- Encode R2 keys using base64url path encoding for safety. (done)
 - Evaluate offset format shift to `readSeq_byteOffset` if we decide to support
   segment rotation in R2 (document if we intentionally keep hex offsets).
-- Implement segment framing for cold storage (length‑prefixed messages).
+- Implement segment framing for cold storage (length‑prefixed messages). (done for snapshots)
 
 ## Phase 5: Test Strategy (No Stubs)
 - Keep all integration tests running against real local bindings.
