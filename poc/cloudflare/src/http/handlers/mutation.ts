@@ -57,6 +57,8 @@ export async function handlePut(
       ttlSeconds.value !== null ? now + ttlSeconds.value * 1000 : expiresAt.value;
 
     let bodyBytes = new Uint8Array(await request.arrayBuffer());
+    const contentLengthError = validateContentLength(request, bodyBytes);
+    if (contentLengthError) return contentLengthError;
     if (bodyBytes.length > MAX_APPEND_BYTES) {
       return errorResponse(413, "payload too large");
     }
@@ -164,6 +166,8 @@ export async function handlePost(
     const closeStream = request.headers.get(HEADER_STREAM_CLOSED) === "true";
 
     const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    const contentLengthError = validateContentLength(request, bodyBytes);
+    if (contentLengthError) return contentLengthError;
     if (bodyBytes.length > MAX_APPEND_BYTES) {
       return errorResponse(413, "payload too large");
     }
@@ -255,4 +259,17 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
 
     return new Response(null, { status: 204, headers: baseHeaders() });
   });
+}
+
+function validateContentLength(request: Request, body: Uint8Array): Response | null {
+  const header = request.headers.get("Content-Length");
+  if (!header) return null;
+  const expected = Number.parseInt(header, 10);
+  if (!Number.isFinite(expected)) {
+    return errorResponse(400, "invalid Content-Length");
+  }
+  if (expected !== body.length) {
+    return errorResponse(400, "content-length mismatch");
+  }
+  return null;
 }
