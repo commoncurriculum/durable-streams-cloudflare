@@ -96,7 +96,7 @@ export async function waitForReaderDone(
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
     const result = await Promise.race([
-      reader.read(),
+      reader.read().catch(() => ({ done: true }) as const),
       delay(remaining).then(() => ({ done: false, timeout: true }) as const),
     ]);
     if ("timeout" in result) return false;

@@ -31,6 +31,7 @@
 - Closed-by producer tuple persisted for idempotent close-only retries.
 - Introduced HTTP router + handler modules (mutation/catchup/realtime); `stream_do.ts` slimmed.
 - Stream deletion now wakes long-poll waiters and closes active SSE clients.
+- Content-Length mismatches now rejected to prevent truncated writes.
 - Conformance suite remains green (239/239).
 
 ## Current Baseline
@@ -193,6 +194,8 @@ Targets (Cloudflare-specific)
   - Simulate DO restarts mid-stream and ensure offsets + data remain consistent.
   - Repeated restart cycles should remain idempotent (no dupes/rewinds).
   - Producer idempotency should hold across restarts (duplicate seqs ignored).
+  - SSE reconnects should recover cleanly after worker restarts.
+  - Aborted appends should not persist partial data.
 - **Concurrent access**
   - Multiple readers during append should see either before or after state,
     never partial data (especially for JSON streams).
@@ -216,6 +219,7 @@ Current status
 - Added restart tests covering persistence + producer idempotency across worker restarts.
 - Implementation tests now spin up a local worker automatically when no
   `IMPLEMENTATION_TEST_URL` is provided.
+- Added tests for aborted append safety and SSE reconnect after restart.
 
 ## Phase 6: Docs and Ops
 - Document the module layout and extension points.

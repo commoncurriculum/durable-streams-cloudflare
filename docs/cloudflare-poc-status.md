@@ -2,7 +2,7 @@
 
 ## Baseline (2026-02-03)
 - Conformance suite: **239/239** (local `wrangler dev --local`).
-- Implementation tests: **5/5** (local worker, real D1/R2).
+- Implementation tests: **7/7** (local worker, real D1/R2).
 
 ## Commands (local)
 ```bash
