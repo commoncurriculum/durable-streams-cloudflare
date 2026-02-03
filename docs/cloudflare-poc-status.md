@@ -1,7 +1,7 @@
 # Cloudflare POC Status
 
 ## Baseline (2026-02-03)
-- Conformance suite: **fails** (111/239 failing) — missing `offset=now/-1`, JSON batching semantics, SSE behaviors, and several header expectations.
+- Conformance suite: **pass** (239/239).
 - Implementation tests: **pass** (16/16).
 - Perf smoke: **pass**.
   - append p50=1.90ms p95=3.24ms

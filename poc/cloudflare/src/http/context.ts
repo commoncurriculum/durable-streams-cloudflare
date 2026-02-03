@@ -34,7 +34,7 @@ export type StreamContext = {
     offsetParam: string | null,
   ) => Promise<ResolveOffsetResult>;
   encodeOffset: (streamId: string, meta: StreamMeta, offset: number) => Promise<string>;
-  encodeTailOffset: (meta: StreamMeta) => string;
+  encodeTailOffset: (streamId: string, meta: StreamMeta) => Promise<string>;
   readFromOffset: (
     streamId: string,
     meta: StreamMeta,

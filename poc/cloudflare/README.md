@@ -139,6 +139,8 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000
 - This POC uses fixed-width decimal `readSeq_byteOffset` encoding (Caddy/Node parity).
 - `readSeq` increments after a segment is rotated to R2; `byteOffset` resets per segment.
 - JSON streams increment offsets by **message count**; non-JSON streams increment by **byte length**.
+- The server accepts sentinel inputs `offset=-1` (stream start) and `offset=now` (current tail),
+  but never emits those values as real offsets.
 
 ## Durability and Latency
 - Writes are ACKed only after a DO SQLite transaction commits.
