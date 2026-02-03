@@ -1,10 +1,12 @@
 import { StreamDO } from "./stream_do";
+import { Timing, attachTiming } from "./protocol/timing";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
   AUTH_TOKEN?: string;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
+  DEBUG_TIMING?: string;
 }
 
 const STREAM_PREFIX = "/v1/stream/";
@@ -44,6 +46,38 @@ function applyCors(headers: Headers): void {
   headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS.join(", "));
 }
 
+function shouldUseCache(request: Request, url: URL): boolean {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (url.searchParams.get("live") === "sse") return false;
+  if (request.headers.has("If-None-Match")) return false;
+  return true;
+}
+
+function parseMaxAge(cacheControl: string): number | null {
+  const match = cacheControl.match(/max-age=(\d+)/i);
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+function isCacheableResponse(response: Response): boolean {
+  if (![200, 204].includes(response.status)) return false;
+  const cacheControl = response.headers.get("Cache-Control");
+  if (!cacheControl) return false;
+  const lower = cacheControl.toLowerCase();
+  if (lower.includes("no-store") || lower.includes("private")) return false;
+  const maxAge = parseMaxAge(lower);
+  return maxAge !== null && maxAge > 0;
+}
+
+function buildCacheKey(url: URL, method: string): Request {
+  return new Request(url.toString(), {
+    method,
+    cf: { cacheKey: url.toString() },
+  });
+}
+
 async function recordRegistryEvent(
   requestUrl: string,
   authToken: string | undefined,
@@ -77,6 +111,8 @@ async function recordRegistryEvent(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
+    const timing = timingEnabled ? new Timing() : null;
 
     if (!url.pathname.startsWith(STREAM_PREFIX)) {
       return new Response("not found", { status: 404 });
@@ -89,7 +125,9 @@ export default {
     }
 
     if (env.AUTH_TOKEN) {
+      const doneAuth = timing?.start("edge.auth");
       const auth = request.headers.get("Authorization");
+      doneAuth?.();
       if (auth !== `Bearer ${env.AUTH_TOKEN}`) {
         return new Response("unauthorized", { status: 401 });
       }
@@ -100,14 +138,35 @@ export default {
       return new Response("missing stream id", { status: 400 });
     }
 
+    const method = request.method.toUpperCase();
+    const cacheable = shouldUseCache(request, url);
+    const cache = caches.default;
+    const cacheKey = buildCacheKey(url, method);
+
+    if (cacheable) {
+      const doneMatch = timing?.start("edge.cache.match");
+      const cached = await cache.match(cacheKey);
+      doneMatch?.();
+      if (cached) {
+        timing?.record("edge.cache", 0, "hit");
+        return attachTiming(cached, timing);
+      }
+      timing?.record("edge.cache", 0, "miss");
+    }
+
     const id = env.STREAMS.idFromName(streamId);
     const stub = env.STREAMS.get(id);
 
     const headers = new Headers(request.headers);
     headers.set("X-Stream-Id", streamId);
+    if (timingEnabled && !headers.has("X-Debug-Timing")) {
+      headers.set("X-Debug-Timing", "1");
+    }
 
     const upstreamReq = new Request(request, { headers });
+    const doneOrigin = timing?.start("edge.origin");
     const response = await stub.fetch(upstreamReq);
+    doneOrigin?.();
     const responseHeaders = new Headers(response.headers);
     applyCors(responseHeaders);
     const wrapped = new Response(response.body, {
@@ -115,6 +174,10 @@ export default {
       statusText: response.statusText,
       headers: responseHeaders,
     });
+
+    if (cacheable && isCacheableResponse(wrapped)) {
+      ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
+    }
 
     if (streamId !== REGISTRY_STREAM) {
       if (request.method === "PUT" && response.status === 201) {
@@ -142,7 +205,7 @@ export default {
       }
     }
 
-    return wrapped;
+    return attachTiming(wrapped, timing);
   },
 };
 

@@ -12,6 +12,7 @@ import type { StreamMeta } from "./storage/storage";
 import { routeRequest } from "./http/router";
 import { readFromMessages, readFromOffset, type ReadResult } from "./engine/stream";
 import { emptyJsonArray } from "./protocol/json";
+import { Timing, attachTiming } from "./protocol/timing";
 import type { StreamContext, StreamEnv, ResolveOffsetResult } from "./http/context";
 
 export type Env = StreamEnv;
@@ -39,6 +40,11 @@ export class StreamDO {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const timingEnabled =
+      this.env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
+    const timing = timingEnabled ? new Timing() : null;
+    const doneTotal = timing?.start("do.total");
+
     if (this.env.DEBUG_COALESCE === "1" && request.headers.get("X-Debug-Coalesce") === "1") {
       return new Response(JSON.stringify(this.readStats), {
         status: 200,
@@ -65,17 +71,21 @@ export class StreamDO {
       state: this.state,
       env: this.env,
       storage: this.storage,
+      timing,
       longPoll: this.longPoll,
       sseState: this.sseState,
       getStream: this.getStream.bind(this),
       resolveOffset: this.resolveOffset.bind(this),
       encodeOffset: this.encodeOffset.bind(this),
       encodeTailOffset: this.encodeTailOffset.bind(this),
-      readFromOffset: this.readFromOffset.bind(this),
+      readFromOffset: (streamId, meta, offset, maxChunkBytes) =>
+        this.readFromOffset(streamId, meta, offset, maxChunkBytes, timing),
       rotateSegment: this.rotateSegment.bind(this),
     };
 
-    return routeRequest(ctx, streamId, request);
+    const response = await routeRequest(ctx, streamId, request);
+    doneTotal?.();
+    return attachTiming(response, timing);
   }
 
   private async getStream(streamId: string): Promise<StreamMeta | null> {
@@ -279,6 +289,7 @@ export class StreamDO {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number,
+    timing: Timing | null,
   ): ReturnType<typeof readFromOffset> {
     const key = this.readKey(streamId, meta, offset, maxChunkBytes);
     const cached = this.recentReads.get(key);
@@ -290,7 +301,7 @@ export class StreamDO {
     const existing = this.inFlightReads.get(key);
     if (existing) return await existing;
 
-    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes).then(
+    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes, timing).then(
       (result) => {
         if (!result.error) {
           this.recentReads.set(key, { result, expiresAt: Date.now() + COALESCE_CACHE_MS });
@@ -321,15 +332,23 @@ export class StreamDO {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number,
+    timing: Timing | null,
   ): ReturnType<typeof readFromOffset> {
     this.readStats.internalReads += 1;
     if (!this.env.R2 || offset >= meta.segment_start) {
-      return await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+      const done = timing?.start("read.hot");
+      const result = await readFromOffset(this.storage, streamId, meta, offset, maxChunkBytes);
+      done?.();
+      return { ...result, source: "hot" };
     }
 
+    const doneLookup = timing?.start("segment.lookup");
     const segment = await this.storage.getSegmentCoveringOffset(streamId, offset);
+    doneLookup?.();
     if (!segment) {
+      const doneStarting = timing?.start("segment.lookup.starting");
       const starting = await this.storage.getSegmentStartingAt(streamId, offset);
+      doneStarting?.();
       if (starting) {
         const closedAtTail = meta.closed === 1 && offset === meta.tail_offset;
         return {
@@ -338,6 +357,7 @@ export class StreamDO {
           upToDate: false,
           closedAtTail,
           hasData: false,
+          source: "r2",
         };
       }
       return {
@@ -346,6 +366,7 @@ export class StreamDO {
         upToDate: false,
         closedAtTail: false,
         hasData: false,
+        source: "r2",
         error: errorResponse(500, "segment unavailable"),
       };
     }
@@ -357,6 +378,7 @@ export class StreamDO {
         upToDate: false,
         closedAtTail: false,
         hasData: false,
+        source: "r2",
         error: errorResponse(400, "invalid offset"),
       };
     }
@@ -369,10 +391,13 @@ export class StreamDO {
         upToDate: false,
         closedAtTail,
         hasData: false,
+        source: "r2",
       };
     }
 
+    const doneR2 = timing?.start("r2.get");
     const object = await this.env.R2.get(segment.r2_key);
+    doneR2?.();
     if (!object || !object.body) {
       return {
         body: new ArrayBuffer(0),
@@ -380,11 +405,13 @@ export class StreamDO {
         upToDate: false,
         closedAtTail: false,
         hasData: false,
+        source: "r2",
         error: errorResponse(500, "segment missing"),
       };
     }
 
     const isJson = isJsonContentType(segment.content_type);
+    const doneDecode = timing?.start("r2.decode");
     const decoded = await readSegmentMessages({
       body: object.body,
       offset,
@@ -392,6 +419,7 @@ export class StreamDO {
       maxChunkBytes,
       isJson,
     });
+    doneDecode?.();
 
     if (decoded.truncated) {
       return {
@@ -400,6 +428,7 @@ export class StreamDO {
         upToDate: false,
         closedAtTail: false,
         hasData: false,
+        source: "r2",
         error: errorResponse(500, "segment truncated"),
       };
     }
@@ -412,18 +441,22 @@ export class StreamDO {
         upToDate: offset === meta.tail_offset,
         closedAtTail,
         hasData: false,
+        source: "r2",
       };
     }
 
-    return readFromMessages({
-      messages: decoded.messages,
-      contentType: segment.content_type,
-      offset,
-      maxChunkBytes,
-      tailOffset: meta.tail_offset,
-      closed: meta.closed === 1,
-      segmentStart: decoded.segmentStart,
-    });
+    return {
+      ...(await readFromMessages({
+        messages: decoded.messages,
+        contentType: segment.content_type,
+        offset,
+        maxChunkBytes,
+        tailOffset: meta.tail_offset,
+        closed: meta.closed === 1,
+        segmentStart: decoded.segmentStart,
+      })),
+      source: "r2",
+    };
   }
 
   private segmentMaxMessages(): number {

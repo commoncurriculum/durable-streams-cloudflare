@@ -27,6 +27,7 @@ export type ReadResult = {
   upToDate: boolean;
   closedAtTail: boolean;
   hasData: boolean;
+  source?: "hot" | "r2";
   error?: Response;
 };
 

@@ -27,26 +27,53 @@ describe("performance smoke", () => {
 
     const appendTimes: number[] = [];
     const readTimes: number[] = [];
+    const longPollTimes: number[] = [];
 
     const iterations = Number.parseInt(process.env.PERF_ITERATIONS ?? "25", 10);
+    let lastOffset = ZERO_OFFSET;
 
     for (let i = 0; i < iterations; i += 1) {
       const startAppend = performance.now();
-      await client.appendStream(streamId, "x", "text/plain");
+      const appendResponse = await client.appendStream(streamId, "x", "text/plain");
       appendTimes.push(performance.now() - startAppend);
 
+      const nextOffset = appendResponse.headers.get("Stream-Next-Offset") ?? lastOffset;
+
       const startRead = performance.now();
-      await client.readAllText(streamId, ZERO_OFFSET);
+      const readResponse = await fetch(client.streamUrl(streamId, { offset: lastOffset }));
+      if (readResponse.status !== 200) {
+        throw new Error(`perf read failed: ${readResponse.status} ${await readResponse.text()}`);
+      }
+      await readResponse.arrayBuffer();
       readTimes.push(performance.now() - startRead);
+
+      const startLongPoll = performance.now();
+      const longPollResponse = await fetch(
+        client.streamUrl(streamId, { offset: lastOffset, live: "long-poll" }),
+      );
+      if (longPollResponse.status !== 200) {
+        throw new Error(
+          `perf long-poll failed: ${longPollResponse.status} ${await longPollResponse.text()}`,
+        );
+      }
+      await longPollResponse.arrayBuffer();
+      longPollTimes.push(performance.now() - startLongPoll);
+
+      lastOffset = nextOffset;
     }
 
     const appendP50 = percentile(appendTimes, 50);
     const appendP95 = percentile(appendTimes, 95);
     const readP50 = percentile(readTimes, 50);
     const readP95 = percentile(readTimes, 95);
+    const longPollP50 = percentile(longPollTimes, 50);
+    const longPollP95 = percentile(longPollTimes, 95);
 
     console.log(`[perf] append p50=${appendP50.toFixed(2)}ms p95=${appendP95.toFixed(2)}ms`);
     console.log(`[perf] read   p50=${readP50.toFixed(2)}ms p95=${readP95.toFixed(2)}ms`);
+    console.log(
+      `[perf] long-poll(hit) p50=${longPollP50.toFixed(2)}ms p95=${longPollP95.toFixed(2)}ms`,
+    );
     console.log(
       `[perf] budget target=${budgetMs.toFixed(2)}ms (enforce=${enforce ? "on" : "off"})`,
     );
@@ -54,6 +81,17 @@ describe("performance smoke", () => {
     if (enforce) {
       expect(appendP95).toBeLessThanOrEqual(budgetMs);
       expect(readP95).toBeLessThanOrEqual(budgetMs);
+      expect(longPollP95).toBeLessThanOrEqual(budgetMs);
+    }
+
+    if (process.env.PERF_LONGPOLL_TIMEOUT === "1") {
+      const startTimeout = performance.now();
+      const timeoutResponse = await fetch(
+        client.streamUrl(streamId, { offset: lastOffset, live: "long-poll" }),
+      );
+      await timeoutResponse.arrayBuffer();
+      const timeoutMs = performance.now() - startTimeout;
+      console.log(`[perf] long-poll(timeout) ${timeoutMs.toFixed(2)}ms`);
     }
 
     if (handle) {

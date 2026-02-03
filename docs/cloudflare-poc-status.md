@@ -1,9 +1,12 @@
 # Cloudflare POC Status
 
 ## Baseline (2026-02-03)
-- Conformance suite: **pending** (re-run after refactor).
-- Implementation tests: **pending** (re-run after refactor).
-- Perf smoke: **pending** (re-run after refactor).
+- Conformance suite: **fails** (111/239 failing) — missing `offset=now/-1`, JSON batching semantics, SSE behaviors, and several header expectations.
+- Implementation tests: **pass** (16/16).
+- Perf smoke: **pass**.
+  - append p50=1.90ms p95=3.24ms
+  - read p50=2.18ms p95=3.40ms
+  - long-poll (hit) p50=2.70ms p95=3.97ms
 
 ## Commands (local)
 ```bash
@@ -29,6 +32,8 @@ pnpm run perf
 `IMPLEMENTATION_TEST_URL` is not set.
 `pnpm run perf` will start a local worker automatically unless `PERF_BASE_URL`
 is set.
+`pnpm run conformance` will start a local worker automatically unless
+`CONFORMANCE_TEST_URL` is set.
 If `PERF_BASE_URL` is set, the test enforces the budget by default. Set
 `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to override locally.
 

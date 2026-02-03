@@ -96,6 +96,7 @@ export async function handlePut(
 
     const contentType = headerContentType ?? "application/octet-stream";
 
+    const doneInsert = ctx.timing?.start("stream.insert");
     await ctx.storage.insertStream({
       streamId,
       contentType,
@@ -104,6 +105,7 @@ export async function handlePut(
       expiresAt: effectiveExpiresAt,
       createdAt: now,
     });
+    doneInsert?.();
 
     let tailOffset = 0;
 
@@ -116,14 +118,18 @@ export async function handlePut(
     }
 
     if (bodyBytes.length > 0) {
+      const doneBuild = ctx.timing?.start("append.build");
       const append = await buildAppendBatch(ctx.storage, streamId, contentType, bodyBytes, {
         streamSeq: request.headers.get(HEADER_STREAM_SEQ),
         producer: producer?.value ?? null,
         closeStream: requestedClosed,
       });
+      doneBuild?.();
 
       if (append.error) return append.error;
+      const doneBatch = ctx.timing?.start("append.batch");
       await ctx.storage.batch(append.statements);
+      doneBatch?.();
       tailOffset = append.newTailOffset;
     }
 
@@ -219,15 +225,19 @@ export async function handlePost(
     const seqError = validateStreamSeq(meta, streamSeq);
     if (seqError) return seqError;
 
+    const doneBuild = ctx.timing?.start("append.build");
     const append = await buildAppendBatch(ctx.storage, streamId, contentType, bodyBytes, {
       streamSeq,
       producer: producer?.value ?? null,
       closeStream,
     });
+    doneBuild?.();
 
     if (append.error) return append.error;
 
+    const doneBatch = ctx.timing?.start("append.batch");
     await ctx.storage.batch(append.statements);
+    doneBatch?.();
 
     const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, append.newTailOffset);
     const headers = baseHeaders({

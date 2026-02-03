@@ -59,7 +59,9 @@ export async function handleLongPoll(
     return new Response(initialRead.body, { status: 200, headers });
   }
 
+  const doneWait = ctx.timing?.start("longpoll.wait");
   const timedOut = await ctx.longPoll.waitForData(offset, LONG_POLL_TIMEOUT_MS);
+  doneWait?.();
   const current = await ctx.getStream(streamId);
   if (!current) return errorResponse(404, "stream not found");
 

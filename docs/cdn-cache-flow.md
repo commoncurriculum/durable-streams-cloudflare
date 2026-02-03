@@ -20,8 +20,8 @@ Authorization: Bearer <token>
 
 Flow
 - Worker authenticates.
-- Worker normalizes cache key (ignores auth token).
-- CDN cache lookup.
+- Worker normalizes cache key (URL only; `Authorization` is ignored).
+- Edge cache lookup via `caches.default`.
   - Cache hit: return cached response.
   - Cache miss: Worker -> DO -> SQLite hot tail.
 - Response cached with short TTL (1–2s).
@@ -48,6 +48,9 @@ Flow
 - DO reads R2 segment and returns response.
 - CDN caches response longer (cold data is immutable).
 
+Note: catch-up reads that hit the **hot tail** are marked `Cache-Control: private, no-store`
+to avoid stale reads. Only R2-backed catch-up reads are cacheable.
+
 Example response
 ```
 200 OK
@@ -67,7 +70,7 @@ Authorization: Bearer <user-specific>
 
 Flow
 - Worker authenticates.
-- Cache is private/no-store (or cache key includes auth).
+- Cache is private/no-store (or bypassed via `If-None-Match`).
 - Cache miss -> DO -> SQLite hot tail (long-poll if needed).
 - DO in-flight coalescing collapses identical reads.
 
@@ -91,6 +94,11 @@ Flow
 - Worker authenticates.
 - Cache is private/no-store.
 - DO reads R2 segment and responds.
+
+## Cache Key Notes
+- Cache is only used for `GET`/`HEAD` without `If-None-Match`.
+- `live=sse` is never cached.
+- `Authorization` is never part of the cache key; auth happens first, then cache.
 
 Example response
 ```

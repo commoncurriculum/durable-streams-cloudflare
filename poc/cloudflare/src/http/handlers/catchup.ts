@@ -41,6 +41,9 @@ export async function handleGet(
     closedAtTail: read.closedAtTail,
     offset,
   });
+  if (read.source === "hot") {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
 
   const ifNoneMatch = request.headers.get("If-None-Match");
   const etag = response.headers.get("ETag");
