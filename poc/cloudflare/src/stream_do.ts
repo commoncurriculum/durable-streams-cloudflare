@@ -17,11 +17,17 @@ type ProducerState = {
   last_offset: number;
 };
 
+type ProducerEval =
+  | { kind: "none" }
+  | { kind: "ok"; state: ProducerState | null }
+  | { kind: "duplicate"; state: ProducerState }
+  | { kind: "error"; response: Response };
+
 type ReadChunk = {
   start_offset: number;
   end_offset: number;
   size_bytes: number;
-  body: ArrayBuffer;
+  body: ArrayBuffer | Uint8Array | string | number[];
 };
 
 type Waiter = {
@@ -47,8 +53,10 @@ export interface Env {
 }
 
 const MAX_CHUNK_BYTES = 256 * 1024;
+const MAX_APPEND_BYTES = 8 * 1024 * 1024;
 const OFFSET_WIDTH = 16;
 const SSE_RECONNECT_MS = 55_000;
+const LONG_POLL_TIMEOUT_MS = 4_000;
 
 const CURSOR_EPOCH_MS = Date.UTC(2024, 9, 9, 0, 0, 0, 0);
 const CURSOR_INTERVAL_SECONDS = 20;
@@ -103,197 +111,240 @@ export class StreamDO {
   }
 
   private async handlePut(streamId: string, request: Request): Promise<Response> {
-    const now = Date.now();
-    const headerContentType = normalizeContentType(request.headers.get("Content-Type"));
-    const requestedClosed = request.headers.get(HEADER_STREAM_CLOSED) === "true";
-    const ttlHeader = request.headers.get(HEADER_STREAM_TTL);
-    const expiresHeader = request.headers.get(HEADER_STREAM_EXPIRES_AT);
+    return this.state.blockConcurrencyWhile(async () => {
+      const now = Date.now();
+      const headerContentType = normalizeContentType(request.headers.get("Content-Type"));
+      const requestedClosed = request.headers.get(HEADER_STREAM_CLOSED) === "true";
+      const ttlHeader = request.headers.get(HEADER_STREAM_TTL);
+      const expiresHeader = request.headers.get(HEADER_STREAM_EXPIRES_AT);
 
-    if (ttlHeader && expiresHeader) {
-      return this.err(400, "Stream-TTL and Stream-Expires-At are mutually exclusive");
-    }
+      if (ttlHeader && expiresHeader) {
+        return this.err(400, "Stream-TTL and Stream-Expires-At are mutually exclusive");
+      }
 
-    const ttlSeconds = parseTtlSeconds(ttlHeader);
-    if (ttlSeconds.error) return this.err(400, ttlSeconds.error);
+      const ttlSeconds = parseTtlSeconds(ttlHeader);
+      if (ttlSeconds.error) return this.err(400, ttlSeconds.error);
 
-    const expiresAt = parseExpiresAt(expiresHeader);
-    if (expiresAt.error) return this.err(400, expiresAt.error);
+      const expiresAt = parseExpiresAt(expiresHeader);
+      if (expiresAt.error) return this.err(400, expiresAt.error);
 
-    const effectiveExpiresAt =
-      ttlSeconds.value !== null ? now + ttlSeconds.value * 1000 : expiresAt.value;
+      const effectiveExpiresAt =
+        ttlSeconds.value !== null ? now + ttlSeconds.value * 1000 : expiresAt.value;
 
-    let bodyBytes = new Uint8Array(await request.arrayBuffer());
+      let bodyBytes = new Uint8Array(await request.arrayBuffer());
+      if (bodyBytes.length > MAX_APPEND_BYTES) {
+        return this.err(413, "payload too large");
+      }
 
-    if (
-      bodyBytes.length > 0 &&
-      isJsonContentType(headerContentType ?? "application/octet-stream")
-    ) {
-      const text = new TextDecoder().decode(bodyBytes);
-      try {
-        const value = JSON.parse(text);
-        if (Array.isArray(value) && value.length === 0) {
-          bodyBytes = new Uint8Array();
+      if (
+        bodyBytes.length > 0 &&
+        isJsonContentType(headerContentType ?? "application/octet-stream")
+      ) {
+        const text = new TextDecoder().decode(bodyBytes);
+        try {
+          const value = JSON.parse(text);
+          if (Array.isArray(value) && value.length === 0) {
+            bodyBytes = new Uint8Array();
+          }
+        } catch {
+          // invalid JSON handled later in append path
         }
-      } catch {
-        // invalid JSON handled later in append path
       }
-    }
 
-    const existing = await this.getStream(streamId);
-    if (existing) {
-      const contentType = headerContentType ?? existing.content_type;
-      if (normalizeContentType(existing.content_type) !== contentType) {
-        return this.err(409, "content-type mismatch");
+      const existing = await this.getStream(streamId);
+      if (existing) {
+        const contentType = headerContentType ?? existing.content_type;
+        if (normalizeContentType(existing.content_type) !== contentType) {
+          return this.err(409, "content-type mismatch");
+        }
+        if (requestedClosed !== (existing.closed === 1)) {
+          return this.err(409, "stream closed status mismatch");
+        }
+        if (!ttlMatches(existing, ttlSeconds.value, effectiveExpiresAt)) {
+          return this.err(409, "stream TTL/expiry mismatch");
+        }
+
+        const headers = this.baseHeaders({
+          "Content-Type": existing.content_type,
+          [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(existing.tail_offset),
+        });
+        applyExpiryHeaders(headers, existing);
+        if (existing.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
+        return new Response(null, { status: 200, headers });
       }
-      if (requestedClosed !== (existing.closed === 1)) {
-        return this.err(409, "stream closed status mismatch");
+
+      const contentType = headerContentType ?? "application/octet-stream";
+
+      await this.env.DB.prepare(
+        "INSERT INTO streams (stream_id, content_type, closed, tail_offset, last_stream_seq, ttl_seconds, expires_at, created_at) VALUES (?, ?, ?, 0, NULL, ?, ?, ?)",
+      )
+        .bind(
+          streamId,
+          contentType,
+          requestedClosed ? 1 : 0,
+          ttlSeconds.value,
+          effectiveExpiresAt,
+          now,
+        )
+        .run();
+
+      let tailOffset = 0;
+
+      const producer = this.parseProducerHeaders(request);
+      if (producer && producer.error) return producer.error;
+
+      if (producer?.value) {
+        const producerEval = await this.evaluateProducer(streamId, producer.value);
+        if (producerEval.kind === "error") return producerEval.response;
       }
-      if (!ttlMatches(existing, ttlSeconds.value, effectiveExpiresAt)) {
-        return this.err(409, "stream TTL/expiry mismatch");
+
+      if (bodyBytes.length > 0) {
+        const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
+          streamSeq: request.headers.get(HEADER_STREAM_SEQ),
+          producer: producer?.value ?? null,
+          closeStream: requestedClosed,
+        });
+
+        if (append.error) return append.error;
+        await this.env.DB.batch(append.statements);
+        tailOffset = append.newTailOffset;
       }
 
       const headers = this.baseHeaders({
-        "Content-Type": existing.content_type,
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(existing.tail_offset),
+        "Content-Type": contentType,
+        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(tailOffset),
       });
-      applyExpiryHeaders(headers, existing);
-      if (existing.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
-      return new Response(null, { status: 200, headers });
-    }
-
-    const contentType = headerContentType ?? "application/octet-stream";
-
-    await this.env.DB.prepare(
-      "INSERT INTO streams (stream_id, content_type, closed, tail_offset, last_stream_seq, ttl_seconds, expires_at, created_at) VALUES (?, ?, ?, 0, NULL, ?, ?, ?)",
-    )
-      .bind(
-        streamId,
-        contentType,
-        requestedClosed ? 1 : 0,
-        ttlSeconds.value,
-        effectiveExpiresAt,
-        now,
-      )
-      .run();
-
-    let tailOffset = 0;
-
-    const producer = this.parseProducerHeaders(request);
-    if (producer && producer.error) return producer.error;
-
-    if (bodyBytes.length > 0) {
-      const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
-        streamSeq: request.headers.get(HEADER_STREAM_SEQ),
-        producer: producer?.value ?? null,
-        closeStream: requestedClosed,
+      applyExpiryHeaders(headers, {
+        stream_id: streamId,
+        content_type: contentType,
+        closed: requestedClosed ? 1 : 0,
+        tail_offset: tailOffset,
+        last_stream_seq: null,
+        ttl_seconds: ttlSeconds.value,
+        expires_at: effectiveExpiresAt,
+        created_at: now,
+        closed_at: requestedClosed ? now : null,
       });
+      if (requestedClosed) headers.set(HEADER_STREAM_CLOSED, "true");
+      headers.set("Location", request.url);
 
-      if (append.error) return append.error;
-      await this.env.DB.batch(append.statements);
-      tailOffset = append.newTailOffset;
-    }
+      if (requestedClosed) {
+        this.state.waitUntil(this.snapshotToR2(streamId, contentType, tailOffset));
+      }
 
-    const headers = this.baseHeaders({
-      "Content-Type": contentType,
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(tailOffset),
+      return new Response(null, { status: 201, headers });
     });
-    applyExpiryHeaders(headers, {
-      stream_id: streamId,
-      content_type: contentType,
-      closed: requestedClosed ? 1 : 0,
-      tail_offset: tailOffset,
-      last_stream_seq: null,
-      ttl_seconds: ttlSeconds.value,
-      expires_at: effectiveExpiresAt,
-      created_at: now,
-      closed_at: requestedClosed ? now : null,
-    });
-    if (requestedClosed) headers.set(HEADER_STREAM_CLOSED, "true");
-    headers.set("Location", request.url);
-
-    if (requestedClosed) {
-      this.state.waitUntil(this.snapshotToR2(streamId, contentType, tailOffset));
-    }
-
-    return new Response(null, { status: 201, headers });
   }
 
   private async handlePost(streamId: string, request: Request): Promise<Response> {
-    const meta = await this.getStream(streamId);
-    if (!meta) return this.err(404, "stream not found");
+    return this.state.blockConcurrencyWhile(async () => {
+      const meta = await this.getStream(streamId);
+      if (!meta) return this.err(404, "stream not found");
 
-    const contentType = normalizeContentType(request.headers.get("Content-Type"));
-    const closeStream = request.headers.get(HEADER_STREAM_CLOSED) === "true";
+      const closeStream = request.headers.get(HEADER_STREAM_CLOSED) === "true";
 
-    const bodyBytes = new Uint8Array(await request.arrayBuffer());
-
-    if (bodyBytes.length === 0 && closeStream) {
-      if (!meta.closed) {
-        await this.env.DB.prepare(
-          "UPDATE streams SET closed = 1, closed_at = ? WHERE stream_id = ?",
-        )
-          .bind(Date.now(), streamId)
-          .run();
+      const bodyBytes = new Uint8Array(await request.arrayBuffer());
+      if (bodyBytes.length > MAX_APPEND_BYTES) {
+        return this.err(413, "payload too large");
       }
 
-      const headers = this.baseHeaders({
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-        [HEADER_STREAM_CLOSED]: "true",
+      const producer = this.parseProducerHeaders(request);
+      if (producer && producer.error) return producer.error;
+
+      let producerEval: ProducerEval = { kind: "none" };
+      if (producer?.value) {
+        producerEval = await this.evaluateProducer(streamId, producer.value);
+        if (producerEval.kind === "error") return producerEval.response;
+        if (producerEval.kind === "duplicate") {
+          return this.producerDuplicateResponse(producerEval.state, meta.closed === 1);
+        }
+      }
+
+      if (bodyBytes.length === 0 && closeStream) {
+        if (meta.closed === 1 && producer?.value) {
+          return this.closedConflict(meta);
+        }
+
+        if (!meta.closed) {
+          await this.env.DB.prepare(
+            "UPDATE streams SET closed = 1, closed_at = ? WHERE stream_id = ?",
+          )
+            .bind(Date.now(), streamId)
+            .run();
+        }
+
+        if (producer?.value) {
+          await this.producerUpsertStatement(streamId, producer.value, meta.tail_offset).run();
+        }
+
+        const headers = this.baseHeaders({
+          [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+          [HEADER_STREAM_CLOSED]: "true",
+        });
+
+        if (producer?.value) {
+          headers.set(HEADER_PRODUCER_EPOCH, producer.value.epoch.toString());
+          headers.set(HEADER_PRODUCER_SEQ, producer.value.seq.toString());
+        }
+
+        this.notifyWaiters(meta.tail_offset);
+        await this.broadcastSseControl(meta.tail_offset, true);
+        this.state.waitUntil(this.snapshotToR2(streamId, meta.content_type, meta.tail_offset));
+        return new Response(null, { status: 204, headers });
+      }
+
+      if (bodyBytes.length === 0) {
+        return this.err(400, "empty body");
+      }
+
+      if (meta.closed === 1) {
+        return this.closedConflict(meta);
+      }
+
+      const contentType = normalizeContentType(request.headers.get("Content-Type"));
+      if (!contentType) {
+        return this.err(400, "Content-Type is required");
+      }
+
+      if (normalizeContentType(meta.content_type) !== contentType) {
+        return this.err(409, "content-type mismatch");
+      }
+
+      const streamSeq = request.headers.get(HEADER_STREAM_SEQ);
+      if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
+        return this.err(409, "Stream-Seq regression");
+      }
+
+      const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
+        streamSeq,
+        producer: producer?.value ?? null,
+        closeStream,
       });
-      this.notifyWaiters(meta.tail_offset);
-      await this.broadcastSseControl(meta.tail_offset, true);
-      this.state.waitUntil(this.snapshotToR2(streamId, meta.content_type, meta.tail_offset));
-      return new Response(null, { status: 204, headers });
-    }
 
-    if (!contentType) {
-      return this.err(400, "Content-Type is required");
-    }
+      if (append.error) return append.error;
 
-    if (normalizeContentType(meta.content_type) !== contentType) {
-      return this.err(409, "content-type mismatch");
-    }
+      await this.env.DB.batch(append.statements);
 
-    if (meta.closed) {
-      return this.err(409, "stream is closed");
-    }
+      const headers = this.baseHeaders({
+        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(append.newTailOffset),
+      });
 
-    const producer = this.parseProducerHeaders(request);
-    if (producer && producer.error) return producer.error;
+      if (producer?.value) {
+        headers.set(HEADER_PRODUCER_EPOCH, producer.value.epoch.toString());
+        headers.set(HEADER_PRODUCER_SEQ, producer.value.seq.toString());
+      }
 
-    const streamSeq = request.headers.get(HEADER_STREAM_SEQ);
-    if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
-      return this.err(409, "Stream-Seq regression");
-    }
+      if (closeStream) headers.set(HEADER_STREAM_CLOSED, "true");
 
-    const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
-      streamSeq,
-      producer: producer?.value ?? null,
-      closeStream,
+      this.notifyWaiters(append.newTailOffset);
+      this.broadcastSse(contentType, append.ssePayload, append.newTailOffset, closeStream);
+      if (closeStream) {
+        this.state.waitUntil(this.snapshotToR2(streamId, contentType, append.newTailOffset));
+      }
+
+      const status = producer?.value ? 200 : 204;
+      return new Response(null, { status, headers });
     });
-
-    if (append.error) return append.error;
-
-    await this.env.DB.batch(append.statements);
-
-    const headers = this.baseHeaders({
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(append.newTailOffset),
-    });
-
-    if (producer?.value) {
-      headers.set(HEADER_PRODUCER_EPOCH, producer.value.epoch.toString());
-      headers.set(HEADER_PRODUCER_SEQ, producer.value.seq.toString());
-    }
-
-    if (closeStream) headers.set(HEADER_STREAM_CLOSED, "true");
-
-    this.notifyWaiters(append.newTailOffset);
-    this.broadcastSse(contentType, append.ssePayload, append.newTailOffset, closeStream);
-    if (closeStream) {
-      this.state.waitUntil(this.snapshotToR2(streamId, contentType, append.newTailOffset));
-    }
-
-    return new Response(null, { status: 204, headers });
   }
 
   private async handleGet(streamId: string, request: Request, url: URL): Promise<Response> {
@@ -387,7 +438,7 @@ export class StreamDO {
       return new Response(initialRead.body, { status: 200, headers });
     }
 
-    const timedOut = await this.waitForData(offset, 20_000);
+    const timedOut = await this.waitForData(offset, LONG_POLL_TIMEOUT_MS);
     const current = await this.getStream(streamId);
     if (!current) return this.err(404, "stream not found");
 
@@ -456,65 +507,25 @@ export class StreamDO {
 
     client.closeTimer = setTimeout(async () => {
       if (client.closed) return;
-      client.closed = true;
-      try {
-        await client.writer.close();
-      } finally {
-        this.sseClients.delete(client.id);
-      }
+      await this.closeSseClient(client);
     }, SSE_RECONNECT_MS) as unknown as number;
-
-    let currentOffset = offset;
-    let read = await this.readFromOffset(streamId, meta, currentOffset);
-    if (read.error) {
-      if (client.closeTimer) clearTimeout(client.closeTimer);
-      this.sseClients.delete(clientId);
-      await writer.close();
-      return this.err(500, "read failed");
-    }
-
-    if (read.hasData) {
-      await this.writeSseData(client, read.body, read.nextOffset, read.upToDate, read.closedAtTail);
-      currentOffset = read.nextOffset;
-      client.offset = currentOffset;
-
-      while (!read.upToDate && !read.closedAtTail) {
-        read = await this.readFromOffset(streamId, meta, currentOffset);
-        if (read.error) break;
-        if (!read.hasData) break;
-        await this.writeSseData(
-          client,
-          read.body,
-          read.nextOffset,
-          read.upToDate,
-          read.closedAtTail,
-        );
-        currentOffset = read.nextOffset;
-        client.offset = currentOffset;
-      }
-    } else {
-      await this.writeSseControl(
-        client,
-        currentOffset,
-        true,
-        meta.closed === 1 && currentOffset >= meta.tail_offset,
-      );
-    }
-
-    if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
-      if (client.closeTimer) clearTimeout(client.closeTimer);
-      await writer.close();
-      this.sseClients.delete(clientId);
-    }
 
     const headers = this.baseHeaders({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
     });
 
     if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");
+
+    this.state.waitUntil(
+      (async () => {
+        await Promise.resolve();
+        await this.runSseSession(streamId, meta, client);
+      })(),
+    );
 
     return new Response(readable, { status: 200, headers });
   }
@@ -536,9 +547,14 @@ export class StreamDO {
   }
 
   private async handleDelete(streamId: string): Promise<Response> {
-    await this.deleteStreamData(streamId);
+    return this.state.blockConcurrencyWhile(async () => {
+      const meta = await this.getStream(streamId);
+      if (!meta) return this.err(404, "stream not found");
 
-    return new Response(null, { status: 204, headers: this.baseHeaders() });
+      await this.deleteStreamData(streamId);
+
+      return new Response(null, { status: 204, headers: this.baseHeaders() });
+    });
   }
 
   private async getStream(streamId: string): Promise<StreamMeta | null> {
@@ -576,6 +592,10 @@ export class StreamDO {
 
     if (!id || !epochStr || !seqStr) {
       return { error: this.err(400, "Producer headers must be provided together") };
+    }
+
+    if (id.trim().length === 0) {
+      return { error: this.err(400, "Producer-Id must not be empty") };
     }
 
     if (!isInteger(epochStr) || !isInteger(seqStr)) {
@@ -616,9 +636,9 @@ export class StreamDO {
 
     if (isJsonContentType(contentType)) {
       const text = new TextDecoder().decode(bodyBytes);
-      let value: unknown;
+      let parsed: unknown;
       try {
-        value = JSON.parse(text);
+        parsed = JSON.parse(text);
       } catch {
         return {
           statements: [],
@@ -628,25 +648,22 @@ export class StreamDO {
         };
       }
 
-      if (Array.isArray(value)) {
-        if (value.length === 0) {
-          return {
-            statements: [],
-            newTailOffset: 0,
-            ssePayload: null,
-            error: this.err(400, "empty JSON array is not allowed"),
-          };
-        }
-        messages = value.map((item) => {
-          const serialized = JSON.stringify(item);
-          const encoded = new TextEncoder().encode(serialized);
-          return { body: encoded.buffer, sizeBytes: encoded.byteLength };
-        });
-      } else {
-        const serialized = JSON.stringify(value);
-        const encoded = new TextEncoder().encode(serialized);
-        messages = [{ body: encoded.buffer, sizeBytes: encoded.byteLength }];
+      const values = Array.isArray(parsed) ? parsed : [parsed];
+      if (values.length === 0) {
+        return {
+          statements: [],
+          newTailOffset: 0,
+          ssePayload: null,
+          error: this.err(400, "empty JSON array is not allowed"),
+        };
       }
+
+      const encoder = new TextEncoder();
+      messages = values.map((value) => {
+        const serialized = JSON.stringify(value);
+        const encoded = encoder.encode(serialized);
+        return { body: encoded.buffer, sizeBytes: encoded.byteLength };
+      });
     } else {
       if (bodyBytes.length === 0) {
         return {
@@ -660,40 +677,6 @@ export class StreamDO {
     }
 
     let tailOffset = meta.tail_offset;
-
-    if (opts.producer) {
-      const producer = await this.getProducer(streamId, opts.producer.id);
-      if (producer) {
-        if (opts.producer.epoch < producer.epoch) {
-          const res = this.err(403, "stale producer epoch");
-          res.headers.set(HEADER_PRODUCER_EPOCH, producer.epoch.toString());
-          return { statements: [], newTailOffset: 0, ssePayload: null, error: res };
-        }
-
-        if (opts.producer.epoch === producer.epoch) {
-          if (opts.producer.seq === producer.last_seq) {
-            const res = this.baseHeaders({
-              [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(producer.last_offset),
-              [HEADER_PRODUCER_EPOCH]: producer.epoch.toString(),
-              [HEADER_PRODUCER_SEQ]: producer.last_seq.toString(),
-            });
-            return {
-              statements: [],
-              newTailOffset: producer.last_offset,
-              ssePayload: null,
-              error: new Response(null, { status: 204, headers: res }),
-            };
-          }
-
-          if (opts.producer.seq !== producer.last_seq + 1) {
-            const res = this.err(409, "producer sequence gap");
-            res.headers.set(HEADER_PRODUCER_EXPECTED_SEQ, (producer.last_seq + 1).toString());
-            res.headers.set(HEADER_PRODUCER_RECEIVED_SEQ, opts.producer.seq.toString());
-            return { statements: [], newTailOffset: 0, ssePayload: null, error: res };
-          }
-        }
-      }
-    }
 
     for (let i = 0; i < messages.length; i += 1) {
       const message = messages[i];
@@ -744,14 +727,14 @@ export class StreamDO {
     );
 
     if (opts.producer) {
-      statements.push(
-        this.env.DB.prepare(
-          "INSERT INTO producers (stream_id, producer_id, epoch, last_seq, last_offset) VALUES (?, ?, ?, ?, ?) ON CONFLICT(stream_id, producer_id) DO UPDATE SET epoch = excluded.epoch, last_seq = excluded.last_seq, last_offset = excluded.last_offset",
-        ).bind(streamId, opts.producer.id, opts.producer.epoch, opts.producer.seq, tailOffset),
-      );
+      statements.push(this.producerUpsertStatement(streamId, opts.producer, tailOffset));
     }
 
-    const ssePayload = messages.length === 1 ? messages[0].body : this.buildJsonArray(messages);
+    const ssePayload = isJsonContentType(contentType)
+      ? this.buildJsonArray(messages)
+      : messages.length === 1
+        ? messages[0].body
+        : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
 
     return { statements, newTailOffset: tailOffset, ssePayload };
   }
@@ -766,11 +749,83 @@ export class StreamDO {
     return result ?? null;
   }
 
+  private async evaluateProducer(
+    streamId: string,
+    producer: { id: string; epoch: number; seq: number },
+  ): Promise<ProducerEval> {
+    const existing = await this.getProducer(streamId, producer.id);
+    if (!existing) {
+      if (producer.seq !== 0) {
+        return { kind: "error", response: this.err(400, "Producer-Seq must start at 0") };
+      }
+      return { kind: "ok", state: null };
+    }
+
+    if (producer.epoch < existing.epoch) {
+      const res = this.err(403, "stale producer epoch");
+      res.headers.set(HEADER_PRODUCER_EPOCH, existing.epoch.toString());
+      return { kind: "error", response: res };
+    }
+
+    if (producer.epoch > existing.epoch) {
+      if (producer.seq !== 0) {
+        return {
+          kind: "error",
+          response: this.err(400, "Producer-Seq must start at 0 for new epoch"),
+        };
+      }
+      return { kind: "ok", state: existing };
+    }
+
+    if (producer.seq <= existing.last_seq) {
+      return { kind: "duplicate", state: existing };
+    }
+
+    if (producer.seq !== existing.last_seq + 1) {
+      const res = this.err(409, "producer sequence gap");
+      res.headers.set(HEADER_PRODUCER_EXPECTED_SEQ, (existing.last_seq + 1).toString());
+      res.headers.set(HEADER_PRODUCER_RECEIVED_SEQ, producer.seq.toString());
+      return { kind: "error", response: res };
+    }
+
+    return { kind: "ok", state: existing };
+  }
+
+  private producerDuplicateResponse(state: ProducerState, streamClosed: boolean): Response {
+    const headers = this.baseHeaders({
+      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(state.last_offset),
+      [HEADER_PRODUCER_EPOCH]: state.epoch.toString(),
+      [HEADER_PRODUCER_SEQ]: state.last_seq.toString(),
+    });
+
+    if (streamClosed) headers.set(HEADER_STREAM_CLOSED, "true");
+
+    return new Response(null, { status: 204, headers });
+  }
+
+  private closedConflict(meta: StreamMeta): Response {
+    const headers = this.baseHeaders({
+      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+      [HEADER_STREAM_CLOSED]: "true",
+    });
+    return new Response("stream is closed", { status: 409, headers });
+  }
+
+  private producerUpsertStatement(
+    streamId: string,
+    producer: { id: string; epoch: number; seq: number },
+    lastOffset: number,
+  ): D1PreparedStatement {
+    return this.env.DB.prepare(
+      "INSERT INTO producers (stream_id, producer_id, epoch, last_seq, last_offset) VALUES (?, ?, ?, ?, ?) ON CONFLICT(stream_id, producer_id) DO UPDATE SET epoch = excluded.epoch, last_seq = excluded.last_seq, last_offset = excluded.last_offset",
+    ).bind(streamId, producer.id, producer.epoch, producer.seq, lastOffset);
+  }
+
   private resolveOffset(
     meta: StreamMeta,
     offsetParam: string | null,
   ): { offset: number; isNow: boolean; error?: Response } {
-    if (!offsetParam || offsetParam === "-1") {
+    if (offsetParam === null || offsetParam === "-1") {
       return { offset: 0, isNow: false };
     }
 
@@ -823,13 +878,13 @@ export class StreamDO {
           };
         }
         const sliceStart = offset - overlap.start_offset;
-        const source = new Uint8Array(overlap.body);
+        const source = toUint8Array(overlap.body);
         const slice = source.slice(sliceStart);
         chunks.push({
           start_offset: offset,
           end_offset: overlap.end_offset,
           size_bytes: slice.byteLength,
-          body: slice.buffer,
+          body: slice,
         });
       }
     }
@@ -843,7 +898,13 @@ export class StreamDO {
 
     for (const row of rows.results ?? []) {
       if (bytes + row.size_bytes > MAX_CHUNK_BYTES && bytes > 0) break;
-      chunks.push(row);
+      const body = toUint8Array(row.body);
+      chunks.push({
+        start_offset: row.start_offset,
+        end_offset: row.end_offset,
+        size_bytes: row.size_bytes,
+        body,
+      });
       bytes += row.size_bytes;
       if (bytes >= MAX_CHUNK_BYTES) break;
     }
@@ -874,15 +935,17 @@ export class StreamDO {
         chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes })),
       );
     } else {
-      body = concatBuffers(chunks.map((chunk) => new Uint8Array(chunk.body)));
+      body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
     }
 
     return { body, nextOffset, upToDate, closedAtTail, hasData: true };
   }
 
-  private buildJsonArray(messages: Array<{ body: ArrayBuffer; sizeBytes: number }>): ArrayBuffer {
+  private buildJsonArray(
+    messages: Array<{ body: ArrayBuffer | Uint8Array | string | number[]; sizeBytes: number }>,
+  ): ArrayBuffer {
     const decoder = new TextDecoder();
-    const parts = messages.map((msg) => decoder.decode(msg.body));
+    const parts = messages.map((msg) => decoder.decode(toUint8Array(msg.body)));
     const joined = `[${parts.join(",")}]`;
     return new TextEncoder().encode(joined).buffer;
   }
@@ -928,10 +991,7 @@ export class StreamDO {
       await this.writeSseData(client, payload, nextOffset, true, streamClosed);
       client.offset = nextOffset;
       if (streamClosed) {
-        client.closed = true;
-        if (client.closeTimer) clearTimeout(client.closeTimer);
-        await client.writer.close();
-        this.sseClients.delete(client.id);
+        await this.closeSseClient(client);
       }
     }
   }
@@ -943,11 +1003,74 @@ export class StreamDO {
       await this.writeSseControl(client, nextOffset, true, streamClosed);
       client.offset = nextOffset;
       if (streamClosed) {
-        client.closed = true;
-        if (client.closeTimer) clearTimeout(client.closeTimer);
-        await client.writer.close();
-        this.sseClients.delete(client.id);
+        await this.closeSseClient(client);
       }
+    }
+  }
+
+  private async runSseSession(
+    streamId: string,
+    meta: StreamMeta,
+    client: SseClient,
+  ): Promise<void> {
+    try {
+      let currentOffset = client.offset;
+      let read = await this.readFromOffset(streamId, meta, currentOffset);
+      if (read.error) {
+        await this.closeSseClient(client);
+        return;
+      }
+
+      if (read.hasData) {
+        await this.writeSseData(
+          client,
+          read.body,
+          read.nextOffset,
+          read.upToDate,
+          read.closedAtTail,
+        );
+        currentOffset = read.nextOffset;
+        client.offset = currentOffset;
+
+        while (!read.upToDate && !read.closedAtTail) {
+          read = await this.readFromOffset(streamId, meta, currentOffset);
+          if (read.error) break;
+          if (!read.hasData) break;
+          await this.writeSseData(
+            client,
+            read.body,
+            read.nextOffset,
+            read.upToDate,
+            read.closedAtTail,
+          );
+          currentOffset = read.nextOffset;
+          client.offset = currentOffset;
+        }
+      } else {
+        await this.writeSseControl(
+          client,
+          currentOffset,
+          true,
+          meta.closed === 1 && currentOffset >= meta.tail_offset,
+        );
+      }
+
+      if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
+        await this.closeSseClient(client);
+      }
+    } catch {
+      await this.closeSseClient(client);
+    }
+  }
+
+  private async closeSseClient(client: SseClient): Promise<void> {
+    if (client.closed) return;
+    client.closed = true;
+    if (client.closeTimer) clearTimeout(client.closeTimer);
+    try {
+      await client.writer.close();
+    } finally {
+      this.sseClients.delete(client.id);
     }
   }
 
@@ -970,7 +1093,7 @@ export class StreamDO {
         chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes })),
       );
     } else {
-      body = concatBuffers(chunks.map((chunk) => new Uint8Array(chunk.body)));
+      body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
     }
 
     const key = `stream/${encodeURIComponent(streamId)}/snapshot-${Date.now()}`;
@@ -991,30 +1114,30 @@ export class StreamDO {
     streamClosed: boolean,
   ): Promise<void> {
     const encoder = new TextEncoder();
-    await client.writer.write(encoder.encode("event: data\n"));
+    let output = "event: data\n";
 
     if (client.useBase64) {
-      const encoded = btoa(String.fromCharCode(...new Uint8Array(payload)));
-      await client.writer.write(encoder.encode(`data:${encoded}\n\n`));
+      const encoded = base64Encode(new Uint8Array(payload));
+      output += `data:${encoded}\n\n`;
     } else {
       const text = new TextDecoder().decode(payload);
       const lines = text.split(/\r\n|\n|\r/);
       for (const line of lines) {
-        await client.writer.write(encoder.encode(`data:${line}\n`));
+        output += `data:${line}\n`;
       }
-      await client.writer.write(encoder.encode("\n"));
+      output += "\n";
     }
 
-    await this.writeSseControl(client, nextOffset, upToDate, streamClosed);
+    output += this.buildSseControlEvent(client, nextOffset, upToDate, streamClosed);
+    await client.writer.write(encoder.encode(output));
   }
 
-  private async writeSseControl(
+  private buildSseControlEvent(
     client: SseClient,
     nextOffset: number,
     upToDate: boolean,
     streamClosed: boolean,
-  ): Promise<void> {
-    const encoder = new TextEncoder();
+  ): string {
     const control: Record<string, unknown> = {
       streamNextOffset: encodeOffset(nextOffset),
     };
@@ -1028,8 +1151,18 @@ export class StreamDO {
       if (upToDate) control.upToDate = true;
     }
 
-    await client.writer.write(encoder.encode("event: control\n"));
-    await client.writer.write(encoder.encode(`data:${JSON.stringify(control)}\n\n`));
+    return `event: control\n` + `data:${JSON.stringify(control)}\n\n`;
+  }
+
+  private async writeSseControl(
+    client: SseClient,
+    nextOffset: number,
+    upToDate: boolean,
+    streamClosed: boolean,
+  ): Promise<void> {
+    const encoder = new TextEncoder();
+    const payload = this.buildSseControlEvent(client, nextOffset, upToDate, streamClosed);
+    await client.writer.write(encoder.encode(payload));
   }
 
   private baseHeaders(extra: Record<string, string> = {}): Headers {
@@ -1170,4 +1303,22 @@ function concatBuffers(chunks: Uint8Array[]): ArrayBuffer {
     offset += chunk.byteLength;
   }
   return out.buffer;
+}
+
+function toUint8Array(body: ArrayBuffer | Uint8Array | string | number[]): Uint8Array {
+  if (body instanceof Uint8Array) return body;
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  if (Array.isArray(body)) return new Uint8Array(body);
+  return new TextEncoder().encode(body);
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  if (bytes.length === 0) return "";
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
