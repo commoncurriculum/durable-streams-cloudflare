@@ -65,6 +65,25 @@ pnpm run test:implementation
 Note: If `IMPLEMENTATION_TEST_URL` is not set, the test runner will start a local
 worker automatically. Set `IMPLEMENTATION_TEST_URL` to target an existing server.
 
+## Performance Smoke
+Run a local latency smoke check (append/read p50/p95):
+```bash
+pnpm run perf
+```
+Notes:
+- Uses `PERF_BASE_URL` if set, otherwise spins up a local worker automatically.
+- Set `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to enforce a 10ms CF budget.
+
+## Performance Smoke Test
+Run a local perf sweep (does not fail unless you set a budget):
+```bash
+pnpm run perf
+```
+Optional env vars:
+- `PERF_BASE_URL` to target an existing worker.
+- `PERF_ITERATIONS` to change sample count (default 25).
+- `PERF_BUDGET_MS` + `PERF_ENFORCE=1` to fail if p95 exceeds a budget.
+
 ## Stream URL
 ```
 /v1/stream/<stream-id>
@@ -147,3 +166,4 @@ The worker exposes these response headers for browser clients:
 - `src/protocol/*`
 - `src/storage/*`
 - `test/implementation/*`
+- `test/performance/*`
