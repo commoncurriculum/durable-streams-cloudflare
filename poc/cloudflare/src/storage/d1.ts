@@ -70,20 +70,29 @@ export class D1Storage implements StreamStorage {
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
+    lastUpdated: number,
   ): D1PreparedStatement {
     return this.db
       .prepare(
-        "INSERT INTO producers (stream_id, producer_id, epoch, last_seq, last_offset) VALUES (?, ?, ?, ?, ?) ON CONFLICT(stream_id, producer_id) DO UPDATE SET epoch = excluded.epoch, last_seq = excluded.last_seq, last_offset = excluded.last_offset",
+        "INSERT INTO producers (stream_id, producer_id, epoch, last_seq, last_offset, last_updated) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(stream_id, producer_id) DO UPDATE SET epoch = excluded.epoch, last_seq = excluded.last_seq, last_offset = excluded.last_offset, last_updated = excluded.last_updated",
       )
-      .bind(streamId, producer.id, producer.epoch, producer.seq, lastOffset);
+      .bind(streamId, producer.id, producer.epoch, producer.seq, lastOffset, lastUpdated);
   }
 
   async upsertProducer(
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
+    lastUpdated: number,
   ): Promise<void> {
-    await this.producerUpsertStatement(streamId, producer, lastOffset).run();
+    await this.producerUpsertStatement(streamId, producer, lastOffset, lastUpdated).run();
+  }
+
+  async deleteProducer(streamId: string, producerId: string): Promise<void> {
+    await this.db
+      .prepare("DELETE FROM producers WHERE stream_id = ? AND producer_id = ?")
+      .bind(streamId, producerId)
+      .run();
   }
 
   insertOpStatement(input: {
