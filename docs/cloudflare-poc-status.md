@@ -2,7 +2,7 @@
 
 ## Baseline (2026-02-03)
 - Conformance suite: **239/239** (local `wrangler dev --local`).
-- Implementation tests: **11/11** (local worker, real D1/R2).
+- Implementation tests: **14/14** (local worker, real D1/R2).
 - Perf smoke: append p95 ~7ms, read p95 ~6ms (local dev run; non‑gating).
 
 ## Commands (local)

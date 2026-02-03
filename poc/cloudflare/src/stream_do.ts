@@ -1,7 +1,7 @@
 import { errorResponse } from "./protocol/errors";
 import { isExpired } from "./protocol/expiry";
 import { decodeOffset } from "./protocol/offsets";
-import { toUint8Array } from "./protocol/encoding";
+import { concatBuffers, toUint8Array } from "./protocol/encoding";
 import { isJsonContentType } from "./protocol/headers";
 import {
   R2_COMPACT_MIN_BYTES,
@@ -226,7 +226,27 @@ export class StreamDO {
       return await this.readFromOffsetFallback(streamId, meta, offset, maxChunkBytes);
     }
 
-    return readFromMessages({
+    const isJson = isJsonContentType(snapshot.content_type);
+    if (isJson) {
+      let messages = decoded.messages;
+      if (snapshot.end_offset < meta.tail_offset) {
+        const tailOps = await this.storage.selectOpsFrom(streamId, snapshot.end_offset);
+        if (tailOps.length > 0) {
+          messages = messages.concat(tailOps.map((chunk) => toUint8Array(chunk.body)));
+        }
+      }
+      return readFromMessages({
+        messages,
+        contentType: snapshot.content_type,
+        offset,
+        maxChunkBytes,
+        tailOffset: meta.tail_offset,
+        closed: meta.closed === 1,
+        segmentStart: snapshot.start_offset,
+      });
+    }
+
+    const segmentResult = readFromMessages({
       messages: decoded.messages,
       contentType: snapshot.content_type,
       offset,
@@ -235,6 +255,38 @@ export class StreamDO {
       closed: meta.closed === 1,
       segmentStart: snapshot.start_offset,
     });
+
+    if (
+      !segmentResult.hasData ||
+      segmentResult.upToDate ||
+      segmentResult.body.byteLength >= maxChunkBytes
+    ) {
+      return segmentResult;
+    }
+
+    const remaining = maxChunkBytes - segmentResult.body.byteLength;
+    const tailResult = await readFromOffset(
+      this.storage,
+      streamId,
+      meta,
+      segmentResult.nextOffset,
+      remaining,
+    );
+
+    if (!tailResult.hasData || tailResult.error) return segmentResult;
+
+    const combined = concatBuffers([
+      new Uint8Array(segmentResult.body),
+      new Uint8Array(tailResult.body),
+    ]);
+
+    return {
+      body: combined,
+      nextOffset: tailResult.nextOffset,
+      upToDate: tailResult.upToDate,
+      closedAtTail: tailResult.closedAtTail,
+      hasData: true,
+    };
   }
 
   private async readFromOffsetFallback(

@@ -235,6 +235,9 @@ Current status
   `IMPLEMENTATION_TEST_URL` is provided.
 - Added tests for aborted append safety and SSE reconnect after restart.
 - Added tests for producer TTL pruning, R2 truncation fallback, and randomized invariants.
+- Added characterization tests for long-poll cursor behavior and producer gap headers.
+- Added segment alignment test for multi-segment reads.
+- Added characterization tests for long-poll cursor behavior and producer gap headers.
 - Perf smoke test reports p50/p95; budget enforcement is opt-in via env vars.
 
 ## Phase 6: Docs and Ops
@@ -255,7 +258,7 @@ Characterization + perf
   and producer fencing edge cases (locks in protocol output).
 
 Implementation tests
-- Add segment boundary alignment tests for multi-segment reads.
+- Add segment boundary alignment tests for multi-segment reads. (done)
 
 Protocol/storage
 - Decide on offset format migration for cold storage rotation (if we adopt
