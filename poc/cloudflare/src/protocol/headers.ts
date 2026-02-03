@@ -10,7 +10,7 @@ export const HEADER_PRODUCER_EPOCH = "Producer-Epoch";
 export const HEADER_PRODUCER_SEQ = "Producer-Seq";
 export const HEADER_PRODUCER_EXPECTED_SEQ = "Producer-Expected-Seq";
 export const HEADER_PRODUCER_RECEIVED_SEQ = "Producer-Received-Seq";
-export const HEADER_SSE_DATA_ENCODING = "stream-sse-data-encoding";
+export const HEADER_SSE_DATA_ENCODING = "Stream-SSE-Data-Encoding";
 
 export function baseHeaders(extra: Record<string, string> = {}): Headers {
   const headers = new Headers(extra);

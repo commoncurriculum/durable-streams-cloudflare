@@ -444,7 +444,7 @@ export class StreamDO {
       const headers = baseHeaders({
         "Content-Type": meta.content_type,
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(initialRead.nextOffset),
-        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
+        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
       });
       if (initialRead.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
       if (initialRead.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
@@ -460,7 +460,7 @@ export class StreamDO {
       const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(current.tail_offset),
         [HEADER_STREAM_UP_TO_DATE]: "true",
-        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
+        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
       });
 
       if (current.closed === 1 && current.tail_offset === offset) {
@@ -477,7 +477,7 @@ export class StreamDO {
     const headers = baseHeaders({
       "Content-Type": current.content_type,
       [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(read.nextOffset),
-      [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor") ?? ""),
+      [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
     });
 
     if (read.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
