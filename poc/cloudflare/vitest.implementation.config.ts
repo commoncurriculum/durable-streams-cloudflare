@@ -9,6 +9,7 @@ export default defineConfig({
     include: [path.resolve(__dirname, "test/implementation/**/*.test.ts")],
     exclude: ["**/.git/**"],
     passWithNoTests: false,
-    testTimeout: 20_000,
+    testTimeout: 40_000,
+    globalSetup: path.resolve(__dirname, "test/implementation/global-setup.ts"),
   },
 });

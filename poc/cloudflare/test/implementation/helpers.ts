@@ -3,8 +3,12 @@ import { randomUUID } from "node:crypto";
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 const STREAM_PREFIX = "/v1/stream/";
 
-export function streamUrl(streamId: string, params?: Record<string, string>): string {
-  const base = new URL(BASE_URL);
+export function buildStreamUrl(
+  baseUrl: string,
+  streamId: string,
+  params?: Record<string, string>,
+): string {
+  const base = new URL(baseUrl);
   const basePath = base.pathname.endsWith("/") ? base.pathname : `${base.pathname}/`;
   const prefix = basePath === "/" ? STREAM_PREFIX : basePath;
   const url = new URL(`${prefix}${streamId.replace(/^\//, "")}`, base.origin);
@@ -16,57 +20,68 @@ export function streamUrl(streamId: string, params?: Record<string, string>): st
   return url.toString();
 }
 
+export function streamUrl(streamId: string, params?: Record<string, string>): string {
+  return buildStreamUrl(BASE_URL, streamId, params);
+}
+
 export function uniqueStreamId(prefix = "impl"): string {
   return `${prefix}-${randomUUID()}`;
 }
 
-export async function createStream(
-  streamId: string,
-  body: string | Uint8Array = "",
-  contentType = "text/plain",
-): Promise<Response> {
-  const response = await fetch(streamUrl(streamId), {
-    method: "PUT",
-    headers: {
-      "Content-Type": contentType,
+export function createClient(baseUrl = BASE_URL): {
+  streamUrl: (streamId: string, params?: Record<string, string>) => string;
+  createStream: (
+    streamId: string,
+    body?: string | Uint8Array,
+    contentType?: string,
+  ) => Promise<Response>;
+  appendStream: (
+    streamId: string,
+    body: string | Uint8Array,
+    contentType?: string,
+  ) => Promise<Response>;
+  deleteStream: (streamId: string) => Promise<Response>;
+  readAllText: (streamId: string, offset?: string) => Promise<string>;
+} {
+  return {
+    streamUrl: (streamId, params) => buildStreamUrl(baseUrl, streamId, params),
+    createStream: async (streamId, body = "", contentType = "text/plain") => {
+      const response = await fetch(buildStreamUrl(baseUrl, streamId), {
+        method: "PUT",
+        headers: {
+          "Content-Type": contentType,
+        },
+        body,
+      });
+      if (![200, 201].includes(response.status)) {
+        throw new Error(`PUT failed: ${response.status} ${await response.text()}`);
+      }
+      return response;
     },
-    body,
-  });
-  if (![200, 201].includes(response.status)) {
-    throw new Error(`PUT failed: ${response.status} ${await response.text()}`);
-  }
-  return response;
-}
-
-export async function appendStream(
-  streamId: string,
-  body: string | Uint8Array,
-  contentType = "text/plain",
-): Promise<Response> {
-  const response = await fetch(streamUrl(streamId), {
-    method: "POST",
-    headers: {
-      "Content-Type": contentType,
+    appendStream: async (streamId, body, contentType = "text/plain") => {
+      const response = await fetch(buildStreamUrl(baseUrl, streamId), {
+        method: "POST",
+        headers: {
+          "Content-Type": contentType,
+        },
+        body,
+      });
+      if (![200, 204].includes(response.status)) {
+        throw new Error(`POST failed: ${response.status} ${await response.text()}`);
+      }
+      return response;
     },
-    body,
-  });
-  if (![200, 204].includes(response.status)) {
-    throw new Error(`POST failed: ${response.status} ${await response.text()}`);
-  }
-  return response;
-}
-
-export async function deleteStream(streamId: string): Promise<Response> {
-  const response = await fetch(streamUrl(streamId), { method: "DELETE" });
-  return response;
-}
-
-export async function readAllText(streamId: string, offset = "0"): Promise<string> {
-  const response = await fetch(streamUrl(streamId, { offset }));
-  if (response.status !== 200) {
-    throw new Error(`GET failed: ${response.status} ${await response.text()}`);
-  }
-  return await response.text();
+    deleteStream: async (streamId) => {
+      return await fetch(buildStreamUrl(baseUrl, streamId), { method: "DELETE" });
+    },
+    readAllText: async (streamId, offset = "0") => {
+      const response = await fetch(buildStreamUrl(baseUrl, streamId, { offset }));
+      if (response.status !== 200) {
+        throw new Error(`GET failed: ${response.status} ${await response.text()}`);
+      }
+      return await response.text();
+    },
+  };
 }
 
 export function delay(ms: number): Promise<void> {
