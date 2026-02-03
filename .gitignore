@@ -10,3 +10,6 @@ erl_crash.dump
 .elixir_ls/
 node_modules/
 poc/cloudflare/.wrangler/tmp/
+.trekker/
+upstream/
+upstream-server/

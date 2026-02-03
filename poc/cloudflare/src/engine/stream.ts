@@ -260,20 +260,40 @@ export async function readFromOffset(
     }
   }
 
-  const rows = await storage.selectOpsFrom(streamId, offset);
   let bytes = chunks.reduce((sum, chunk) => sum + chunk.size_bytes, 0);
+  let cursor = offset;
 
-  for (const row of rows) {
-    if (bytes + row.size_bytes > maxChunkBytes && bytes > 0) break;
-    const body = toUint8Array(row.body);
-    chunks.push({
-      start_offset: row.start_offset,
-      end_offset: row.end_offset,
-      size_bytes: row.size_bytes,
-      body,
-    });
-    bytes += row.size_bytes;
-    if (bytes >= maxChunkBytes) break;
+  while (bytes < maxChunkBytes) {
+    const rows = await storage.selectOpsFrom(streamId, cursor);
+    if (rows.length === 0) break;
+
+    let reachedLimit = false;
+    const prevCursor = cursor;
+
+    for (const row of rows) {
+      if (bytes + row.size_bytes > maxChunkBytes && bytes > 0) {
+        reachedLimit = true;
+        break;
+      }
+      const body = toUint8Array(row.body);
+      chunks.push({
+        start_offset: row.start_offset,
+        end_offset: row.end_offset,
+        size_bytes: row.size_bytes,
+        body,
+      });
+      bytes += row.size_bytes;
+      cursor = row.end_offset;
+      if (bytes >= maxChunkBytes) {
+        reachedLimit = true;
+        break;
+      }
+    }
+
+    if (reachedLimit) break;
+
+    if (rows.length < 200) break;
+    if (cursor === prevCursor) break;
   }
 
   if (chunks.length === 0) {
