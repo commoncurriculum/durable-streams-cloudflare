@@ -42,9 +42,25 @@ export class D1Storage implements StreamStorage {
       .run();
   }
 
-  async closeStream(streamId: string, closedAt: number): Promise<void> {
+  async closeStream(
+    streamId: string,
+    closedAt: number,
+    closedBy?: { id: string; epoch: number; seq: number } | null,
+  ): Promise<void> {
+    if (closedBy) {
+      await this.db
+        .prepare(
+          "UPDATE streams SET closed = 1, closed_at = ?, closed_by_producer_id = ?, closed_by_epoch = ?, closed_by_seq = ? WHERE stream_id = ?",
+        )
+        .bind(closedAt, closedBy.id, closedBy.epoch, closedBy.seq, streamId)
+        .run();
+      return;
+    }
+
     await this.db
-      .prepare("UPDATE streams SET closed = 1, closed_at = ? WHERE stream_id = ?")
+      .prepare(
+        "UPDATE streams SET closed = 1, closed_at = ?, closed_by_producer_id = NULL, closed_by_epoch = NULL, closed_by_seq = NULL WHERE stream_id = ?",
+      )
       .bind(closedAt, streamId)
       .run();
   }
