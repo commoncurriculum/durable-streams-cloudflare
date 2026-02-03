@@ -1,52 +1,67 @@
-# Durable Streams Cloudflare POC (Worker + DO + D1)
+# Durable Streams Cloudflare POC (Worker + DO + R2)
 
-Cloudflare-only proof of concept for the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **D1 (SQLite)** as the hot log.
+Cloudflare-only proof of concept for the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **SQLite in DO storage** as the hot log. R2 stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops.
 
 ## What This POC Includes
 - Worker router with optional bearer token auth.
 - Durable Object per stream for ordering and live fan-out.
-- D1 schema for stream metadata, ops log, producer state, and snapshot index.
+- DO SQLite schema for stream metadata, ops log, producer state, and segment index.
 - Protocol behaviors for PUT/POST/GET/HEAD/DELETE, long-poll, and SSE.
 - JSON mode support (flatten arrays, validate JSON, return arrays on GET).
 - TTL/Expires-At enforcement.
-- R2 segments for cold storage (length-prefixed segment format + snapshot index).
-- Full server conformance coverage (239/239).
+- R2 segments for cold storage (length-prefixed segment format).
+- Optional D1 admin index for global segment listing.
 
 ## What It Does Not Include (Yet)
 - Background compaction scheduling (runs opportunistically on writes).
-- Global stream listing/search.
 - Multi-tenant auth or per-stream ACLs.
+- Range-read indexing for very large segments.
+
+## Why This Isn’t “Just a DO”
+Durable Objects give you **single-threaded state + storage**, but they do **not**
+provide:
+- The Durable Streams HTTP protocol (offsets, cursors, TTL/expiry, headers).
+- Producer ordering and idempotency semantics (epoch/seq enforcement).
+- Catch-up semantics + long-poll + SSE behavior.
+- CDN-aware caching behavior for long-poll responses.
+- Cold-storage rotation to R2 segments and read‑seq offset encoding.
+- Conformance test compatibility.
+
+This POC uses a DO as the sequencer, then layers the **Durable Streams
+protocol + storage model** on top.
+
+## Why the DO Parses R2 Segments (No Raw Byte-Range)
+R2 segments are **length‑prefixed message frames**. Offsets are *message index*
+for JSON streams and *byte offsets* for non‑JSON streams (not raw R2 byte
+positions). The DO must decode the segment to map an offset to the correct
+message boundary and chunk limit. The CDN caches the **final HTTP response**
+from the worker; it does not interpret offsets itself.
 
 ## Setup (local)
 1. Install dependencies:
    ```bash
    pnpm install
    ```
-2. Apply migrations (local D1):
+2. (Optional) Apply admin D1 migrations locally:
    ```bash
-   wrangler d1 execute durable_streams_poc --local --file migrations/0001_init.sql
-   wrangler d1 execute durable_streams_poc --local --file migrations/0002_expiry_snapshots.sql
-   wrangler d1 execute durable_streams_poc --local --file migrations/0003_producer_last_updated.sql
-   wrangler d1 execute durable_streams_poc --local --file migrations/0004_closed_by_producer.sql
+   pnpm exec wrangler d1 migrations apply durable_streams_admin --local
    ```
-3. Run the worker locally (uses local D1 and local R2 via Miniflare):
+3. Run the worker locally (uses local R2 via Miniflare; DO SQLite is auto-initialized):
    ```bash
    pnpm run dev
    ```
 
 ## Setup (remote)
-1. Create a D1 database and R2 bucket in your Cloudflare account.
-2. Update `wrangler.toml` with the real `database_id` and `bucket_name`.
-3. Apply migrations (remote D1):
+1. Create an R2 bucket (required).
+2. (Optional) Create a D1 database for the admin index.
+3. Update `wrangler.toml` with real ids.
+4. (Optional) Apply admin migrations:
    ```bash
-   wrangler d1 execute durable_streams_poc --file migrations/0001_init.sql
-   wrangler d1 execute durable_streams_poc --file migrations/0002_expiry_snapshots.sql
-   wrangler d1 execute durable_streams_poc --file migrations/0003_producer_last_updated.sql
-   wrangler d1 execute durable_streams_poc --file migrations/0004_closed_by_producer.sql
+   pnpm exec wrangler d1 migrations apply durable_streams_admin
    ```
-4. Deploy:
+5. Deploy:
    ```bash
-   wrangler deploy
+   pnpm exec wrangler deploy
    ```
 
 ## Conformance
@@ -99,7 +114,7 @@ curl -X POST \
 
 Catch-up read:
 ```bash
-curl "http://localhost:8787/v1/stream/doc-123?offset=-1"
+curl "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000"
 ```
 
 Long-poll:
@@ -115,17 +130,16 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000
 ## Notes on Offsets
 - Offsets are opaque, lexicographically sortable strings.
 - This POC uses fixed-width decimal `readSeq_byteOffset` encoding (Caddy/Node parity).
-- `readSeq` is currently `0` for all offsets (reserved for future segment rotation).
+- `readSeq` increments after a segment is rotated to R2; `byteOffset` resets per segment.
 - JSON streams increment offsets by **message count**; non-JSON streams increment by **byte length**.
 
 ## Durability and Latency
-- Writes are ACKed only after a D1 transaction commits.
-- This is the low-latency, strongly consistent path.
-- R2 stores cold segments; D1 keeps the hot tail + segment index.
+- Writes are ACKed only after a DO SQLite transaction commits.
+- R2 stores cold segments; DO SQLite keeps the hot tail + segment index.
 - Segment objects use length-prefixed message framing (Caddy parity).
 - Segment keys use base64url-encoded stream ids for safe paths.
-- Catch-up reads prefer R2 segments when present (fallback to D1 if missing or truncated).
-- Compaction runs opportunistically on writes and flushes the tail on close.
+- Catch-up reads prefer R2 segments when present.
+- Segment rotation runs opportunistically on writes and flushes the tail on close.
 
 ## Registry Stream
 The worker emits create/delete events to a system stream named `__registry__`.
@@ -152,8 +166,7 @@ The worker exposes these response headers for browser clients:
 
 ## Files
 - `wrangler.toml`
-- `migrations/0001_init.sql`
-- `migrations/0002_expiry_snapshots.sql`
+- `migrations/0001_segments_admin.sql`
 - `src/worker.ts`
 - `src/stream_do.ts`
 - `src/engine/*`

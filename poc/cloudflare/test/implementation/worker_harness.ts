@@ -53,7 +53,7 @@ export async function applyMigrations(persistDir: string): Promise<void> {
       "d1",
       "migrations",
       "apply",
-      "durable_streams_poc",
+      "durable_streams_admin",
       "--local",
       "--persist-to",
       persistDir,
@@ -126,7 +126,7 @@ export async function startWorker(options?: {
   };
 }
 
-async function waitForReady(url: string, timeoutMs = 10_000): Promise<void> {
+async function waitForReady(url: string, timeoutMs = 30_000): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     try {

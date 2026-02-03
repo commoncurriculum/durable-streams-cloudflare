@@ -9,7 +9,6 @@ import {
   baseHeaders,
 } from "../protocol/headers";
 import { errorResponse } from "../protocol/errors";
-import { encodeOffset } from "../protocol/offsets";
 import { isInteger } from "../protocol/validation";
 import type { ProducerState, StreamStorage } from "../storage/storage";
 
@@ -102,9 +101,13 @@ export async function evaluateProducer(
   return { kind: "ok", state: existing };
 }
 
-export function producerDuplicateResponse(state: ProducerState, streamClosed: boolean): Response {
+export function producerDuplicateResponse(
+  state: ProducerState,
+  nextOffsetHeader: string,
+  streamClosed: boolean,
+): Response {
   const headers = baseHeaders({
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(state.last_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_PRODUCER_EPOCH]: state.epoch.toString(),
     [HEADER_PRODUCER_SEQ]: state.last_seq.toString(),
   });

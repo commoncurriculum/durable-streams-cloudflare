@@ -13,7 +13,6 @@ import {
 import { MAX_APPEND_BYTES } from "../../protocol/limits";
 import { parseExpiresAt, parseTtlSeconds, ttlMatches } from "../../protocol/expiry";
 import { errorResponse } from "../../protocol/errors";
-import { encodeOffset } from "../../protocol/offsets";
 import {
   buildAppendBatch,
   buildClosedConflict,
@@ -91,7 +90,7 @@ export async function handlePut(
         return errorResponse(409, "stream TTL/expiry mismatch");
       }
 
-      const headers = buildPutHeaders(existing);
+      const headers = buildPutHeaders(existing, ctx.encodeTailOffset(existing));
       return new Response(null, { status: 200, headers });
     }
 
@@ -130,11 +129,15 @@ export async function handlePut(
 
     const closedBy = requestedClosed && producer?.value ? producer.value : null;
 
-    const headers = buildPutHeaders({
+    const createdMeta = {
       stream_id: streamId,
       content_type: contentType,
       closed: requestedClosed ? 1 : 0,
       tail_offset: tailOffset,
+      read_seq: 0,
+      segment_start: 0,
+      segment_messages: 0,
+      segment_bytes: 0,
       last_stream_seq: null,
       ttl_seconds: ttlSeconds.value,
       expires_at: effectiveExpiresAt,
@@ -143,12 +146,11 @@ export async function handlePut(
       closed_by_producer_id: closedBy?.id ?? null,
       closed_by_epoch: closedBy?.epoch ?? null,
       closed_by_seq: closedBy?.seq ?? null,
-    });
+    };
+    const headers = buildPutHeaders(createdMeta, ctx.encodeTailOffset(createdMeta));
     headers.set("Location", request.url);
 
-    if (requestedClosed) {
-      ctx.state.waitUntil(ctx.compactToR2(streamId, { force: true, flushToTail: true }));
-    }
+    ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: requestedClosed }));
 
     return new Response(null, { status: 201, headers });
   });
@@ -180,7 +182,8 @@ export async function handlePost(
       producerEval = await evaluateProducer(ctx.storage, streamId, producer.value);
       if (producerEval.kind === "error") return producerEval.response;
       if (producerEval.kind === "duplicate") {
-        return producerDuplicateResponse(producerEval.state, meta.closed === 1);
+        const dupOffset = await ctx.encodeOffset(streamId, meta, producerEval.state.last_offset);
+        return producerDuplicateResponse(producerEval.state, dupOffset, meta.closed === 1);
       }
     }
 
@@ -190,8 +193,8 @@ export async function handlePost(
       const headers = closeResult.headers;
 
       ctx.longPoll.notify(meta.tail_offset);
-      await broadcastSseControl(ctx, meta.tail_offset, true);
-      ctx.state.waitUntil(ctx.compactToR2(streamId, { force: true, flushToTail: true }));
+      await broadcastSseControl(ctx, streamId, meta, meta.tail_offset, true);
+      ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: true }));
       return new Response(null, { status: 204, headers });
     }
 
@@ -200,7 +203,7 @@ export async function handlePost(
     }
 
     if (meta.closed === 1) {
-      return buildClosedConflict(meta);
+      return buildClosedConflict(meta, ctx.encodeTailOffset(meta));
     }
 
     const contentType = parseContentType(request);
@@ -226,8 +229,9 @@ export async function handlePost(
 
     await ctx.storage.batch(append.statements);
 
+    const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, append.newTailOffset);
     const headers = baseHeaders({
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(append.newTailOffset),
+      [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     });
 
     if (producer?.value) {
@@ -238,10 +242,16 @@ export async function handlePost(
     if (closeStream) headers.set(HEADER_STREAM_CLOSED, "true");
 
     ctx.longPoll.notify(append.newTailOffset);
-    broadcastSse(ctx, contentType, append.ssePayload, append.newTailOffset, closeStream);
-    ctx.state.waitUntil(
-      ctx.compactToR2(streamId, { force: closeStream, flushToTail: closeStream }),
+    broadcastSse(
+      ctx,
+      streamId,
+      meta,
+      contentType,
+      append.ssePayload,
+      append.newTailOffset,
+      closeStream,
     );
+    ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: closeStream }));
 
     const status = producer?.value ? 200 : 204;
     return new Response(null, { status, headers });
@@ -253,17 +263,25 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     const meta = await ctx.getStream(streamId);
     if (!meta) return errorResponse(404, "stream not found");
 
-    const snapshots = ctx.env.R2 ? await ctx.storage.listSnapshots(streamId) : [];
+    const segments = ctx.env.R2 ? await ctx.storage.listSegments(streamId) : [];
 
     await ctx.storage.deleteStreamData(streamId);
     ctx.longPoll.notifyAll();
     await closeAllSseClients(ctx);
 
-    if (ctx.env.R2 && snapshots.length > 0) {
+    if (ctx.env.R2 && segments.length > 0) {
       ctx.state.waitUntil(
-        Promise.all(snapshots.map((snapshot) => ctx.env.R2!.delete(snapshot.r2_key))).then(
+        Promise.all(segments.map((segment) => ctx.env.R2!.delete(segment.r2_key))).then(
           () => undefined,
         ),
+      );
+    }
+
+    if (ctx.env.ADMIN_DB) {
+      ctx.state.waitUntil(
+        ctx.env.ADMIN_DB.prepare("DELETE FROM segments_admin WHERE stream_id = ?")
+          .bind(streamId)
+          .run(),
       );
     }
 

@@ -3,6 +3,10 @@ export type StreamMeta = {
   content_type: string;
   closed: number;
   tail_offset: number;
+  read_seq: number;
+  segment_start: number;
+  segment_messages: number;
+  segment_bytes: number;
   last_stream_seq: string | null;
   ttl_seconds: number | null;
   expires_at: number | null;
@@ -28,6 +32,11 @@ export type ReadChunk = {
   body: ArrayBuffer | Uint8Array | string | number[];
 };
 
+export type OpsStats = {
+  messageCount: number;
+  sizeBytes: number;
+};
+
 export type CreateStreamInput = {
   streamId: string;
   contentType: string;
@@ -37,27 +46,39 @@ export type CreateStreamInput = {
   createdAt: number;
 };
 
-export type SnapshotInput = {
+export type SegmentInput = {
   streamId: string;
   r2Key: string;
   startOffset: number;
   endOffset: number;
+  readSeq: number;
   contentType: string;
   createdAt: number;
+  expiresAt: number | null;
+  sizeBytes: number;
+  messageCount: number;
 };
 
-export type SnapshotRecord = {
+export type SegmentRecord = {
   stream_id: string;
   r2_key: string;
   start_offset: number;
   end_offset: number;
+  read_seq: number;
   content_type: string;
   created_at: number;
+  expires_at: number | null;
+  size_bytes: number;
+  message_count: number;
+};
+
+export type StorageStatement = {
+  sql: string;
+  args: unknown[];
 };
 
 export interface StreamStorage {
-  prepare(sql: string): D1PreparedStatement;
-  batch(statements: D1PreparedStatement[]): Promise<void>;
+  batch(statements: StorageStatement[]): Promise<void>;
 
   getStream(streamId: string): Promise<StreamMeta | null>;
   insertStream(input: CreateStreamInput): Promise<void>;
@@ -74,7 +95,7 @@ export interface StreamStorage {
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
     lastUpdated: number,
-  ): D1PreparedStatement;
+  ): StorageStatement;
   upsertProducer(
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
@@ -94,24 +115,27 @@ export interface StreamStorage {
     producerSeq: number | null;
     body: ArrayBuffer;
     createdAt: number;
-  }): D1PreparedStatement;
+  }): StorageStatement;
 
   updateStreamStatement(
     streamId: string,
     updateFields: string[],
     updateValues: unknown[],
-  ): D1PreparedStatement;
+  ): StorageStatement;
 
   selectOverlap(streamId: string, offset: number): Promise<ReadChunk | null>;
   selectOpsFrom(streamId: string, offset: number): Promise<ReadChunk[]>;
   selectOpsRange(streamId: string, startOffset: number, endOffset: number): Promise<ReadChunk[]>;
   selectAllOps(streamId: string): Promise<ReadChunk[]>;
   deleteOpsThrough(streamId: string, endOffset: number): Promise<void>;
+  getOpsStatsFrom(streamId: string, startOffset: number): Promise<OpsStats>;
 
-  insertSnapshot(input: SnapshotInput): Promise<void>;
-  getLatestSnapshot(streamId: string): Promise<SnapshotRecord | null>;
-  getSnapshotCoveringOffset(streamId: string, offset: number): Promise<SnapshotRecord | null>;
-  listSnapshots(streamId: string): Promise<SnapshotRecord[]>;
+  insertSegment(input: SegmentInput): Promise<void>;
+  getLatestSegment(streamId: string): Promise<SegmentRecord | null>;
+  getSegmentByReadSeq(streamId: string, readSeq: number): Promise<SegmentRecord | null>;
+  getSegmentCoveringOffset(streamId: string, offset: number): Promise<SegmentRecord | null>;
+  getSegmentStartingAt(streamId: string, offset: number): Promise<SegmentRecord | null>;
+  listSegments(streamId: string): Promise<SegmentRecord[]>;
 
   updateProducerLastUpdated(
     streamId: string,

@@ -1,5 +1,5 @@
 import { errorResponse } from "../../protocol/errors";
-import { buildNowResponse, buildReadResponse, buildHeadResponse } from "../../engine/stream";
+import { buildReadResponse, buildHeadResponse } from "../../engine/stream";
 import { MAX_CHUNK_BYTES } from "../../protocol/limits";
 import type { StreamContext } from "../context";
 import { handleLongPoll, handleSse } from "./realtime";
@@ -23,15 +23,11 @@ export async function handleGet(
   }
 
   const offsetParam = url.searchParams.get("offset");
-  const resolved = ctx.resolveOffset(meta, offsetParam);
+  if (!offsetParam) return errorResponse(400, "offset is required");
+  const resolved = await ctx.resolveOffset(streamId, meta, offsetParam);
   if (resolved.error) return resolved.error;
 
-  const { offset, isNow } = resolved;
-
-  if (isNow) {
-    return buildNowResponse(meta);
-  }
-
+  const { offset } = resolved;
   const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (read.error) return read.error;
 
@@ -40,6 +36,7 @@ export async function handleGet(
     meta,
     body: read.body,
     nextOffset: read.nextOffset,
+    nextOffsetHeader: await ctx.encodeOffset(streamId, meta, read.nextOffset),
     upToDate: read.upToDate,
     closedAtTail: read.closedAtTail,
     offset,
@@ -58,5 +55,5 @@ export async function handleHead(ctx: StreamContext, streamId: string): Promise<
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
 
-  return buildHeadResponse(meta);
+  return buildHeadResponse(meta, ctx.encodeTailOffset(meta));
 }

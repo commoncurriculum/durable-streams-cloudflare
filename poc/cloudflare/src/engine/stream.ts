@@ -10,13 +10,12 @@ import {
 import { errorResponse } from "../protocol/errors";
 import { buildEtag } from "../protocol/etag";
 import { buildJsonArray, emptyJsonArray, parseJsonMessages } from "../protocol/json";
-import { encodeOffset } from "../protocol/offsets";
 import { concatBuffers, toUint8Array } from "../protocol/encoding";
 import { cacheControlFor, applyExpiryHeaders } from "../protocol/expiry";
-import type { StreamMeta, StreamStorage } from "../storage/storage";
+import type { StorageStatement, StreamMeta, StreamStorage } from "../storage/storage";
 
 export type AppendResult = {
-  statements: D1PreparedStatement[];
+  statements: StorageStatement[];
   newTailOffset: number;
   ssePayload: ArrayBuffer | null;
   error?: Response;
@@ -52,7 +51,7 @@ export async function buildAppendBatch(
     };
   }
 
-  const statements: D1PreparedStatement[] = [];
+  const statements: StorageStatement[] = [];
   const now = Date.now();
 
   let messages: Array<{ body: ArrayBuffer; sizeBytes: number }> = [];
@@ -89,13 +88,14 @@ export async function buildAppendBatch(
   }
 
   let tailOffset = meta.tail_offset;
+  const isJson = isJsonContentType(contentType);
+  const messageCount = isJson ? messages.length : 1;
+  const byteCount = messages.reduce((sum, message) => sum + message.sizeBytes, 0);
 
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i];
     const messageStart = tailOffset;
-    const messageEnd = isJsonContentType(contentType)
-      ? messageStart + 1
-      : messageStart + message.sizeBytes;
+    const messageEnd = isJson ? messageStart + 1 : messageStart + message.sizeBytes;
 
     statements.push(
       storage.insertOpStatement({
@@ -123,6 +123,9 @@ export async function buildAppendBatch(
     updateValues.push(opts.streamSeq);
   }
 
+  updateFields.push("segment_messages = segment_messages + ?", "segment_bytes = segment_bytes + ?");
+  updateValues.push(messageCount, byteCount);
+
   if (opts.closeStream) {
     updateFields.push("closed = 1", "closed_at = ?");
     updateValues.push(now);
@@ -144,7 +147,7 @@ export async function buildAppendBatch(
     statements.push(storage.producerUpsertStatement(streamId, opts.producer, tailOffset, now));
   }
 
-  const ssePayload = isJsonContentType(contentType)
+  const ssePayload = isJson
     ? buildJsonArray(messages)
     : messages.length === 1
       ? messages[0].body
@@ -153,18 +156,18 @@ export async function buildAppendBatch(
   return { statements, newTailOffset: tailOffset, ssePayload };
 }
 
-export function buildClosedConflict(meta: StreamMeta): Response {
+export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string): Response {
   const headers = baseHeaders({
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_STREAM_CLOSED]: "true",
   });
   return new Response("stream is closed", { status: 409, headers });
 }
 
-export function buildHeadResponse(meta: StreamMeta): Response {
+export function buildHeadResponse(meta: StreamMeta, nextOffsetHeader: string): Response {
   const headers = baseHeaders({
     "Content-Type": meta.content_type,
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     "Cache-Control": "no-store",
   });
 
@@ -179,6 +182,7 @@ export function buildReadResponse(params: {
   meta: StreamMeta;
   body: ArrayBuffer;
   nextOffset: number;
+  nextOffsetHeader: string;
   upToDate: boolean;
   closedAtTail: boolean;
   includeCursor?: string | null;
@@ -186,7 +190,7 @@ export function buildReadResponse(params: {
 }): Response {
   const headers = baseHeaders({
     "Content-Type": params.meta.content_type,
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(params.nextOffset),
+    [HEADER_STREAM_NEXT_OFFSET]: params.nextOffsetHeader,
   });
 
   if (params.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
@@ -205,19 +209,6 @@ export function buildReadResponse(params: {
   headers.set("Cache-Control", cacheControlFor(params.meta));
 
   return new Response(params.body, { status: 200, headers });
-}
-
-export function buildNowResponse(meta: StreamMeta): Response {
-  const headers = baseHeaders({
-    "Content-Type": meta.content_type,
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-  });
-  headers.set("Cache-Control", "no-store");
-  headers.set(HEADER_STREAM_UP_TO_DATE, "true");
-  if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
-  applyExpiryHeaders(headers, meta);
-  const body = isJsonContentType(meta.content_type) ? emptyJsonArray() : null;
-  return new Response(body, { status: 200, headers });
 }
 
 export async function readFromOffset(
@@ -451,10 +442,10 @@ export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): R
   return null;
 }
 
-export function buildPutHeaders(meta: StreamMeta): Headers {
+export function buildPutHeaders(meta: StreamMeta, nextOffsetHeader: string): Headers {
   const headers = baseHeaders({
     "Content-Type": meta.content_type,
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+    [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
   });
   applyExpiryHeaders(headers, meta);
   if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
@@ -463,14 +454,14 @@ export function buildPutHeaders(meta: StreamMeta): Headers {
 
 export function buildLongPollHeaders(params: {
   meta: StreamMeta;
-  nextOffset: number;
+  nextOffsetHeader: string;
   upToDate: boolean;
   closedAtTail: boolean;
   cursor: string | null;
 }): Headers {
   const headers = baseHeaders({
     "Content-Type": params.meta.content_type,
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(params.nextOffset),
+    [HEADER_STREAM_NEXT_OFFSET]: params.nextOffsetHeader,
   });
   if (params.cursor) headers.set(HEADER_STREAM_CURSOR, params.cursor);
   if (params.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
