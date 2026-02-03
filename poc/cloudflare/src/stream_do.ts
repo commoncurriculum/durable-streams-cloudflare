@@ -3,7 +3,6 @@ import {
   HEADER_PRODUCER_SEQ,
   HEADER_SSE_DATA_ENCODING,
   HEADER_STREAM_CLOSED,
-  HEADER_STREAM_CURSOR,
   HEADER_STREAM_EXPIRES_AT,
   HEADER_STREAM_NEXT_OFFSET,
   HEADER_STREAM_SEQ,
@@ -22,17 +21,14 @@ import {
 } from "./protocol/limits";
 import {
   applyExpiryHeaders,
-  cacheControlFor,
   isExpired,
   parseExpiresAt,
   parseTtlSeconds,
   ttlMatches,
 } from "./protocol/expiry";
 import { errorResponse } from "./protocol/errors";
-import { buildEtag } from "./protocol/etag";
 import { generateResponseCursor } from "./protocol/cursor";
 import { concatBuffers, toUint8Array } from "./protocol/encoding";
-import { buildJsonArray, emptyJsonArray, parseJsonMessages } from "./protocol/json";
 import { decodeOffset, encodeOffset } from "./protocol/offsets";
 import { LongPollQueue } from "./live/long_poll";
 import { buildSseControlEvent, buildSseDataEvent } from "./live/sse";
@@ -42,8 +38,20 @@ import {
   producerDuplicateResponse,
   type ProducerEval,
 } from "./engine/producer";
+import {
+  buildAppendBatch,
+  buildClosedConflict,
+  buildHeadResponse,
+  buildLongPollHeaders,
+  buildNowResponse,
+  buildPutHeaders,
+  buildReadResponse,
+  parseContentType,
+  readFromOffset,
+  validateStreamSeq,
+} from "./engine/stream";
 import { D1Storage } from "./storage/d1";
-import type { ReadChunk, StreamMeta } from "./storage/storage";
+import type { StreamMeta } from "./storage/storage";
 
 type SseClient = {
   id: number;
@@ -99,7 +107,7 @@ export class StreamDO {
   private async handlePut(streamId: string, request: Request): Promise<Response> {
     return this.state.blockConcurrencyWhile(async () => {
       const now = Date.now();
-      const headerContentType = normalizeContentType(request.headers.get("Content-Type"));
+      const headerContentType = parseContentType(request);
       const requestedClosed = request.headers.get(HEADER_STREAM_CLOSED) === "true";
       const ttlHeader = request.headers.get(HEADER_STREAM_TTL);
       const expiresHeader = request.headers.get(HEADER_STREAM_EXPIRES_AT);
@@ -150,12 +158,7 @@ export class StreamDO {
           return errorResponse(409, "stream TTL/expiry mismatch");
         }
 
-        const headers = baseHeaders({
-          "Content-Type": existing.content_type,
-          [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(existing.tail_offset),
-        });
-        applyExpiryHeaders(headers, existing);
-        if (existing.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
+        const headers = buildPutHeaders(existing);
         return new Response(null, { status: 200, headers });
       }
 
@@ -181,7 +184,7 @@ export class StreamDO {
       }
 
       if (bodyBytes.length > 0) {
-        const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
+        const append = await buildAppendBatch(this.storage, streamId, contentType, bodyBytes, {
           streamSeq: request.headers.get(HEADER_STREAM_SEQ),
           producer: producer?.value ?? null,
           closeStream: requestedClosed,
@@ -192,11 +195,7 @@ export class StreamDO {
         tailOffset = append.newTailOffset;
       }
 
-      const headers = baseHeaders({
-        "Content-Type": contentType,
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(tailOffset),
-      });
-      applyExpiryHeaders(headers, {
+      const headers = buildPutHeaders({
         stream_id: streamId,
         content_type: contentType,
         closed: requestedClosed ? 1 : 0,
@@ -207,7 +206,6 @@ export class StreamDO {
         created_at: now,
         closed_at: requestedClosed ? now : null,
       });
-      if (requestedClosed) headers.set(HEADER_STREAM_CLOSED, "true");
       headers.set("Location", request.url);
 
       if (requestedClosed) {
@@ -244,7 +242,7 @@ export class StreamDO {
 
       if (bodyBytes.length === 0 && closeStream) {
         if (meta.closed === 1 && producer?.value) {
-          return this.closedConflict(meta);
+          return buildClosedConflict(meta);
         }
 
         if (!meta.closed) {
@@ -276,10 +274,10 @@ export class StreamDO {
       }
 
       if (meta.closed === 1) {
-        return this.closedConflict(meta);
+        return buildClosedConflict(meta);
       }
 
-      const contentType = normalizeContentType(request.headers.get("Content-Type"));
+      const contentType = parseContentType(request);
       if (!contentType) {
         return errorResponse(400, "Content-Type is required");
       }
@@ -289,11 +287,10 @@ export class StreamDO {
       }
 
       const streamSeq = request.headers.get(HEADER_STREAM_SEQ);
-      if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
-        return errorResponse(409, "Stream-Seq regression");
-      }
+      const seqError = validateStreamSeq(meta, streamSeq);
+      if (seqError) return seqError;
 
-      const append = await this.buildAppendBatch(streamId, contentType, bodyBytes, {
+      const append = await buildAppendBatch(this.storage, streamId, contentType, bodyBytes, {
         streamSeq,
         producer: producer?.value ?? null,
         closeStream,
@@ -345,40 +342,29 @@ export class StreamDO {
     const { offset, isNow } = resolved;
 
     if (isNow) {
-      const headers = baseHeaders({
-        "Content-Type": meta.content_type,
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-      });
-      headers.set("Cache-Control", "no-store");
-      headers.set(HEADER_STREAM_UP_TO_DATE, "true");
-      if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
-      applyExpiryHeaders(headers, meta);
-      const body = isJsonContentType(meta.content_type) ? new TextEncoder().encode("[]") : null;
-      return new Response(body, { status: 200, headers });
+      return buildNowResponse(meta);
     }
 
-    const read = await this.readFromOffset(streamId, meta, offset);
+    const read = await readFromOffset(this.storage, streamId, meta, offset, MAX_CHUNK_BYTES);
     if (read.error) return read.error;
 
-    const headers = baseHeaders({
-      "Content-Type": meta.content_type,
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(read.nextOffset),
+    const response = buildReadResponse({
+      streamId,
+      meta,
+      body: read.body,
+      nextOffset: read.nextOffset,
+      upToDate: read.upToDate,
+      closedAtTail: read.closedAtTail,
+      offset,
     });
 
-    if (read.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
-    if (read.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
-    applyExpiryHeaders(headers, meta);
-
-    const etag = buildEtag(streamId, offset, read.nextOffset, meta.closed === 1);
-    headers.set("ETag", etag);
-
     const ifNoneMatch = request.headers.get("If-None-Match");
-    if (ifNoneMatch && ifNoneMatch === etag) {
-      return new Response(null, { status: 304, headers });
+    const etag = response.headers.get("ETag");
+    if (ifNoneMatch && etag && ifNoneMatch === etag) {
+      return new Response(null, { status: 304, headers: response.headers });
     }
 
-    headers.set("Cache-Control", cacheControlFor(meta));
-    return new Response(read.body, { status: 200, headers });
+    return response;
   }
 
   private async handleLongPoll(streamId: string, meta: StreamMeta, url: URL): Promise<Response> {
@@ -401,18 +387,17 @@ export class StreamDO {
       return new Response(null, { status: 204, headers });
     }
 
-    const initialRead = await this.readFromOffset(streamId, meta, offset);
+    const initialRead = await readFromOffset(this.storage, streamId, meta, offset, MAX_CHUNK_BYTES);
     if (initialRead.error) return initialRead.error;
 
     if (initialRead.hasData) {
-      const headers = baseHeaders({
-        "Content-Type": meta.content_type,
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(initialRead.nextOffset),
-        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
+      const headers = buildLongPollHeaders({
+        meta,
+        nextOffset: initialRead.nextOffset,
+        upToDate: initialRead.upToDate,
+        closedAtTail: initialRead.closedAtTail,
+        cursor: generateResponseCursor(url.searchParams.get("cursor")),
       });
-      if (initialRead.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
-      if (initialRead.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
-      applyExpiryHeaders(headers, meta);
       return new Response(initialRead.body, { status: 200, headers });
     }
 
@@ -421,32 +406,27 @@ export class StreamDO {
     if (!current) return errorResponse(404, "stream not found");
 
     if (timedOut) {
-      const headers = baseHeaders({
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(current.tail_offset),
-        [HEADER_STREAM_UP_TO_DATE]: "true",
-        [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
+      const headers = buildLongPollHeaders({
+        meta: current,
+        nextOffset: current.tail_offset,
+        upToDate: true,
+        closedAtTail: current.closed === 1 && current.tail_offset === offset,
+        cursor: generateResponseCursor(url.searchParams.get("cursor")),
       });
-
-      if (current.closed === 1 && current.tail_offset === offset) {
-        headers.set(HEADER_STREAM_CLOSED, "true");
-      }
       headers.set("Cache-Control", "no-store");
-      applyExpiryHeaders(headers, current);
       return new Response(null, { status: 204, headers });
     }
 
-    const read = await this.readFromOffset(streamId, current, offset);
+    const read = await readFromOffset(this.storage, streamId, current, offset, MAX_CHUNK_BYTES);
     if (read.error) return read.error;
 
-    const headers = baseHeaders({
-      "Content-Type": current.content_type,
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(read.nextOffset),
-      [HEADER_STREAM_CURSOR]: generateResponseCursor(url.searchParams.get("cursor")),
+    const headers = buildLongPollHeaders({
+      meta: current,
+      nextOffset: read.nextOffset,
+      upToDate: read.upToDate,
+      closedAtTail: read.closedAtTail,
+      cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
-
-    if (read.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
-    if (read.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
-    applyExpiryHeaders(headers, current);
 
     if (!read.hasData) {
       headers.set("Cache-Control", "no-store");
@@ -512,16 +492,7 @@ export class StreamDO {
     const meta = await this.getStream(streamId);
     if (!meta) return errorResponse(404, "stream not found");
 
-    const headers = baseHeaders({
-      "Content-Type": meta.content_type,
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-      "Cache-Control": "no-store",
-    });
-
-    if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
-    applyExpiryHeaders(headers, meta);
-
-    return new Response(null, { status: 200, headers });
+    return buildHeadResponse(meta);
   }
 
   private async handleDelete(streamId: string): Promise<Response> {
@@ -551,129 +522,6 @@ export class StreamDO {
     await this.storage.deleteStreamData(streamId);
   }
 
-  private async buildAppendBatch(
-    streamId: string,
-    contentType: string,
-    bodyBytes: Uint8Array,
-    opts: {
-      streamSeq: string | null;
-      producer: { id: string; epoch: number; seq: number } | null;
-      closeStream: boolean;
-    },
-  ): Promise<{
-    statements: D1PreparedStatement[];
-    newTailOffset: number;
-    ssePayload: ArrayBuffer | null;
-    error?: Response;
-  }> {
-    const meta = await this.getStream(streamId);
-    if (!meta)
-      return {
-        statements: [],
-        newTailOffset: 0,
-        ssePayload: null,
-        error: errorResponse(404, "stream not found"),
-      };
-
-    const statements: D1PreparedStatement[] = [];
-    const now = Date.now();
-
-    let messages: Array<{ body: ArrayBuffer; sizeBytes: number }> = [];
-
-    if (isJsonContentType(contentType)) {
-      const parsed = parseJsonMessages(bodyBytes);
-      if (parsed.error) {
-        return {
-          statements: [],
-          newTailOffset: 0,
-          ssePayload: null,
-          error: errorResponse(400, parsed.error),
-        };
-      }
-      if (parsed.emptyArray) {
-        return {
-          statements: [],
-          newTailOffset: 0,
-          ssePayload: null,
-          error: errorResponse(400, "empty JSON array is not allowed"),
-        };
-      }
-      messages = parsed.messages;
-    } else {
-      if (bodyBytes.length === 0) {
-        return {
-          statements: [],
-          newTailOffset: 0,
-          ssePayload: null,
-          error: errorResponse(400, "empty body"),
-        };
-      }
-      messages = [{ body: bodyBytes.buffer, sizeBytes: bodyBytes.byteLength }];
-    }
-
-    let tailOffset = meta.tail_offset;
-
-    for (let i = 0; i < messages.length; i += 1) {
-      const message = messages[i];
-      const messageStart = tailOffset;
-      const messageEnd = isJsonContentType(contentType)
-        ? messageStart + 1
-        : messageStart + message.sizeBytes;
-
-      statements.push(
-        this.storage.insertOpStatement({
-          streamId,
-          startOffset: messageStart,
-          endOffset: messageEnd,
-          sizeBytes: message.sizeBytes,
-          streamSeq: opts.streamSeq ?? null,
-          producerId: opts.producer?.id ?? null,
-          producerEpoch: opts.producer?.epoch ?? null,
-          producerSeq: opts.producer?.seq ?? null,
-          body: message.body,
-          createdAt: now,
-        }),
-      );
-
-      tailOffset = messageEnd;
-    }
-
-    const updateFields: string[] = ["tail_offset = ?"];
-    const updateValues: unknown[] = [tailOffset];
-
-    if (opts.streamSeq) {
-      updateFields.push("last_stream_seq = ?");
-      updateValues.push(opts.streamSeq);
-    }
-
-    if (opts.closeStream) {
-      updateFields.push("closed = 1", "closed_at = ?");
-      updateValues.push(now);
-    }
-
-    statements.push(this.storage.updateStreamStatement(streamId, updateFields, updateValues));
-
-    if (opts.producer) {
-      statements.push(this.storage.producerUpsertStatement(streamId, opts.producer, tailOffset));
-    }
-
-    const ssePayload = isJsonContentType(contentType)
-      ? buildJsonArray(messages)
-      : messages.length === 1
-        ? messages[0].body
-        : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
-
-    return { statements, newTailOffset: tailOffset, ssePayload };
-  }
-
-  private closedConflict(meta: StreamMeta): Response {
-    const headers = baseHeaders({
-      [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-      [HEADER_STREAM_CLOSED]: "true",
-    });
-    return new Response("stream is closed", { status: 409, headers });
-  }
-
   private resolveOffset(
     meta: StreamMeta,
     offsetParam: string | null,
@@ -696,94 +544,6 @@ export class StreamDO {
     }
 
     return { offset: decoded, isNow: false };
-  }
-
-  private async readFromOffset(
-    streamId: string,
-    meta: StreamMeta,
-    offset: number,
-  ): Promise<{
-    body: ArrayBuffer;
-    nextOffset: number;
-    upToDate: boolean;
-    closedAtTail: boolean;
-    hasData: boolean;
-    error?: Response;
-  }> {
-    const chunks: ReadChunk[] = [];
-
-    if (offset > 0) {
-      const overlap = await this.storage.selectOverlap(streamId, offset);
-
-      if (overlap) {
-        if (isJsonContentType(meta.content_type) && overlap.start_offset !== offset) {
-          return {
-            body: new ArrayBuffer(0),
-            nextOffset: offset,
-            upToDate: false,
-            closedAtTail: false,
-            hasData: false,
-            error: errorResponse(400, "invalid offset"),
-          };
-        }
-        const sliceStart = offset - overlap.start_offset;
-        const source = toUint8Array(overlap.body);
-        const slice = source.slice(sliceStart);
-        chunks.push({
-          start_offset: offset,
-          end_offset: overlap.end_offset,
-          size_bytes: slice.byteLength,
-          body: slice,
-        });
-      }
-    }
-
-    const rows = await this.storage.selectOpsFrom(streamId, offset);
-    let bytes = chunks.reduce((sum, chunk) => sum + chunk.size_bytes, 0);
-
-    for (const row of rows) {
-      if (bytes + row.size_bytes > MAX_CHUNK_BYTES && bytes > 0) break;
-      const body = toUint8Array(row.body);
-      chunks.push({
-        start_offset: row.start_offset,
-        end_offset: row.end_offset,
-        size_bytes: row.size_bytes,
-        body,
-      });
-      bytes += row.size_bytes;
-      if (bytes >= MAX_CHUNK_BYTES) break;
-    }
-
-    if (chunks.length === 0) {
-      const upToDate = offset === meta.tail_offset;
-      const closedAtTail = meta.closed === 1 && upToDate;
-      if (isJsonContentType(meta.content_type)) {
-        const empty = emptyJsonArray();
-        return { body: empty, nextOffset: offset, upToDate, closedAtTail, hasData: false };
-      }
-      return {
-        body: new ArrayBuffer(0),
-        nextOffset: offset,
-        upToDate,
-        closedAtTail,
-        hasData: false,
-      };
-    }
-
-    const nextOffset = chunks[chunks.length - 1].end_offset;
-    const upToDate = nextOffset === meta.tail_offset;
-    const closedAtTail = meta.closed === 1 && upToDate;
-
-    let body: ArrayBuffer;
-    if (isJsonContentType(meta.content_type)) {
-      body = buildJsonArray(
-        chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes })),
-      );
-    } else {
-      body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
-    }
-
-    return { body, nextOffset, upToDate, closedAtTail, hasData: true };
   }
 
   private async broadcastSse(
@@ -824,7 +584,7 @@ export class StreamDO {
   ): Promise<void> {
     try {
       let currentOffset = client.offset;
-      let read = await this.readFromOffset(streamId, meta, currentOffset);
+      let read = await readFromOffset(this.storage, streamId, meta, currentOffset, MAX_CHUNK_BYTES);
       if (read.error) {
         await this.closeSseClient(client);
         return;
@@ -842,7 +602,7 @@ export class StreamDO {
         client.offset = currentOffset;
 
         while (!read.upToDate && !read.closedAtTail) {
-          read = await this.readFromOffset(streamId, meta, currentOffset);
+          read = await readFromOffset(this.storage, streamId, meta, currentOffset, MAX_CHUNK_BYTES);
           if (read.error) break;
           if (!read.hasData) break;
           await this.writeSseData(
@@ -890,14 +650,7 @@ export class StreamDO {
   ): Promise<void> {
     if (!this.env.R2) return;
     const chunks = await this.storage.selectAllOps(streamId);
-    let body: ArrayBuffer;
-    if (isJsonContentType(contentType)) {
-      body = buildJsonArray(
-        chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes })),
-      );
-    } else {
-      body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
-    }
+    const body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
 
     const key = `stream/${encodeURIComponent(streamId)}/snapshot-${Date.now()}`;
     await this.env.R2.put(key, body);
