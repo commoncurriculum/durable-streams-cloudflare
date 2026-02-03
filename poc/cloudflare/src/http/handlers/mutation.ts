@@ -147,7 +147,7 @@ export async function handlePut(
     headers.set("Location", request.url);
 
     if (requestedClosed) {
-      ctx.state.waitUntil(ctx.snapshotToR2(streamId, contentType, tailOffset));
+      ctx.state.waitUntil(ctx.compactToR2(streamId, { force: true, flushToTail: true }));
     }
 
     return new Response(null, { status: 201, headers });
@@ -191,7 +191,7 @@ export async function handlePost(
 
       ctx.longPoll.notify(meta.tail_offset);
       await broadcastSseControl(ctx, meta.tail_offset, true);
-      ctx.state.waitUntil(ctx.snapshotToR2(streamId, meta.content_type, meta.tail_offset));
+      ctx.state.waitUntil(ctx.compactToR2(streamId, { force: true, flushToTail: true }));
       return new Response(null, { status: 204, headers });
     }
 
@@ -239,9 +239,9 @@ export async function handlePost(
 
     ctx.longPoll.notify(append.newTailOffset);
     broadcastSse(ctx, contentType, append.ssePayload, append.newTailOffset, closeStream);
-    if (closeStream) {
-      ctx.state.waitUntil(ctx.snapshotToR2(streamId, contentType, append.newTailOffset));
-    }
+    ctx.state.waitUntil(
+      ctx.compactToR2(streamId, { force: closeStream, flushToTail: closeStream }),
+    );
 
     const status = producer?.value ? 200 : 204;
     return new Response(null, { status, headers });
@@ -253,9 +253,19 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     const meta = await ctx.getStream(streamId);
     if (!meta) return errorResponse(404, "stream not found");
 
+    const snapshots = ctx.env.R2 ? await ctx.storage.listSnapshots(streamId) : [];
+
     await ctx.storage.deleteStreamData(streamId);
     ctx.longPoll.notifyAll();
     await closeAllSseClients(ctx);
+
+    if (ctx.env.R2 && snapshots.length > 0) {
+      ctx.state.waitUntil(
+        Promise.all(snapshots.map((snapshot) => ctx.env.R2!.delete(snapshot.r2_key))).then(
+          () => undefined,
+        ),
+      );
+    }
 
     return new Response(null, { status: 204, headers: baseHeaders() });
   });

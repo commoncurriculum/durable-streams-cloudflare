@@ -7,6 +7,9 @@ import type { StreamMeta } from "../storage/storage";
 export type StreamEnv = {
   DB: D1Database;
   R2?: R2Bucket;
+  DEBUG_COALESCE?: string;
+  DEBUG_TESTING?: string;
+  R2_DELETE_OPS?: string;
 };
 
 export type ResolveOffsetResult = {
@@ -29,5 +32,8 @@ export type StreamContext = {
     offset: number,
     maxChunkBytes: number,
   ) => Promise<ReadResult>;
-  snapshotToR2: (streamId: string, contentType: string, endOffset: number) => Promise<void>;
+  compactToR2: (
+    streamId: string,
+    options?: { force?: boolean; retainOps?: boolean; flushToTail?: boolean },
+  ) => Promise<void>;
 };

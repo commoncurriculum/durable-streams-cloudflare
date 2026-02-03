@@ -1,0 +1,12 @@
+{
+  "name": "durable-streams-root",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -C poc/cloudflare run build",
+    "test": "pnpm -C poc/cloudflare run test",
+    "lint": "pnpm -C poc/cloudflare run lint",
+    "typecheck": "pnpm -C poc/cloudflare run typecheck",
+    "format": "pnpm -C poc/cloudflare run format",
+    "format:check": "pnpm -C poc/cloudflare run format:check"
+  }
+}

@@ -12,7 +12,9 @@ function percentile(values: number[], p: number): number {
 describe("performance smoke", () => {
   it("measures append/read latencies", async () => {
     const budgetMs = Number.parseFloat(process.env.PERF_BUDGET_MS ?? "10");
-    const enforce = process.env.PERF_ENFORCE === "1" && budgetMs > 0;
+    const enforce =
+      (process.env.PERF_ENFORCE ? process.env.PERF_ENFORCE === "1" : !!process.env.PERF_BASE_URL) &&
+      budgetMs > 0;
 
     const handle = process.env.PERF_BASE_URL ? null : await startWorker();
 

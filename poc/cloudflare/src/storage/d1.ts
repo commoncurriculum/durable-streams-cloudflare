@@ -172,6 +172,20 @@ export class D1Storage implements StreamStorage {
     return result.results ?? [];
   }
 
+  async selectOpsRange(
+    streamId: string,
+    startOffset: number,
+    endOffset: number,
+  ): Promise<ReadChunk[]> {
+    const result = await this.db
+      .prepare(
+        "SELECT start_offset, end_offset, size_bytes, body FROM ops WHERE stream_id = ? AND start_offset >= ? AND end_offset <= ? ORDER BY start_offset ASC",
+      )
+      .bind(streamId, startOffset, endOffset)
+      .all<ReadChunk>();
+    return result.results ?? [];
+  }
+
   async selectAllOps(streamId: string): Promise<ReadChunk[]> {
     const result = await this.db
       .prepare(
@@ -180,6 +194,13 @@ export class D1Storage implements StreamStorage {
       .bind(streamId)
       .all<ReadChunk>();
     return result.results ?? [];
+  }
+
+  async deleteOpsThrough(streamId: string, endOffset: number): Promise<void> {
+    await this.db
+      .prepare("DELETE FROM ops WHERE stream_id = ? AND end_offset <= ?")
+      .bind(streamId, endOffset)
+      .run();
   }
 
   async insertSnapshot(input: SnapshotInput): Promise<void> {
@@ -206,5 +227,40 @@ export class D1Storage implements StreamStorage {
       .bind(streamId)
       .first<SnapshotRecord>();
     return result ?? null;
+  }
+
+  async getSnapshotCoveringOffset(
+    streamId: string,
+    offset: number,
+  ): Promise<SnapshotRecord | null> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM snapshots WHERE stream_id = ? AND start_offset <= ? AND end_offset > ? ORDER BY end_offset DESC LIMIT 1",
+      )
+      .bind(streamId, offset, offset)
+      .first<SnapshotRecord>();
+    return result ?? null;
+  }
+
+  async listSnapshots(streamId: string): Promise<SnapshotRecord[]> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM snapshots WHERE stream_id = ? ORDER BY end_offset ASC, created_at ASC",
+      )
+      .bind(streamId)
+      .all<SnapshotRecord>();
+    return result.results ?? [];
+  }
+
+  async updateProducerLastUpdated(
+    streamId: string,
+    producerId: string,
+    lastUpdated: number,
+  ): Promise<boolean> {
+    const result = await this.db
+      .prepare("UPDATE producers SET last_updated = ? WHERE stream_id = ? AND producer_id = ?")
+      .bind(lastUpdated, streamId, producerId)
+      .run();
+    return result.success && result.meta.changes > 0;
   }
 }
