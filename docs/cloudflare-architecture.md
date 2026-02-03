@@ -4,7 +4,7 @@
 The Cloudflare POC is a single-worker deployment that routes requests to a **Durable Object (DO) per stream**. The DO is the sequencer for all writes and serves live reads. **DO SQLite** stores the hot log and metadata. **R2** stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops only.
 
 ## Request Flow
-1. **Worker** (`src/worker.ts`) validates auth (optional), applies CORS, and routes `/v1/stream/<stream-id>` to the stream DO.
+1. **Worker** (`src/worker.ts`) validates auth (optional), applies CORS, normalizes cache keys, and routes `/v1/stream/<stream-id>` to the stream DO.
 2. **Durable Object** (`src/stream_do.ts`) wires storage, protocol helpers, and live fan-out (SSE/long-poll).
 3. **Read path** (`src/do/read_path.ts`) encapsulates hot/R2 reads + coalescing.
 4. **Storage** (`src/storage/do_sqlite.ts`) handles metadata and append/read queries against DO SQLite.
@@ -18,6 +18,8 @@ The Cloudflare POC is a single-worker deployment that routes requests to a **Dur
   - `handlers/mutation.ts` handles `PUT`/`POST`/`DELETE`.
 - `src/do/read_path.ts`:
   - Hot log reads, R2 segment reads, and read coalescing.
+- `src/protocol/timing.ts`:
+  - Optional `Server-Timing` instrumentation for edge + DO profiling.
 - `src/engine/*`:
   - `stream.ts` implements protocol semantics (append/read/headers).
   - `producer.ts` handles producer fencing and idempotency.
