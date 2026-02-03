@@ -9,5 +9,4 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 node_modules/
-.wrangler/
-.vite/
+poc/cloudflare/.wrangler/tmp/

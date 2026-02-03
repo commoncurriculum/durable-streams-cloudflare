@@ -7,7 +7,6 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   HEADER_STREAM_SEQ,
   HEADER_STREAM_TTL,
-  HEADER_STREAM_UP_TO_DATE,
   baseHeaders,
   isJsonContentType,
   isTextual,
@@ -19,16 +18,10 @@ import {
   MAX_CHUNK_BYTES,
   SSE_RECONNECT_MS,
 } from "./protocol/limits";
-import {
-  applyExpiryHeaders,
-  isExpired,
-  parseExpiresAt,
-  parseTtlSeconds,
-  ttlMatches,
-} from "./protocol/expiry";
+import { isExpired, parseExpiresAt, parseTtlSeconds, ttlMatches } from "./protocol/expiry";
 import { errorResponse } from "./protocol/errors";
 import { generateResponseCursor } from "./protocol/cursor";
-import { concatBuffers, toUint8Array } from "./protocol/encoding";
+import { toUint8Array } from "./protocol/encoding";
 import { decodeOffset, encodeOffset } from "./protocol/offsets";
 import { LongPollQueue } from "./live/long_poll";
 import { buildSseControlEvent, buildSseDataEvent } from "./live/sse";
@@ -50,7 +43,9 @@ import {
   readFromOffset,
   validateStreamSeq,
 } from "./engine/stream";
+import { closeStreamOnly } from "./engine/close";
 import { D1Storage } from "./storage/d1";
+import { buildSnapshotKey, encodeSegmentMessages } from "./storage/segments";
 import type { StreamMeta } from "./storage/storage";
 
 type SseClient = {
@@ -241,27 +236,9 @@ export class StreamDO {
       }
 
       if (bodyBytes.length === 0 && closeStream) {
-        if (meta.closed === 1 && producer?.value) {
-          return buildClosedConflict(meta);
-        }
-
-        if (!meta.closed) {
-          await this.storage.closeStream(streamId, Date.now());
-        }
-
-        if (producer?.value) {
-          await this.storage.upsertProducer(streamId, producer.value, meta.tail_offset);
-        }
-
-        const headers = baseHeaders({
-          [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-          [HEADER_STREAM_CLOSED]: "true",
-        });
-
-        if (producer?.value) {
-          headers.set(HEADER_PRODUCER_EPOCH, producer.value.epoch.toString());
-          headers.set(HEADER_PRODUCER_SEQ, producer.value.seq.toString());
-        }
+        const closeResult = await closeStreamOnly(this.storage, meta, producer?.value);
+        if (closeResult.error) return closeResult.error;
+        const headers = closeResult.headers;
 
         this.longPoll.notify(meta.tail_offset);
         await this.broadcastSseControl(meta.tail_offset, true);
@@ -377,13 +354,14 @@ export class StreamDO {
     const offset = resolved.offset;
 
     if (meta.closed === 1 && offset >= meta.tail_offset) {
-      const headers = baseHeaders({
-        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
-        [HEADER_STREAM_UP_TO_DATE]: "true",
-        [HEADER_STREAM_CLOSED]: "true",
+      const headers = buildLongPollHeaders({
+        meta,
+        nextOffset: meta.tail_offset,
+        upToDate: true,
+        closedAtTail: true,
+        cursor: null,
       });
       headers.set("Cache-Control", "no-store");
-      applyExpiryHeaders(headers, meta);
       return new Response(null, { status: 204, headers });
     }
 
@@ -650,10 +628,13 @@ export class StreamDO {
   ): Promise<void> {
     if (!this.env.R2) return;
     const chunks = await this.storage.selectAllOps(streamId);
-    const body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
+    const messages = chunks.map((chunk) => toUint8Array(chunk.body));
+    const body = encodeSegmentMessages(messages);
 
-    const key = `stream/${encodeURIComponent(streamId)}/snapshot-${Date.now()}`;
-    await this.env.R2.put(key, body);
+    const key = buildSnapshotKey(streamId, Date.now());
+    await this.env.R2.put(key, body, {
+      httpMetadata: { contentType },
+    });
 
     await this.storage.insertSnapshot({
       streamId,

@@ -1,3 +1,4 @@
 node_modules/
-.wrangler/
-.vite/
+.wrangler/tmp/
+.wrangler/state/**
+!.wrangler/state/**/.gitkeep
