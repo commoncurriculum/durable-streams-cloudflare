@@ -1,4 +1,4 @@
-import { OFFSET_WIDTH } from "./constants";
+import { OFFSET_WIDTH } from "./limits";
 
 export function encodeOffset(offset: number): string {
   if (offset < 0) return "0".repeat(OFFSET_WIDTH);
