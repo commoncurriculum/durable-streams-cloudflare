@@ -5,6 +5,8 @@
 - Separate protocol logic, storage, and transport concerns.
 - Keep tests accurate with real storage (no stubs or mock storage layers).
 - Keep the Worker/Durable Object deployable with minimal configuration changes.
+- Align core behavior with the Node + Caddy reference implementations where
+  it improves standardization (cursor jitter, registry stream, offsets, etc).
 
 ## Non-Goals
 - Changing the on-wire protocol or response semantics.
@@ -19,6 +21,11 @@
 - Record current conformance run command and output.
 - Capture current behavior notes (SSE, long-poll, TTL/expiry, producer semantics).
 - Freeze acceptance criteria: conformance must remain green after each phase.
+- Compare against reference implementations and log any intentional deltas:
+  - Cursor jitter (randomized 1–3600s on collision).
+  - Registry stream (`__registry__`) for create/delete events.
+  - Offset format and rotation friendliness.
+  - Segment framing for cold storage reads.
 - Add a small “characterization” suite that hits the live worker to lock in
   response semantics for a few high-risk flows (SSE CRLF handling, long-poll
   timeout headers, producer fencing).
@@ -39,6 +46,7 @@ Deliverables
 Proposed module layout
 - `src/protocol/headers.ts` – constants, normalize helpers, security headers.
 - `src/protocol/offsets.ts` – encode/decode, validation, `offset=now` rules.
+- `src/protocol/cursor.ts` – cursor calculation and collision jitter.
 - `src/protocol/errors.ts` – consistent error responses.
 - `src/protocol/json.ts` – JSON batching rules and SSE JSON formatting.
 - `src/protocol/limits.ts` – payload/chunk/timeout constants (configurable).
@@ -46,11 +54,13 @@ Proposed module layout
 - `src/live/sse.ts` – SSE event formatting and safe line encoding.
 - `src/storage/storage.ts` – storage interface contract.
 - `src/storage/d1.ts` – D1 implementation (current behavior).
+- `src/storage/segments.ts` – segment framing + R2 key encoding helpers.
 - `src/engine/stream.ts` – core stream operations driven by storage.
 - `src/engine/producer.ts` – producer fencing/epoch/seq logic.
 - `src/engine/close.ts` – stream close semantics.
 - `src/http/router.ts` – method dispatch (called by `StreamDO.fetch`).
  - `src/http/auth.ts` – auth/tenant boundary enforcement (Worker vs DO).
+ - `src/http/cors.ts` – CORS + expose headers at Worker boundary.
  - `src/observability/metrics.ts` – minimal timing/log hooks (optional).
 
 Deliverables
@@ -71,6 +81,7 @@ Storage interface outline
 - `getProducer(streamId, producerId)`.
 - `markClosed(streamId, atOffset)`.
 - `recordSnapshot(streamId, r2Key, range)`.
+- `recordSegment(streamId, r2Key, range, format)` -> segment index for R2 reads.
 
 Deliverables
 - `src/storage/storage.ts` with typed interface.
@@ -88,6 +99,9 @@ Core engine responsibilities
 - JSON batching rules for POST body.
 - Offset semantics and read ranges.
 - Stream close semantics and idempotent close.
+- Registry stream hooks (create/delete emit to `__registry__`).
+- Cursor collision jitter aligned with reference implementation.
+- R2 key encoding for cold storage objects.
 
 Deliverables
 - `src/engine/stream.ts`, `src/engine/producer.ts`, `src/engine/close.ts`.
@@ -101,10 +115,21 @@ Work items
 - Extract SSE formatting into `src/live/sse.ts`.
 - Extract waiter queue into `src/live/long_poll.ts`.
 - Add small unit tests for pure formatting functions (no storage mocking).
+- Ensure SSE data line encoding matches the reference safety rules.
 
 Deliverables
 - Isolated SSE and long-poll helpers.
 - Zero changes to observed protocol output.
+
+## Phase 4.5: Reference Parity Improvements (Cloudflare-Specific)
+- Add CORS + exposed headers in `worker.ts` (Stream-* and Producer-* headers).
+- Add producer state TTL cleanup (periodic + on access).
+- Adopt randomized cursor jitter (1–3600s) for CDN collision handling.
+- Add registry stream (`__registry__`) for create/delete discovery.
+- Encode R2 keys using base64url path encoding for safety.
+- Evaluate offset format shift to `readSeq_byteOffset` if we decide to support
+  segment rotation in R2 (document if we intentionally keep hex offsets).
+- Implement segment framing for cold storage (length‑prefixed messages).
 
 ## Phase 5: Test Strategy (No Stubs)
 - Keep all integration tests running against real local bindings.
@@ -127,6 +152,7 @@ Deliverables
 Deliverables
 - `docs/cloudflare-architecture.md`.
 - Update `poc/cloudflare/README.md` with module layout and test commands.
+- Document registry stream behavior and header exposure for browser clients.
 
 ## Milestones
 1. **Refactor skeleton** in place, conformance still green.
