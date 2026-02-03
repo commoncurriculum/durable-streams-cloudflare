@@ -28,6 +28,7 @@ Cloudflare-only proof of concept for the Durable Streams protocol with **low-lat
    wrangler d1 execute durable_streams_poc --local --file migrations/0001_init.sql
    wrangler d1 execute durable_streams_poc --local --file migrations/0002_expiry_snapshots.sql
    wrangler d1 execute durable_streams_poc --local --file migrations/0003_producer_last_updated.sql
+   wrangler d1 execute durable_streams_poc --local --file migrations/0004_closed_by_producer.sql
    ```
 3. Run the worker locally (uses local D1 and local R2 via Miniflare):
    ```bash
@@ -42,6 +43,7 @@ Cloudflare-only proof of concept for the Durable Streams protocol with **low-lat
    wrangler d1 execute durable_streams_poc --file migrations/0001_init.sql
    wrangler d1 execute durable_streams_poc --file migrations/0002_expiry_snapshots.sql
    wrangler d1 execute durable_streams_poc --file migrations/0003_producer_last_updated.sql
+   wrangler d1 execute durable_streams_poc --file migrations/0004_closed_by_producer.sql
    ```
 4. Deploy:
    ```bash

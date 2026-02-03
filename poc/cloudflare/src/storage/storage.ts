@@ -8,6 +8,9 @@ export type StreamMeta = {
   expires_at: number | null;
   created_at: number;
   closed_at: number | null;
+  closed_by_producer_id: string | null;
+  closed_by_epoch: number | null;
+  closed_by_seq: number | null;
 };
 
 export type ProducerState = {
@@ -49,7 +52,11 @@ export interface StreamStorage {
 
   getStream(streamId: string): Promise<StreamMeta | null>;
   insertStream(input: CreateStreamInput): Promise<void>;
-  closeStream(streamId: string, closedAt: number): Promise<void>;
+  closeStream(
+    streamId: string,
+    closedAt: number,
+    closedBy?: { id: string; epoch: number; seq: number } | null,
+  ): Promise<void>;
   deleteStreamData(streamId: string): Promise<void>;
 
   getProducer(streamId: string, producerId: string): Promise<ProducerState | null>;

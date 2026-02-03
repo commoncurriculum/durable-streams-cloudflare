@@ -28,6 +28,7 @@
 - R2 snapshots now use length-prefixed segment framing (Caddy parity).
 - R2 snapshot keys now base64url-encode stream ids (safer paths, CDN-friendly).
 - Producer state TTL cleanup (7d) implemented with `last_updated`.
+- Closed-by producer tuple persisted for idempotent close-only retries.
 - Conformance suite remains green (239/239).
 
 ## Current Baseline
@@ -151,7 +152,7 @@ Deliverables
 ## Phase 4.5: Reference Parity Improvements (Cloudflare-Specific)
 - Add CORS + exposed headers in `worker.ts` (Stream-* and Producer-* headers). (done)
 - Add producer state TTL cleanup (periodic + on access). (done)
-- Track `closed_by` producer tuple for idempotent close-only retries (Caddy/Node parity).
+- Track `closed_by` producer tuple for idempotent close-only retries (Caddy/Node parity). (done)
 - Adopt randomized cursor jitter (1–3600s) for CDN collision handling. (done)
 - Add registry stream (`__registry__`) for create/delete discovery. (done)
 - Encode R2 keys using base64url path encoding for safety. (done)

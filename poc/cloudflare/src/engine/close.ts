@@ -21,11 +21,25 @@ export async function closeStreamOnly(
   producer?: ProducerInput,
 ): Promise<CloseOnlyResult> {
   if (meta.closed === 1 && producer) {
+    if (
+      meta.closed_by_producer_id === producer.id &&
+      meta.closed_by_epoch === producer.epoch &&
+      meta.closed_by_seq === producer.seq
+    ) {
+      const headers = baseHeaders({
+        [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset),
+        [HEADER_STREAM_CLOSED]: "true",
+        [HEADER_PRODUCER_EPOCH]: producer.epoch.toString(),
+        [HEADER_PRODUCER_SEQ]: producer.seq.toString(),
+      });
+      return { headers };
+    }
+
     return { headers: baseHeaders(), error: buildClosedConflict(meta) };
   }
 
   if (!meta.closed) {
-    await storage.closeStream(meta.stream_id, Date.now());
+    await storage.closeStream(meta.stream_id, Date.now(), producer ?? null);
   }
 
   if (producer) {

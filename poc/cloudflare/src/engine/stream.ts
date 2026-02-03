@@ -126,6 +126,16 @@ export async function buildAppendBatch(
   if (opts.closeStream) {
     updateFields.push("closed = 1", "closed_at = ?");
     updateValues.push(now);
+    if (opts.producer) {
+      updateFields.push("closed_by_producer_id = ?", "closed_by_epoch = ?", "closed_by_seq = ?");
+      updateValues.push(opts.producer.id, opts.producer.epoch, opts.producer.seq);
+    } else {
+      updateFields.push(
+        "closed_by_producer_id = NULL",
+        "closed_by_epoch = NULL",
+        "closed_by_seq = NULL",
+      );
+    }
   }
 
   statements.push(storage.updateStreamStatement(streamId, updateFields, updateValues));
