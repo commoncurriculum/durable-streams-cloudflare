@@ -7,7 +7,8 @@
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
     "conformance": "CONFORMANCE_TEST_URL=http://localhost:8787 pnpm exec vitest run --config vitest.conformance.config.ts",
-    "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts"
+    "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
+    "perf": "pnpm exec vitest run --config vitest.performance.config.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

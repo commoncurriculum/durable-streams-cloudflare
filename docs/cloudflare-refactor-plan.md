@@ -52,6 +52,7 @@
   timeout headers, producer fencing).
 - Add a lightweight perf check (local) to detect latency regressions (e.g. 95p
   under target in dev for small writes/reads).
+  - Note: CF budget target is ~10ms server-side (end-to-end target is 50ms).
 - Capture failure-mode expectations (DO restart mid-append; in-flight requests).
 - Document snapshot/retention policy for R2 (creation cadence, rotation, TTL).
 
@@ -176,6 +177,8 @@ Deliverables
 Approach
 - Continue using `wrangler dev --local` for conformance suite.
 - Add integration tests that spin a local worker and use real D1/R2.
+- Add a perf smoke test that reports p50/p95 and only enforces budgets when
+  explicitly enabled (CI or local perf runs).
 - For pure helpers (offset encoding, JSON batching, SSE formatting), add unit
   tests that do not hit storage and do not use mocks.
 - Add implementation tests (white-box) focused on durability and race
@@ -184,6 +187,7 @@ Approach
 Deliverables
 - `pnpm run conformance` remains the gate.
 - `pnpm run test:implementation` running against local Wrangler bindings.
+- `pnpm run perf` for local perf smoke runs.
 
 ## Phase 5.5: Implementation Testing (Durability & Races)
 Informed by `IMPLEMENTATION_TESTING.md`, add a second suite aimed at internal

@@ -3,6 +3,7 @@
 ## Baseline (2026-02-03)
 - Conformance suite: **239/239** (local `wrangler dev --local`).
 - Implementation tests: **7/7** (local worker, real D1/R2).
+- Perf smoke: append p95 ~7ms, read p95 ~6ms (local dev run; non‑gating).
 
 ## Commands (local)
 ```bash
@@ -25,9 +26,13 @@ Run from another shell while `pnpm run dev` is running:
 cd poc/cloudflare
 pnpm run conformance
 pnpm run test:implementation
+pnpm run perf
 ```
 `pnpm run test:implementation` will start a local worker automatically if
 `IMPLEMENTATION_TEST_URL` is not set.
+`pnpm run perf` will start a local worker automatically unless `PERF_BASE_URL`
+is set.
+Set `PERF_BUDGET_MS=10` and `PERF_ENFORCE=1` to enforce the CF budget locally.
 
 ## Notes
 - Local R2 is enabled via `wrangler dev --local`.
