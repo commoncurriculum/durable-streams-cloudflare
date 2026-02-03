@@ -1,19 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  createStream,
-  delay,
-  deleteStream,
-  streamUrl,
-  uniqueStreamId,
-  waitForReaderDone,
-} from "./helpers";
+import { createClient, delay, uniqueStreamId, waitForReaderDone } from "./helpers";
 
 describe("stream cleanup", () => {
   it("closes SSE connections when a stream is deleted", async () => {
+    const client = createClient();
     const streamId = uniqueStreamId("sse-delete");
-    await createStream(streamId, "hello", "text/plain");
+    await client.createStream(streamId, "hello", "text/plain");
 
-    const response = await fetch(streamUrl(streamId, { live: "sse", offset: "0" }), {
+    const response = await fetch(client.streamUrl(streamId, { live: "sse", offset: "0" }), {
       headers: {
         Accept: "text/event-stream",
       },
@@ -24,19 +18,20 @@ describe("stream cleanup", () => {
 
     const reader = response.body!.getReader();
 
-    await deleteStream(streamId);
+    await client.deleteStream(streamId);
 
     const closed = await waitForReaderDone(reader, 1500);
     expect(closed).toBe(true);
   });
 
   it("wakes long-poll waiters after delete", async () => {
+    const client = createClient();
     const streamId = uniqueStreamId("longpoll-delete");
-    const putResponse = await createStream(streamId, "", "text/plain");
+    const putResponse = await client.createStream(streamId, "", "text/plain");
     const tailOffset = putResponse.headers.get("Stream-Next-Offset");
     expect(tailOffset).toBeTruthy();
 
-    const longPollUrl = streamUrl(streamId, {
+    const longPollUrl = client.streamUrl(streamId, {
       live: "long-poll",
       offset: tailOffset!,
     });
@@ -45,7 +40,7 @@ describe("stream cleanup", () => {
     const longPollPromise = fetch(longPollUrl);
 
     await delay(50);
-    await deleteStream(streamId);
+    await client.deleteStream(streamId);
 
     const longPollResponse = await longPollPromise;
     const elapsed = Date.now() - start;

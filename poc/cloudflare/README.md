@@ -62,7 +62,8 @@ Run durability/concurrency tests against the local worker:
 ```bash
 pnpm run test:implementation
 ```
-Note: `pnpm run dev` must be running in another shell.
+Note: If `IMPLEMENTATION_TEST_URL` is not set, the test runner will start a local
+worker automatically. Set `IMPLEMENTATION_TEST_URL` to target an existing server.
 
 ## Stream URL
 ```

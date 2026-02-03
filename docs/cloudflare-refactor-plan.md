@@ -192,6 +192,7 @@ Targets (Cloudflare-specific)
 - **Crash recovery / restart safety**
   - Simulate DO restarts mid-stream and ensure offsets + data remain consistent.
   - Repeated restart cycles should remain idempotent (no dupes/rewinds).
+  - Producer idempotency should hold across restarts (duplicate seqs ignored).
 - **Concurrent access**
   - Multiple readers during append should see either before or after state,
     never partial data (especially for JSON streams).
@@ -212,6 +213,9 @@ Deliverables
 - Clear separation from conformance tests (no mocks, real D1/R2).
 Current status
 - Added implementation tests for delete cleanup (SSE/long-poll) + concurrent appends.
+- Added restart tests covering persistence + producer idempotency across worker restarts.
+- Implementation tests now spin up a local worker automatically when no
+  `IMPLEMENTATION_TEST_URL` is provided.
 
 ## Phase 6: Docs and Ops
 - Document the module layout and extension points.

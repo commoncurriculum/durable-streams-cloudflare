@@ -2,7 +2,7 @@
 
 ## Baseline (2026-02-03)
 - Conformance suite: **239/239** (local `wrangler dev --local`).
-- Implementation tests: **3/3** (local worker, real D1/R2).
+- Implementation tests: **5/5** (local worker, real D1/R2).
 
 ## Commands (local)
 ```bash
@@ -26,6 +26,8 @@ cd poc/cloudflare
 pnpm run conformance
 pnpm run test:implementation
 ```
+`pnpm run test:implementation` will start a local worker automatically if
+`IMPLEMENTATION_TEST_URL` is not set.
 
 ## Notes
 - Local R2 is enabled via `wrangler dev --local`.
