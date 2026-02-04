@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ZERO_OFFSET } from "../../src/protocol/offsets";
 import { startWorker } from "./worker_harness";
-import { uniqueStreamId } from "./helpers";
+import { delay, uniqueStreamId } from "./helpers";
+
+const FANOUT_THRESHOLD = 200;
+const QUEUE_SUBSCRIBERS = FANOUT_THRESHOLD + 5;
 
 async function subscribe(baseUrl: string, sessionId: string, streamId: string): Promise<Response> {
   return await fetch(`${baseUrl}/v1/subscriptions`, {
@@ -102,4 +105,73 @@ describe("subscriptions (fan-in)", () => {
       await handle.stop();
     }
   });
+
+  it(
+    "fan-outs via queue when subscriber count exceeds threshold",
+    async () => {
+      const handle = await startWorker();
+      const streamId = uniqueStreamId("fanout-queue-doc");
+      const sessionIds: string[] = [];
+      const primarySessionId = uniqueStreamId("session");
+      sessionIds.push(primarySessionId);
+      for (let i = 1; i < QUEUE_SUBSCRIBERS; i += 1) {
+        sessionIds.push(uniqueStreamId("session"));
+      }
+
+      try {
+        const create = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ init: true }),
+        });
+        expect([200, 201]).toContain(create.status);
+
+        for (const sessionId of sessionIds) {
+          const subscribed = await subscribe(handle.baseUrl, sessionId, streamId);
+          expect(subscribed.status).toBe(204);
+        }
+
+        const append = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "queue", text: "hello" }),
+        });
+        expect([200, 204]).toContain(append.status);
+
+        const envelope = await waitForEnvelope(
+          handle.baseUrl,
+          primarySessionId,
+          streamId,
+        );
+        expect(envelope.payload).toEqual({ op: "queue", text: "hello" });
+      } finally {
+        await handle.stop();
+      }
+    },
+    20_000,
+  );
 });
+
+async function waitForEnvelope(
+  baseUrl: string,
+  sessionId: string,
+  streamId: string,
+): Promise<{ stream: string; offset: string; type: string; payload: unknown }> {
+  const deadline = Date.now() + 12_000;
+  while (Date.now() < deadline) {
+    const response = await fetch(
+      `${baseUrl}/v1/stream/subscriptions/${sessionId}?offset=${ZERO_OFFSET}`,
+    );
+    if (response.status === 200) {
+      const payload = await response.json().catch(() => null);
+      if (Array.isArray(payload)) {
+        const envelope = payload.find(
+          (entry) => entry && typeof entry === "object" && entry.stream === streamId,
+        );
+        if (envelope) return envelope as { stream: string; offset: string; type: string; payload: unknown };
+      }
+    }
+    await delay(200);
+  }
+  throw new Error("timed out waiting for fan-in envelope");
+}
