@@ -46,7 +46,7 @@ export async function handleGet(
     });
     if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
     applyExpiryHeaders(headers, meta);
-    headers.set("Cache-Control", "no-store");
+    headers.set("Cache-Control", cacheMode === "private" ? "private, no-store" : "no-store");
 
     const body = isJsonContentType(meta.content_type) ? emptyJsonArray() : new ArrayBuffer(0);
     return new Response(body, { status: 200, headers });

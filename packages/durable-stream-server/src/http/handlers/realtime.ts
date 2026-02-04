@@ -27,15 +27,15 @@ export async function handleLongPoll(
   request: Request,
   url: URL,
 ): Promise<Response> {
-  const cacheMode = getCacheMode(request);
-  const cacheControl =
-    cacheMode === "shared" ? `public, max-age=${LONG_POLL_CACHE_SECONDS}` : "private, no-store";
-
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
+  const cacheMode = getCacheMode(request);
+  let cacheControl =
+    cacheMode === "shared" ? `public, max-age=${LONG_POLL_CACHE_SECONDS}` : "private, no-store";
   let offset: number;
   if (offsetParam === "now") {
     offset = meta.tail_offset;
+    cacheControl = cacheMode === "shared" ? "no-store" : "private, no-store";
   } else {
     const resolved = await ctx.resolveOffset(
       streamId,
