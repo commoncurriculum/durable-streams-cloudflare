@@ -59,7 +59,10 @@ export function createHealthRoutes() {
         const id = streams.idFromName("__registry__");
         const stub = streams.get(id);
         const response = await stub.fetch(
-          new Request("http://internal/internal/admin/meta", { method: "GET" })
+          new Request("http://internal/internal/admin/meta", {
+            method: "GET",
+            headers: { "X-Stream-Id": "__registry__" },
+          })
         );
         services.registry = {
           available: response.ok,

@@ -9,6 +9,6 @@ export default defineConfig({
     include: [path.resolve(__dirname, "test/performance/**/*.test.ts")],
     exclude: ["**/.git/**"],
     passWithNoTests: false,
-    testTimeout: 60_000,
+    testTimeout: 330_000, // 5.5 min for extreme stress tests
   },
 });

@@ -75,7 +75,10 @@ export function createAdminSessionsRoutes() {
         const id = streams.idFromName(`session:${sessionId}`);
         const stub = streams.get(id);
         const response = await stub.fetch(
-          new Request("http://internal/internal/admin/subscriptions", { method: "GET" })
+          new Request("http://internal/internal/admin/subscriptions", {
+            method: "GET",
+            headers: { "X-Stream-Id": `session:${sessionId}` },
+          })
         );
         if (response.ok) {
           const data = (await response.json()) as { streams?: string[] };

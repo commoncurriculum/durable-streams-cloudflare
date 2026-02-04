@@ -100,7 +100,10 @@ export function createAdminStreamsRoutes() {
         const id = streams.idFromName(streamId);
         const stub = streams.get(id);
         const response = await stub.fetch(
-          new Request("http://internal/internal/admin/subscribers", { method: "GET" })
+          new Request("http://internal/internal/admin/subscribers", {
+            method: "GET",
+            headers: { "X-Stream-Id": streamId },
+          })
         );
         if (response.ok) {
           const data = (await response.json()) as { count?: number };
