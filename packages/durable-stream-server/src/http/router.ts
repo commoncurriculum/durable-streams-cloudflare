@@ -2,12 +2,7 @@ import { errorResponse } from "../protocol/errors";
 import type { StreamContext } from "./context";
 import { handleDelete, handlePost, handlePut } from "./handlers/mutation";
 import { handleGet, handleHead } from "./handlers/catchup";
-import {
-  handleInternalFanInAppend,
-  handleInternalSessionInit,
-  handleInternalSubscribers,
-  handleInternalSubscriptions,
-} from "./handlers/subscriptions";
+import { createDoApp } from "../hono/do-app";
 
 export async function routeRequest(
   ctx: StreamContext,
@@ -18,18 +13,11 @@ export async function routeRequest(
   const method = request.method.toUpperCase();
 
   try {
-    if (url.pathname === "/internal/subscriptions") {
-      return await handleInternalSubscriptions(ctx, streamId, request);
+    if (url.pathname.startsWith("/internal/")) {
+      const doApp = createDoApp(ctx, streamId);
+      return await doApp.fetch(request);
     }
-    if (url.pathname === "/internal/session") {
-      return await handleInternalSessionInit(ctx, streamId, request);
-    }
-    if (url.pathname === "/internal/subscribers") {
-      return await handleInternalSubscribers(ctx, streamId, request);
-    }
-    if (url.pathname === "/internal/fan-in-append") {
-      return await handleInternalFanInAppend(ctx, streamId, request);
-    }
+
     if (method === "PUT") return await handlePut(ctx, streamId, request);
     if (method === "POST") return await handlePost(ctx, streamId, request);
     if (method === "GET") return await handleGet(ctx, streamId, request, url);

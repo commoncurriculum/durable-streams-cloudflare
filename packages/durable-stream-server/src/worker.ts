@@ -3,6 +3,8 @@ import { appendEnvelopeToSession, type FanOutQueueMessage } from "./do/fanout";
 import { Timing, attachTiming } from "./protocol/timing";
 import { CACHE_MODE_HEADER, type CacheMode, resolveCacheMode } from "./http/cache_mode";
 import { SESSION_ID_HEADER } from "./http/read_auth";
+import { createEdgeApp } from "./hono/app";
+import { applyCorsHeaders } from "./hono/middleware/cors";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
@@ -16,7 +18,10 @@ export interface Env {
   DEBUG_TIMING?: string;
 }
 
+const edgeApp = createEdgeApp();
+
 const STREAM_PREFIX = "/v1/stream/";
+const ADMIN_PREFIX = "/admin";
 const SUBSCRIPTIONS_PREFIX = "/v1/subscriptions";
 const SESSIONS_PREFIX = "/v1/sessions";
 const REGISTRY_STREAM = "__registry__";
@@ -24,43 +29,9 @@ const FANOUT_RETRY_MAX_ATTEMPTS = 5;
 const FANOUT_RETRY_BASE_SECONDS = 5;
 const FANOUT_RETRY_MAX_SECONDS = 900;
 
-const CORS_ALLOW_HEADERS = [
-  "Content-Type",
-  "Stream-Seq",
-  "Stream-TTL",
-  "Stream-Expires-At",
-  "Stream-Closed",
-  "If-None-Match",
-  "Producer-Id",
-  "Producer-Epoch",
-  "Producer-Seq",
-  "Authorization",
-];
-
-const CORS_EXPOSE_HEADERS = [
-  "Stream-Next-Offset",
-  "Stream-Cursor",
-  "Stream-Up-To-Date",
-  "Stream-Closed",
-  "ETag",
-  "Location",
-  "Producer-Epoch",
-  "Producer-Seq",
-  "Producer-Expected-Seq",
-  "Producer-Received-Seq",
-  "Stream-SSE-Data-Encoding",
-];
-
-function applyCors(headers: Headers): void {
-  headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS.join(", "));
-  headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS.join(", "));
-}
-
 function corsError(status: number, message: string): Response {
   const headers = new Headers({ "Cache-Control": "no-store" });
-  applyCors(headers);
+  applyCorsHeaders(headers);
   return new Response(message, { status, headers });
 }
 
@@ -226,9 +197,18 @@ export default {
     const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
     const timing = timingEnabled ? new Timing() : null;
 
+    if (
+      url.pathname.startsWith(ADMIN_PREFIX) ||
+      url.pathname === SUBSCRIPTIONS_PREFIX ||
+      url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`) ||
+      url.pathname === SESSIONS_PREFIX
+    ) {
+      return edgeApp.fetch(request, env, ctx);
+    }
+
     if (request.method === "OPTIONS") {
       const headers = new Headers();
-      applyCors(headers);
+      applyCorsHeaders(headers);
       return new Response(null, { status: 204, headers });
     }
 
@@ -241,7 +221,7 @@ export default {
       const readAuth = await authorizeRead(request, env.READ_JWT_SECRET, timing);
       if (!readAuth.ok) {
         const headers = new Headers(readAuth.response.headers);
-        applyCors(headers);
+        applyCorsHeaders(headers);
         if (!headers.has("Cache-Control")) {
           headers.set("Cache-Control", "no-store");
         }
@@ -256,7 +236,7 @@ export default {
       const authResult = authorizeRequest(request, env, timing);
       if (!authResult.ok) {
         const headers = new Headers(authResult.response.headers);
-        applyCors(headers);
+        applyCorsHeaders(headers);
         if (!headers.has("Cache-Control")) {
           headers.set("Cache-Control", "no-store");
         }
@@ -272,31 +252,6 @@ export default {
       envMode: env.CACHE_MODE,
       authMode: undefined,
     });
-
-    if (
-      url.pathname === SUBSCRIPTIONS_PREFIX ||
-      url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`)
-    ) {
-      const response = await handleSubscriptionsRequest(request, env, url);
-      const headers = new Headers(response.headers);
-      applyCors(headers);
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    }
-
-    if (url.pathname === SESSIONS_PREFIX) {
-      const response = await handleSessionsRequest(request, env);
-      const headers = new Headers(response.headers);
-      applyCors(headers);
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    }
 
     if (!url.pathname.startsWith(STREAM_PREFIX)) {
       return corsError(404, "not found");
@@ -340,7 +295,7 @@ export default {
     const response = await stub.fetch(upstreamReq);
     doneOrigin?.();
     const responseHeaders = new Headers(response.headers);
-    applyCors(responseHeaders);
+    applyCorsHeaders(responseHeaders);
     const wrapped = new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -419,92 +374,6 @@ export default {
 };
 
 export { StreamDO };
-
-async function handleSubscriptionsRequest(request: Request, env: Env, url: URL): Promise<Response> {
-  const method = request.method.toUpperCase();
-
-  if (url.pathname === SUBSCRIPTIONS_PREFIX) {
-    if (method !== "POST" && method !== "DELETE") {
-      return new Response("method not allowed", { status: 405 });
-    }
-    const payload = await request.json().catch(() => null);
-    if (!payload || typeof payload !== "object") {
-      return new Response("invalid JSON body", { status: 400 });
-    }
-    const sessionId =
-      "sessionId" in payload && typeof payload.sessionId === "string" ? payload.sessionId : null;
-    const streamId =
-      "streamId" in payload && typeof payload.streamId === "string" ? payload.streamId : null;
-    if (!sessionId || !streamId) {
-      return new Response("missing sessionId or streamId", { status: 400 });
-    }
-
-    const sessionStreamId = `subscriptions/${sessionId}`;
-    return await forwardToSessionDO(env, sessionStreamId, method, {
-      sessionId,
-      streamId,
-    });
-  }
-
-  if (url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`)) {
-    if (method !== "GET") {
-      return new Response("method not allowed", { status: 405 });
-    }
-    const sessionId = decodeURIComponent(url.pathname.slice(SUBSCRIPTIONS_PREFIX.length + 1));
-    if (!sessionId) return new Response("missing session id", { status: 400 });
-    const sessionStreamId = `subscriptions/${sessionId}`;
-    return await forwardToSessionDO(env, sessionStreamId, "GET");
-  }
-
-  return new Response("not found", { status: 404 });
-}
-
-async function forwardToSessionDO(
-  env: Env,
-  sessionStreamId: string,
-  method: string,
-  body?: Record<string, string>,
-  path = "/internal/subscriptions",
-): Promise<Response> {
-  const id = env.STREAMS.idFromName(sessionStreamId);
-  const stub = env.STREAMS.get(id);
-  const headers = new Headers();
-  headers.set("X-Stream-Id", sessionStreamId);
-  if (body) headers.set("Content-Type", "application/json");
-
-  const url = new URL(`https://internal${path}`);
-  return await stub.fetch(
-    new Request(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-  );
-}
-
-async function handleSessionsRequest(request: Request, env: Env): Promise<Response> {
-  const method = request.method.toUpperCase();
-  if (method !== "POST") {
-    return new Response("method not allowed", { status: 405 });
-  }
-
-  const sessionId = crypto.randomUUID();
-  const sessionStreamId = `subscriptions/${sessionId}`;
-  const response = await forwardToSessionDO(
-    env,
-    sessionStreamId,
-    "POST",
-    { sessionId },
-    "/internal/session",
-  );
-  if (!response.ok) {
-    return new Response("failed to create session", { status: response.status });
-  }
-  return new Response(JSON.stringify({ sessionId }), {
-    status: 201,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 function computeRetryDelay(attempts: number): number {
   const delay = FANOUT_RETRY_BASE_SECONDS * Math.pow(2, Math.max(0, attempts - 1));
