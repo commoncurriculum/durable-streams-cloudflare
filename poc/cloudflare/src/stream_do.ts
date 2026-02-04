@@ -172,6 +172,19 @@ export class StreamDO {
       return new Response(null, { status: 204 });
     }
 
+    if (action === "compact") {
+      await this.rotateSegment(streamId, { force: true });
+      return new Response(null, { status: 204 });
+    }
+
+    if (action === "ops-count") {
+      const ops = await this.storage.selectAllOps(streamId);
+      return new Response(JSON.stringify({ count: ops.length }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "truncate-latest") {
       if (!this.env.R2) return errorResponse(400, "R2 unavailable");
       const segment = await this.storage.getLatestSegment(streamId);

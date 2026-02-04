@@ -69,4 +69,48 @@ describe("CORS + error cache headers", () => {
       await handle.stop();
     }
   });
+
+  it("applies private cache mode to HEAD responses", async () => {
+    const handle = await startWorker();
+    const streamId = uniqueStreamId("cors-head-private");
+    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+    try {
+      const create = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain" },
+      });
+      expect([200, 201]).toContain(create.status);
+
+      const head = await fetch(url, { method: "HEAD" });
+      expect(head.status).toBe(200);
+      expectCors(head.headers);
+      const cacheControl = head.headers.get("Cache-Control") ?? "";
+      expect(cacheControl).toBe("private, no-store");
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("keeps no-store on HEAD in shared mode", async () => {
+    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+    const streamId = uniqueStreamId("cors-head-shared");
+    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+    try {
+      const create = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain" },
+      });
+      expect([200, 201]).toContain(create.status);
+
+      const head = await fetch(url, { method: "HEAD" });
+      expect(head.status).toBe(200);
+      expectCors(head.headers);
+      const cacheControl = head.headers.get("Cache-Control") ?? "";
+      expect(cacheControl).toContain("no-store");
+    } finally {
+      await handle.stop();
+    }
+  });
 });

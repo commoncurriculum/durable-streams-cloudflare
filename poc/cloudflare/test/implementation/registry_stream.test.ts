@@ -60,6 +60,8 @@ describe("registry stream events", () => {
       const insertEvent = afterCreate[insertIndex];
       expect(insertEvent.value?.path).toBe(streamId);
       expect(insertEvent.value?.contentType).toBe("text/plain");
+      expect(typeof insertEvent.value?.createdAt).toBe("number");
+      expect(insertEvent.headers?.operation).toBe("insert");
 
       const deleted = await fetch(url, { method: "DELETE" });
       expect(deleted.status).toBe(204);
@@ -72,6 +74,9 @@ describe("registry stream events", () => {
       );
       expect(deleteIndex).toBeGreaterThanOrEqual(0);
       expect(deleteIndex).toBeGreaterThan(insertIndex);
+      const deleteEvent = afterDelete[deleteIndex];
+      expect(deleteEvent.value).toBeUndefined();
+      expect(deleteEvent.headers?.operation).toBe("delete");
     } finally {
       await handle.stop();
     }
