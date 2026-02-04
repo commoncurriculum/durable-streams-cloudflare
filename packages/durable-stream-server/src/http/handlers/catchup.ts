@@ -13,6 +13,7 @@ import { applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamContext } from "../context";
 import { getCacheMode } from "../cache_mode";
+import { ensureReadAuthorized } from "../read_auth";
 import { handleLongPoll, handleSse } from "./realtime";
 
 export async function handleGet(
@@ -23,6 +24,9 @@ export async function handleGet(
 ): Promise<Response> {
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
+
+  const authError = await ensureReadAuthorized(ctx, streamId, request);
+  if (authError) return authError;
 
   const cacheMode = getCacheMode(request);
 
@@ -96,6 +100,9 @@ export async function handleHead(
 ): Promise<Response> {
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
+
+  const authError = await ensureReadAuthorized(ctx, streamId, request);
+  if (authError) return authError;
 
   const response = buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
   if (getCacheMode(request) === "private") {
