@@ -1,17 +1,16 @@
 import { errorResponse } from "./protocol/errors";
 import { isExpired } from "./protocol/expiry";
 import { decodeOffsetParts, encodeOffset } from "./protocol/offsets";
-import { toUint8Array } from "./protocol/encoding";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "./protocol/limits";
 import { LongPollQueue } from "./live/long_poll";
 import type { SseState } from "./live/types";
 import { DoSqliteStorage } from "./storage/do_sqlite";
-import { buildSegmentKey, encodeSegmentMessages } from "./storage/segments";
 import type { StreamMeta } from "./storage/storage";
 import { routeRequest } from "./http/router";
 import { Timing, attachTiming } from "./protocol/timing";
 import type { StreamContext, StreamEnv, ResolveOffsetResult } from "./http/context";
 import { ReadPath } from "./do/read_path";
+import { rotateSegment } from "./do/segment_rotation";
 
 export type Env = StreamEnv;
 
@@ -196,90 +195,19 @@ export class StreamDO {
     streamId: string,
     options?: { force?: boolean; retainOps?: boolean },
   ): Promise<void> {
-    if (!this.env.R2) return;
     if (this.rotating) return;
     this.rotating = true;
     try {
-      const meta = await this.storage.getStream(streamId);
-      if (!meta) return;
-
-      const segmentMaxMessages = this.segmentMaxMessages();
-      const segmentMaxBytes = this.segmentMaxBytes();
-      const shouldRotate =
-        options?.force ||
-        meta.segment_messages >= segmentMaxMessages ||
-        meta.segment_bytes >= segmentMaxBytes;
-      if (!shouldRotate) return;
-
-      const deleteOps = this.env.R2_DELETE_OPS !== "0" && !options?.retainOps;
-
-      const segmentStart = meta.segment_start;
-      const segmentEnd = meta.tail_offset;
-
-      if (segmentEnd <= segmentStart) return;
-
-      const ops = await this.storage.selectOpsRange(streamId, segmentStart, segmentEnd);
-      if (ops.length === 0) return;
-      if (ops[0].start_offset !== segmentStart) return;
-
-      for (let i = 1; i < ops.length; i += 1) {
-        if (ops[i].start_offset !== ops[i - 1].end_offset) {
-          return;
-        }
-      }
-
-      const resolvedEnd = ops[ops.length - 1].end_offset;
-      if (resolvedEnd !== segmentEnd) return;
-
-      const now = Date.now();
-      const messages = ops.map((chunk) => toUint8Array(chunk.body));
-      const body = encodeSegmentMessages(messages);
-      const sizeBytes = messages.reduce((sum, message) => sum + message.byteLength, 0);
-      const messageCount = messages.length;
-
-      const key = buildSegmentKey(streamId, meta.read_seq);
-      await this.env.R2.put(key, body, {
-        httpMetadata: { contentType: meta.content_type },
-      });
-
-      const expiresAt = meta.expires_at ?? null;
-      await this.storage.insertSegment({
+      await rotateSegment({
+        env: this.env,
+        storage: this.storage,
         streamId,
-        r2Key: key,
-        startOffset: segmentStart,
-        endOffset: segmentEnd,
-        readSeq: meta.read_seq,
-        contentType: meta.content_type,
-        createdAt: now,
-        expiresAt,
-        sizeBytes,
-        messageCount,
+        segmentMaxMessages: this.segmentMaxMessages(),
+        segmentMaxBytes: this.segmentMaxBytes(),
+        force: options?.force,
+        retainOps: options?.retainOps,
+        recordAdminSegment: (segment) => this.recordAdminSegment(streamId, segment),
       });
-
-      const remainingStats = await this.storage.getOpsStatsFrom(streamId, segmentEnd);
-      await this.storage.batch([
-        this.storage.updateStreamStatement(
-          streamId,
-          ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
-          [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
-        ),
-      ]);
-
-      await this.recordAdminSegment(streamId, {
-        readSeq: meta.read_seq,
-        startOffset: segmentStart,
-        endOffset: segmentEnd,
-        r2Key: key,
-        contentType: meta.content_type,
-        createdAt: now,
-        expiresAt,
-        sizeBytes,
-        messageCount,
-      });
-
-      if (deleteOps) {
-        await this.storage.deleteOpsThrough(streamId, segmentEnd);
-      }
     } finally {
       this.rotating = false;
     }
