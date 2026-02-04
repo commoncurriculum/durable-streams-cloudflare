@@ -107,7 +107,7 @@ export async function appendEnvelopeToSession(
   streams: DurableObjectNamespace,
   sessionId: string,
   envelope: FanInEnvelope,
-): Promise<void> {
+): Promise<Response> {
   const sessionStreamId = `${SESSION_STREAM_PREFIX}${sessionId}`;
   const id = streams.idFromName(sessionStreamId);
   const stub = streams.get(id);
@@ -123,7 +123,6 @@ export async function appendEnvelopeToSession(
       body: JSON.stringify(envelope),
     }),
   );
-  if (!response.ok) {
-    await response.arrayBuffer();
-  }
+  if (!response.ok) await response.arrayBuffer();
+  return response;
 }

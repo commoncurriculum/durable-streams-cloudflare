@@ -3,6 +3,7 @@ import type { StreamContext } from "../context";
 import { handlePost } from "./mutation";
 
 const SESSION_STREAM_PREFIX = "subscriptions/";
+const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 24;
 
 function parseSessionId(streamId: string): string | null {
   if (!streamId.startsWith(SESSION_STREAM_PREFIX)) return null;
@@ -38,6 +39,49 @@ async function ensureSessionStream(ctx: StreamContext, streamId: string): Promis
   });
 }
 
+function resolveSessionTtlSeconds(env: StreamContext["env"]): number {
+  const raw = env.SESSION_TTL_SECONDS;
+  if (!raw) return DEFAULT_SESSION_TTL_SECONDS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_TTL_SECONDS;
+}
+
+async function expireSession(ctx: StreamContext, sessionId: string): Promise<void> {
+  const streams = await ctx.storage.listSessionSubscriptions();
+  await Promise.all(
+    streams.map(async (streamId) => {
+      const response = await updateStreamSubscriber(ctx, streamId, sessionId, "DELETE");
+      if (!response.ok) await response.arrayBuffer();
+    }),
+  );
+  await ctx.storage.deleteStreamData(`${SESSION_STREAM_PREFIX}${sessionId}`);
+  await ctx.storage.deleteSessionMeta(sessionId);
+}
+
+async function ensureSessionActive(
+  ctx: StreamContext,
+  sessionId: string,
+  options?: { createIfMissing?: boolean },
+): Promise<Response | null> {
+  const now = Date.now();
+  const ttlSeconds = resolveSessionTtlSeconds(ctx.env);
+  const meta = await ctx.storage.getSessionMeta(sessionId);
+
+  if (!meta) {
+    if (!options?.createIfMissing) return errorResponse(404, "session not found");
+    await ctx.storage.upsertSessionMeta(sessionId, now, ttlSeconds);
+    return null;
+  }
+
+  if (meta.expires_at <= now) {
+    await expireSession(ctx, sessionId);
+    return errorResponse(410, "session expired");
+  }
+
+  await ctx.storage.touchSessionMeta(sessionId, now, ttlSeconds);
+  return null;
+}
+
 export async function handleInternalSubscriptions(
   ctx: StreamContext,
   streamId: string,
@@ -46,6 +90,9 @@ export async function handleInternalSubscriptions(
   return ctx.state.blockConcurrencyWhile(async () => {
     const sessionId = parseSessionId(streamId);
     if (!sessionId) return errorResponse(400, "invalid session stream id");
+
+    const sessionError = await ensureSessionActive(ctx, sessionId);
+    if (sessionError) return sessionError;
 
     const method = request.method.toUpperCase();
     if (method === "GET") {
@@ -134,8 +181,36 @@ export async function handleInternalFanInAppend(
     const sessionId = parseSessionId(streamId);
     if (!sessionId) return errorResponse(400, "invalid session stream id");
 
+    const sessionError = await ensureSessionActive(ctx, sessionId);
+    if (sessionError) return sessionError;
+
     await ensureSessionStream(ctx, streamId);
     return await handlePost(ctx, streamId, request);
+  });
+}
+
+export async function handleInternalSessionInit(
+  ctx: StreamContext,
+  streamId: string,
+  request: Request,
+): Promise<Response> {
+  return ctx.state.blockConcurrencyWhile(async () => {
+    const sessionId = parseSessionId(streamId);
+    if (!sessionId) return errorResponse(400, "invalid session stream id");
+
+    const payload = await parseJson(request);
+    if (!payload) return errorResponse(400, "invalid JSON body");
+
+    const payloadSessionId = extractString(payload, "sessionId");
+    if (!payloadSessionId || payloadSessionId !== sessionId) {
+      return errorResponse(400, "sessionId mismatch");
+    }
+
+    const sessionError = await ensureSessionActive(ctx, sessionId, { createIfMissing: true });
+    if (sessionError) return sessionError;
+
+    await ensureSessionStream(ctx, streamId);
+    return new Response(null, { status: 201 });
   });
 }
 

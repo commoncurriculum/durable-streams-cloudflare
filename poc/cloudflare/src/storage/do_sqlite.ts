@@ -8,6 +8,7 @@ import type {
   StorageStatement,
   StreamMeta,
   StreamStorage,
+  SessionMeta,
 } from "./storage";
 
 type SqlStorage = DurableObjectStorage["sql"];
@@ -79,6 +80,13 @@ export class DoSqliteStorage implements StreamStorage {
       CREATE TABLE IF NOT EXISTS session_subscriptions (
         stream_id TEXT PRIMARY KEY,
         created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS session_meta (
+        session_id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
       );
     `);
 
@@ -182,6 +190,7 @@ export class DoSqliteStorage implements StreamStorage {
     this.sql.exec("DELETE FROM producers");
     this.sql.exec("DELETE FROM stream_subscribers");
     this.sql.exec("DELETE FROM session_subscriptions");
+    this.sql.exec("DELETE FROM session_meta");
     this.sql.exec("DELETE FROM stream_meta");
   }
 
@@ -517,6 +526,66 @@ export class DoSqliteStorage implements StreamStorage {
       "SELECT stream_id FROM session_subscriptions",
     );
     return rows.toArray().map((row) => row.stream_id);
+  }
+
+  async getSessionMeta(sessionId: string): Promise<SessionMeta | null> {
+    const rows = this.sql.exec<SessionMeta>(
+      "SELECT * FROM session_meta WHERE session_id = ?",
+      sessionId,
+    );
+    return rows.toArray()[0] ?? null;
+  }
+
+  async upsertSessionMeta(
+    sessionId: string,
+    now: number,
+    ttlSeconds: number,
+  ): Promise<SessionMeta> {
+    const expiresAt = now + ttlSeconds * 1000;
+    this.sql.exec(
+      `
+        INSERT INTO session_meta (session_id, created_at, last_seen_at, expires_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          last_seen_at = excluded.last_seen_at,
+          expires_at = excluded.expires_at
+      `,
+      sessionId,
+      now,
+      now,
+      expiresAt,
+    );
+    return {
+      session_id: sessionId,
+      created_at: now,
+      last_seen_at: now,
+      expires_at: expiresAt,
+    };
+  }
+
+  async touchSessionMeta(
+    sessionId: string,
+    now: number,
+    ttlSeconds: number,
+  ): Promise<SessionMeta | null> {
+    const expiresAt = now + ttlSeconds * 1000;
+    const result = this.sql.exec(
+      "UPDATE session_meta SET last_seen_at = ?, expires_at = ? WHERE session_id = ?",
+      now,
+      expiresAt,
+      sessionId,
+    );
+    if (result.rowsWritten === 0) return null;
+    return {
+      session_id: sessionId,
+      created_at: now,
+      last_seen_at: now,
+      expires_at: expiresAt,
+    };
+  }
+
+  async deleteSessionMeta(sessionId: string): Promise<void> {
+    this.sql.exec("DELETE FROM session_meta WHERE session_id = ?", sessionId);
   }
 
   private getChangeCount(): number {

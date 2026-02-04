@@ -7,6 +7,7 @@ import type { Timing } from "../protocol/timing";
 export type StreamEnv = {
   STREAMS?: DurableObjectNamespace;
   FANOUT_QUEUE?: Queue;
+  SESSION_TTL_SECONDS?: string;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_COALESCE?: string;

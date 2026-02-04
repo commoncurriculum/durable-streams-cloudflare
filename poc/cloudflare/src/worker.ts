@@ -8,6 +8,7 @@ export interface Env {
   FANOUT_QUEUE?: Queue;
   AUTH_TOKEN?: string;
   CACHE_MODE?: string;
+  SESSION_TTL_SECONDS?: string;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
@@ -15,7 +16,11 @@ export interface Env {
 
 const STREAM_PREFIX = "/v1/stream/";
 const SUBSCRIPTIONS_PREFIX = "/v1/subscriptions";
+const SESSIONS_PREFIX = "/v1/sessions";
 const REGISTRY_STREAM = "__registry__";
+const FANOUT_RETRY_MAX_ATTEMPTS = 5;
+const FANOUT_RETRY_BASE_SECONDS = 5;
+const FANOUT_RETRY_MAX_SECONDS = 900;
 
 const CORS_ALLOW_HEADERS = [
   "Content-Type",
@@ -184,6 +189,17 @@ export default {
       });
     }
 
+    if (url.pathname === SESSIONS_PREFIX) {
+      const response = await handleSessionsRequest(request, env);
+      const headers = new Headers(response.headers);
+      applyCors(headers);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+
     if (!url.pathname.startsWith(STREAM_PREFIX)) {
       return corsError(404, "not found");
     }
@@ -277,14 +293,26 @@ export default {
         continue;
       }
       try {
-        await appendEnvelopeToSession(
+        const response = await appendEnvelopeToSession(
           env.STREAMS,
           sessionId,
           envelope as FanOutQueueMessage["envelope"],
         );
-        message.ack();
+        if (response.ok || response.status === 404 || response.status === 410) {
+          message.ack();
+          continue;
+        }
+        if (message.attempts >= FANOUT_RETRY_MAX_ATTEMPTS) {
+          message.ack();
+          continue;
+        }
+        message.retry({ delaySeconds: computeRetryDelay(message.attempts) });
       } catch {
-        message.retry();
+        if (message.attempts >= FANOUT_RETRY_MAX_ATTEMPTS) {
+          message.ack();
+        } else {
+          message.retry({ delaySeconds: computeRetryDelay(message.attempts) });
+        }
       }
     }
   },
@@ -336,6 +364,7 @@ async function forwardToSessionDO(
   sessionStreamId: string,
   method: string,
   body?: Record<string, string>,
+  path = "/internal/subscriptions",
 ): Promise<Response> {
   const id = env.STREAMS.idFromName(sessionStreamId);
   const stub = env.STREAMS.get(id);
@@ -343,7 +372,7 @@ async function forwardToSessionDO(
   headers.set("X-Stream-Id", sessionStreamId);
   if (body) headers.set("Content-Type", "application/json");
 
-  const url = new URL("https://internal/internal/subscriptions");
+  const url = new URL(`https://internal${path}`);
   return await stub.fetch(
     new Request(url, {
       method,
@@ -351,4 +380,27 @@ async function forwardToSessionDO(
       body: body ? JSON.stringify(body) : undefined,
     }),
   );
+}
+
+async function handleSessionsRequest(request: Request, env: Env): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "POST") {
+    return new Response("method not allowed", { status: 405 });
+  }
+
+  const sessionId = crypto.randomUUID();
+  const sessionStreamId = `subscriptions/${sessionId}`;
+  const response = await forwardToSessionDO(env, sessionStreamId, "POST", { sessionId }, "/internal/session");
+  if (!response.ok) {
+    return new Response("failed to create session", { status: response.status });
+  }
+  return new Response(JSON.stringify({ sessionId }), {
+    status: 201,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function computeRetryDelay(attempts: number): number {
+  const delay = FANOUT_RETRY_BASE_SECONDS * Math.pow(2, Math.max(0, attempts - 1));
+  return Math.min(delay, FANOUT_RETRY_MAX_SECONDS);
 }

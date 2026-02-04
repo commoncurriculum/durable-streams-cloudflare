@@ -26,11 +26,23 @@ async function unsubscribe(
   });
 }
 
+async function createSession(baseUrl: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/v1/sessions`, { method: "POST" });
+  if (response.status !== 201) {
+    throw new Error(`session create failed: ${response.status} ${await response.text()}`);
+  }
+  const body = (await response.json()) as { sessionId?: string };
+  if (!body.sessionId) {
+    throw new Error("session create missing sessionId");
+  }
+  return body.sessionId;
+}
+
 describe("subscriptions (fan-in)", () => {
   it("stores session subscriptions and lists them", async () => {
     const handle = await startWorker();
     const streamId = uniqueStreamId("sub-doc");
-    const sessionId = uniqueStreamId("session");
+    const sessionId = await createSession(handle.baseUrl);
 
     try {
       const create = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
@@ -64,7 +76,7 @@ describe("subscriptions (fan-in)", () => {
   it("fan-outs append envelopes into the session fan-in stream", async () => {
     const handle = await startWorker();
     const streamId = uniqueStreamId("fanout-doc");
-    const sessionId = uniqueStreamId("session");
+    const sessionId = await createSession(handle.baseUrl);
 
     try {
       const create = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
@@ -106,50 +118,54 @@ describe("subscriptions (fan-in)", () => {
     }
   });
 
-  it(
-    "fan-outs via queue when subscriber count exceeds threshold",
-    async () => {
-      const handle = await startWorker();
-      const streamId = uniqueStreamId("fanout-queue-doc");
-      const sessionIds: string[] = [];
-      const primarySessionId = uniqueStreamId("session");
-      sessionIds.push(primarySessionId);
-      for (let i = 1; i < QUEUE_SUBSCRIBERS; i += 1) {
-        sessionIds.push(uniqueStreamId("session"));
+  it("fan-outs via queue when subscriber count exceeds threshold", async () => {
+    const handle = await startWorker();
+    const streamId = uniqueStreamId("fanout-queue-doc");
+    const sessionIds: string[] = [];
+    const primarySessionId = await createSession(handle.baseUrl);
+    sessionIds.push(primarySessionId);
+    for (let i = 1; i < QUEUE_SUBSCRIBERS; i += 1) {
+      sessionIds.push(await createSession(handle.baseUrl));
+    }
+
+    try {
+      const create = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ init: true }),
+      });
+      expect([200, 201]).toContain(create.status);
+
+      for (const sessionId of sessionIds) {
+        const subscribed = await subscribe(handle.baseUrl, sessionId, streamId);
+        expect(subscribed.status).toBe(204);
       }
 
-      try {
-        const create = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ init: true }),
-        });
-        expect([200, 201]).toContain(create.status);
+      const append = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "queue", text: "hello" }),
+      });
+      expect([200, 204]).toContain(append.status);
 
-        for (const sessionId of sessionIds) {
-          const subscribed = await subscribe(handle.baseUrl, sessionId, streamId);
-          expect(subscribed.status).toBe(204);
-        }
+      const envelope = await waitForEnvelope(handle.baseUrl, primarySessionId, streamId);
+      expect(envelope.payload).toEqual({ op: "queue", text: "hello" });
+    } finally {
+      await handle.stop();
+    }
+  }, 20_000);
 
-        const append = await fetch(`${handle.baseUrl}/v1/stream/${streamId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ op: "queue", text: "hello" }),
-        });
-        expect([200, 204]).toContain(append.status);
-
-        const envelope = await waitForEnvelope(
-          handle.baseUrl,
-          primarySessionId,
-          streamId,
-        );
-        expect(envelope.payload).toEqual({ op: "queue", text: "hello" });
-      } finally {
-        await handle.stop();
-      }
-    },
-    20_000,
-  );
+  it("expires sessions after the configured TTL", async () => {
+    const handle = await startWorker({ vars: { SESSION_TTL_SECONDS: "1" } });
+    try {
+      const sessionId = await createSession(handle.baseUrl);
+      await delay(1200);
+      const list = await fetch(`${handle.baseUrl}/v1/subscriptions/${sessionId}`);
+      expect(list.status).toBe(410);
+    } finally {
+      await handle.stop();
+    }
+  });
 });
 
 async function waitForEnvelope(
@@ -168,7 +184,8 @@ async function waitForEnvelope(
         const envelope = payload.find(
           (entry) => entry && typeof entry === "object" && entry.stream === streamId,
         );
-        if (envelope) return envelope as { stream: string; offset: string; type: string; payload: unknown };
+        if (envelope)
+          return envelope as { stream: string; offset: string; type: string; payload: unknown };
       }
     }
     await delay(200);
