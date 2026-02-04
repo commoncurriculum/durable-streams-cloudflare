@@ -74,18 +74,27 @@ describe("Message Latency", () => {
   });
 
   it("should handle rapid-fire POSTs without stalling", async () => {
+    // Create a separate stream for this test to avoid conflicts with producer sequence
+    const rapidStreamPath = `rapid-fire-test-${Date.now()}`;
+    const rapidStreamUrl = `${BASE_URL}/v1/stream/${rapidStreamPath}`;
+
+    await fetch(rapidStreamUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain" },
+    });
+
     const messageCount = 50;
     const start = performance.now();
 
-    // Fire all POSTs concurrently
+    // Fire all POSTs concurrently - each with unique producer ID to avoid conflicts
     const promises = Array.from({ length: messageCount }, (_, i) =>
-      fetch(streamUrl, {
+      fetch(rapidStreamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "text/plain",
-          "Producer-Id": "rapid-fire",
+          "Producer-Id": `rapid-fire-${i}`,
           "Producer-Epoch": "1",
-          "Producer-Seq": String(1000 + i),
+          "Producer-Seq": "0",
         },
         body: `rapid-${i}\n`,
       })
@@ -95,17 +104,19 @@ describe("Message Latency", () => {
     const end = performance.now();
 
     const successCount = results.filter((r) => r.ok).length;
-    const conflictCount = results.filter((r) => r.status === 409).length;
 
     console.log(
       `Rapid-fire: ${messageCount} POSTs in ${(end - start).toFixed(1)}ms, ` +
-        `${successCount} success, ${conflictCount} conflicts`
+        `${successCount} success`
     );
+
+    // Cleanup
+    await fetch(rapidStreamUrl, { method: "DELETE" });
 
     // Should complete all requests within 5 seconds
     expect(end - start).toBeLessThan(5000);
-    // At least some should succeed (conflicts are expected with concurrent same-producer writes)
-    expect(successCount + conflictCount).toBe(messageCount);
+    // All should succeed since each has a unique producer ID
+    expect(successCount).toBe(messageCount);
   });
 
   it("should receive SSE messages with low latency", async () => {
