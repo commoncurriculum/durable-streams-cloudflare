@@ -13,3 +13,4 @@ poc/cloudflare/.wrangler/tmp/
 .trekker/
 upstream/
 upstream-server/
+dist/
