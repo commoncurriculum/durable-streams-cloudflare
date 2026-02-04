@@ -20,6 +20,10 @@ The Cloudflare POC is a single-worker deployment that routes requests to a **Dur
   - Hot log reads, R2 segment reads, and read coalescing.
 - `src/do/segment_rotation.ts`:
   - Flushes hot ops into R2 segments and advances `read_seq`.
+- `src/do/offsets.ts`:
+  - Offset parsing/validation and `Stream-Next-Offset` encoding helpers.
+- `src/do/admin_index.ts`:
+  - Optional D1 admin index writes for segment inventory.
 - `src/protocol/timing.ts`:
   - Optional `Server-Timing` instrumentation for edge + DO profiling.
 - `src/engine/*`:
