@@ -77,11 +77,18 @@ export async function applyMigrations(persistDir: string): Promise<void> {
 export async function startWorker(options?: {
   port?: number;
   persistDir?: string;
+  vars?: Record<string, string>;
 }): Promise<WorkerHandle> {
   const port = options?.port ?? (await getAvailablePort());
   const persistDir = options?.persistDir ?? (await createPersistDir());
+  const vars = options?.vars ?? {};
 
   await applyMigrations(persistDir);
+
+  const extraVars: string[] = [];
+  for (const [key, value] of Object.entries(vars)) {
+    extraVars.push("--var", `${key}:${value}`);
+  }
 
   const child = spawn(
     "pnpm",
@@ -96,6 +103,7 @@ export async function startWorker(options?: {
       "DEBUG_COALESCE:1",
       "--var",
       "DEBUG_TESTING:1",
+      ...extraVars,
       "--persist-to",
       persistDir,
       "--log-level",
