@@ -4,6 +4,7 @@ import { handleDelete, handlePost, handlePut } from "./handlers/mutation";
 import { handleGet, handleHead } from "./handlers/catchup";
 import {
   handleInternalFanInAppend,
+  handleInternalSessionInit,
   handleInternalSubscribers,
   handleInternalSubscriptions,
 } from "./handlers/subscriptions";
@@ -19,6 +20,9 @@ export async function routeRequest(
   try {
     if (url.pathname === "/internal/subscriptions") {
       return await handleInternalSubscriptions(ctx, streamId, request);
+    }
+    if (url.pathname === "/internal/session") {
+      return await handleInternalSessionInit(ctx, streamId, request);
     }
     if (url.pathname === "/internal/subscribers") {
       return await handleInternalSubscribers(ctx, streamId, request);

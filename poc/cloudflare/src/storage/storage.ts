@@ -18,6 +18,13 @@ export type StreamMeta = {
   subscriber_count: number;
 };
 
+export type SessionMeta = {
+  session_id: string;
+  created_at: number;
+  last_seen_at: number;
+  expires_at: number;
+};
+
 export type ProducerState = {
   producer_id: string;
   epoch: number;
@@ -151,4 +158,9 @@ export interface StreamStorage {
   addSessionSubscription(streamId: string, createdAt: number): Promise<boolean>;
   removeSessionSubscription(streamId: string): Promise<boolean>;
   listSessionSubscriptions(): Promise<string[]>;
+
+  getSessionMeta(sessionId: string): Promise<SessionMeta | null>;
+  upsertSessionMeta(sessionId: string, now: number, ttlSeconds: number): Promise<SessionMeta>;
+  touchSessionMeta(sessionId: string, now: number, ttlSeconds: number): Promise<SessionMeta | null>;
+  deleteSessionMeta(sessionId: string): Promise<void>;
 }
