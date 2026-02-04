@@ -15,7 +15,7 @@ export async function routeRequest(
     if (method === "PUT") return await handlePut(ctx, streamId, request);
     if (method === "POST") return await handlePost(ctx, streamId, request);
     if (method === "GET") return await handleGet(ctx, streamId, request, url);
-    if (method === "HEAD") return await handleHead(ctx, streamId);
+    if (method === "HEAD") return await handleHead(ctx, streamId, request);
     if (method === "DELETE") return await handleDelete(ctx, streamId);
     return errorResponse(405, "method not allowed");
   } catch (e) {

@@ -18,13 +18,19 @@ import { buildLongPollHeaders } from "../../engine/stream";
 import type { StreamMeta } from "../../storage/storage";
 import type { StreamContext } from "../context";
 import type { SseClient } from "../../live/types";
+import { getCacheMode } from "../cache_mode";
 
 export async function handleLongPoll(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
+  request: Request,
   url: URL,
 ): Promise<Response> {
+  const cacheMode = getCacheMode(request);
+  const cacheControl =
+    cacheMode === "shared" ? `public, max-age=${LONG_POLL_CACHE_SECONDS}` : "private, no-store";
+
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
   let offset: number;
@@ -48,7 +54,7 @@ export async function handleLongPoll(
       closedAtTail: true,
       cursor: null,
     });
-    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+    headers.set("Cache-Control", cacheControl);
     return new Response(null, { status: 204, headers });
   }
 
@@ -63,7 +69,7 @@ export async function handleLongPoll(
       closedAtTail: initialRead.closedAtTail,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
-    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+    headers.set("Cache-Control", cacheControl);
     return new Response(initialRead.body, { status: 200, headers });
   }
 
@@ -81,7 +87,7 @@ export async function handleLongPoll(
       closedAtTail: current.closed === 1 && current.tail_offset === offset,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
-    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+    headers.set("Cache-Control", cacheControl);
     return new Response(null, { status: 204, headers });
   }
 
@@ -97,11 +103,11 @@ export async function handleLongPoll(
   });
 
   if (!read.hasData) {
-    headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+    headers.set("Cache-Control", cacheControl);
     return new Response(null, { status: 204, headers });
   }
 
-  headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+  headers.set("Cache-Control", cacheControl);
   return new Response(read.body, { status: 200, headers });
 }
 
@@ -109,8 +115,10 @@ export async function handleSse(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
+  request: Request,
   url: URL,
 ): Promise<Response> {
+  const cacheMode = getCacheMode(request);
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
   let offset: number;
@@ -151,7 +159,7 @@ export async function handleSse(
 
   const headers = baseHeaders({
     "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
+    "Cache-Control": cacheMode === "shared" ? "no-cache" : "private, no-store, no-cache",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
     [HEADER_STREAM_NEXT_OFFSET]: await ctx.encodeTailOffset(streamId, meta),

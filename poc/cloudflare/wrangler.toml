@@ -23,6 +23,8 @@ bucket_name = "durable-streams-poc"
 [vars]
 # Optional: set to require auth
 # AUTH_TOKEN = "replace-with-token"
+# Optional: set cache mode explicitly: "shared" or "private"
+# CACHE_MODE = "shared"
 # SEGMENT_MAX_MESSAGES = "1000"
 # SEGMENT_MAX_BYTES = "4194304"
 
