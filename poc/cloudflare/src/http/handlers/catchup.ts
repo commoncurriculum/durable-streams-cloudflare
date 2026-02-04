@@ -1,6 +1,6 @@
 import { errorResponse } from "../../protocol/errors";
 import { buildReadResponse, buildHeadResponse } from "../../engine/stream";
-import { MAX_CHUNK_BYTES } from "../../protocol/limits";
+import { LONG_POLL_CACHE_SECONDS, MAX_CHUNK_BYTES } from "../../protocol/limits";
 import { ZERO_OFFSET } from "../../protocol/offsets";
 import {
   HEADER_STREAM_CLOSED,
@@ -12,6 +12,7 @@ import {
 import { applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamContext } from "../context";
+import { getCacheMode } from "../cache_mode";
 import { handleLongPoll, handleSse } from "./realtime";
 
 export async function handleGet(
@@ -23,13 +24,15 @@ export async function handleGet(
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
 
+  const cacheMode = getCacheMode(request);
+
   const live = url.searchParams.get("live");
   if (live === "long-poll") {
-    return handleLongPoll(ctx, streamId, meta, url);
+    return handleLongPoll(ctx, streamId, meta, request, url);
   }
 
   if (live === "sse") {
-    return handleSse(ctx, streamId, meta, url);
+    return handleSse(ctx, streamId, meta, request, url);
   }
 
   const offsetParam = url.searchParams.get("offset") ?? "-1";
@@ -70,8 +73,11 @@ export async function handleGet(
     closedAtTail: read.closedAtTail,
     offset,
   });
-  if (read.source === "hot") {
+
+  if (cacheMode === "private") {
     response.headers.set("Cache-Control", "private, no-store");
+  } else if (read.source === "hot") {
+    response.headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
   }
 
   const ifNoneMatch = request.headers.get("If-None-Match");
@@ -83,9 +89,17 @@ export async function handleGet(
   return response;
 }
 
-export async function handleHead(ctx: StreamContext, streamId: string): Promise<Response> {
+export async function handleHead(
+  ctx: StreamContext,
+  streamId: string,
+  request: Request,
+): Promise<Response> {
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
 
-  return buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
+  const response = buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
+  if (getCacheMode(request) === "private") {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
+  return response;
 }

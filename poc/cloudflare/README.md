@@ -151,7 +151,9 @@ curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000
 - Segment rotation runs opportunistically on writes and flushes the tail on close.
 
 ## CDN Auth + Cache
-- Worker validates bearer auth, then uses a **canonical cache key** (URL only).
+- The Worker enforces auth, then decides **cache mode** and forwards it via
+  `X-Cache-Mode` (`shared` or `private`).
+- `CACHE_MODE=shared|private` can force the mode; default is **private**.
 - The edge cache is only used for `GET`/`HEAD` requests without `If-None-Match`.
 - Cacheability is controlled by `Cache-Control` headers set by the DO.
 

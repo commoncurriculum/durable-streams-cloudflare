@@ -1,13 +1,24 @@
 # CDN Cache Flow (Hot vs Cold Reads)
 
 This document describes how the Worker/DO responds to hot (tail) vs cold (catch-up)
-reads, and how CDN caching behaves in shared vs private auth modes.
+reads, and how CDN caching behaves in shared vs private cache modes.
 
 Assumptions
 - Stream ID: `doc-123`
 - Worker endpoint: `/v1/stream/doc-123`
 - Offsets are `readSeq_byteOffset` tokens.
 - R2 holds immutable segments; DO SQLite holds the hot tail + segment index.
+
+## Cache Mode Decision (Auth-Agnostic)
+The Worker **decides** whether responses are safe to share across users and
+forwards the decision to the DO via `X-Cache-Mode`:
+- `shared` → CDN caching enabled where safe.
+- `private` → DO forces `Cache-Control: private, no-store` on all reads.
+
+How it is decided:
+- `CACHE_MODE=shared|private` can be set to force the mode.
+- Otherwise, your auth logic should decide and pass the correct mode.
+- Default is **private** if nothing is specified.
 
 ## Mode A: Shared Cache (safe to share across users)
 
@@ -21,6 +32,7 @@ Authorization: Bearer <token>
 Flow
 - Worker authenticates.
 - Worker normalizes cache key (URL only; `Authorization` is ignored).
+- Worker sets `X-Cache-Mode: shared` on the DO request.
 - Edge cache lookup via `caches.default`.
   - Cache hit: return cached response.
   - Cache miss: Worker -> DO -> SQLite hot tail.
@@ -44,6 +56,7 @@ Authorization: Bearer <token>
 
 Flow
 - Worker authenticates, normalizes cache key.
+- Worker sets `X-Cache-Mode: shared`.
 - Cache miss -> DO.
 - DO reads R2 segment and returns response.
 - CDN caches response longer (cold data is immutable).
@@ -70,6 +83,7 @@ Authorization: Bearer <user-specific>
 
 Flow
 - Worker authenticates.
+- Worker sets `X-Cache-Mode: private`.
 - Cache is private/no-store (or bypassed via `If-None-Match`).
 - Cache miss -> DO -> SQLite hot tail (long-poll if needed).
 - DO in-flight coalescing collapses identical reads.
@@ -92,6 +106,7 @@ Authorization: Bearer <user-specific>
 
 Flow
 - Worker authenticates.
+- Worker sets `X-Cache-Mode: private`.
 - Cache is private/no-store.
 - DO reads R2 segment and responds.
 

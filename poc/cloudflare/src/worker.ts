@@ -1,9 +1,11 @@
 import { StreamDO } from "./stream_do";
 import { Timing, attachTiming } from "./protocol/timing";
+import { CACHE_MODE_HEADER, type CacheMode, resolveCacheMode } from "./http/cache_mode";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
   AUTH_TOKEN?: string;
+  CACHE_MODE?: string;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
@@ -78,6 +80,27 @@ function buildCacheKey(url: URL, method: string): Request {
   });
 }
 
+type AuthResult =
+  | {
+      ok: true;
+      cacheMode?: CacheMode;
+    }
+  | {
+      ok: false;
+      response: Response;
+    };
+
+function authorizeRequest(request: Request, env: Env, timing: Timing | null): AuthResult {
+  if (!env.AUTH_TOKEN) return { ok: true };
+  const doneAuth = timing?.start("edge.auth");
+  const auth = request.headers.get("Authorization");
+  doneAuth?.();
+  if (auth !== `Bearer ${env.AUTH_TOKEN}`) {
+    return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+  }
+  return { ok: true };
+}
+
 async function recordRegistryEvent(
   requestUrl: string,
   authToken: string | undefined,
@@ -124,14 +147,14 @@ export default {
       return new Response(null, { status: 204, headers });
     }
 
-    if (env.AUTH_TOKEN) {
-      const doneAuth = timing?.start("edge.auth");
-      const auth = request.headers.get("Authorization");
-      doneAuth?.();
-      if (auth !== `Bearer ${env.AUTH_TOKEN}`) {
-        return new Response("unauthorized", { status: 401 });
-      }
+    const authResult = authorizeRequest(request, env, timing);
+    if (!authResult.ok) {
+      return authResult.response;
     }
+    const cacheMode = resolveCacheMode({
+      envMode: env.CACHE_MODE,
+      authMode: authResult.cacheMode,
+    });
 
     const streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
     if (!streamId) {
@@ -139,7 +162,7 @@ export default {
     }
 
     const method = request.method.toUpperCase();
-    const cacheable = shouldUseCache(request, url);
+    const cacheable = cacheMode === "shared" && shouldUseCache(request, url);
     const cache = caches.default;
     const cacheKey = buildCacheKey(url, method);
 
@@ -159,6 +182,7 @@ export default {
 
     const headers = new Headers(request.headers);
     headers.set("X-Stream-Id", streamId);
+    headers.set(CACHE_MODE_HEADER, cacheMode);
     if (timingEnabled && !headers.has("X-Debug-Timing")) {
       headers.set("X-Debug-Timing", "1");
     }
