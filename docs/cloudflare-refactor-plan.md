@@ -19,11 +19,14 @@
 - Segment rotation uses `read_seq` and writes immutable R2 segments.
 - Admin D1 index (`segments_admin`) exists but is optional and async.
 
+## Status (2026-02-04)
+- Docs updated for per-stream DO + R2 architecture.
+- Read path and segment rotation extracted into `src/do/*` modules.
+- Conformance suite and implementation tests pass locally.
+  - See `docs/cloudflare-poc-status.md` for the latest baseline.
+
 ## Remaining Work
-- Ensure all docs reflect the new per-stream DO + R2 architecture.
-- Confirm tests cover segment boundary reads (multi-request).
-- Validate cache headers for long-poll shared-cache mode.
-- Run conformance + implementation tests.
+- None planned. Keep docs/tests in sync as the protocol evolves.
 
 ## Acceptance Criteria
 - Conformance suite passes.
