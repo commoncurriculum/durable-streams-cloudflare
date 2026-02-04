@@ -1,9 +1,11 @@
 import { StreamDO } from "./stream_do";
+import { appendEnvelopeToSession, type FanOutQueueMessage } from "./do/fanout";
 import { Timing, attachTiming } from "./protocol/timing";
 import { CACHE_MODE_HEADER, type CacheMode, resolveCacheMode } from "./http/cache_mode";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
+  FANOUT_QUEUE?: Queue;
   AUTH_TOKEN?: string;
   CACHE_MODE?: string;
   R2?: R2Bucket;
@@ -246,15 +248,32 @@ export default {
 
     return attachTiming(wrapped, timing);
   },
+  async queue(batch: MessageBatch<FanOutQueueMessage>, env: Env, _ctx: ExecutionContext) {
+    for (const message of batch.messages) {
+      const body = message.body;
+      if (!body || typeof body !== "object") {
+        message.ack();
+        continue;
+      }
+      const sessionId = "sessionId" in body ? body.sessionId : null;
+      const envelope = "envelope" in body ? body.envelope : null;
+      if (typeof sessionId !== "string" || !envelope || typeof envelope !== "object") {
+        message.ack();
+        continue;
+      }
+      try {
+        await appendEnvelopeToSession(env.STREAMS, sessionId, envelope as FanOutQueueMessage["envelope"]);
+        message.ack();
+      } catch {
+        message.retry();
+      }
+    }
+  },
 };
 
 export { StreamDO };
 
-async function handleSubscriptionsRequest(
-  request: Request,
-  env: Env,
-  url: URL,
-): Promise<Response> {
+async function handleSubscriptionsRequest(request: Request, env: Env, url: URL): Promise<Response> {
   const method = request.method.toUpperCase();
 
   if (url.pathname === SUBSCRIPTIONS_PREFIX) {

@@ -20,6 +20,15 @@ database_id = "local"
 binding = "R2"
 bucket_name = "durable-streams-poc"
 
+[[queues.producers]]
+binding = "FANOUT_QUEUE"
+queue = "fanout-queue"
+
+[[queues.consumers]]
+queue = "fanout-queue"
+max_batch_size = 100
+max_batch_timeout = 30
+
 [vars]
 # Optional: set to require auth
 # AUTH_TOKEN = "replace-with-token"

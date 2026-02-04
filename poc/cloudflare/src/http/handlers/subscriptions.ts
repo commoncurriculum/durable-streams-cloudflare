@@ -78,12 +78,7 @@ export async function handleInternalSubscriptions(
     if (method === "POST") {
       await ensureSessionStream(ctx, streamId);
 
-      const updateResponse = await updateStreamSubscriber(
-        ctx,
-        targetStreamId,
-        sessionId,
-        "POST",
-      );
+      const updateResponse = await updateStreamSubscriber(ctx, targetStreamId, sessionId, "POST");
       if (updateResponse.status !== 204) return updateResponse;
 
       const stored = await ctx.storage.addSessionSubscription(targetStreamId, now);
