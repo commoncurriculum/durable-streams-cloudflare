@@ -5,6 +5,7 @@ import type { StreamMeta, StreamStorage } from "../storage/storage";
 import type { Timing } from "../protocol/timing";
 
 export type StreamEnv = {
+  STREAMS?: DurableObjectNamespace;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_COALESCE?: string;

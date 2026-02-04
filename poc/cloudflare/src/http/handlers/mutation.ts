@@ -27,6 +27,7 @@ import {
   producerDuplicateResponse,
   type ProducerEval,
 } from "../../engine/producer";
+import { fanOutAppend } from "../../do/fanout";
 import type { StreamContext } from "../context";
 import { broadcastSse, broadcastSseControl, closeAllSseClients } from "./realtime";
 
@@ -152,6 +153,7 @@ export async function handlePut(
       closed_by_producer_id: closedBy?.id ?? null,
       closed_by_epoch: closedBy?.epoch ?? null,
       closed_by_seq: closedBy?.seq ?? null,
+      subscriber_count: 0,
     };
     const headers = buildPutHeaders(createdMeta, await ctx.encodeTailOffset(streamId, createdMeta));
     headers.set("Location", request.url);
@@ -261,6 +263,7 @@ export async function handlePost(
       append.newTailOffset,
       closeStream,
     );
+    await fanOutAppend(ctx, streamId, meta, contentType, bodyBytes, append.newTailOffset);
     ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: closeStream }));
 
     const status = producer?.value ? 200 : 204;

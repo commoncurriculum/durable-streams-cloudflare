@@ -33,7 +33,8 @@ export class DoSqliteStorage implements StreamStorage {
         closed_at INTEGER,
         closed_by_producer_id TEXT,
         closed_by_epoch INTEGER,
-        closed_by_seq INTEGER
+        closed_by_seq INTEGER,
+        subscriber_count INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS producers (
@@ -69,7 +70,30 @@ export class DoSqliteStorage implements StreamStorage {
         message_count INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS segments_start_offset ON segments(start_offset);
+
+      CREATE TABLE IF NOT EXISTS stream_subscribers (
+        session_id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS session_subscriptions (
+        stream_id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL
+      );
     `);
+
+    this.ensureSubscriberCountColumn();
+  }
+
+  private ensureSubscriberCountColumn(): void {
+    try {
+      this.sql.exec(
+        "ALTER TABLE stream_meta ADD COLUMN subscriber_count INTEGER NOT NULL DEFAULT 0",
+      );
+      this.sql.exec("UPDATE stream_meta SET subscriber_count = 0 WHERE subscriber_count IS NULL");
+    } catch {
+      // Column already exists.
+    }
   }
 
   async batch(statements: StorageStatement[]): Promise<void> {
@@ -102,9 +126,10 @@ export class DoSqliteStorage implements StreamStorage {
           closed_at,
           closed_by_producer_id,
           closed_by_epoch,
-          closed_by_seq
+          closed_by_seq,
+          subscriber_count
         )
-        VALUES (?, ?, ?, 0, 0, 0, 0, 0, NULL, ?, ?, ?, NULL, NULL, NULL, NULL)
+        VALUES (?, ?, ?, 0, 0, 0, 0, 0, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, 0)
       `,
       input.streamId,
       input.contentType,
@@ -155,6 +180,8 @@ export class DoSqliteStorage implements StreamStorage {
     this.sql.exec("DELETE FROM segments");
     this.sql.exec("DELETE FROM ops");
     this.sql.exec("DELETE FROM producers");
+    this.sql.exec("DELETE FROM stream_subscribers");
+    this.sql.exec("DELETE FROM session_subscriptions");
     this.sql.exec("DELETE FROM stream_meta");
   }
 
@@ -438,5 +465,60 @@ export class DoSqliteStorage implements StreamStorage {
       producerId,
     );
     return result.rowsWritten > 0;
+  }
+
+  async addStreamSubscriber(
+    _streamId: string,
+    sessionId: string,
+    createdAt: number,
+  ): Promise<boolean> {
+    this.sql.exec(
+      "INSERT OR IGNORE INTO stream_subscribers (session_id, created_at) VALUES (?, ?)",
+      sessionId,
+      createdAt,
+    );
+    const changes = this.getChangeCount();
+    if (changes > 0) {
+      this.sql.exec("UPDATE stream_meta SET subscriber_count = subscriber_count + 1");
+    }
+    return changes > 0;
+  }
+
+  async removeStreamSubscriber(_streamId: string, sessionId: string): Promise<boolean> {
+    this.sql.exec("DELETE FROM stream_subscribers WHERE session_id = ?", sessionId);
+    const changes = this.getChangeCount();
+    if (changes > 0) {
+      this.sql.exec("UPDATE stream_meta SET subscriber_count = subscriber_count - 1");
+    }
+    return changes > 0;
+  }
+
+  async listStreamSubscribers(_streamId: string): Promise<string[]> {
+    const rows = this.sql.exec<{ session_id: string }>("SELECT session_id FROM stream_subscribers");
+    return rows.toArray().map((row) => row.session_id);
+  }
+
+  async addSessionSubscription(streamId: string, createdAt: number): Promise<boolean> {
+    this.sql.exec(
+      "INSERT OR IGNORE INTO session_subscriptions (stream_id, created_at) VALUES (?, ?)",
+      streamId,
+      createdAt,
+    );
+    return this.getChangeCount() > 0;
+  }
+
+  async removeSessionSubscription(streamId: string): Promise<boolean> {
+    this.sql.exec("DELETE FROM session_subscriptions WHERE stream_id = ?", streamId);
+    return this.getChangeCount() > 0;
+  }
+
+  async listSessionSubscriptions(): Promise<string[]> {
+    const rows = this.sql.exec<{ stream_id: string }>("SELECT stream_id FROM session_subscriptions");
+    return rows.toArray().map((row) => row.stream_id);
+  }
+
+  private getChangeCount(): number {
+    const rows = this.sql.exec<{ changes: number }>("SELECT changes() as changes").toArray();
+    return rows[0]?.changes ?? 0;
   }
 }

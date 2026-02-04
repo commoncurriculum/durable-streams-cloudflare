@@ -15,6 +15,7 @@ export type StreamMeta = {
   closed_by_producer_id: string | null;
   closed_by_epoch: number | null;
   closed_by_seq: number | null;
+  subscriber_count: number;
 };
 
 export type ProducerState = {
@@ -142,4 +143,12 @@ export interface StreamStorage {
     producerId: string,
     lastUpdated: number,
   ): Promise<boolean>;
+
+  addStreamSubscriber(streamId: string, sessionId: string, createdAt: number): Promise<boolean>;
+  removeStreamSubscriber(streamId: string, sessionId: string): Promise<boolean>;
+  listStreamSubscribers(streamId: string): Promise<string[]>;
+
+  addSessionSubscription(streamId: string, createdAt: number): Promise<boolean>;
+  removeSessionSubscription(streamId: string): Promise<boolean>;
+  listSessionSubscriptions(): Promise<string[]>;
 }
