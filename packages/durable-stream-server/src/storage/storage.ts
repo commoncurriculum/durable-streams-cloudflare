@@ -154,6 +154,7 @@ export interface StreamStorage {
   addStreamSubscriber(streamId: string, sessionId: string, createdAt: number): Promise<boolean>;
   removeStreamSubscriber(streamId: string, sessionId: string): Promise<boolean>;
   listStreamSubscribers(streamId: string): Promise<string[]>;
+  hasStreamSubscriber(streamId: string, sessionId: string): Promise<boolean>;
 
   addSessionSubscription(streamId: string, createdAt: number): Promise<boolean>;
   removeSessionSubscription(streamId: string): Promise<boolean>;

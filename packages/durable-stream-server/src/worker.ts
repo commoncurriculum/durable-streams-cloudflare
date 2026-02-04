@@ -2,12 +2,14 @@ import { StreamDO } from "./stream_do";
 import { appendEnvelopeToSession, type FanOutQueueMessage } from "./do/fanout";
 import { Timing, attachTiming } from "./protocol/timing";
 import { CACHE_MODE_HEADER, type CacheMode, resolveCacheMode } from "./http/cache_mode";
+import { SESSION_ID_HEADER } from "./http/read_auth";
 
 export interface Env {
   STREAMS: DurableObjectNamespace;
   FANOUT_QUEUE?: Queue;
   AUTH_TOKEN?: string;
   CACHE_MODE?: string;
+  READ_JWT_SECRET?: string;
   SESSION_TTL_SECONDS?: string;
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
@@ -115,6 +117,79 @@ function authorizeRequest(request: Request, env: Env, timing: Timing | null): Au
   return { ok: true };
 }
 
+type ReadAuthResult = { ok: true; sessionId: string } | { ok: false; response: Response };
+
+function extractBearerToken(request: Request): string | null {
+  const auth = request.headers.get("Authorization");
+  if (!auth) return null;
+  const match = /^Bearer\s+(.+)$/.exec(auth);
+  return match ? match[1] : null;
+}
+
+function base64UrlDecode(input: string): Uint8Array {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function verifySessionJwt(
+  token: string,
+  secret: string,
+): Promise<{ sessionId: string; exp: number } | null> {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerPart, payloadPart, signaturePart] = parts;
+  try {
+    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
+    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
+    if (header.alg !== "HS256") return null;
+    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
+    const payload = JSON.parse(payloadJson) as { session_id?: string; exp?: number };
+    if (typeof payload.session_id !== "string" || payload.session_id.length === 0) return null;
+    if (typeof payload.exp !== "number") return null;
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      base64UrlDecode(signaturePart),
+      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
+    );
+    if (!ok) return null;
+    return { sessionId: payload.session_id, exp: payload.exp };
+  } catch {
+    return null;
+  }
+}
+
+async function authorizeRead(
+  request: Request,
+  secret: string,
+  timing: Timing | null,
+): Promise<ReadAuthResult> {
+  const doneAuth = timing?.start("edge.read_auth");
+  const token = extractBearerToken(request);
+  doneAuth?.();
+  if (!token) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+  const claims = await verifySessionJwt(token, secret);
+  if (!claims) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+  if (Date.now() >= claims.exp * 1000) {
+    return { ok: false, response: new Response("token expired", { status: 401 }) };
+  }
+  return { ok: true, sessionId: claims.sessionId };
+}
+
 async function recordRegistryEvent(
   requestUrl: string,
   authToken: string | undefined,
@@ -157,22 +232,45 @@ export default {
       return new Response(null, { status: 204, headers });
     }
 
-    const authResult = authorizeRequest(request, env, timing);
-    if (!authResult.ok) {
-      const headers = new Headers(authResult.response.headers);
-      applyCors(headers);
-      if (!headers.has("Cache-Control")) {
-        headers.set("Cache-Control", "no-store");
+    const method = request.method.toUpperCase();
+    const isStreamRead =
+      url.pathname.startsWith(STREAM_PREFIX) && (method === "GET" || method === "HEAD");
+    let sessionId: string | null = null;
+
+    if (isStreamRead && env.READ_JWT_SECRET) {
+      const readAuth = await authorizeRead(request, env.READ_JWT_SECRET, timing);
+      if (!readAuth.ok) {
+        const headers = new Headers(readAuth.response.headers);
+        applyCors(headers);
+        if (!headers.has("Cache-Control")) {
+          headers.set("Cache-Control", "no-store");
+        }
+        return new Response(readAuth.response.body, {
+          status: readAuth.response.status,
+          statusText: readAuth.response.statusText,
+          headers,
+        });
       }
-      return new Response(authResult.response.body, {
-        status: authResult.response.status,
-        statusText: authResult.response.statusText,
-        headers,
-      });
+      sessionId = readAuth.sessionId;
+    } else {
+      const authResult = authorizeRequest(request, env, timing);
+      if (!authResult.ok) {
+        const headers = new Headers(authResult.response.headers);
+        applyCors(headers);
+        if (!headers.has("Cache-Control")) {
+          headers.set("Cache-Control", "no-store");
+        }
+        return new Response(authResult.response.body, {
+          status: authResult.response.status,
+          statusText: authResult.response.statusText,
+          headers,
+        });
+      }
     }
+
     const cacheMode = resolveCacheMode({
       envMode: env.CACHE_MODE,
-      authMode: authResult.cacheMode,
+      authMode: undefined,
     });
 
     if (
@@ -209,7 +307,6 @@ export default {
       return corsError(400, "missing stream id");
     }
 
-    const method = request.method.toUpperCase();
     const cacheable = cacheMode === "shared" && shouldUseCache(request, url);
     const cache = caches.default;
     const cacheKey = buildCacheKey(url, method);
@@ -231,6 +328,9 @@ export default {
     const headers = new Headers(request.headers);
     headers.set("X-Stream-Id", streamId);
     headers.set(CACHE_MODE_HEADER, cacheMode);
+    if (sessionId) {
+      headers.set(SESSION_ID_HEADER, sessionId);
+    }
     if (timingEnabled && !headers.has("X-Debug-Timing")) {
       headers.set("X-Debug-Timing", "1");
     }
@@ -390,7 +490,13 @@ async function handleSessionsRequest(request: Request, env: Env): Promise<Respon
 
   const sessionId = crypto.randomUUID();
   const sessionStreamId = `subscriptions/${sessionId}`;
-  const response = await forwardToSessionDO(env, sessionStreamId, "POST", { sessionId }, "/internal/session");
+  const response = await forwardToSessionDO(
+    env,
+    sessionStreamId,
+    "POST",
+    { sessionId },
+    "/internal/session",
+  );
   if (!response.ok) {
     return new Response("failed to create session", { status: response.status });
   }

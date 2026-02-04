@@ -507,6 +507,11 @@ export class DoSqliteStorage implements StreamStorage {
     return rows.toArray().map((row) => row.session_id);
   }
 
+  async hasStreamSubscriber(_streamId: string, sessionId: string): Promise<boolean> {
+    const rows = this.sql.exec("SELECT 1 FROM stream_subscribers WHERE session_id = ?", sessionId);
+    return rows.toArray().length > 0;
+  }
+
   async addSessionSubscription(streamId: string, createdAt: number): Promise<boolean> {
     this.sql.exec(
       "INSERT OR IGNORE INTO session_subscriptions (stream_id, created_at) VALUES (?, ?)",
