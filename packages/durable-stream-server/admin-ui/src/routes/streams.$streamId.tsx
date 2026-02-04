@@ -37,6 +37,10 @@ import { cn, formatBytes } from "../lib/utils";
 
 const getServerUrl = () => {
   if (typeof window === "undefined") return "";
+  // During development, connect directly to the server to bypass Vite proxy issues
+  if (window.location.hostname === "localhost" && window.location.port === "5173") {
+    return "http://localhost:8787";
+  }
   return window.location.origin;
 };
 
@@ -75,6 +79,7 @@ export const Route = createFileRoute("/streams/$streamId")({
       return {
         contentType: metadata.contentType || undefined,
         stream,
+        isClosed: metadata.streamClosed ?? false,
       };
     } catch {
       throw redirect({ to: "/" });
@@ -107,7 +112,7 @@ function StatMini({
 
 function StreamViewer() {
   const { streamId } = Route.useParams();
-  const { contentType, stream } = Route.useLoaderData();
+  const { contentType, stream, isClosed } = Route.useLoaderData();
   const { presenceDB } = useStreamDB();
   const { startTyping } = useTypingIndicator(streamId);
   const [writeInput, setWriteInput] = useState("");
@@ -127,10 +132,16 @@ function StreamViewer() {
     const producerId = `admin-ui-${crypto.randomUUID().slice(0, 8)}`;
     producerRef.current = new IdempotentProducer(stream, producerId, {
       autoClaim: true,
-      lingerMs: 0,
+      lingerMs: 5,
+      maxInFlight: 1,
+      onError: (err) => {
+        console.error("[Producer Error]", err);
+        setError(`Producer error: ${err.message}`);
+      },
     });
     return () => {
-      producerRef.current?.close();
+      // Use detach() instead of close() - close() would close the stream permanently!
+      producerRef.current?.detach();
     };
   }, [stream]);
 
@@ -251,10 +262,16 @@ function StreamViewer() {
             <p className="text-xs text-surface-500">{contentType}</p>
           </div>
         </div>
-        <Badge variant="success" className="gap-1.5">
-          <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse-soft" />
-          Live
-        </Badge>
+        {isClosed ? (
+          <Badge variant="secondary" className="gap-1.5">
+            Closed
+          </Badge>
+        ) : (
+          <Badge variant="success" className="gap-1.5">
+            <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse-soft" />
+            Live
+          </Badge>
+        )}
       </div>
 
       {/* Error banner */}
@@ -450,40 +467,48 @@ function StreamViewer() {
       {/* Write section */}
       {!isRegistryStream && (
         <div className="border-t border-surface-200 bg-white">
-          {typers.length > 0 && (
-            <div className="px-4 py-2 text-xs text-surface-500 italic border-b border-surface-100">
-              {typers.map((t) => t.userId.slice(0, 8)).join(", ")} typing...
+          {isClosed ? (
+            <div className="px-4 py-3 text-sm text-surface-500 bg-surface-50">
+              This stream is closed. No new messages can be written.
             </div>
-          )}
-          <div className="p-4 flex gap-3">
-            <Textarea
-              placeholder="Type your message (Shift+Enter for new line)..."
-              value={writeInput}
-              onChange={(e) => {
-                setWriteInput(e.target.value);
-                startTyping();
-              }}
-              onKeyPress={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void writeToStream();
-                }
-              }}
-              className="min-h-[60px] max-h-[120px] resize-none"
-            />
-            <Button
-              onClick={writeToStream}
-              disabled={isSending || !writeInput.trim()}
-              className="self-end"
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
+          ) : (
+            <>
+              {typers.length > 0 && (
+                <div className="px-4 py-2 text-xs text-surface-500 italic border-b border-surface-100">
+                  {typers.map((t) => t.userId.slice(0, 8)).join(", ")} typing...
+                </div>
               )}
-              Send
-            </Button>
-          </div>
+              <div className="p-4 flex gap-3">
+                <Textarea
+                  placeholder="Type your message (Shift+Enter for new line)..."
+                  value={writeInput}
+                  onChange={(e) => {
+                    setWriteInput(e.target.value);
+                    startTyping();
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void writeToStream();
+                    }
+                  }}
+                  className="min-h-[60px] max-h-[120px] resize-none"
+                />
+                <Button
+                  onClick={writeToStream}
+                  disabled={isSending || !writeInput.trim()}
+                  className="self-end"
+                >
+                  {isSending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  Send
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
