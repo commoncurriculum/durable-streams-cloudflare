@@ -47,6 +47,15 @@ function parseMaxAge(cacheControl: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+function hasEdgeCacheTiming(
+  header: string | null,
+  descriptor: "hit" | "miss" | null = null,
+): boolean {
+  if (!header) return false;
+  if (!descriptor) return header.includes("edge.cache");
+  return header.includes(`edge.cache`) && header.includes(`desc="${descriptor}"`);
+}
+
 describe("worker edge behavior", () => {
   it("rejects requests without the configured auth token", async () => {
     const handle = await startWorker({ vars: { AUTH_TOKEN: "test-token" } });
@@ -137,6 +146,89 @@ describe("worker edge behavior", () => {
       const timing = create.headers.get("Server-Timing");
       expect(timing).toBeTruthy();
       expect(timing ?? "").toContain("edge.origin");
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("records edge cache hits in shared mode", async () => {
+    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+    const streamId = uniqueStreamId("cache-hit");
+    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+    try {
+      const hotOffset = await seedStream(url);
+
+      const warm = await fetch(`${url}?offset=${hotOffset}`);
+      expect(warm.status).toBe(200);
+      await warm.arrayBuffer();
+
+      const cached = await fetch(`${url}?offset=${hotOffset}`, {
+        headers: { "X-Debug-Timing": "1" },
+      });
+      expect(cached.status).toBe(200);
+      const timing = cached.headers.get("Server-Timing");
+      expect(hasEdgeCacheTiming(timing, "hit")).toBe(true);
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("bypasses edge cache when If-None-Match is set", async () => {
+    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+    const streamId = uniqueStreamId("cache-bypass");
+    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+    try {
+      const hotOffset = await seedStream(url);
+
+      const first = await fetch(`${url}?offset=${hotOffset}`);
+      expect(first.status).toBe(200);
+      const firstEtag = first.headers.get("ETag");
+      await first.arrayBuffer();
+      expect(firstEtag).toBeTruthy();
+
+      const append = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "z",
+      });
+      expect([200, 204]).toContain(append.status);
+
+      const second = await fetch(`${url}?offset=${hotOffset}`, {
+        headers: {
+          "If-None-Match": firstEtag ?? "",
+          "X-Debug-Timing": "1",
+        },
+      });
+      expect(second.status).toBe(200);
+      const secondEtag = second.headers.get("ETag");
+      expect(secondEtag).not.toBe(firstEtag);
+      const timing = second.headers.get("Server-Timing");
+      expect(hasEdgeCacheTiming(timing)).toBe(false);
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("does not use edge cache in private mode", async () => {
+    const handle = await startWorker();
+    const streamId = uniqueStreamId("cache-private");
+    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+    try {
+      const hotOffset = await seedStream(url);
+
+      const first = await fetch(`${url}?offset=${hotOffset}`);
+      expect(first.status).toBe(200);
+      await first.arrayBuffer();
+
+      const second = await fetch(`${url}?offset=${hotOffset}`, {
+        headers: { "X-Debug-Timing": "1" },
+      });
+      expect(second.status).toBe(200);
+      const timing = second.headers.get("Server-Timing");
+      expect(hasEdgeCacheTiming(timing)).toBe(false);
     } finally {
       await handle.stop();
     }
