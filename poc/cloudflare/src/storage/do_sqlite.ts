@@ -513,7 +513,9 @@ export class DoSqliteStorage implements StreamStorage {
   }
 
   async listSessionSubscriptions(): Promise<string[]> {
-    const rows = this.sql.exec<{ stream_id: string }>("SELECT stream_id FROM session_subscriptions");
+    const rows = this.sql.exec<{ stream_id: string }>(
+      "SELECT stream_id FROM session_subscriptions",
+    );
     return rows.toArray().map((row) => row.stream_id);
   }
 
