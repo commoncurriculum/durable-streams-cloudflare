@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(npm view:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm exec vitest:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm format:check:*)",
+      "Bash(pnpm format:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: integrate Hono + Zod for JSON endpoints\n\nReplace hand-rolled routing with Hono for all JSON endpoints while keeping\ncustom handlers for streaming routes \\(/v1/stream/*\\).\n\nChanges:\n- Add hono, @hono/zod-validator, zod dependencies\n- Create Zod schemas for validation \\(common, admin, subscriptions\\)\n- Create edge Hono app for /admin/*, /v1/subscriptions, /v1/sessions\n- Create DO Hono app for /internal/* routes\n- Add CORS middleware that clones response to avoid immutable headers\n- Add bearer auth middleware\n- Export EdgeAppType for type-safe RPC clients in admin-ui\n- Update tsconfig with skipLibCheck \\(standard for Hono + CF Workers\\)\n\nAll 43 tests pass.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: update admin ui plan\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}
