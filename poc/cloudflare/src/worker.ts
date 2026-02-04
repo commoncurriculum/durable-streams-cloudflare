@@ -12,6 +12,7 @@ export interface Env {
 }
 
 const STREAM_PREFIX = "/v1/stream/";
+const SUBSCRIPTIONS_PREFIX = "/v1/subscriptions";
 const REGISTRY_STREAM = "__registry__";
 
 const CORS_ALLOW_HEADERS = [
@@ -137,10 +138,6 @@ export default {
     const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
     const timing = timingEnabled ? new Timing() : null;
 
-    if (!url.pathname.startsWith(STREAM_PREFIX)) {
-      return new Response("not found", { status: 404 });
-    }
-
     if (request.method === "OPTIONS") {
       const headers = new Headers();
       applyCors(headers);
@@ -155,6 +152,24 @@ export default {
       envMode: env.CACHE_MODE,
       authMode: authResult.cacheMode,
     });
+
+    if (
+      url.pathname === SUBSCRIPTIONS_PREFIX ||
+      url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`)
+    ) {
+      const response = await handleSubscriptionsRequest(request, env, url);
+      const headers = new Headers(response.headers);
+      applyCors(headers);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+
+    if (!url.pathname.startsWith(STREAM_PREFIX)) {
+      return new Response("not found", { status: 404 });
+    }
 
     const streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
     if (!streamId) {
@@ -234,3 +249,68 @@ export default {
 };
 
 export { StreamDO };
+
+async function handleSubscriptionsRequest(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+
+  if (url.pathname === SUBSCRIPTIONS_PREFIX) {
+    if (method !== "POST" && method !== "DELETE") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return new Response("invalid JSON body", { status: 400 });
+    }
+    const sessionId =
+      "sessionId" in payload && typeof payload.sessionId === "string" ? payload.sessionId : null;
+    const streamId =
+      "streamId" in payload && typeof payload.streamId === "string" ? payload.streamId : null;
+    if (!sessionId || !streamId) {
+      return new Response("missing sessionId or streamId", { status: 400 });
+    }
+
+    const sessionStreamId = `subscriptions/${sessionId}`;
+    return await forwardToSessionDO(env, sessionStreamId, method, {
+      sessionId,
+      streamId,
+    });
+  }
+
+  if (url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`)) {
+    if (method !== "GET") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    const sessionId = decodeURIComponent(url.pathname.slice(SUBSCRIPTIONS_PREFIX.length + 1));
+    if (!sessionId) return new Response("missing session id", { status: 400 });
+    const sessionStreamId = `subscriptions/${sessionId}`;
+    return await forwardToSessionDO(env, sessionStreamId, "GET");
+  }
+
+  return new Response("not found", { status: 404 });
+}
+
+async function forwardToSessionDO(
+  env: Env,
+  sessionStreamId: string,
+  method: string,
+  body?: Record<string, string>,
+): Promise<Response> {
+  const id = env.STREAMS.idFromName(sessionStreamId);
+  const stub = env.STREAMS.get(id);
+  const headers = new Headers();
+  headers.set("X-Stream-Id", sessionStreamId);
+  if (body) headers.set("Content-Type", "application/json");
+
+  const url = new URL("https://internal/internal/subscriptions");
+  return await stub.fetch(
+    new Request(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  );
+}
