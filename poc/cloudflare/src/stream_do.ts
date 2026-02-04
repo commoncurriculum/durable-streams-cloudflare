@@ -1,6 +1,5 @@
 import { errorResponse } from "./protocol/errors";
 import { isExpired } from "./protocol/expiry";
-import { decodeOffsetParts, encodeOffset } from "./protocol/offsets";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "./protocol/limits";
 import { LongPollQueue } from "./live/long_poll";
 import type { SseState } from "./live/types";
@@ -8,9 +7,11 @@ import { DoSqliteStorage } from "./storage/do_sqlite";
 import type { StreamMeta } from "./storage/storage";
 import { routeRequest } from "./http/router";
 import { Timing, attachTiming } from "./protocol/timing";
-import type { StreamContext, StreamEnv, ResolveOffsetResult } from "./http/context";
+import type { StreamContext, StreamEnv } from "./http/context";
 import { ReadPath } from "./do/read_path";
 import { rotateSegment } from "./do/segment_rotation";
+import { recordAdminSegment } from "./do/admin_index";
+import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "./do/offsets";
 
 export type Env = StreamEnv;
 
@@ -69,9 +70,11 @@ export class StreamDO {
       longPoll: this.longPoll,
       sseState: this.sseState,
       getStream: this.getStream.bind(this),
-      resolveOffset: this.resolveOffset.bind(this),
-      encodeOffset: this.encodeOffset.bind(this),
-      encodeTailOffset: this.encodeTailOffset.bind(this),
+      resolveOffset: (streamId, meta, offsetParam) =>
+        resolveOffsetParam(this.storage, streamId, meta, offsetParam),
+      encodeOffset: (streamId, meta, offset) =>
+        encodeStreamOffset(this.storage, streamId, meta, offset),
+      encodeTailOffset: (streamId, meta) => encodeTailOffset(this.storage, streamId, meta),
       readFromOffset: (streamId, meta, offset, maxChunkBytes) =>
         this.readPath.readFromOffset(streamId, meta, offset, maxChunkBytes, timing),
       rotateSegment: this.rotateSegment.bind(this),
@@ -98,99 +101,6 @@ export class StreamDO {
     await this.storage.deleteStreamData(streamId);
   }
 
-  private async encodeTailOffset(streamId: string, meta: StreamMeta): Promise<string> {
-    if (meta.closed === 1 && meta.segment_start >= meta.tail_offset && meta.read_seq > 0) {
-      const previous = await this.storage.getSegmentByReadSeq(streamId, meta.read_seq - 1);
-      if (previous) {
-        return encodeOffset(meta.tail_offset - previous.start_offset, previous.read_seq);
-      }
-    }
-    return encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
-  }
-
-  private async resolveOffset(
-    streamId: string,
-    meta: StreamMeta,
-    offsetParam: string | null,
-  ): Promise<ResolveOffsetResult> {
-    if (offsetParam === null) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "offset is required"),
-      };
-    }
-
-    const decoded = decodeOffsetParts(offsetParam);
-    if (!decoded) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "invalid offset"),
-      };
-    }
-
-    const { readSeq, byteOffset } = decoded;
-    if (readSeq > meta.read_seq) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "invalid offset"),
-      };
-    }
-
-    if (readSeq === meta.read_seq) {
-      const offset = meta.segment_start + byteOffset;
-      if (offset > meta.tail_offset) {
-        return {
-          offset: 0,
-          error: errorResponse(400, "offset beyond tail"),
-        };
-      }
-      return { offset };
-    }
-
-    const segment = await this.storage.getSegmentByReadSeq(streamId, readSeq);
-    if (!segment) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "invalid offset"),
-      };
-    }
-
-    const offset = segment.start_offset + byteOffset;
-    if (offset > segment.end_offset) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "invalid offset"),
-      };
-    }
-
-    if (offset > meta.tail_offset) {
-      return {
-        offset: 0,
-        error: errorResponse(400, "offset beyond tail"),
-      };
-    }
-
-    return { offset };
-  }
-
-  private async encodeOffset(streamId: string, meta: StreamMeta, offset: number): Promise<string> {
-    if (offset >= meta.segment_start) {
-      return encodeOffset(offset - meta.segment_start, meta.read_seq);
-    }
-
-    const segment = await this.storage.getSegmentCoveringOffset(streamId, offset);
-    if (segment) {
-      return encodeOffset(offset - segment.start_offset, segment.read_seq);
-    }
-
-    const starting = await this.storage.getSegmentStartingAt(streamId, offset);
-    if (starting) {
-      return encodeOffset(0, starting.read_seq);
-    }
-
-    return encodeOffset(0, meta.read_seq);
-  }
-
   private async rotateSegment(
     streamId: string,
     options?: { force?: boolean; retainOps?: boolean },
@@ -206,7 +116,8 @@ export class StreamDO {
         segmentMaxBytes: this.segmentMaxBytes(),
         force: options?.force,
         retainOps: options?.retainOps,
-        recordAdminSegment: (segment) => this.recordAdminSegment(streamId, segment),
+        recordAdminSegment: (segment) =>
+          recordAdminSegment(this.state, this.env, streamId, segment),
       });
     } finally {
       this.rotating = false;
@@ -223,57 +134,6 @@ export class StreamDO {
     const raw = this.env.SEGMENT_MAX_BYTES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_BYTES_DEFAULT;
-  }
-
-  private recordAdminSegment(
-    streamId: string,
-    segment: {
-      readSeq: number;
-      startOffset: number;
-      endOffset: number;
-      r2Key: string;
-      contentType: string;
-      createdAt: number;
-      expiresAt: number | null;
-      sizeBytes: number;
-      messageCount: number;
-    },
-  ): void {
-    if (!this.env.ADMIN_DB) return;
-    const db = this.env.ADMIN_DB;
-    this.state.waitUntil(
-      db
-        .prepare(
-          `
-            INSERT INTO segments_admin (
-              stream_id,
-              read_seq,
-              start_offset,
-              end_offset,
-              r2_key,
-              content_type,
-              created_at,
-              expires_at,
-              size_bytes,
-              message_count
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-        )
-        .bind(
-          streamId,
-          segment.readSeq,
-          segment.startOffset,
-          segment.endOffset,
-          segment.r2Key,
-          segment.contentType,
-          segment.createdAt,
-          segment.expiresAt,
-          segment.sizeBytes,
-          segment.messageCount,
-        )
-        .run(),
-    );
   }
 
   private async handleDebugAction(
