@@ -1,14 +1,16 @@
-# Fan-In Subscription Streams (V2 Concept)
+# Fan-In Subscription Streams (Planned, Session-Centered)
 
 ## Overview
+Status: **Planned (not implemented)**.
+
 Fan-in streams aggregate updates from many underlying streams into a single
-subscription stream per user or tenant. Clients open one SSE or long-poll
+subscription stream per **session**. Clients open one SSE or long-poll
 connection to the fan-in stream and receive multiplexed events with the source
 stream id and offset.
 
 This is an application-level pattern built on top of Durable Streams. It is not
-part of the core protocol and is intended for v2 scale when clients subscribe
-to hundreds of feeds.
+part of the core protocol and is intended for v2 scale when clients subscribe to
+hundreds of feeds.
 
 ## Goals
 - Reduce client connections by multiplexing many streams into one.
@@ -22,61 +24,95 @@ to hundreds of feeds.
 - Provide global discovery of streams.
 
 ## Core Concepts
-- **Subscription registry**: persistent mapping of user or tenant to stream ids.
-- **Fan-in stream**: a Durable Stream at `subscriptions/<subject>` that carries
+- **Subject**: a session. The session id is the subscription identity.
+- **Fan-in stream**: a Durable Stream at `subscriptions/<sessionId>` that carries
   envelope events.
+- **Session DO**: the fan-in stream DO for a given session; stores the session's
+  subscription list.
+- **Stream DO**: the source stream's DO; stores the stream's subscriber list.
 - **Envelope events**: JSON messages containing source stream id, source offset,
   event type, and payload.
-- **Fan-out writer**: process that appends envelope events into fan-in streams.
+- **Fan-out writer**: process that appends envelope events into session fan-in
+  streams.
 
-## Data Model (D1)
+## Data Model (Per-DO SQLite)
+
+### Stream DO (per stream)
 ```sql
-CREATE TABLE subscriptions (
-  subject_id TEXT NOT NULL,
-  stream_id TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (subject_id, stream_id)
+CREATE TABLE stream_subscribers (
+  session_id TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL
 );
-
-CREATE INDEX subscriptions_by_stream
-  ON subscriptions (stream_id);
 ```
 
-`subject_id` is typically a user id or tenant id. Stream ids are the same ids
-used by the core Durable Streams API.
+Maintain a subscriber count on the stream meta row to avoid counting on every
+append:
+```sql
+ALTER TABLE stream_meta ADD COLUMN subscriber_count INTEGER NOT NULL DEFAULT 0;
+```
+
+### Session DO (fan-in stream DO)
+```sql
+CREATE TABLE session_subscriptions (
+  stream_id TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
+```
 
 ## HTTP API (Worker)
+Planned endpoints (not implemented):
+
 1. `POST /v1/subscriptions`
 Request body:
 ```json
-{ "subjectId": "user-123", "streamId": "doc-abc" }
+{ "sessionId": "sess-123", "streamId": "doc-abc" }
 ```
-Behavior: authenticate, authorize, upsert into `subscriptions`.
+Behavior: authenticate, authorize, route to session DO
+`subscriptions/<sessionId>` to subscribe.
 
 2. `DELETE /v1/subscriptions`
 Request body:
 ```json
-{ "subjectId": "user-123", "streamId": "doc-abc" }
+{ "sessionId": "sess-123", "streamId": "doc-abc" }
 ```
-Behavior: authenticate, authorize, delete mapping.
+Behavior: authenticate, authorize, route to session DO
+`subscriptions/<sessionId>` to unsubscribe.
 
-3. `GET /v1/subscriptions/{subjectId}`
-Returns a list of subscribed stream ids for debugging or UI.
+3. `GET /v1/subscriptions/{sessionId}`
+Returns the list of subscribed `streamId`s from the session DO.
 
-## Fan-Out Pipeline Options
+All stream reads/writes still use the core stream endpoint:
+`/v1/stream/<stream-id>`.
 
-### Option A: Inline fan-out (simple)
-On every append to a stream, the stream DO queries D1 for subscribed subjects
-and appends an envelope event to each subject fan-in stream.
+## Internal DO-to-DO Calls (Subscription Updates)
+The session DO updates the stream DO subscriber list via trusted internal calls:
+- `POST /internal/subscribers` with body `{ "sessionId": "..." }`
+- `DELETE /internal/subscribers` with body `{ "sessionId": "..." }`
 
-Pros: minimal infrastructure. Cons: append cost grows with subscribers.
+These are internal-only routes (not public).
 
-### Option B: Queue-based fan-out (scalable)
-On append, the stream DO writes a single event to a queue. A queue consumer
-reads the event, queries subscriptions in D1, and appends envelope events into
-fan-in streams.
+## Subscribe / Unsubscribe Flow
+### Subscribe
+1. Session DO verifies auth/session ownership and stream ACL.
+2. Session DO calls stream DO to add `sessionId` to `stream_subscribers`.
+3. On success, session DO inserts `streamId` into `session_subscriptions`.
+4. If stream DO update fails: fail the request (no local write).
+5. If local write fails after stream DO success: attempt rollback by removing
+   the subscriber from stream DO; if rollback fails, record a repair log TODO.
 
-Pros: isolates fan-out cost, smoother latency. Cons: extra infra and slight delay.
+### Unsubscribe
+1. Session DO calls stream DO to remove `sessionId` from `stream_subscribers`.
+2. On success, session DO deletes `streamId` from `session_subscriptions`.
+3. If stream DO update fails: fail the request.
+
+## Fan-Out Path (Per-Stream Gating)
+On append to a stream DO, use `subscriber_count` to choose a fan-out path:
+- `subscriber_count <= 200`: inline append envelope events to each session's
+  fan-in stream.
+- `subscriber_count > 200`: enqueue fan-out tasks (planned/optional queue).
+
+Queue path (future): enqueue `{ sessionId, streamId, offset, type, payload }`
+per subscriber and let a consumer append to session fan-in streams.
 
 ## Envelope Event Format
 Each message in the fan-in stream is JSON:
@@ -90,19 +126,31 @@ Each message in the fan-in stream is JSON:
 ```
 For binary payloads, encode to base64 and add `encoding: "base64"`.
 
+Note: `offset` is the Durable Streams offset for the source stream.
+
 ## Client Consumption
-Client opens one stream:
+Client opens one stream for the session:
 ```
-GET /v1/stream/subscriptions/user-123?offset=now&live=sse
-Authorization: Bearer <token>
+GET /v1/stream/subscriptions/sess-123?offset=now&live=sse
 ```
-The client processes envelope events, optionally replays original streams for
-verification or missing data.
+
+SSE auth note: `EventSource` cannot set custom headers, so use cookie auth or a
+short-lived signed token in the query string.
+
+## Message Matching (TBD)
+Does a message match a subscription? Not implemented yet. Stub:
+```ts
+function matchSubscription(message, subscriptionRule): boolean
+```
+TODOs:
+- Define rule language (exact stream id vs prefix vs filter).
+- Decide whether payload-level filtering is allowed.
+- Decide caching strategy for compiled rules.
 
 ## Authorization Model
-- Worker validates the caller can access the `subjectId` fan-in stream.
+- Worker validates the caller can access the `sessionId` fan-in stream.
 - Worker validates each subscription write against stream ACLs.
-- Fan-in streams are private per subject and should not be CDN-cached.
+- Fan-in streams are private per session and should not be CDN-cached.
 
 ## Offset Semantics
 - The fan-in stream has its own offsets independent of source streams.
@@ -117,6 +165,7 @@ verification or missing data.
 - If fan-out falls behind, clients still have source streams for full replay.
 
 ## Implementation Notes
-- Subject fan-in streams are just regular Durable Streams.
-- The registry table is global and should live in D1 for queryability.
+- Session fan-in streams are just regular Durable Streams.
+- The dual index is required. Stream DO uses `stream_subscribers` for fan-out.
+- Session DO uses `session_subscriptions` for listing.
 - The queue option is recommended once fan-out cost is non-trivial.
