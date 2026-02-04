@@ -164,10 +164,26 @@ export async function handleInternalSubscribers(
     const now = Date.now();
     if (method === "POST") {
       await ctx.storage.addStreamSubscriber(streamId, sessionId, now);
+      // Record subscription metrics
+      if (ctx.env.METRICS) {
+        ctx.env.METRICS.writeDataPoint({
+          indexes: [streamId],
+          blobs: [streamId, sessionId, "subscribe"],
+          doubles: [1, 0],
+        });
+      }
       return new Response(null, { status: 204 });
     }
 
     await ctx.storage.removeStreamSubscriber(streamId, sessionId);
+    // Record unsubscription metrics
+    if (ctx.env.METRICS) {
+      ctx.env.METRICS.writeDataPoint({
+        indexes: [streamId],
+        blobs: [streamId, sessionId, "unsubscribe"],
+        doubles: [-1, 0],
+      });
+    }
     return new Response(null, { status: 204 });
   });
 }

@@ -11,6 +11,9 @@ export type EdgeEnv = {
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
+  METRICS?: AnalyticsEngineDataset;
+  CF_ACCOUNT_ID?: string;
+  METRICS_API_TOKEN?: string;
 };
 
 export type EdgeBindings = {

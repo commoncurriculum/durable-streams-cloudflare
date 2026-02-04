@@ -26,8 +26,9 @@ import { useStreamDB } from "../lib/stream-db-context";
 import { useTypingIndicator } from "../hooks/useTypingIndicator";
 import { useNow } from "../hooks/useNow";
 import { streamStore } from "../lib/stream-store";
-import { getStream, listSegments } from "../lib/admin-api";
-import type { StreamDetail, SegmentInfo } from "../lib/admin-api";
+import { getStream, listSegments, getStreamThroughput } from "../lib/admin-api";
+import type { StreamDetail, SegmentInfo, ThroughputBucket } from "../lib/admin-api";
+import { Sparkline } from "../components/ui/sparkline";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
@@ -126,6 +127,8 @@ function StreamViewer() {
   const [segments, setSegments] = useState<SegmentInfo[]>([]);
   const [showSegments, setShowSegments] = useState(false);
   const [segmentsLoading, setSegmentsLoading] = useState(false);
+  const [throughput, setThroughput] = useState<ThroughputBucket[]>([]);
+  const [avgMessagesPerMin, setAvgMessagesPerMin] = useState<number>(0);
 
   const producerRef = useRef<IdempotentProducer | null>(null);
   useEffect(() => {
@@ -155,6 +158,21 @@ function StreamViewer() {
       }
     };
     void fetchDetail();
+  }, [streamId]);
+
+  useEffect(() => {
+    const fetchThroughput = async () => {
+      try {
+        const data = await getStreamThroughput(streamId, { minutes: 60 });
+        setThroughput(data.buckets);
+        setAvgMessagesPerMin(data.avgMessagesPerMinute);
+      } catch {
+        // Ignore errors - metrics may not be configured
+      }
+    };
+    void fetchThroughput();
+    const interval = setInterval(fetchThroughput, 30000);
+    return () => clearInterval(interval);
   }, [streamId]);
 
   const subscribe = useCallback(
@@ -306,6 +324,36 @@ function StreamViewer() {
               icon={Users}
             />
           </div>
+
+          {/* Throughput sparkline */}
+          {throughput.length > 0 && (
+            <div className="mt-4 p-4 bg-white rounded-lg border border-surface-200">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-medium text-surface-900">
+                    Throughput (Last Hour)
+                  </h4>
+                  <p className="text-xs text-surface-500 mt-0.5">
+                    {avgMessagesPerMin.toFixed(1)} msgs/min avg
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-semibold text-surface-900 tabular-nums">
+                    {throughput[throughput.length - 1]?.messages || 0}
+                  </p>
+                  <p className="text-xs text-surface-500">current/min</p>
+                </div>
+              </div>
+              <Sparkline
+                data={throughput.map((b) => b.messages)}
+                width={400}
+                height={48}
+                color="#3b82f6"
+                fillOpacity={0.15}
+                className="w-full"
+              />
+            </div>
+          )}
 
           {/* Segments collapsible */}
           {(streamDetail.segmentCount || 0) > 0 && (

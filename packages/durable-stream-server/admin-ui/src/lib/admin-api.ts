@@ -166,5 +166,80 @@ export async function getSession(sessionId: string): Promise<SessionDetail> {
   return fetchJson<SessionDetail>(`/admin/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
+// Metrics API types
+export interface HotStream {
+  streamId: string;
+  messageCount: number;
+  byteCount: number;
+}
+
+export interface HotStreamsResponse {
+  streams: HotStream[];
+  periodMinutes: number;
+}
+
+export interface SystemMetrics {
+  messagesLast5Min: number;
+  bytesLast5Min: number;
+  messagesPerSecond: number;
+  activeSubscribers: number;
+}
+
+export interface ThroughputBucket {
+  timestamp: number;
+  messages: number;
+  bytes: number;
+}
+
+export interface StreamThroughputResponse {
+  streamId: string;
+  buckets: ThroughputBucket[];
+  avgMessagesPerMinute: number;
+  periodMinutes: number;
+}
+
+export interface StreamSubscribersResponse {
+  streamId: string;
+  activeSubscribers: number;
+}
+
+// Metrics API
+export async function getHotStreams(options?: {
+  minutes?: number;
+  limit?: number;
+}): Promise<HotStreamsResponse> {
+  const params = new URLSearchParams();
+  if (options?.minutes) params.set("minutes", options.minutes.toString());
+  if (options?.limit) params.set("limit", options.limit.toString());
+
+  const query = params.toString();
+  return fetchJson<HotStreamsResponse>(`/admin/api/metrics/hot${query ? `?${query}` : ""}`);
+}
+
+export async function getSystemMetrics(): Promise<SystemMetrics> {
+  return fetchJson<SystemMetrics>("/admin/api/metrics/system");
+}
+
+export async function getStreamThroughput(
+  streamId: string,
+  options?: { minutes?: number }
+): Promise<StreamThroughputResponse> {
+  const params = new URLSearchParams();
+  if (options?.minutes) params.set("minutes", options.minutes.toString());
+
+  const query = params.toString();
+  return fetchJson<StreamThroughputResponse>(
+    `/admin/api/metrics/streams/${encodeURIComponent(streamId)}/throughput${query ? `?${query}` : ""}`
+  );
+}
+
+export async function getStreamSubscribers(
+  streamId: string
+): Promise<StreamSubscribersResponse> {
+  return fetchJson<StreamSubscribersResponse>(
+    `/admin/api/metrics/streams/${encodeURIComponent(streamId)}/subscribers`
+  );
+}
+
 // Export error class for handling
 export { AdminApiError };

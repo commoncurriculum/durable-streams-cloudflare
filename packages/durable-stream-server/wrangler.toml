@@ -38,6 +38,10 @@ queue = "fanout-queue"
 max_batch_size = 100
 max_batch_timeout = 30
 
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
 [vars]
 # Optional: set to require auth
 # AUTH_TOKEN = "replace-with-token"

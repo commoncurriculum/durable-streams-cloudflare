@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "@tanstack/react-db";
 import {
@@ -12,14 +12,16 @@ import {
   AlertCircle,
   XCircle,
   RefreshCw,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
-import { getHealth, listSessions } from "../lib/admin-api";
-import type { HealthResponse } from "../lib/admin-api";
+import { getHealth, listSessions, getHotStreams, getSystemMetrics } from "../lib/admin-api";
+import type { HealthResponse, HotStream, SystemMetrics } from "../lib/admin-api";
 import { useStreamDB } from "../lib/stream-db-context";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { cn } from "../lib/utils";
+import { cn, formatBytes } from "../lib/utils";
 
 export const Route = createFileRoute("/")({
   component: OverviewPage,
@@ -120,6 +122,8 @@ function OverviewPage() {
   const { registryDB } = useStreamDB();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [sessionCount, setSessionCount] = useState<number>(0);
+  const [hotStreams, setHotStreams] = useState<HotStream[]>([]);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -130,12 +134,16 @@ function OverviewPage() {
   const fetchData = async (showRefresh = false) => {
     try {
       if (showRefresh) setIsRefreshing(true);
-      const [healthData, sessionsData] = await Promise.all([
+      const [healthData, sessionsData, hotStreamsData, systemData] = await Promise.all([
         getHealth().catch(() => null),
         listSessions({ limit: 1000 }).catch(() => null),
+        getHotStreams({ minutes: 5, limit: 5 }).catch(() => null),
+        getSystemMetrics().catch(() => null),
       ]);
       if (healthData) setHealth(healthData);
       if (sessionsData) setSessionCount(sessionsData.sessions.length);
+      if (hotStreamsData) setHotStreams(hotStreamsData.streams);
+      if (systemData) setSystemMetrics(systemData);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -202,7 +210,7 @@ function OverviewPage() {
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard
             label="Total Streams"
             value={streams.length}
@@ -216,12 +224,64 @@ function OverviewPage() {
             color="accent"
           />
           <StatCard
-            label="Uptime"
-            value={health?.status === "healthy" ? "99.9%" : "—"}
-            icon={Activity}
+            label="Messages/sec"
+            value={systemMetrics?.messagesPerSecond ?? "—"}
+            icon={Zap}
+            trend={systemMetrics ? `${systemMetrics.messagesLast5Min} in last 5 min` : undefined}
+            color="primary"
+          />
+          <StatCard
+            label="Subscribers"
+            value={systemMetrics?.activeSubscribers ?? "—"}
+            icon={TrendingUp}
             color="muted"
           />
         </div>
+
+        {/* Hot Streams */}
+        {hotStreams.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-surface-500" />
+                Hot Streams
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  Last 5 min
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {hotStreams.map((stream, index) => (
+                <Link
+                  key={stream.streamId}
+                  to="/streams/$streamId"
+                  params={{ streamId: stream.streamId }}
+                  className={cn(
+                    "flex items-center justify-between p-3 rounded-lg transition-colors",
+                    "bg-surface-50 hover:bg-surface-100"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary-100 text-primary-600 text-xs font-semibold">
+                      {index + 1}
+                    </div>
+                    <span className="font-medium text-surface-900 truncate max-w-[200px]">
+                      {decodeURIComponent(stream.streamId)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-surface-600 tabular-nums">
+                      {stream.messageCount} msgs
+                    </span>
+                    <span className="text-surface-500 tabular-nums">
+                      {formatBytes(stream.byteCount)}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Services status */}
         <Card>

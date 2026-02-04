@@ -17,6 +17,9 @@ export interface Env {
   ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
   ASSETS?: Fetcher;
+  METRICS?: AnalyticsEngineDataset;
+  CF_ACCOUNT_ID?: string;
+  METRICS_API_TOKEN?: string;
 }
 
 const edgeApp = createEdgeApp();

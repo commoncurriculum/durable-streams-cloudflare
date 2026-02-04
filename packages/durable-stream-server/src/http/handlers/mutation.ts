@@ -266,6 +266,15 @@ export async function handlePost(
     await fanOutAppend(ctx, streamId, meta, contentType, bodyBytes, append.newTailOffset);
     ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: closeStream }));
 
+    // Record metrics for message append
+    if (ctx.env.METRICS) {
+      ctx.env.METRICS.writeDataPoint({
+        indexes: [streamId],
+        blobs: [streamId, producer?.value?.id ?? "anonymous"],
+        doubles: [1, bodyBytes.length],
+      });
+    }
+
     const status = producer?.value ? 200 : 204;
     return new Response(null, { status, headers });
   });

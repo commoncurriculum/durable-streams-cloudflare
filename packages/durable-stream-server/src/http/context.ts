@@ -16,6 +16,7 @@ export type StreamEnv = {
   R2_DELETE_OPS?: string;
   SEGMENT_MAX_MESSAGES?: string;
   SEGMENT_MAX_BYTES?: string;
+  METRICS?: AnalyticsEngineDataset;
 };
 
 export type ResolveOffsetResult = {

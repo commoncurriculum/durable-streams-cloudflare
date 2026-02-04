@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { DurableStream } from "@durable-streams/client";
 import { and, eq, gt, useLiveQuery } from "@tanstack/react-db";
 import {
@@ -15,6 +15,17 @@ import {
 import { StreamDBProvider, useStreamDB } from "../lib/stream-db-context";
 import { usePresence } from "../hooks/usePresence";
 import { NowProvider, useNow } from "../hooks/useNow";
+import { useHotStreams } from "../hooks/useMetrics";
+import type { HotStream } from "../lib/admin-api";
+
+// Context to share hot streams data
+const HotStreamsContext = createContext<{
+  isHot: (streamId: string) => boolean;
+  getStreamMetrics: (streamId: string) => HotStream | undefined;
+}>({
+  isHot: () => false,
+  getStreamMetrics: () => undefined,
+});
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -45,6 +56,9 @@ function StreamListItem({
   const { presenceDB } = useStreamDB();
   const now = useNow();
   const [isHovered, setIsHovered] = useState(false);
+  const { isHot, getStreamMetrics } = useContext(HotStreamsContext);
+  const streamMetrics = getStreamMetrics(stream.path);
+  const isActive = isHot(stream.path);
 
   const { data: viewers = [] } = useLiveQuery(
     (q) =>
@@ -96,12 +110,15 @@ function StreamListItem({
       >
         <div
           className={cn(
-            "flex items-center justify-center w-8 h-8 rounded-lg",
+            "relative flex items-center justify-center w-8 h-8 rounded-lg",
             "bg-surface-100 text-surface-500",
             "group-[.active]:bg-primary-100 group-[.active]:text-primary-600"
           )}
         >
           <Radio className="w-4 h-4" />
+          {isActive && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-success-500 rounded-full border-2 border-white animate-pulse" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm text-surface-900 truncate">
@@ -111,6 +128,11 @@ function StreamListItem({
             <span className="text-xs text-surface-500">
               {stream.contentType.split("/")[1]}
             </span>
+            {streamMetrics && (
+              <span className="text-xs text-success-600 tabular-nums">
+                {streamMetrics.messageCount}/min
+              </span>
+            )}
             {viewers.length > 0 && (
               <div className="flex -space-x-1">
                 {viewers.slice(0, 3).map((v) => (
@@ -164,6 +186,7 @@ function RootLayout() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const { isHot, getStreamMetrics } = useHotStreams({ minutes: 5, limit: 50 });
 
   usePresence();
 
@@ -215,9 +238,10 @@ function RootLayout() {
   };
 
   return (
-    <TooltipProvider>
-      <div className="flex h-screen bg-surface-50">
-        {/* Mobile menu button */}
+    <HotStreamsContext.Provider value={{ isHot, getStreamMetrics }}>
+      <TooltipProvider>
+        <div className="flex h-screen bg-surface-50">
+          {/* Mobile menu button */}
         <button
           className={cn(
             "fixed top-4 left-4 z-50 p-2 rounded-lg md:hidden",
@@ -383,8 +407,9 @@ function RootLayout() {
             onClick={() => setSidebarOpen(false)}
           />
         )}
-      </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+    </HotStreamsContext.Provider>
   );
 }
 
