@@ -1,2 +1,5 @@
 packages:
   - "packages/*"
+  - "packages/durable-stream-server/admin-ui"
+  - "upstream-server/packages/*"
+  - "upstream-server/examples/*"

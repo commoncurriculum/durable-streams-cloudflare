@@ -11,6 +11,9 @@ interface StreamSubscription {
   abortController: AbortController | null;
   stream: DurableStream;
   cleanupTimer: ReturnType<typeof setTimeout> | null;
+  // Pending messages to batch before notifying listeners
+  pendingMessages: Array<{ offset: string; data: string }>;
+  flushScheduled: boolean;
 }
 
 class StreamStore {
@@ -28,6 +31,8 @@ class StreamStore {
         abortController: null,
         stream,
         cleanupTimer: null,
+        pendingMessages: [],
+        flushScheduled: false,
       };
       this.subscriptions.set(streamPath, subscription);
     }
@@ -94,6 +99,33 @@ class StreamStore {
     return subscription ? subscription.messages : this.emptyMessages;
   }
 
+  private flushPendingMessages(subscription: StreamSubscription): void {
+    const flushStart = performance.now();
+    subscription.flushScheduled = false;
+
+    if (subscription.pendingMessages.length === 0) return;
+
+    const pendingCount = subscription.pendingMessages.length;
+    console.log(`[stream-store] Flushing ${pendingCount} messages`);
+
+    // Batch all pending messages into a single array update
+    const newMessages = [...subscription.messages, ...subscription.pendingMessages];
+    subscription.pendingMessages = [];
+
+    // Apply size limit
+    subscription.messages =
+      newMessages.length > MAX_MESSAGES_PER_STREAM
+        ? newMessages.slice(-MAX_MESSAGES_PER_STREAM)
+        : newMessages;
+
+    // Notify listeners once for the entire batch
+    const listenerCount = subscription.listeners.size;
+    subscription.listeners.forEach((listener) => listener());
+
+    const flushEnd = performance.now();
+    console.log(`[stream-store] Flush complete: ${pendingCount} msgs, ${listenerCount} listeners, ${(flushEnd - flushStart).toFixed(1)}ms`);
+  }
+
   private async followStream(
     streamPath: string,
     subscription: StreamSubscription
@@ -107,24 +139,29 @@ class StreamStore {
 
       const response = await subscription.stream.stream({
         offset: startOffset,
-        live: "long-poll",
+        live: "sse",
         signal: subscription.abortController!.signal,
       });
 
+      console.log(`[stream-store] Starting subscribeText for ${streamPath}`);
+      const subscribeStart = performance.now();
+      let chunkCount = 0;
+
       response.subscribeText((chunk) => {
+        chunkCount++;
+        const elapsed = performance.now() - subscribeStart;
+        console.log(`[stream-store] Chunk #${chunkCount} received at ${elapsed.toFixed(0)}ms, offset=${chunk.offset}, len=${chunk.text.length}`);
+
         if (chunk.text !== "") {
-          // Create new array reference so React detects the change
-          // Limit array size to prevent unbounded memory growth
-          const newMessages = [
-            ...subscription.messages,
-            { offset: chunk.offset, data: chunk.text },
-          ];
-          subscription.messages =
-            newMessages.length > MAX_MESSAGES_PER_STREAM
-              ? newMessages.slice(-MAX_MESSAGES_PER_STREAM)
-              : newMessages;
-          // Notify all listeners
-          subscription.listeners.forEach((listener) => listener());
+          // Queue message for batched processing
+          subscription.pendingMessages.push({ offset: chunk.offset, data: chunk.text });
+
+          // Schedule flush if not already scheduled
+          if (!subscription.flushScheduled) {
+            subscription.flushScheduled = true;
+            console.log(`[stream-store] Scheduling flush with ${subscription.pendingMessages.length} pending`);
+            queueMicrotask(() => this.flushPendingMessages(subscription));
+          }
         }
         return Promise.resolve();
       });

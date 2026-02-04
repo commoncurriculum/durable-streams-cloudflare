@@ -16,6 +16,7 @@ export interface Env {
   R2?: R2Bucket;
   ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
+  ASSETS?: Fetcher;
 }
 
 const edgeApp = createEdgeApp();
@@ -197,8 +198,22 @@ export default {
     const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
     const timing = timingEnabled ? new Timing() : null;
 
+    // Admin API routes go to Hono (only /admin/api/*)
+    if (url.pathname.startsWith(`${ADMIN_PREFIX}/api/`)) {
+      return edgeApp.fetch(request, env, ctx);
+    }
+
+    // Admin UI static assets and SPA routes - serve from ASSETS binding
+    if (url.pathname.startsWith(ADMIN_PREFIX) && env.ASSETS) {
+      // Strip /admin prefix - ASSETS expects paths relative to dist/admin-ui
+      const assetPath = url.pathname.slice(ADMIN_PREFIX.length) || "/";
+      const assetUrl = new URL(assetPath, url.origin);
+      assetUrl.search = url.search;
+      return env.ASSETS.fetch(new Request(assetUrl, request));
+    }
+
+    // Other Hono routes (subscriptions, sessions)
     if (
-      url.pathname.startsWith(ADMIN_PREFIX) ||
       url.pathname === SUBSCRIPTIONS_PREFIX ||
       url.pathname.startsWith(`${SUBSCRIPTIONS_PREFIX}/`) ||
       url.pathname === SESSIONS_PREFIX

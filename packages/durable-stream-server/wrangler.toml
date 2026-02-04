@@ -2,6 +2,15 @@ name = "durable-streams-poc"
 main = "src/worker.ts"
 compatibility_date = "2026-02-02"
 
+# Serve admin UI static assets
+# Note: Build the admin-ui first with `pnpm run build:admin-ui`
+# Assets are served at /admin/* (based on the base path in vite.config.ts)
+[assets]
+directory = "dist/admin-ui"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "single-page-application"
+
 [durable_objects]
 bindings = [
   { name = "STREAMS", class_name = "StreamDO" }

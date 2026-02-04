@@ -66,11 +66,32 @@ export function createAdminSessionsRoutes() {
       return c.json({ error: "session not found" }, 404);
     }
 
+    // Get subscribed streams from session DO
+    let subscribedStreams: string[] = [];
+    const streams = c.env.STREAMS;
+    if (streams) {
+      try {
+        // Session DOs use a different naming convention
+        const id = streams.idFromName(`session:${sessionId}`);
+        const stub = streams.get(id);
+        const response = await stub.fetch(
+          new Request("http://internal/internal/admin/subscriptions", { method: "GET" })
+        );
+        if (response.ok) {
+          const data = (await response.json()) as { streams?: string[] };
+          subscribedStreams = data.streams || [];
+        }
+      } catch {
+        // Ignore errors, keep subscribedStreams empty
+      }
+    }
+
     return c.json({
       sessionId: result.session_id as string,
       createdAt: result.created_at as number,
       expiresAt: result.expires_at as number,
-      subscriptionCount: 0,
+      subscriptionCount: subscribedStreams.length,
+      subscribedStreams,
     });
   });
 

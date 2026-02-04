@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "build": "pnpm run build:admin-ui && pnpm exec tsc -p tsconfig.json --noEmit",
+    "build:admin-ui": "cd admin-ui && pnpm install && pnpm run build",
     "dev": "wrangler dev --local --port 8787",
+    "dev:admin-ui": "cd admin-ui && pnpm run dev",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
     "format:check": "oxfmt --check src test",
