@@ -1,5 +1,5 @@
 {
-  "name": "durable-streams-cloudflare-poc",
+  "name": "durable-stream-server",
   "private": true,
   "type": "module",
   "scripts": {

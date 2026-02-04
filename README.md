@@ -3,19 +3,19 @@
 Durable Streams implementation workspace.
 
 ## What’s Here
-- `poc/cloudflare/` — Cloudflare Worker + Durable Object + D1 + R2 proof‑of‑concept implementation.
-- `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare POC.
-- `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare POC.
+- `packages/durable-stream-server/` — Cloudflare Worker + Durable Object + D1 + R2 implementation.
+- `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare server.
+- `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare server.
 
-## Cloudflare POC (quick start)
+## Cloudflare Server (quick start)
 ```bash
-cd poc/cloudflare
+cd packages/durable-stream-server
 pnpm install
 pnpm run dev
 ```
 
 Run conformance (requires `pnpm run dev` in another shell):
 ```bash
-cd poc/cloudflare
+cd packages/durable-stream-server
 pnpm run conformance
 ```

@@ -1,8 +1,8 @@
-# Durable Streams Cloudflare POC (Worker + DO + R2)
+# Durable Streams Cloudflare Server (Worker + DO + R2)
 
-Cloudflare-only proof of concept for the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **SQLite in DO storage** as the hot log. R2 stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops.
+Cloudflare-only implementation of the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **SQLite in DO storage** as the hot log. R2 stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops.
 
-## What This POC Includes
+## What This Server Includes
 - Worker router with optional bearer token auth.
 - Durable Object per stream for ordering and live fan-out.
 - DO SQLite schema for stream metadata, ops log, producer state, and segment index.
@@ -27,7 +27,7 @@ provide:
 - Cold-storage rotation to R2 segments and read‑seq offset encoding.
 - Conformance test compatibility.
 
-This POC uses a DO as the sequencer, then layers the **Durable Streams
+This server uses a DO as the sequencer, then layers the **Durable Streams
 protocol + storage model** on top.
 
 ## Why the DO Parses R2 Segments (No Raw Byte-Range)

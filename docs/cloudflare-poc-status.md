@@ -1,4 +1,4 @@
-# Cloudflare POC Status
+# Cloudflare Server Status
 
 ## Baseline (2026-02-03)
 - Conformance suite: **pass** (239/239).
@@ -10,7 +10,7 @@
 
 ## Commands (local)
 ```bash
-cd poc/cloudflare
+cd packages/durable-stream-server
 pnpm install
 
 # Optional: apply admin D1 migrations
@@ -23,7 +23,7 @@ pnpm run dev
 ## Tests
 Run from another shell while `pnpm run dev` is running:
 ```bash
-cd poc/cloudflare
+cd packages/durable-stream-server
 pnpm run conformance
 pnpm run test:implementation
 pnpm run perf
