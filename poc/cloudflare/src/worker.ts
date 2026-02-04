@@ -51,6 +51,12 @@ function applyCors(headers: Headers): void {
   headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS.join(", "));
 }
 
+function corsError(status: number, message: string): Response {
+  const headers = new Headers({ "Cache-Control": "no-store" });
+  applyCors(headers);
+  return new Response(message, { status, headers });
+}
+
 function shouldUseCache(request: Request, url: URL): boolean {
   const method = request.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") return false;
@@ -148,7 +154,16 @@ export default {
 
     const authResult = authorizeRequest(request, env, timing);
     if (!authResult.ok) {
-      return authResult.response;
+      const headers = new Headers(authResult.response.headers);
+      applyCors(headers);
+      if (!headers.has("Cache-Control")) {
+        headers.set("Cache-Control", "no-store");
+      }
+      return new Response(authResult.response.body, {
+        status: authResult.response.status,
+        statusText: authResult.response.statusText,
+        headers,
+      });
     }
     const cacheMode = resolveCacheMode({
       envMode: env.CACHE_MODE,
@@ -170,12 +185,12 @@ export default {
     }
 
     if (!url.pathname.startsWith(STREAM_PREFIX)) {
-      return new Response("not found", { status: 404 });
+      return corsError(404, "not found");
     }
 
     const streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
     if (!streamId) {
-      return new Response("missing stream id", { status: 400 });
+      return corsError(400, "missing stream id");
     }
 
     const method = request.method.toUpperCase();
@@ -262,7 +277,11 @@ export default {
         continue;
       }
       try {
-        await appendEnvelopeToSession(env.STREAMS, sessionId, envelope as FanOutQueueMessage["envelope"]);
+        await appendEnvelopeToSession(
+          env.STREAMS,
+          sessionId,
+          envelope as FanOutQueueMessage["envelope"],
+        );
         message.ack();
       } catch {
         message.retry();
