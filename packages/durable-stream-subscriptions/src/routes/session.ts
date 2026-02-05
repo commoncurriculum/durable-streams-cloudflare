@@ -48,11 +48,12 @@ sessionRoutes.get("/session/:sessionId", async (c) => {
     };
     const datasetName = c.env.ANALYTICS_DATASET ?? "subscriptions_metrics";
 
-    try {
-      subscriptions = await getSessionSubscriptions(analyticsEnv, datasetName, sessionId);
-    } catch (err) {
-      console.error("Failed to query subscriptions from Analytics Engine:", err);
+    const result = await getSessionSubscriptions(analyticsEnv, datasetName, sessionId);
+    if (result.error) {
+      console.error("Failed to query subscriptions from Analytics Engine:", result.error);
       // Continue without subscription data
+    } else {
+      subscriptions = result.data;
     }
   }
 

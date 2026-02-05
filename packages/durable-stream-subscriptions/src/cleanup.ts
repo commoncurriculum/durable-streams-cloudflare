@@ -60,7 +60,20 @@ export async function cleanupExpiredSessions(env: CleanupEnv): Promise<CleanupRe
   const datasetName = env.ANALYTICS_DATASET ?? "subscriptions_metrics";
 
   // 1. Query Analytics Engine for expired sessions
-  const expiredSessions = await getExpiredSessions(analyticsEnv, datasetName);
+  const expiredResult = await getExpiredSessions(analyticsEnv, datasetName);
+
+  if (expiredResult.error) {
+    console.error(`Failed to query expired sessions: ${expiredResult.error}`);
+    return {
+      deleted: 0,
+      streamDeleteSuccesses: 0,
+      streamDeleteFailures: 0,
+      subscriptionRemoveSuccesses: 0,
+      subscriptionRemoveFailures: 0,
+    };
+  }
+
+  const expiredSessions = expiredResult.data;
 
   if (expiredSessions.length === 0) {
     return {
@@ -83,11 +96,18 @@ export async function cleanupExpiredSessions(env: CleanupEnv): Promise<CleanupRe
     metrics.sessionExpire(session.sessionId, 0, Date.now() - session.lastActivity);
 
     // Get subscriptions for this session from Analytics Engine
-    const subscriptions = await getSessionSubscriptions(
+    const subscriptionsResult = await getSessionSubscriptions(
       analyticsEnv,
       datasetName,
       session.sessionId,
     );
+
+    if (subscriptionsResult.error) {
+      console.error(`Failed to get subscriptions for session ${session.sessionId}: ${subscriptionsResult.error}`);
+      // Continue with session deletion even if subscription lookup fails
+    }
+
+    const subscriptions = subscriptionsResult.data;
 
     // Remove from each SubscriptionDO
     for (const sub of subscriptions) {

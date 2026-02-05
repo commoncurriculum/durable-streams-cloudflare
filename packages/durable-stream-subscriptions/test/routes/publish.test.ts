@@ -63,6 +63,74 @@ describe("POST /publish/:streamId", () => {
     vi.clearAllMocks();
   });
 
+  describe("streamId validation", () => {
+    it("rejects invalid streamId with semicolon", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+      const app = await createTestApp();
+      // URL-encode the semicolon so it reaches the handler as part of the streamId
+      const response = await app.request("/v1/publish/bad%3Bid", {
+        method: "POST",
+        body: JSON.stringify({ data: "test" }),
+        headers: { "Content-Type": "application/json" },
+      }, createMockEnv(mockDoNamespace));
+
+      expect(response.status).toBe(400);
+      // Zod validation returns error in 'success' and 'error' fields with array of issues
+      const body = await response.json() as { success: boolean; error?: { issues: Array<{ message: string }> } };
+      expect(body.success).toBe(false);
+    });
+
+    it("rejects streamId with SQL-like content", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+      const app = await createTestApp();
+      const response = await app.request("/v1/publish/'; DROP TABLE --", {
+        method: "POST",
+        body: JSON.stringify({ data: "test" }),
+        headers: { "Content-Type": "application/json" },
+      }, createMockEnv(mockDoNamespace));
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects streamId with quotes", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+      const app = await createTestApp();
+      const response = await app.request("/v1/publish/test'id", {
+        method: "POST",
+        body: JSON.stringify({ data: "test" }),
+        headers: { "Content-Type": "application/json" },
+      }, createMockEnv(mockDoNamespace));
+
+      expect(response.status).toBe(400);
+    });
+
+    it("accepts valid streamId formats", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+      const app = await createTestApp();
+      const validIds = ["stream-123", "my_stream", "user:stream:1", "Stream.Name.123"];
+      for (const id of validIds) {
+        const response = await app.request(`/v1/publish/${encodeURIComponent(id)}`, {
+          method: "POST",
+          body: JSON.stringify({ data: "test" }),
+          headers: { "Content-Type": "application/json" },
+        }, createMockEnv(mockDoNamespace));
+        expect(response.status).not.toBe(400);
+      }
+    });
+  });
+
   describe("routing to SubscriptionDO", () => {
     it("routes to SubscriptionDO for the correct streamId", async () => {
       const mockResponse = createMockDoResponse();

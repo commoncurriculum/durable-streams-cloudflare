@@ -158,11 +158,21 @@ subscribeRoutes.delete("/session/:sessionId", async (c) => {
   const metrics = createMetrics(c.env.METRICS);
 
   // Delete session stream from core
-  await fetchFromCore(c.env, `/v1/stream/session:${sessionId}`, {
-    method: "DELETE",
-  }).catch((err) => {
+  try {
+    const response = await fetchFromCore(c.env, `/v1/stream/session:${sessionId}`, {
+      method: "DELETE",
+    });
+
+    // 404 is acceptable - session already deleted
+    if (!response.ok && response.status !== 404) {
+      const errorText = await response.text();
+      console.error(`Failed to delete session stream ${sessionId}: ${response.status} - ${errorText}`);
+      return c.json({ error: "Failed to delete session stream" }, 500);
+    }
+  } catch (err) {
     console.error(`Failed to delete session stream ${sessionId}:`, err);
-  });
+    return c.json({ error: "Failed to delete session stream" }, 500);
+  }
 
   // Record metrics
   const latencyMs = Date.now() - start;

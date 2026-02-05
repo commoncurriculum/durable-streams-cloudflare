@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the analytics queries module
 vi.mock("../src/analytics-queries", () => ({
-  getExpiredSessions: vi.fn(),
-  getSessionSubscriptions: vi.fn(),
+  getExpiredSessions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
+  getSessionSubscriptions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
 }));
 
 vi.mock("../src/metrics", () => ({
@@ -43,7 +43,7 @@ describe("cleanup", () => {
 
     it("should return early if no expired sessions found", async () => {
       const { getExpiredSessions } = await import("../src/analytics-queries");
-      vi.mocked(getExpiredSessions).mockResolvedValue([]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({ data: [], error: undefined });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
@@ -69,14 +69,15 @@ describe("cleanup", () => {
         "../src/analytics-queries"
       );
 
-      vi.mocked(getExpiredSessions).mockResolvedValue([
-        { sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 },
-      ]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        error: undefined,
+      });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue([
-        { streamId: "stream-a" },
-        { streamId: "stream-b" },
-      ]);
+      vi.mocked(getSessionSubscriptions).mockResolvedValue({
+        data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
+        error: undefined,
+      });
 
       // Mock DO fetch
       const mockDoFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ removed: true })));
@@ -120,11 +121,15 @@ describe("cleanup", () => {
         "../src/analytics-queries"
       );
 
-      vi.mocked(getExpiredSessions).mockResolvedValue([
-        { sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 },
-      ]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        error: undefined,
+      });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue([{ streamId: "stream-a" }]);
+      vi.mocked(getSessionSubscriptions).mockResolvedValue({
+        data: [{ streamId: "stream-a" }],
+        error: undefined,
+      });
 
       // Mock DO fetch to fail
       const mockDoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
@@ -158,11 +163,12 @@ describe("cleanup", () => {
         "../src/analytics-queries"
       );
 
-      vi.mocked(getExpiredSessions).mockResolvedValue([
-        { sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 },
-      ]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        error: undefined,
+      });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue([]);
+      vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
       // Mock core fetch to fail
       mockFetch.mockResolvedValue(new Response(null, { status: 500 }));
@@ -187,11 +193,12 @@ describe("cleanup", () => {
         "../src/analytics-queries"
       );
 
-      vi.mocked(getExpiredSessions).mockResolvedValue([
-        { sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 },
-      ]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        error: undefined,
+      });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue([]);
+      vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
       // Mock core fetch to return 404
       mockFetch.mockResolvedValue(new Response(null, { status: 404 }));
@@ -213,7 +220,7 @@ describe("cleanup", () => {
 
     it("should use default dataset name if not provided", async () => {
       const { getExpiredSessions } = await import("../src/analytics-queries");
-      vi.mocked(getExpiredSessions).mockResolvedValue([]);
+      vi.mocked(getExpiredSessions).mockResolvedValue({ data: [], error: undefined });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
@@ -231,6 +238,79 @@ describe("cleanup", () => {
         { ACCOUNT_ID: "test-account", API_TOKEN: "test-token" },
         "subscriptions_metrics", // default value
       );
+    });
+
+    it("should handle analytics query errors gracefully", async () => {
+      const { getExpiredSessions } = await import("../src/analytics-queries");
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [],
+        error: "Analytics Engine query failed",
+        errorType: "query",
+      });
+
+      const { cleanupExpiredSessions } = await import("../src/cleanup");
+
+      const env = {
+        CORE_URL: "http://localhost:8787",
+        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        ACCOUNT_ID: "test-account",
+        API_TOKEN: "test-token",
+      };
+
+      const result = await cleanupExpiredSessions(env);
+
+      expect(result.deleted).toBe(0);
+      expect(result.streamDeleteSuccesses).toBe(0);
+    });
+  });
+
+  describe("cleanup metrics", () => {
+    it("reports correct subscription removal stats", async () => {
+      const { getExpiredSessions, getSessionSubscriptions } = await import(
+        "../src/analytics-queries"
+      );
+      const { createMetrics } = await import("../src/metrics");
+
+      // Setup: 1 expired session with 2 subscriptions
+      vi.mocked(getExpiredSessions).mockResolvedValue({
+        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        error: undefined,
+      });
+
+      vi.mocked(getSessionSubscriptions).mockResolvedValue({
+        data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
+        error: undefined,
+      });
+
+      // Mock DO fetch - first succeeds, second fails
+      const mockDoFetch = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ removed: true })))
+        .mockResolvedValueOnce(new Response(null, { status: 500 }));
+      const mockDoStub = { fetch: mockDoFetch };
+      const mockDoNamespace = {
+        idFromName: vi.fn().mockReturnValue("do-id"),
+        get: vi.fn().mockReturnValue(mockDoStub),
+      };
+
+      // Mock core fetch
+      mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+
+      const { cleanupExpiredSessions } = await import("../src/cleanup");
+
+      const env = {
+        CORE_URL: "http://localhost:8787",
+        SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+        ACCOUNT_ID: "test-account",
+        API_TOKEN: "test-token",
+      };
+
+      const result = await cleanupExpiredSessions(env);
+
+      // Verify counts: 1 expired, 1 stream deleted, 1 sub succeeded, 1 sub failed
+      expect(result.deleted).toBe(1);
+      expect(result.streamDeleteSuccesses).toBe(1);
+      expect(result.subscriptionRemoveSuccesses).toBe(1);
+      expect(result.subscriptionRemoveFailures).toBe(1);
     });
   });
 });

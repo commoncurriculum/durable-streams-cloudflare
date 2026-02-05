@@ -7,6 +7,8 @@
  * @see https://developers.cloudflare.com/analytics/analytics-engine/worker-querying/
  */
 
+import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "./constants";
+
 export interface AnalyticsQueryEnv {
   ACCOUNT_ID: string;
   API_TOKEN: string;
@@ -19,30 +21,80 @@ interface AnalyticsResponse<T> {
   rows_before_limit_at_least: number;
 }
 
+export type QueryErrorType = "query" | "network" | "rate_limit" | "auth" | "validation";
+
+export interface QueryResult<T> {
+  data: T;
+  error?: string;
+  errorType?: QueryErrorType;
+}
+
+/**
+ * Pattern for valid dataset names.
+ * Allows alphanumeric characters, hyphens, and underscores.
+ */
+const DATASET_NAME_PATTERN = /^[a-zA-Z0-9_\-]+$/;
+
+/**
+ * Validates a dataset name against the allowed pattern.
+ */
+function isValidDatasetName(name: string): boolean {
+  return DATASET_NAME_PATTERN.test(name);
+}
+
+/**
+ * Validates a session ID against the allowed pattern.
+ */
+function isValidSessionId(sessionId: string): boolean {
+  return SESSION_ID_PATTERN.test(sessionId);
+}
+
+/**
+ * Determines the error type based on HTTP status code.
+ */
+function getErrorType(status: number): QueryErrorType {
+  if (status === 429) return "rate_limit";
+  if (status === 401 || status === 403) return "auth";
+  return "query";
+}
+
 /**
  * Execute a SQL query against Analytics Engine.
  */
 async function queryAnalyticsEngine<T>(
   env: AnalyticsQueryEnv,
   query: string,
-): Promise<T[]> {
+): Promise<QueryResult<T[]>> {
   const API = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/analytics_engine/sql`;
 
-  const response = await fetch(API, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.API_TOKEN}`,
-    },
-    body: query,
-  });
+  try {
+    const response = await fetch(API, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.API_TOKEN}`,
+      },
+      body: query,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Analytics Engine query failed: ${response.status} - ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        data: [],
+        error: `Analytics Engine query failed: ${response.status} - ${errorText}`,
+        errorType: getErrorType(response.status),
+      };
+    }
+
+    const result = (await response.json()) as AnalyticsResponse<T>;
+    return { data: result.data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return {
+      data: [],
+      error: message,
+      errorType: "network",
+    };
   }
-
-  const result = (await response.json()) as AnalyticsResponse<T>;
-  return result.data;
 }
 
 export interface SessionSubscription {
@@ -70,7 +122,16 @@ export async function getSessionSubscriptions(
   env: AnalyticsQueryEnv,
   datasetName: string,
   sessionId: string,
-): Promise<SessionSubscription[]> {
+): Promise<QueryResult<SessionSubscription[]>> {
+  // Validate inputs to prevent SQL injection
+  if (!isValidDatasetName(datasetName)) {
+    return { data: [], error: "Invalid dataset name format", errorType: "validation" };
+  }
+
+  if (!isValidSessionId(sessionId)) {
+    return { data: [], error: "Invalid sessionId format", errorType: "validation" };
+  }
+
   // Query subscription events for this session
   // blob1 = streamId, blob2 = sessionId, blob3 = eventType ('subscribe' or 'unsubscribe')
   // index1 = 'subscription'
@@ -85,8 +146,15 @@ export async function getSessionSubscriptions(
     HAVING net > 0
   `;
 
-  const results = await queryAnalyticsEngine<{ streamId: string; net: number }>(env, query);
-  return results.map((r) => ({ streamId: r.streamId }));
+  const result = await queryAnalyticsEngine<{ streamId: string; net: number }>(env, query);
+
+  if (result.error) {
+    return { data: [], error: result.error, errorType: result.errorType };
+  }
+
+  return {
+    data: result.data.map((r) => ({ streamId: r.streamId })),
+  };
 }
 
 /**
@@ -103,41 +171,50 @@ export async function getExpiredSessions(
   env: AnalyticsQueryEnv,
   datasetName: string,
   lookbackHours = 24,
-): Promise<ExpiredSessionInfo[]> {
+): Promise<QueryResult<ExpiredSessionInfo[]>> {
+  // Validate inputs
+  if (!isValidDatasetName(datasetName)) {
+    return { data: [], error: "Invalid dataset name format", errorType: "validation" };
+  }
+
+  // Ensure lookbackHours is positive
+  const safeLookbackHours = lookbackHours > 0 ? lookbackHours : 24;
   const nowMs = Date.now();
 
   // Query for sessions with their last activity time and TTL
-  // blob2 = sessionId, blob3 = eventType, double3 = ttlSeconds (for session_create)
+  // blob2 = sessionId, blob3 = eventType, double3 = ttlSeconds (for session events)
   // We need to find the max timestamp per session and check if it's expired
+  // IMPORTANT: Use argMax to get TTL from the most recent event, not MAX
   const query = `
     SELECT
       blob2 as sessionId,
       MAX(timestamp) as lastActivity,
-      MAX(double3) as ttlSeconds
+      argMax(double3, timestamp) as ttlSeconds
     FROM ${datasetName}
     WHERE index1 = 'session'
       AND blob3 IN ('session_create', 'session_touch')
-      AND timestamp > NOW() - INTERVAL '${lookbackHours}' HOUR
+      AND timestamp > NOW() - INTERVAL '${safeLookbackHours}' HOUR
     GROUP BY blob2
-    HAVING (${nowMs} - toUnixTimestamp64Milli(MAX(timestamp))) > (MAX(double3) * 1000)
+    HAVING (${nowMs} - toUnixTimestamp64Milli(MAX(timestamp))) > (argMax(double3, timestamp) * 1000)
   `;
 
-  try {
-    const results = await queryAnalyticsEngine<{
-      sessionId: string;
-      lastActivity: string;
-      ttlSeconds: number;
-    }>(env, query);
+  const result = await queryAnalyticsEngine<{
+    sessionId: string;
+    lastActivity: string;
+    ttlSeconds: number;
+  }>(env, query);
 
-    return results.map((r) => ({
+  if (result.error) {
+    return { data: [], error: result.error, errorType: result.errorType };
+  }
+
+  return {
+    data: result.data.map((r) => ({
       sessionId: r.sessionId,
       lastActivity: new Date(r.lastActivity).getTime(),
       ttlSeconds: r.ttlSeconds,
-    }));
-  } catch (err) {
-    console.error("Failed to query expired sessions:", err);
-    return [];
-  }
+    })),
+  };
 }
 
 /**
@@ -153,20 +230,30 @@ export async function getActiveStreamIds(
   env: AnalyticsQueryEnv,
   datasetName: string,
   lookbackHours = 24,
-): Promise<string[]> {
+): Promise<QueryResult<string[]>> {
+  // Validate inputs
+  if (!isValidDatasetName(datasetName)) {
+    return { data: [], error: "Invalid dataset name format", errorType: "validation" };
+  }
+
+  // Ensure lookbackHours is positive
+  const safeLookbackHours = lookbackHours > 0 ? lookbackHours : 24;
+
   const query = `
     SELECT DISTINCT blob1 as streamId
     FROM ${datasetName}
     WHERE index1 = 'subscription'
       AND blob3 = 'subscribe'
-      AND timestamp > NOW() - INTERVAL '${lookbackHours}' HOUR
+      AND timestamp > NOW() - INTERVAL '${safeLookbackHours}' HOUR
   `;
 
-  try {
-    const results = await queryAnalyticsEngine<{ streamId: string }>(env, query);
-    return results.map((r) => r.streamId);
-  } catch (err) {
-    console.error("Failed to query active stream IDs:", err);
-    return [];
+  const result = await queryAnalyticsEngine<{ streamId: string }>(env, query);
+
+  if (result.error) {
+    return { data: [], error: result.error, errorType: result.errorType };
   }
+
+  return {
+    data: result.data.map((r) => r.streamId),
+  };
 }

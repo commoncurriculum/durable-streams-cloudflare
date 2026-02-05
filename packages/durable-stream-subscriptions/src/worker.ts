@@ -20,15 +20,44 @@ export interface Env {
   ACCOUNT_ID?: string;
   API_TOKEN?: string;
   ANALYTICS_DATASET?: string;
+  // CORS configuration: comma-separated origins or "*" for all
+  CORS_ORIGINS?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
 
+/**
+ * Parse CORS_ORIGINS env var into origin configuration.
+ * - undefined or empty: allow all ("*")
+ * - "*": allow all
+ * - "https://example.com": single origin
+ * - "https://a.com,https://b.com": multiple origins
+ */
+function parseCorsOrigins(corsOrigins: string | undefined): string | string[] | ((origin: string) => string | undefined | null) {
+  if (!corsOrigins || corsOrigins === "*") {
+    return "*";
+  }
+
+  const origins = corsOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+
+  if (origins.length === 1) {
+    return origins[0];
+  }
+
+  // Multiple origins: return a function that validates
+  return (origin: string) => {
+    if (origins.includes(origin)) {
+      return origin;
+    }
+    return null;
+  };
+}
+
 // CORS middleware
-app.use(
-  "*",
-  cors({
-    origin: "*",
+app.use("*", async (c, next) => {
+  const corsOrigin = parseCorsOrigins(c.env.CORS_ORIGINS);
+  const corsMiddleware = cors({
+    origin: corsOrigin,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: [
       "Content-Type",
@@ -46,8 +75,9 @@ app.use(
       "X-Stream-Up-To-Date",
       "X-Stream-Closed",
     ],
-  }),
-);
+  });
+  return corsMiddleware(c, next);
+});
 
 // Optional bearer auth middleware
 app.use("*", async (c, next) => {
@@ -107,19 +137,21 @@ export default {
         const latencyMs = Date.now() - start;
 
         // Record cleanup metrics
+        // Note: cleanupBatch params are (expiredCount, streamsDeleted, subscriptionsRemoved, subscriptionsFailed, latencyMs)
         const metrics = createMetrics(env.METRICS);
         metrics.cleanupBatch(
           result.deleted,
-          result.deleted,
           result.streamDeleteSuccesses,
-          result.streamDeleteFailures,
+          result.subscriptionRemoveSuccesses,
+          result.subscriptionRemoveFailures,
           latencyMs,
         );
 
         if (result.deleted > 0) {
           console.log(
-            `Session cleanup: deleted ${result.deleted} sessions ` +
-              `(core: ${result.streamDeleteSuccesses} ok, ${result.streamDeleteFailures} failed)`,
+            `Session cleanup: processed ${result.deleted} expired sessions ` +
+              `(streams: ${result.streamDeleteSuccesses} ok, ${result.streamDeleteFailures} failed; ` +
+              `subscriptions: ${result.subscriptionRemoveSuccesses} ok, ${result.subscriptionRemoveFailures} failed)`,
           );
         }
       })().catch((err) => {

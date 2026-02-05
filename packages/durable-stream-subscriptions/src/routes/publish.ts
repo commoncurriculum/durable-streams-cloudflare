@@ -1,6 +1,9 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { createMetrics } from "../metrics";
 import type { CoreClientEnv } from "../core-client";
+import { STREAM_ID_PATTERN } from "../constants";
 
 export interface PublishEnv {
   Bindings: CoreClientEnv & {
@@ -11,6 +14,10 @@ export interface PublishEnv {
 
 export const publishRoutes = new Hono<PublishEnv>();
 
+const streamIdParamSchema = z.object({
+  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
+});
+
 /**
  * POST /publish/:streamId - Publish to a stream and fan out to subscribers.
  *
@@ -19,7 +26,7 @@ export const publishRoutes = new Hono<PublishEnv>();
  * 2. Look up subscribers (LOCAL SQLite query - no D1!)
  * 3. Fan out to all subscriber session streams
  */
-publishRoutes.post("/publish/:streamId", async (c) => {
+publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema), async (c) => {
   const start = Date.now();
   const streamId = c.req.param("streamId");
   const contentType = c.req.header("Content-Type") ?? "application/json";

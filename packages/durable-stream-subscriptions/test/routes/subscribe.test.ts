@@ -474,20 +474,61 @@ describe("DELETE /session/:sessionId", () => {
     );
   });
 
-  it("continues even if core delete fails", async () => {
+  it("returns 500 when core deletion fails", async () => {
     const { fetchFromCore } = await import("../../src/core-client");
     const mockDoFetch = createMockDoFetch();
     const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
-    vi.mocked(fetchFromCore).mockRejectedValue(new Error("Core error"));
+    vi.mocked(fetchFromCore).mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: vi.fn().mockResolvedValue("Internal error"),
+    } as unknown as Response);
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/session-123", {
       method: "DELETE",
     }, createMockEnv(mockDoNamespace));
 
-    // Should still succeed (lazy cleanup of subscriptions)
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("Failed to delete session stream");
+  });
+
+  it("returns success when core returns 404 (already deleted)", async () => {
+    const { fetchFromCore } = await import("../../src/core-client");
+    const mockDoFetch = createMockDoFetch();
+    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+    vi.mocked(fetchFromCore).mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: vi.fn().mockResolvedValue("Not found"),
+    } as unknown as Response);
+
+    const app = await createTestApp();
+    const res = await app.request("/v1/session/session-123", {
+      method: "DELETE",
+    }, createMockEnv(mockDoNamespace));
+
     expect(res.status).toBe(200);
+  });
+
+  it("returns 500 when network error occurs", async () => {
+    const { fetchFromCore } = await import("../../src/core-client");
+    const mockDoFetch = createMockDoFetch();
+    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+    vi.mocked(fetchFromCore).mockRejectedValue(new Error("Network error"));
+
+    const app = await createTestApp();
+    const res = await app.request("/v1/session/session-123", {
+      method: "DELETE",
+    }, createMockEnv(mockDoNamespace));
+
+    expect(res.status).toBe(500);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("Failed to delete session stream");
   });
 
   it("records sessionDelete metric", async () => {

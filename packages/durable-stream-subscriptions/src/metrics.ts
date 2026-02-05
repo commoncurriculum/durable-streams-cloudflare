@@ -101,15 +101,15 @@ export class Metrics {
 
   // Cleanup events
   cleanupBatch(
-    marked: number,
-    deleted: number,
-    deleteSuccess: number,
-    deleteFail: number,
+    expiredSessions: number,
+    streamsDeleted: number,
+    subscriptionsRemoved: number,
+    subscriptionsFailed: number,
     latencyMs: number,
   ) {
     this.ae?.writeDataPoint({
       blobs: ["", "", "cleanup_batch", ""],
-      doubles: [marked, deleted, deleteSuccess, deleteFail, latencyMs],
+      doubles: [expiredSessions, streamsDeleted, subscriptionsRemoved, subscriptionsFailed, latencyMs],
       indexes: ["cleanup"],
     });
   }

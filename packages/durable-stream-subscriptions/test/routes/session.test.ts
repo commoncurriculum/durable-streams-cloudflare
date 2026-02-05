@@ -68,7 +68,7 @@ describe("GET /session/:sessionId", () => {
       ok: true,
       status: 200,
     } as Response);
-    vi.mocked(getSessionSubscriptions).mockResolvedValue([]);
+    vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [] });
 
     const app = await createTestApp();
     await app.request("/v1/session/session-123", {}, createMockEnv());
@@ -88,7 +88,7 @@ describe("GET /session/:sessionId", () => {
       ok: true,
       status: 200,
     } as Response);
-    vi.mocked(getSessionSubscriptions).mockResolvedValue([]);
+    vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [] });
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/session-123", {}, createMockEnv());
@@ -111,10 +111,12 @@ describe("GET /session/:sessionId", () => {
       ok: true,
       status: 200,
     } as Response);
-    vi.mocked(getSessionSubscriptions).mockResolvedValue([
-      { streamId: "stream-a" },
-      { streamId: "stream-b" },
-    ]);
+    vi.mocked(getSessionSubscriptions).mockResolvedValue({
+      data: [
+        { streamId: "stream-a" },
+        { streamId: "stream-b" },
+      ],
+    });
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/session-123", {}, createMockEnv());
@@ -134,7 +136,7 @@ describe("GET /session/:sessionId", () => {
       ok: true,
       status: 200,
     } as Response);
-    vi.mocked(getSessionSubscriptions).mockResolvedValue([]);
+    vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [] });
 
     const app = await createTestApp();
     await app.request("/v1/session/my-session-id", {}, createMockEnv());
@@ -178,7 +180,12 @@ describe("GET /session/:sessionId", () => {
       ok: true,
       status: 200,
     } as Response);
-    vi.mocked(getSessionSubscriptions).mockRejectedValue(new Error("Analytics error"));
+    // Return QueryResult with error instead of throwing
+    vi.mocked(getSessionSubscriptions).mockResolvedValue({
+      data: [],
+      error: "Analytics error",
+      errorType: "query",
+    });
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/session-123", {}, createMockEnv());
