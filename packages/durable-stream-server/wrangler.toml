@@ -34,7 +34,7 @@ queue = "durable-streams-fanout-queue"
 [[queues.consumers]]
 queue = "durable-streams-fanout-queue"
 max_batch_size = 100
-max_batch_timeout = 30
+max_batch_timeout = 1
 
 [[analytics_engine_datasets]]
 binding = "METRICS"
