@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@durable-streams/state':
+    hash: ec476bed8f15844c0b6d7e02065f2ade5d9e79a6014201c77665c57600d0d5ca
+    path: patches/@durable-streams__state.patch
+
 importers:
 
   .: {}
@@ -52,7 +57,7 @@ importers:
         version: 0.2.1
       '@durable-streams/state':
         specifier: ^0.2.1
-        version: 0.2.1(@tanstack/db@0.5.25(typescript@5.9.3))
+        version: 0.2.1(patch_hash=ec476bed8f15844c0b6d7e02065f2ade5d9e79a6014201c77665c57600d0d5ca)(@tanstack/db@0.5.25(typescript@5.9.3))
       '@radix-ui/react-avatar':
         specifier: ^1.1.10
         version: 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.11))(@types/react@19.2.11)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -3128,7 +3133,7 @@ snapshots:
       - tsx
       - yaml
 
-  '@durable-streams/state@0.2.1(@tanstack/db@0.5.25(typescript@5.9.3))':
+  '@durable-streams/state@0.2.1(patch_hash=ec476bed8f15844c0b6d7e02065f2ade5d9e79a6014201c77665c57600d0d5ca)(@tanstack/db@0.5.25(typescript@5.9.3))':
     dependencies:
       '@durable-streams/client': 0.2.1
       '@standard-schema/spec': 1.1.0

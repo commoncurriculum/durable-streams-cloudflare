@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 56bbb3d590eab7cf79893b5f459d12dd61a0a5ad..c56a2a33096b70e160563d9704841b9025e2c33d 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -455,7 +455,7 @@ function createStreamDB(options) {
+ 		if (consumerStarted) return;
+ 		consumerStarted = true;
+ 		streamResponse = await stream.stream({
+-			live: true,
++			live: streamOptions.live ?? true,
+ 			signal: abortController.signal
+ 		});
+ 		let batchCount = 0;
+diff --git a/src/stream-db.ts b/src/stream-db.ts
+index 26bc8f07abac1bd4b57c9dd89b3d66fa83ca4048..be969c59eb0b0f3c40d9b7393f81690b19c69a71 100644
+--- a/src/stream-db.ts
++++ b/src/stream-db.ts
+@@ -814,7 +814,7 @@ export function createStreamDB<
+ 
+     // Start streaming (this is where the connection actually happens)
+     streamResponse = await stream.stream<StateEvent>({
+-      live: true,
++      live: streamOptions.live ?? true,
+       signal: abortController.signal,
+     })
+ 
