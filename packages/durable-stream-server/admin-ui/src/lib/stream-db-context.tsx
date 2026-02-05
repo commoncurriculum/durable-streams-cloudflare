@@ -61,6 +61,7 @@ function createRegistryDB(url: string) {
     streamOptions: {
       url,
       contentType: "application/json",
+      live: "sse",
     },
     state: registryStateSchema,
     actions: ({ db, stream }) => ({
@@ -90,6 +91,7 @@ function createPresenceDB(url: string) {
     streamOptions: {
       url,
       contentType: "application/json",
+      live: "sse",
     },
     state: presenceStateSchema,
     actions: ({ db, stream }) => ({
