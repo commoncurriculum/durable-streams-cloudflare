@@ -16,7 +16,7 @@ async function queryAdminDb(persistDir: string, sql: string): Promise<{ results:
       "wrangler",
       "d1",
       "execute",
-      "durable_streams_admin",
+      "durable-streams",
       "--local",
       "--persist-to",
       persistDir,
@@ -101,5 +101,5 @@ describe("admin D1 index", () => {
     } finally {
       await handle.stop();
     }
-  });
+  }, 30_000);
 });

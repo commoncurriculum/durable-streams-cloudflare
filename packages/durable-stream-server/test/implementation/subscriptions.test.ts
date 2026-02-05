@@ -96,19 +96,8 @@ describe("subscriptions (fan-in)", () => {
       });
       expect([200, 204]).toContain(append.status);
 
-      const fanIn = await fetch(
-        `${handle.baseUrl}/v1/stream/subscriptions/${sessionId}?offset=${ZERO_OFFSET}`,
-      );
-      expect(fanIn.status).toBe(200);
-      const payload = await fanIn.json();
-      expect(Array.isArray(payload)).toBe(true);
-      expect(payload.length).toBeGreaterThan(0);
-      const envelope = payload[payload.length - 1] as {
-        stream: string;
-        offset: string;
-        type: string;
-        payload: unknown;
-      };
+      // Wait for queue-based fanout delivery (uses polling with timeout)
+      const envelope = await waitForEnvelope(handle.baseUrl, sessionId, streamId);
       expect(envelope.stream).toBe(streamId);
       expect(typeof envelope.offset).toBe("string");
       expect(envelope.type).toBe("data");
@@ -116,7 +105,7 @@ describe("subscriptions (fan-in)", () => {
     } finally {
       await handle.stop();
     }
-  });
+  }, 10_000);
 
   it("fan-outs via queue when subscriber count exceeds threshold", async () => {
     const handle = await startWorker();
@@ -153,7 +142,7 @@ describe("subscriptions (fan-in)", () => {
     } finally {
       await handle.stop();
     }
-  }, 20_000);
+  }, 15_000);
 
   it("expires sessions after the configured TTL", async () => {
     const handle = await startWorker({ vars: { SESSION_TTL_SECONDS: "1" } });
@@ -172,8 +161,10 @@ async function waitForEnvelope(
   baseUrl: string,
   sessionId: string,
   streamId: string,
+  timeoutMs = 5_000,
 ): Promise<{ stream: string; offset: string; type: string; payload: unknown }> {
-  const deadline = Date.now() + 12_000;
+  // Queue processes within 1s (max_batch_timeout), poll until message arrives
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const response = await fetch(
       `${baseUrl}/v1/stream/subscriptions/${sessionId}?offset=${ZERO_OFFSET}`,

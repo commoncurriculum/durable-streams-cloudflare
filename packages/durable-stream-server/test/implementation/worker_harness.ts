@@ -53,7 +53,7 @@ export async function applyMigrations(persistDir: string): Promise<void> {
       "d1",
       "migrations",
       "apply",
-      "durable_streams_admin",
+      "durable-streams",
       "--local",
       "--persist-to",
       persistDir,
@@ -107,12 +107,12 @@ export async function startWorker(options?: {
       "--persist-to",
       persistDir,
       "--log-level",
-      "error",
+      "info",
       "--show-interactive-dev-session=false",
     ],
     {
       cwd: WORKER_CWD,
-      stdio: "ignore",
+      stdio: "inherit",
       env: {
         ...process.env,
         CI: "1",
