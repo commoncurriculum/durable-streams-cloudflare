@@ -88,9 +88,7 @@ describe("resilience", () => {
       expect(afterUnsubRes.status).toBe(200);
     });
 
-    // Skipped: concurrent publishes hit race conditions in core stream writes
-    // Core uses optimistic locking which causes some concurrent writes to fail
-    it.skip("handles concurrent publishes to same stream", async () => {
+    it("handles concurrent publishes to same stream", async () => {
       const sessionId = uniqueSessionId();
       const streamId = uniqueStreamId();
 
@@ -118,8 +116,7 @@ describe("resilience", () => {
       }
     });
 
-    // Skipped: concurrent subscribes and fanout to 20 sessions hits race conditions
-    it.skip("handles multiple sessions subscribing to same stream", async () => {
+    it("handles multiple sessions subscribing to same stream", async () => {
       const streamId = uniqueStreamId();
       const sessions = Array.from({ length: 20 }, () => uniqueSessionId("multi"));
 

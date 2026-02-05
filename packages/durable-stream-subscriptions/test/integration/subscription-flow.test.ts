@@ -56,11 +56,7 @@ describe("subscription flow", () => {
     expect(session.sessionStreamPath).toBe(`/v1/stream/session:${sessionId}`);
   });
 
-  // Skipped: fanout tests require content-type coordination between core stream
-  // creation and publish that isn't working reliably in integration tests.
-  // The publish flow works in isolation (see "publish flow" tests) but fanout
-  // has timing/consistency issues to investigate.
-  it.skip("session stream receives fanout messages", async () => {
+  it("session stream receives fanout messages", async () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
@@ -83,7 +79,7 @@ describe("subscription flow", () => {
     expect(content).toContain("hello world");
   });
 
-  it.skip("multiple sessions receive same fanout message", async () => {
+  it("multiple sessions receive same fanout message", async () => {
     const session1 = uniqueSessionId("s1");
     const session2 = uniqueSessionId("s2");
     const session3 = uniqueSessionId("s3");
@@ -115,7 +111,7 @@ describe("subscription flow", () => {
     expect(content3).toContain("broadcast");
   });
 
-  it.skip("unsubscribe stops receiving fanout messages", async () => {
+  it("unsubscribe stops receiving fanout messages", async () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
@@ -144,11 +140,7 @@ describe("subscription flow", () => {
   });
 });
 
-// Skipped: publish flow tests fail due to content-type coordination issues
-// between core stream creation (helpers uses application/json) and the publish
-// path. The publish works when not preceded by manual stream creation, but these
-// tests create streams first then publish to them.
-describe.skip("publish flow", () => {
+describe("publish flow", () => {
   it("writes message to source stream", async () => {
     const streamId = uniqueStreamId();
 
@@ -221,12 +213,13 @@ describe.skip("publish flow", () => {
     await subs.subscribe(sessionId, streamId);
 
     // Publish with producer headers
+    // Note: Producer-Seq must start at 0 for a new producer
     const payload = JSON.stringify({ unique: true });
     const headers = {
       "Content-Type": "application/json",
       "Producer-Id": "test-producer",
       "Producer-Epoch": "1",
-      "Producer-Seq": "100",
+      "Producer-Seq": "0",
     };
 
     const subsUrl = process.env.INTEGRATION_TEST_SUBSCRIPTIONS_URL ?? "http://localhost:8788";
@@ -250,13 +243,14 @@ describe.skip("publish flow", () => {
 
     await core.createStream(streamId);
 
+    // Note: Producer-Seq must start at 0 for a new producer
     const payload = JSON.stringify({ dedup: "test" });
     const subsUrl = process.env.INTEGRATION_TEST_SUBSCRIPTIONS_URL ?? "http://localhost:8788";
     const headers = {
       "Content-Type": "application/json",
       "Producer-Id": `dedup-producer-${streamId}`,
       "Producer-Epoch": "1",
-      "Producer-Seq": "1",
+      "Producer-Seq": "0",
     };
 
     // Publish twice with same producer headers

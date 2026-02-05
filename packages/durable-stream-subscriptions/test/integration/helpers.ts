@@ -85,11 +85,16 @@ export interface CoreClient {
 export function createCoreClient(baseUrl: string): CoreClient {
   return {
     async createStream(streamId: string, content = "", contentType = "application/json") {
-      return fetch(`${baseUrl}/v1/stream/${streamId}`, {
+      // Only include body if content is non-empty.
+      // Node.js fetch may strip Content-Type header when body is empty string.
+      const options: RequestInit = {
         method: "PUT",
         headers: { "Content-Type": contentType },
-        body: content,
-      });
+      };
+      if (content) {
+        options.body = content;
+      }
+      return fetch(`${baseUrl}/v1/stream/${streamId}`, options);
     },
 
     async appendStream(streamId: string, content: string, contentType = "application/json") {
@@ -100,11 +105,11 @@ export function createCoreClient(baseUrl: string): CoreClient {
       });
     },
 
-    async readStream(streamId: string, offset = "0-0-0") {
+    async readStream(streamId: string, offset = "0000000000000000_0000000000000000") {
       return fetch(`${baseUrl}/v1/stream/${streamId}?offset=${offset}`);
     },
 
-    async readStreamText(streamId: string, offset = "0-0-0") {
+    async readStreamText(streamId: string, offset = "0000000000000000_0000000000000000") {
       const response = await this.readStream(streamId, offset);
       if (!response.ok) {
         throw new Error(`Failed to read stream: ${response.status}`);
