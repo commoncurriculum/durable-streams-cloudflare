@@ -1,4 +1,4 @@
-name = "durable-streams-poc"
+name = "durable-streams"
 main = "src/worker.ts"
 compatibility_date = "2026-02-02"
 
@@ -22,19 +22,19 @@ new_sqlite_classes = ["StreamDO"]
 
 [[d1_databases]]
 binding = "ADMIN_DB"
-database_name = "durable_streams_admin"
-database_id = "local"
+database_name = "durable-streams"
+database_id = "c0ff514c-c85f-4296-8429-23453105648a"
 
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "durable-streams-poc"
+bucket_name = "durable-streams"
 
 [[queues.producers]]
 binding = "FANOUT_QUEUE"
-queue = "fanout-queue"
+queue = "durable-streams-fanout-queue"
 
 [[queues.consumers]]
-queue = "fanout-queue"
+queue = "durable-streams-fanout-queue"
 max_batch_size = 100
 max_batch_timeout = 30
 

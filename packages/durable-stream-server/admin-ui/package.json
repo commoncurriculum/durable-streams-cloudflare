@@ -14,8 +14,8 @@
     "test:check": "npx tsx test/check-stream.ts"
   },
   "dependencies": {
-    "@durable-streams/client": "workspace:^",
-    "@durable-streams/state": "workspace:^",
+    "@durable-streams/client": "^0.2.1",
+    "@durable-streams/state": "^0.2.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-collapsible": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.14",
