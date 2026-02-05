@@ -71,18 +71,20 @@ export function createAdminSessionsRoutes() {
     const streams = c.env.STREAMS;
     if (streams) {
       try {
-        // Session DOs use a different naming convention
-        const id = streams.idFromName(`session:${sessionId}`);
+        // Session DOs use subscriptions/${sessionId} naming
+        const sessionStreamId = `subscriptions/${sessionId}`;
+        const id = streams.idFromName(sessionStreamId);
         const stub = streams.get(id);
         const response = await stub.fetch(
-          new Request("http://internal/internal/admin/subscriptions", {
+          new Request("http://internal/internal/subscriptions", {
             method: "GET",
-            headers: { "X-Stream-Id": `session:${sessionId}` },
+            headers: { "X-Stream-Id": sessionStreamId },
           })
         );
         if (response.ok) {
-          const data = (await response.json()) as { streams?: string[] };
-          subscribedStreams = data.streams || [];
+          // The endpoint returns an array of stream IDs directly
+          const data = (await response.json()) as string[];
+          subscribedStreams = Array.isArray(data) ? data : [];
         }
       } catch {
         // Ignore errors, keep subscribedStreams empty

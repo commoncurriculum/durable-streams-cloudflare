@@ -128,9 +128,7 @@ export async function handleInternalSubscriptions(
       const updateResponse = await updateStreamSubscriber(ctx, targetStreamId, sessionId, "POST");
       if (updateResponse.status !== 204) return updateResponse;
 
-      const stored = await ctx.storage.addSessionSubscription(targetStreamId, now);
-      if (!stored) return new Response(null, { status: 204 });
-
+      await ctx.storage.addSessionSubscription(targetStreamId, now);
       return new Response(null, { status: 204 });
     }
 
@@ -194,14 +192,26 @@ export async function handleInternalFanInAppend(
   request: Request,
 ): Promise<Response> {
   return ctx.state.blockConcurrencyWhile(async () => {
+    console.log(`[fan-in-append] streamId=${streamId}`);
     const sessionId = parseSessionId(streamId);
-    if (!sessionId) return errorResponse(400, "invalid session stream id");
+    if (!sessionId) {
+      console.log("[fan-in-append] invalid session stream id");
+      return errorResponse(400, "invalid session stream id");
+    }
 
+    console.log(`[fan-in-append] checking session ${sessionId}`);
     const sessionError = await ensureSessionActive(ctx, sessionId);
-    if (sessionError) return sessionError;
+    if (sessionError) {
+      console.log(`[fan-in-append] session error: ${sessionError.status}`);
+      return sessionError;
+    }
 
+    console.log(`[fan-in-append] ensuring session stream exists`);
     await ensureSessionStream(ctx, streamId);
-    return await handlePost(ctx, streamId, request);
+    console.log(`[fan-in-append] calling handlePost`);
+    const result = await handlePost(ctx, streamId, request);
+    console.log(`[fan-in-append] handlePost result: ${result.status}`);
+    return result;
   });
 }
 
@@ -241,11 +251,11 @@ async function updateStreamSubscriber(
   const id = ctx.env.STREAMS.idFromName(streamId);
   const stub = ctx.env.STREAMS.get(id);
   const url = new URL("https://internal/internal/subscribers");
-  const headers = new Headers({ "Content-Type": "application/json", "X-Stream-Id": streamId });
+  const reqHeaders = new Headers({ "Content-Type": "application/json", "X-Stream-Id": streamId });
   const response = await stub.fetch(
     new Request(url, {
       method,
-      headers,
+      headers: reqHeaders,
       body: JSON.stringify({ sessionId }),
     }),
   );
