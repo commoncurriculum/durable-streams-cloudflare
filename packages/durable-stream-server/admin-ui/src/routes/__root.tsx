@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Radio,
+  Bell,
 } from "lucide-react";
 import { StreamDBProvider, useStreamDB } from "../lib/stream-db-context";
 import { usePresence } from "../hooks/usePresence";
@@ -309,6 +310,22 @@ function RootLayout() {
               >
                 <Users className="w-4 h-4" />
                 Sessions
+              </Link>
+              <Link
+                to="/subscriptions"
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  "text-surface-600 hover:text-surface-900 hover:bg-surface-100"
+                )}
+                activeProps={{
+                  className: cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    "bg-primary-50 text-primary-700"
+                  ),
+                }}
+              >
+                <Bell className="w-4 h-4" />
+                Subscriptions
               </Link>
             </nav>
 

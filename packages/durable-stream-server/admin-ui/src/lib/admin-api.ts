@@ -267,5 +267,47 @@ export async function getQueueLatency(options?: {
   return fetchJson<QueueLatencyMetrics>(`/api/metrics/queue/latency${query ? `?${query}` : ""}`);
 }
 
+// Subscription API - Public endpoints for session/subscription management
+
+// Create a new session
+export async function createSession(): Promise<{ sessionId: string }> {
+  return fetchJson("/v1/sessions", { method: "POST" });
+}
+
+// Subscribe a session to a stream (returns 204 No Content)
+export async function subscribe(sessionId: string, streamId: string): Promise<void> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/v1/subscriptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, streamId }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new AdminApiError(response.status, text || `HTTP ${response.status}`);
+  }
+}
+
+// Unsubscribe a session from a stream (returns 204 No Content)
+export async function unsubscribe(sessionId: string, streamId: string): Promise<void> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/v1/subscriptions`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, streamId }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new AdminApiError(response.status, text || `HTTP ${response.status}`);
+  }
+}
+
+// Get subscriptions for a session (public endpoint, returns string[])
+export async function getSubscriptions(sessionId: string): Promise<string[]> {
+  return fetchJson(`/v1/subscriptions/${encodeURIComponent(sessionId)}`);
+}
+
 // Export error class for handling
 export { AdminApiError };
