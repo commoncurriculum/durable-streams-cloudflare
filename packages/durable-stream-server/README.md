@@ -51,18 +51,87 @@ from the worker; it does not interpret offsets itself.
    pnpm run dev
    ```
 
-## Setup (remote)
-1. Create an R2 bucket (required).
-2. (Optional) Create a D1 database for the admin index.
-3. Update `wrangler.toml` with real ids.
-4. (Optional) Apply admin migrations:
-   ```bash
-   pnpm exec wrangler d1 migrations apply durable_streams_admin
-   ```
-5. Deploy:
-   ```bash
-   pnpm exec wrangler deploy
-   ```
+## Deploy to Cloudflare
+
+### 1. Create Resources
+
+```bash
+# Create R2 bucket for cold segment storage
+pnpm exec wrangler r2 bucket create durable-streams-poc
+
+# Create D1 database for admin index
+pnpm exec wrangler d1 create durable_streams_admin
+
+# Create queue for fan-out
+pnpm exec wrangler queues create fanout-queue
+```
+
+After creating D1, copy the database ID from the output and update `wrangler.toml`:
+```toml
+[[d1_databases]]
+database_id = "your-database-id-here"  # Replace this
+```
+
+The Analytics Engine dataset is created automatically on first deploy.
+
+### 2. Apply Migrations
+
+```bash
+# Apply D1 admin migrations
+pnpm exec wrangler d1 migrations apply durable_streams_admin --remote
+```
+
+### 3. Build Admin UI
+
+```bash
+pnpm run build:admin-ui
+```
+
+### 4. Deploy Worker
+
+```bash
+pnpm exec wrangler deploy
+```
+
+### 5. (Optional) Enable Admin Metrics Dashboard
+
+The admin UI shows real-time metrics (hot streams, throughput sparklines, subscriber counts) when configured. These metrics are written by the deployed worker to Analytics Engine, so they only work in production.
+
+```bash
+# Get your account ID
+pnpm exec wrangler whoami
+
+# Set secrets for metrics API access
+pnpm exec wrangler secret put CF_ACCOUNT_ID
+# Enter your account ID when prompted
+
+pnpm exec wrangler secret put METRICS_API_TOKEN
+# Enter your API token when prompted (see below)
+```
+
+To create the `METRICS_API_TOKEN`:
+1. Go to https://dash.cloudflare.com/profile/api-tokens
+2. Create a token with **Account Analytics Read** permission
+3. Copy the token and paste when prompted
+
+### 6. (Optional) Enable Auth
+
+```bash
+# Set a bearer token for API authentication
+pnpm exec wrangler secret put AUTH_TOKEN
+```
+
+## Setup (local)
+
+```bash
+pnpm install
+pnpm exec wrangler d1 migrations apply durable_streams_admin --local
+pnpm run dev
+```
+
+Admin UI available at http://localhost:8787/admin
+
+Note: Metrics features (hot streams, sparklines) only work on deployed workers since Analytics Engine data is written in production.
 
 ## Conformance
 Run the server conformance suite against the local worker:
