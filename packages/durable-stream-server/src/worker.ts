@@ -175,7 +175,6 @@ async function recordRegistryEvent(
     headers: { operation: "insert" | "delete" };
   },
 ): Promise<void> {
-  console.log(`[registry] Recording event for stream: ${event.key}, operation: ${event.headers.operation}`);
   const id = streams.idFromName(REGISTRY_STREAM);
   const stub = streams.get(id);
   const headers = new Headers({
@@ -191,7 +190,6 @@ async function recordRegistryEvent(
         headers,
       }),
     );
-    console.log(`[registry] PUT response: ${putResponse.status}`);
     if (!putResponse.ok && putResponse.status !== 200) {
       console.error(`Registry PUT failed: ${putResponse.status} ${await putResponse.text()}`);
       return;
@@ -205,11 +203,8 @@ async function recordRegistryEvent(
         body: JSON.stringify(event),
       }),
     );
-    console.log(`[registry] POST response: ${postResponse.status}`);
     if (!postResponse.ok) {
       console.error(`Registry POST failed: ${postResponse.status} ${await postResponse.text()}`);
-    } else {
-      console.log(`[registry] Successfully recorded event for stream: ${event.key}`);
     }
   } catch (err) {
     console.error("Registry event failed:", err);
@@ -354,10 +349,8 @@ export default {
     }
 
     if (streamId !== REGISTRY_STREAM) {
-      console.log(`[worker] Stream operation: ${request.method} ${streamId} -> ${response.status}`);
       if (request.method === "PUT" && response.status === 201) {
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
-        console.log(`[worker] New stream created: ${streamId}, triggering registry event`);
         ctx.waitUntil(
           recordRegistryEvent(env.STREAMS, {
             type: "stream",
@@ -370,10 +363,7 @@ export default {
             headers: { operation: "insert" },
           }),
         );
-      } else if (request.method === "PUT" && response.status === 200) {
-        console.log(`[worker] Stream already exists: ${streamId}, no registry event`);
       } else if (request.method === "DELETE" && response.status === 204) {
-        console.log(`[worker] Stream deleted: ${streamId}, triggering registry event`);
         ctx.waitUntil(
           recordRegistryEvent(env.STREAMS, {
             type: "stream",
