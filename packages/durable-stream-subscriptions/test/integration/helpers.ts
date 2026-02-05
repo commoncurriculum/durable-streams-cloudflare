@@ -84,7 +84,7 @@ export interface CoreClient {
 
 export function createCoreClient(baseUrl: string): CoreClient {
   return {
-    async createStream(streamId: string, content = "", contentType = "text/plain") {
+    async createStream(streamId: string, content = "", contentType = "application/json") {
       return fetch(`${baseUrl}/v1/stream/${streamId}`, {
         method: "PUT",
         headers: { "Content-Type": contentType },
@@ -92,7 +92,7 @@ export function createCoreClient(baseUrl: string): CoreClient {
       });
     },
 
-    async appendStream(streamId: string, content: string, contentType = "text/plain") {
+    async appendStream(streamId: string, content: string, contentType = "application/json") {
       return fetch(`${baseUrl}/v1/stream/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": contentType },
