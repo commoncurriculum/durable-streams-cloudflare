@@ -110,7 +110,7 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Health API
 export async function getHealth(): Promise<HealthResponse> {
-  return fetchJson<HealthResponse>("/admin/api/health");
+  return fetchJson<HealthResponse>("/api/health");
 }
 
 // Streams API
@@ -125,11 +125,11 @@ export async function listStreams(options?: {
   if (options?.prefix) params.set("prefix", options.prefix);
 
   const query = params.toString();
-  return fetchJson<ListStreamsResponse>(`/admin/api/streams${query ? `?${query}` : ""}`);
+  return fetchJson<ListStreamsResponse>(`/api/streams${query ? `?${query}` : ""}`);
 }
 
 export async function getStream(streamId: string): Promise<StreamDetail> {
-  return fetchJson<StreamDetail>(`/admin/api/streams/${encodeURIComponent(streamId)}`);
+  return fetchJson<StreamDetail>(`/api/streams/${encodeURIComponent(streamId)}`);
 }
 
 export async function listSegments(
@@ -145,7 +145,7 @@ export async function listSegments(
 
   const query = params.toString();
   return fetchJson<ListSegmentsResponse>(
-    `/admin/api/streams/${encodeURIComponent(streamId)}/segments${query ? `?${query}` : ""}`
+    `/api/streams/${encodeURIComponent(streamId)}/segments${query ? `?${query}` : ""}`
   );
 }
 
@@ -159,11 +159,11 @@ export async function listSessions(options?: {
   if (options?.cursor) params.set("cursor", options.cursor);
 
   const query = params.toString();
-  return fetchJson<ListSessionsResponse>(`/admin/api/sessions${query ? `?${query}` : ""}`);
+  return fetchJson<ListSessionsResponse>(`/api/sessions${query ? `?${query}` : ""}`);
 }
 
 export async function getSession(sessionId: string): Promise<SessionDetail> {
-  return fetchJson<SessionDetail>(`/admin/api/sessions/${encodeURIComponent(sessionId)}`);
+  return fetchJson<SessionDetail>(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
 // Metrics API types
@@ -229,11 +229,11 @@ export async function getHotStreams(options?: {
   if (options?.limit) params.set("limit", options.limit.toString());
 
   const query = params.toString();
-  return fetchJson<HotStreamsResponse>(`/admin/api/metrics/hot${query ? `?${query}` : ""}`);
+  return fetchJson<HotStreamsResponse>(`/api/metrics/hot${query ? `?${query}` : ""}`);
 }
 
 export async function getSystemMetrics(): Promise<SystemMetrics> {
-  return fetchJson<SystemMetrics>("/admin/api/metrics/system");
+  return fetchJson<SystemMetrics>("/api/metrics/system");
 }
 
 export async function getStreamThroughput(
@@ -245,7 +245,7 @@ export async function getStreamThroughput(
 
   const query = params.toString();
   return fetchJson<StreamThroughputResponse>(
-    `/admin/api/metrics/streams/${encodeURIComponent(streamId)}/throughput${query ? `?${query}` : ""}`
+    `/api/metrics/streams/${encodeURIComponent(streamId)}/throughput${query ? `?${query}` : ""}`
   );
 }
 
@@ -253,7 +253,7 @@ export async function getStreamSubscribers(
   streamId: string
 ): Promise<StreamSubscribersResponse> {
   return fetchJson<StreamSubscribersResponse>(
-    `/admin/api/metrics/streams/${encodeURIComponent(streamId)}/subscribers`
+    `/api/metrics/streams/${encodeURIComponent(streamId)}/subscribers`
   );
 }
 
@@ -264,7 +264,7 @@ export async function getQueueLatency(options?: {
   if (options?.minutes) params.set("minutes", options.minutes.toString());
 
   const query = params.toString();
-  return fetchJson<QueueLatencyMetrics>(`/admin/api/metrics/queue/latency${query ? `?${query}` : ""}`);
+  return fetchJson<QueueLatencyMetrics>(`/api/metrics/queue/latency${query ? `?${query}` : ""}`);
 }
 
 // Export error class for handling

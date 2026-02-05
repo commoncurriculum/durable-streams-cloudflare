@@ -17,7 +17,10 @@ export function createEdgeApp() {
   app.use("*", corsMiddleware);
   app.use("*", bearerAuthMiddleware);
 
-  app.route("/admin", createAdminRoutes());
+  // Admin API routes under /api/*
+  app.route("/api", createAdminRoutes());
+
+  // Stream protocol routes under /v1/*
   app.route("/v1/subscriptions", createSubscriptionRoutes());
   app.route("/v1/sessions", createSessionRoutes());
 

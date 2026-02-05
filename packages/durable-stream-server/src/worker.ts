@@ -25,6 +25,7 @@ export interface Env {
 const edgeApp = createEdgeApp();
 
 const STREAM_PREFIX = "/v1/stream/";
+const API_PREFIX = "/api";
 const ADMIN_PREFIX = "/admin";
 const SUBSCRIPTIONS_PREFIX = "/v1/subscriptions";
 const SESSIONS_PREFIX = "/v1/sessions";
@@ -166,8 +167,7 @@ async function authorizeRead(
 }
 
 async function recordRegistryEvent(
-  requestUrl: string,
-  authToken: string | undefined,
+  streams: DurableObjectNamespace,
   event: {
     type: "stream";
     key: string;
@@ -175,13 +175,17 @@ async function recordRegistryEvent(
     headers: { operation: "insert" | "delete" };
   },
 ): Promise<void> {
-  const registryUrl = new URL(`${STREAM_PREFIX}${REGISTRY_STREAM}`, requestUrl);
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+  const id = streams.idFromName(REGISTRY_STREAM);
+  const stub = streams.get(id);
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "X-Stream-Id": REGISTRY_STREAM,
+  });
 
   try {
-    const putResponse = await fetch(
-      new Request(registryUrl, {
+    // Ensure registry stream exists
+    const putResponse = await stub.fetch(
+      new Request("https://internal/", {
         method: "PUT",
         headers,
       }),
@@ -191,8 +195,9 @@ async function recordRegistryEvent(
       return;
     }
 
-    const postResponse = await fetch(
-      new Request(registryUrl, {
+    // Append the event
+    const postResponse = await stub.fetch(
+      new Request("https://internal/", {
         method: "POST",
         headers,
         body: JSON.stringify(event),
@@ -212,12 +217,12 @@ export default {
     const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
     const timing = timingEnabled ? new Timing() : null;
 
-    // Admin API routes go to Hono (only /admin/api/*)
-    if (url.pathname.startsWith(`${ADMIN_PREFIX}/api/`)) {
+    // API routes go to Hono (/api/*)
+    if (url.pathname.startsWith(`${API_PREFIX}/`) || url.pathname === API_PREFIX) {
       return edgeApp.fetch(request, env, ctx);
     }
 
-    // Admin UI static assets and SPA routes - serve from ASSETS binding
+    // Admin UI static assets and SPA routes - serve from ASSETS binding (/admin/*)
     if (url.pathname.startsWith(ADMIN_PREFIX) && env.ASSETS) {
       // Strip /admin prefix - ASSETS expects paths relative to dist/admin-ui
       const assetPath = url.pathname.slice(ADMIN_PREFIX.length) || "/";
@@ -347,7 +352,7 @@ export default {
       if (request.method === "PUT" && response.status === 201) {
         const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
         ctx.waitUntil(
-          recordRegistryEvent(request.url, env.AUTH_TOKEN, {
+          recordRegistryEvent(env.STREAMS, {
             type: "stream",
             key: streamId,
             value: {
@@ -360,7 +365,7 @@ export default {
         );
       } else if (request.method === "DELETE" && response.status === 204) {
         ctx.waitUntil(
-          recordRegistryEvent(request.url, env.AUTH_TOKEN, {
+          recordRegistryEvent(env.STREAMS, {
             type: "stream",
             key: streamId,
             headers: { operation: "delete" },
