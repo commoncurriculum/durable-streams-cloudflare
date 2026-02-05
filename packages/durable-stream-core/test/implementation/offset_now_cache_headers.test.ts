@@ -1,14 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { startWorker } from "./worker_harness";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startWorker, type WorkerHandle } from "./worker_harness";
 import { delay, uniqueStreamId } from "./helpers";
 
 describe("offset=now cache headers", () => {
-  it("forces no-store in shared mode for catch-up and long-poll", async () => {
-    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
-    const streamId = uniqueStreamId("offset-now-shared");
-    const streamUrl = `${handle.baseUrl}/v1/stream/${streamId}`;
+  describe("with CACHE_MODE=shared", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("forces no-store in shared mode for catch-up and long-poll", async () => {
+      const streamId = uniqueStreamId("offset-now-shared");
+      const streamUrl = `${handle.baseUrl}/v1/stream/${streamId}`;
+
       const create = await fetch(streamUrl, {
         method: "PUT",
         headers: { "Content-Type": "text/plain" },
@@ -32,17 +41,24 @@ describe("offset=now cache headers", () => {
       expect(longPoll.status).toBe(200);
       const longPollCache = longPoll.headers.get("Cache-Control") ?? "";
       expect(longPollCache).toContain("no-store");
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 
-  it("uses private no-store for offset=now in private mode", async () => {
-    const handle = await startWorker();
-    const streamId = uniqueStreamId("offset-now-private");
-    const streamUrl = `${handle.baseUrl}/v1/stream/${streamId}`;
+  describe("with default (private) mode", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker();
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("uses private no-store for offset=now in private mode", async () => {
+      const streamId = uniqueStreamId("offset-now-private");
+      const streamUrl = `${handle.baseUrl}/v1/stream/${streamId}`;
+
       const create = await fetch(streamUrl, {
         method: "PUT",
         headers: { "Content-Type": "text/plain" },
@@ -68,8 +84,6 @@ describe("offset=now cache headers", () => {
       const longPollCache = longPoll.headers.get("Cache-Control") ?? "";
       expect(longPollCache).toContain("private");
       expect(longPollCache).toContain("no-store");
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 });

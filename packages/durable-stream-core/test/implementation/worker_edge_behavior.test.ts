@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ZERO_OFFSET, decodeOffsetParts, encodeOffset } from "../../src/protocol/offsets";
-import { startWorker } from "./worker_harness";
+import { startWorker, type WorkerHandle } from "./worker_harness";
 import { uniqueStreamId } from "./helpers";
 
 async function seedStream(url: string): Promise<string> {
@@ -57,12 +57,21 @@ function hasEdgeCacheTiming(
 }
 
 describe("worker edge behavior", () => {
-  it("rejects requests without the configured auth token", async () => {
-    const handle = await startWorker({ vars: { AUTH_TOKEN: "test-token" } });
-    const streamId = uniqueStreamId("auth");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+  describe("with AUTH_TOKEN", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker({ vars: { AUTH_TOKEN: "test-token" } });
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("rejects requests without the configured auth token", async () => {
+      const streamId = uniqueStreamId("auth");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
       const unauthorized = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "text/plain" },
@@ -79,17 +88,24 @@ describe("worker edge behavior", () => {
         body: "hello",
       });
       expect([200, 201]).toContain(authorized.status);
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 
-  it("uses public caching in shared mode", async () => {
-    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
-    const streamId = uniqueStreamId("cache");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+  describe("with CACHE_MODE=shared", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("uses public caching in shared mode", async () => {
+      const streamId = uniqueStreamId("cache");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
       const hotOffset = await seedStream(url);
 
       const coldRead = await fetch(`${url}?offset=${ZERO_OFFSET}`);
@@ -104,59 +120,12 @@ describe("worker edge behavior", () => {
       expect(hotRead.status).toBe(200);
       const hotCache = hotRead.headers.get("Cache-Control") ?? "";
       expect(hotCache).toBe("public, max-age=2");
-    } finally {
-      await handle.stop();
-    }
-  });
+    });
 
-  it("forces private caching in private mode", async () => {
-    const handle = await startWorker();
-    const streamId = uniqueStreamId("cache-private");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+    it("records edge cache hits in shared mode", async () => {
+      const streamId = uniqueStreamId("cache-hit");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
-    try {
-      const hotOffset = await seedStream(url);
-
-      const coldRead = await fetch(`${url}?offset=${ZERO_OFFSET}`);
-      expect(coldRead.status).toBe(200);
-      const coldCache = coldRead.headers.get("Cache-Control") ?? "";
-      expect(coldCache).toBe("private, no-store");
-
-      const hotRead = await fetch(`${url}?offset=${hotOffset}`);
-      expect(hotRead.status).toBe(200);
-      const hotCache = hotRead.headers.get("Cache-Control") ?? "";
-      expect(hotCache).toBe("private, no-store");
-    } finally {
-      await handle.stop();
-    }
-  });
-
-  it("emits Server-Timing when debug is enabled", async () => {
-    const handle = await startWorker();
-    const streamId = uniqueStreamId("timing");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
-
-    try {
-      const create = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "text/plain", "X-Debug-Timing": "1" },
-        body: "hello",
-      });
-      expect([200, 201]).toContain(create.status);
-      const timing = create.headers.get("Server-Timing");
-      expect(timing).toBeTruthy();
-      expect(timing ?? "").toContain("edge.origin");
-    } finally {
-      await handle.stop();
-    }
-  });
-
-  it("records edge cache hits in shared mode", async () => {
-    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
-    const streamId = uniqueStreamId("cache-hit");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
-
-    try {
       const hotOffset = await seedStream(url);
 
       const warm = await fetch(`${url}?offset=${hotOffset}`);
@@ -169,17 +138,12 @@ describe("worker edge behavior", () => {
       expect(cached.status).toBe(200);
       const timing = cached.headers.get("Server-Timing");
       expect(hasEdgeCacheTiming(timing, "hit")).toBe(true);
-    } finally {
-      await handle.stop();
-    }
-  });
+    });
 
-  it("bypasses edge cache when If-None-Match is set", async () => {
-    const handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
-    const streamId = uniqueStreamId("cache-bypass");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+    it("bypasses edge cache when If-None-Match is set", async () => {
+      const streamId = uniqueStreamId("cache-bypass");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
-    try {
       const hotOffset = await seedStream(url);
 
       const first = await fetch(`${url}?offset=${hotOffset}`);
@@ -206,17 +170,56 @@ describe("worker edge behavior", () => {
       expect(secondEtag).not.toBe(firstEtag);
       const timing = second.headers.get("Server-Timing");
       expect(hasEdgeCacheTiming(timing)).toBe(false);
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 
-  it("does not use edge cache in private mode", async () => {
-    const handle = await startWorker();
-    const streamId = uniqueStreamId("cache-private");
-    const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+  describe("with default (private) mode", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker();
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("forces private caching in private mode", async () => {
+      const streamId = uniqueStreamId("cache-private");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+      const hotOffset = await seedStream(url);
+
+      const coldRead = await fetch(`${url}?offset=${ZERO_OFFSET}`);
+      expect(coldRead.status).toBe(200);
+      const coldCache = coldRead.headers.get("Cache-Control") ?? "";
+      expect(coldCache).toBe("private, no-store");
+
+      const hotRead = await fetch(`${url}?offset=${hotOffset}`);
+      expect(hotRead.status).toBe(200);
+      const hotCache = hotRead.headers.get("Cache-Control") ?? "";
+      expect(hotCache).toBe("private, no-store");
+    });
+
+    it("emits Server-Timing when debug is enabled", async () => {
+      const streamId = uniqueStreamId("timing");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+      const create = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", "X-Debug-Timing": "1" },
+        body: "hello",
+      });
+      expect([200, 201]).toContain(create.status);
+      const timing = create.headers.get("Server-Timing");
+      expect(timing).toBeTruthy();
+      expect(timing ?? "").toContain("edge.origin");
+    });
+
+    it("does not use edge cache in private mode", async () => {
+      const streamId = uniqueStreamId("cache-private-no-edge");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
       const hotOffset = await seedStream(url);
 
       const first = await fetch(`${url}?offset=${hotOffset}`);
@@ -229,8 +232,6 @@ describe("worker edge behavior", () => {
       expect(second.status).toBe(200);
       const timing = second.headers.get("Server-Timing");
       expect(hasEdgeCacheTiming(timing)).toBe(false);
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 });

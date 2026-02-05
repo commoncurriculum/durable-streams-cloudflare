@@ -10,6 +10,8 @@ export default defineConfig({
     exclude: ["**/.git/**"],
     passWithNoTests: false,
     testTimeout: 40_000,
+    hookTimeout: 30_000,
+    fileParallelism: false,
     globalSetup: path.resolve(__dirname, "test/implementation/global-setup.ts"),
   },
 });

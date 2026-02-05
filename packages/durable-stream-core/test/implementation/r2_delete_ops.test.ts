@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { startWorker } from "./worker_harness";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startWorker, type WorkerHandle } from "./worker_harness";
 import { uniqueStreamId } from "./helpers";
 
 async function seedAndRotate(baseUrl: string, streamId: string): Promise<void> {
@@ -38,29 +38,41 @@ async function fetchOpsCount(baseUrl: string, streamId: string): Promise<number>
 }
 
 describe("R2 op retention", () => {
-  it("deletes ops by default after rotation", async () => {
-    const handle = await startWorker();
-    const streamId = uniqueStreamId("ops-delete");
+  describe("with default config (deletes ops)", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker();
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("deletes ops by default after rotation", async () => {
+      const streamId = uniqueStreamId("ops-delete");
       await seedAndRotate(handle.baseUrl, streamId);
       const count = await fetchOpsCount(handle.baseUrl, streamId);
       expect(count).toBe(0);
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 
-  it("retains ops when R2_DELETE_OPS=0", async () => {
-    const handle = await startWorker({ vars: { R2_DELETE_OPS: "0" } });
-    const streamId = uniqueStreamId("ops-retain");
+  describe("with R2_DELETE_OPS=0", () => {
+    let handle: WorkerHandle;
 
-    try {
+    beforeAll(async () => {
+      handle = await startWorker({ vars: { R2_DELETE_OPS: "0" } });
+    });
+
+    afterAll(async () => {
+      await handle.stop();
+    });
+
+    it("retains ops when R2_DELETE_OPS=0", async () => {
+      const streamId = uniqueStreamId("ops-retain");
       await seedAndRotate(handle.baseUrl, streamId);
       const count = await fetchOpsCount(handle.baseUrl, streamId);
       expect(count).toBeGreaterThan(0);
-    } finally {
-      await handle.stop();
-    }
+    });
   });
 });

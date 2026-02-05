@@ -10,7 +10,10 @@ export function encodeStreamPathBase64Url(path: string): string {
     const chunk = bytes.subarray(i, i + chunkSize);
     binary += String.fromCharCode(...chunk);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 export function buildSegmentKey(streamId: string, readSeq: number): string {
@@ -41,104 +44,189 @@ export function encodeSegmentMessages(messages: Uint8Array[]): Uint8Array {
   return out;
 }
 
+// ============================================================================
+// SegmentReader: handles streaming read of length-prefixed messages
+// ============================================================================
+
+class SegmentReader {
+  private buffer = new Uint8Array(0);
+  private reader: ReadableStreamDefaultReader<Uint8Array>;
+
+  constructor(body: ReadableStream<Uint8Array>) {
+    this.reader = body.getReader();
+  }
+
+  /** Read the next length-prefixed message, or null if stream ended */
+  async nextMessage(): Promise<
+    { message: Uint8Array } | { truncated: true } | null
+  > {
+    if (!(await this.ensureBytes(LENGTH_PREFIX_BYTES))) {
+      return this.buffer.byteLength === 0 ? null : { truncated: true };
+    }
+
+    const length = new DataView(
+      this.buffer.buffer,
+      this.buffer.byteOffset
+    ).getUint32(0);
+    if (length > MAX_SEGMENT_MESSAGE_BYTES) {
+      return { truncated: true };
+    }
+
+    if (!(await this.ensureBytes(LENGTH_PREFIX_BYTES + length))) {
+      return { truncated: true };
+    }
+
+    const message = this.buffer.slice(
+      LENGTH_PREFIX_BYTES,
+      LENGTH_PREFIX_BYTES + length
+    );
+    this.buffer = this.buffer.slice(LENGTH_PREFIX_BYTES + length);
+    return { message };
+  }
+
+  private async ensureBytes(needed: number): Promise<boolean> {
+    while (this.buffer.byteLength < needed) {
+      const { value, done } = await this.reader.read();
+      if (done || !value) return false;
+      this.appendBuffer(value);
+    }
+    return true;
+  }
+
+  private appendBuffer(next: Uint8Array): void {
+    if (this.buffer.byteLength === 0) {
+      this.buffer = new Uint8Array(next);
+      return;
+    }
+    const merged = new Uint8Array(this.buffer.byteLength + next.byteLength);
+    merged.set(this.buffer, 0);
+    merged.set(next, this.buffer.byteLength);
+    this.buffer = merged;
+  }
+}
+
+// ============================================================================
+// MessageCollector: strategy-based collection of messages up to byte limit
+// ============================================================================
+
+interface MessageCollector {
+  readonly messages: Uint8Array[];
+  readonly outputStart: number;
+  add(message: Uint8Array): void;
+  isFull(): boolean;
+}
+
+class JsonMessageCollector implements MessageCollector {
+  messages: Uint8Array[] = [];
+  outputStart: number;
+  private collectedBytes = 0;
+  private messageIndex = 0;
+  private readonly targetIndex: number;
+
+  constructor(
+    offset: number,
+    private segmentStart: number,
+    private maxChunkBytes: number
+  ) {
+    this.targetIndex = offset - segmentStart;
+    this.outputStart = segmentStart;
+  }
+
+  add(message: Uint8Array): void {
+    if (this.messageIndex < this.targetIndex) {
+      this.messageIndex++;
+      return;
+    }
+    if (this.messages.length === 0) {
+      this.outputStart = this.segmentStart + this.messageIndex;
+    }
+    this.messages.push(message);
+    this.collectedBytes += message.byteLength;
+    this.messageIndex++;
+  }
+
+  isFull(): boolean {
+    return this.collectedBytes >= this.maxChunkBytes;
+  }
+}
+
+class BinaryMessageCollector implements MessageCollector {
+  messages: Uint8Array[] = [];
+  outputStart: number;
+  private collectedBytes = 0;
+  private cursor: number;
+
+  constructor(
+    private offset: number,
+    segmentStart: number,
+    private maxChunkBytes: number
+  ) {
+    this.cursor = segmentStart;
+    this.outputStart = segmentStart;
+  }
+
+  add(message: Uint8Array): void {
+    const end = this.cursor + message.byteLength;
+    if (end <= this.offset) {
+      this.cursor = end;
+      return;
+    }
+    if (this.messages.length === 0) {
+      this.outputStart = this.cursor;
+    }
+    this.messages.push(message);
+    this.collectedBytes += message.byteLength;
+    this.cursor = end;
+  }
+
+  isFull(): boolean {
+    return this.collectedBytes >= this.maxChunkBytes;
+  }
+}
+
+// ============================================================================
+// Main entry point
+// ============================================================================
+
 export async function readSegmentMessages(params: {
   body: ReadableStream<Uint8Array>;
   offset: number;
   segmentStart: number;
   maxChunkBytes: number;
   isJson: boolean;
-}): Promise<{ messages: Uint8Array[]; segmentStart: number; truncated: boolean }> {
+}): Promise<{
+  messages: Uint8Array[];
+  segmentStart: number;
+  truncated: boolean;
+}> {
   const { body, offset, segmentStart, maxChunkBytes, isJson } = params;
-  const reader = body.getReader();
-  let buffer = new Uint8Array(0);
-  let truncated = false;
-  let messages: Uint8Array[] = [];
-  let collectedBytes = 0;
-  let outputStart = segmentStart;
 
-  const appendBuffer = (next: Uint8Array): void => {
-    const chunk = new Uint8Array(next);
-    if (buffer.byteLength === 0) {
-      buffer = chunk;
-      return;
-    }
-    const merged = new Uint8Array(buffer.byteLength + chunk.byteLength);
-    merged.set(buffer, 0);
-    merged.set(chunk, buffer.byteLength);
-    buffer = merged;
-  };
+  const reader = new SegmentReader(body);
+  const collector: MessageCollector = isJson
+    ? new JsonMessageCollector(offset, segmentStart, maxChunkBytes)
+    : new BinaryMessageCollector(offset, segmentStart, maxChunkBytes);
 
-  const readMore = async (): Promise<boolean> => {
-    const { value, done } = await reader.read();
-    if (done || !value) return false;
-    appendBuffer(value);
-    return true;
-  };
+  while (!collector.isFull()) {
+    const result = await reader.nextMessage();
 
-  let cursor = segmentStart;
-  let messageIndex = 0;
-
-  while (true) {
-    while (buffer.byteLength < LENGTH_PREFIX_BYTES) {
-      const ok = await readMore();
-      if (!ok) {
-        if (buffer.byteLength !== 0) truncated = true;
-        return { messages, segmentStart: outputStart, truncated };
-      }
+    if (result === null) {
+      break;
     }
 
-    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-    const length = view.getUint32(0);
-    if (length > MAX_SEGMENT_MESSAGE_BYTES) {
-      truncated = true;
-      return { messages, segmentStart: outputStart, truncated };
+    if ("truncated" in result) {
+      return {
+        messages: collector.messages,
+        segmentStart: collector.outputStart,
+        truncated: true,
+      };
     }
 
-    const needed = LENGTH_PREFIX_BYTES + length;
-    while (buffer.byteLength < needed) {
-      const ok = await readMore();
-      if (!ok) {
-        truncated = true;
-        return { messages, segmentStart: outputStart, truncated };
-      }
-    }
-
-    const message = buffer.slice(LENGTH_PREFIX_BYTES, needed);
-    buffer = buffer.slice(needed);
-
-    if (isJson) {
-      if (messageIndex < offset - segmentStart) {
-        messageIndex += 1;
-        cursor += 1;
-        continue;
-      }
-
-      if (messages.length === 0) {
-        outputStart = segmentStart + messageIndex;
-      }
-
-      messages.push(message);
-      collectedBytes += message.byteLength;
-      messageIndex += 1;
-      cursor += 1;
-    } else {
-      const end = cursor + message.byteLength;
-      if (end <= offset) {
-        cursor = end;
-        continue;
-      }
-
-      if (messages.length === 0) {
-        outputStart = cursor;
-      }
-
-      messages.push(message);
-      collectedBytes += message.byteLength;
-      cursor = end;
-    }
-
-    if (collectedBytes >= maxChunkBytes) {
-      return { messages, segmentStart: outputStart, truncated };
-    }
+    collector.add(result.message);
   }
+
+  return {
+    messages: collector.messages,
+    segmentStart: collector.outputStart,
+    truncated: false,
+  };
 }
