@@ -44,7 +44,7 @@ from the worker; it does not interpret offsets itself.
    ```
 2. (Optional) Apply admin D1 migrations locally:
    ```bash
-   pnpm exec wrangler d1 migrations apply durable_streams_admin --local
+   pnpx wrangler d1 migrations apply durable-streams --local
    ```
 3. Run the worker locally (uses local R2 via Miniflare; DO SQLite is auto-initialized):
    ```bash
@@ -53,59 +53,64 @@ from the worker; it does not interpret offsets itself.
 
 ## Deploy to Cloudflare
 
-### 1. Create Resources
+### 1. Login to Cloudflare
 
 ```bash
-# Create R2 bucket for cold segment storage
-pnpm exec wrangler r2 bucket create durable-streams-poc
-
-# Create D1 database for admin index
-pnpm exec wrangler d1 create durable_streams_admin
-
-# Create queue for fan-out
-pnpm exec wrangler queues create fanout-queue
+pnpx wrangler login
 ```
 
-After creating D1, copy the database ID from the output and update `wrangler.toml`:
+### 2. Create Resources
+
+```bash
+# Create D1 database for admin index
+pnpx wrangler d1 create durable-streams
+
+# Create R2 bucket for cold segment storage
+pnpx wrangler r2 bucket create durable-streams
+
+# Create queue for fan-out
+pnpx wrangler queues create durable-streams-fanout-queue
+```
+
+After creating D1, copy the `database_id` from the output and update `wrangler.toml`:
 ```toml
 [[d1_databases]]
-database_id = "your-database-id-here"  # Replace this
+database_id = "your-database-id-here"  # Replace with actual ID
 ```
 
 The Analytics Engine dataset is created automatically on first deploy.
 
-### 2. Apply Migrations
+### 3. Apply Migrations
 
 ```bash
-# Apply D1 admin migrations
-pnpm exec wrangler d1 migrations apply durable_streams_admin --remote
+pnpx wrangler d1 migrations apply durable-streams --remote
 ```
 
-### 3. Build Admin UI
+### 4. Build Admin UI
 
 ```bash
 pnpm run build:admin-ui
 ```
 
-### 4. Deploy Worker
+### 5. Deploy Worker
 
 ```bash
-pnpm exec wrangler deploy
+pnpx wrangler deploy
 ```
 
-### 5. (Optional) Enable Admin Metrics Dashboard
+### 6. (Optional) Enable Admin Metrics Dashboard
 
 The admin UI shows real-time metrics (hot streams, throughput sparklines, subscriber counts) when configured. These metrics are written by the deployed worker to Analytics Engine, so they only work in production.
 
 ```bash
 # Get your account ID
-pnpm exec wrangler whoami
+pnpx wrangler whoami
 
 # Set secrets for metrics API access
-pnpm exec wrangler secret put CF_ACCOUNT_ID
+pnpx wrangler secret put CF_ACCOUNT_ID
 # Enter your account ID when prompted
 
-pnpm exec wrangler secret put METRICS_API_TOKEN
+pnpx wrangler secret put METRICS_API_TOKEN
 # Enter your API token when prompted (see below)
 ```
 
@@ -114,18 +119,52 @@ To create the `METRICS_API_TOKEN`:
 2. Create a token with **Account Analytics Read** permission
 3. Copy the token and paste when prompted
 
-### 6. (Optional) Enable Auth
+### 7. (Optional) Enable API Authentication
+
+The `AUTH_TOKEN` secret enables bearer token authentication for **all stream API endpoints** (`/v1/stream/*`). When set, clients must include `Authorization: Bearer <token>` header.
+
+**Important**: If `AUTH_TOKEN` is set, the admin UI's stream creation/deletion features will not work because the browser requests won't include the token. Use Cloudflare Access (see below) to protect the admin UI instead.
 
 ```bash
 # Set a bearer token for API authentication
-pnpm exec wrangler secret put AUTH_TOKEN
+pnpx wrangler secret put AUTH_TOKEN
+
+# List current secrets
+pnpx wrangler secret list
+
+# Remove AUTH_TOKEN if not needed
+pnpx wrangler secret delete AUTH_TOKEN
 ```
+
+**When to use AUTH_TOKEN:**
+- You have server-to-server clients that can include the bearer token
+- You want to prevent unauthorized access to stream endpoints
+- You're NOT using the admin UI for stream management
+
+**When NOT to use AUTH_TOKEN:**
+- You want the admin UI to manage streams (create/delete)
+- Use Cloudflare Access instead to protect the admin UI
+
+### 8. (Optional) Protect Admin UI with Cloudflare Access
+
+To restrict admin UI access to authorized users only (recommended for production):
+
+1. Go to **Cloudflare Dashboard → Zero Trust → Access → Applications**
+2. Click **Add an application** → **Self-hosted**
+3. Configure:
+   - **Name**: `Durable Streams Admin`
+   - **Domain**: `durable-streams.<your-subdomain>.workers.dev`
+   - **Path**: `/admin/*`
+4. Add a policy to allow specific users/emails
+5. Save
+
+This protects the admin UI without breaking its functionality (unlike AUTH_TOKEN).
 
 ## Setup (local)
 
 ```bash
 pnpm install
-pnpm exec wrangler d1 migrations apply durable_streams_admin --local
+pnpx wrangler d1 migrations apply durable-streams --local
 pnpm run dev
 ```
 

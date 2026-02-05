@@ -8,8 +8,7 @@ compatibility_date = "2026-02-02"
 [assets]
 directory = "dist/admin-ui"
 binding = "ASSETS"
-html_handling = "auto-trailing-slash"
-not_found_handling = "single-page-application"
+serve_directly = false
 
 [durable_objects]
 bindings = [
