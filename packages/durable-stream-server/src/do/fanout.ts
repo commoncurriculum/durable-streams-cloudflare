@@ -37,12 +37,8 @@ export async function fanOutAppend(
   const sessionIds = await ctx.storage.listStreamSubscribers(streamId);
   if (sessionIds.length === 0) return;
 
-  if (meta.subscriber_count > FANOUT_SUBSCRIBER_THRESHOLD) {
-    if (ctx.env.FANOUT_QUEUE) {
-      await enqueueFanout(ctx.env.FANOUT_QUEUE, sessionIds, envelope);
-      return;
-    }
-    ctx.state.waitUntil(deliverInline(ctx, sessionIds, envelope));
+  if (meta.subscriber_count > FANOUT_SUBSCRIBER_THRESHOLD && ctx.env.FANOUT_QUEUE) {
+    await enqueueFanout(ctx.env.FANOUT_QUEUE, sessionIds, envelope);
     return;
   }
 
@@ -109,6 +105,7 @@ export async function appendEnvelopeToSession(
   envelope: FanInEnvelope,
 ): Promise<Response> {
   const sessionStreamId = `${SESSION_STREAM_PREFIX}${sessionId}`;
+  console.log(`[fanout] appending to session stream: ${sessionStreamId}`);
   const id = streams.idFromName(sessionStreamId);
   const stub = streams.get(id);
   const url = new URL("https://internal/internal/fan-in-append");
@@ -123,6 +120,10 @@ export async function appendEnvelopeToSession(
       body: JSON.stringify(envelope),
     }),
   );
-  if (!response.ok) await response.arrayBuffer();
+  console.log(`[fanout] session append response: ${response.status}`);
+  if (!response.ok) {
+    const body = await response.text();
+    console.log(`[fanout] session append failed: ${body}`);
+  }
   return response;
 }

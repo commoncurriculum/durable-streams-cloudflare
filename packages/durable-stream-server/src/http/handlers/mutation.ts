@@ -254,7 +254,7 @@ export async function handlePost(
     if (closeStream) headers.set(HEADER_STREAM_CLOSED, "true");
 
     ctx.longPoll.notify(append.newTailOffset);
-    broadcastSse(
+    await broadcastSse(
       ctx,
       streamId,
       meta,
