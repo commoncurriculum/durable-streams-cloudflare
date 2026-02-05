@@ -3,7 +3,7 @@ theme: default
 title: Durable Streams Subscriptions - Data Flow Walkthrough
 info: |
   ## Durable Streams Subscriptions
-  Session management and message fanout
+  SubscriptionDO architecture — per-stream Durable Objects with local SQLite
 drawings:
   persist: false
 mdc: true
@@ -15,7 +15,7 @@ Data Flow Walkthrough
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded bg-gray-100">
-    Three stories: Session creation, subscribing, and fanout
+    Three stories: Session creation, subscribing + fanout, and cleanup
   </span>
 </div>
 
@@ -25,63 +25,55 @@ layout: section
 
 # Story 1: A Session is Created
 
-Follow session creation from request to storage
+Follow session creation from request to SubscriptionDO
 
 ---
 
 # 1. The Worker Entry Point
 
-<<< @/../src/worker.ts#L1-L18 ts
+<<< @/../src/worker.ts#L1-L25 ts
 
-The Hono app defines the environment with D1, Core URL, and optional queue for high-volume fanout.
+The Hono app defines the environment with `SUBSCRIPTION_DO`, optional `CORE` service binding, and configurable CORS via `CORS_ORIGINS`.
 
 ---
 
 # 2. Middleware Stack
 
-<<< @/../src/worker.ts#L22-L45 ts
+<<< @/../src/worker.ts#L57-L111 ts
 
-CORS allows all origins. Optional bearer auth is checked if `AUTH_TOKEN` is configured.
+CORS is configurable via `CORS_ORIGINS` (single origin, comma-separated list, or `*`). Optional bearer auth is checked if `AUTH_TOKEN` is set. HTTP metrics record every request.
 
 ---
 
-# 3. Subscribe Route (Creates Sessions)
+# 3. Subscribe Route (Schema + Validation)
 
-<<< @/../src/routes/subscribe.ts#L38-L50 ts
+<<< @/../src/routes/subscribe.ts#L16-L25 ts
 
-Sessions are created lazily on first subscribe. The `sessionId` and `streamId` come from the request body.
+Zod schemas validate `sessionId` and `streamId` against `SESSION_ID_PATTERN` / `STREAM_ID_PATTERN` to prevent SQL injection in Analytics Engine queries.
 
 ---
 
 # 4. Creating the Session Stream in Core
 
-<<< @/../src/routes/subscribe.ts#L52-L68 ts
+<<< @/../src/routes/subscribe.ts#L37-L67 ts
 
-The session stream is created in Core first (source of truth), then D1 records the session.
-
----
-
-# 5. Creating Session Stream (Implementation)
-
-<<< @/../src/fanout.ts#L168-L184 ts
-
-Uses `fetchFromCore` which prefers service binding over HTTP for better performance.
+The session stream is created in Core first (source of truth). Uses `X-Stream-Expires-At` to set TTL. A `409` means the stream already exists — that's fine.
 
 ---
 
-# 6. Recording in D1
+# 5. Adding Subscription to SubscriptionDO
 
-<<< @/../src/storage.ts#L15-L29 ts
+<<< @/../src/routes/subscribe.ts#L69-L101 ts
 
-D1 stores session metadata with `ON CONFLICT DO UPDATE` for idempotency.
+Routes to `SubscriptionDO(streamId)` via `idFromName`. The DO stores the subscriber in local SQLite. If the DO call fails, the session stream is rolled back.
 
 ---
 
-# 7. The Response
+# 6. The Response
 
-<<< @/../src/routes/subscribe.ts#L82-L96 ts
+<<< @/../src/routes/subscribe.ts#L110-L117 ts
 
-Returns the session stream path - that's where clients read their messages.
+Returns the session stream path, expiry timestamp, and whether this was a new session.
 
 ---
 
@@ -89,9 +81,13 @@ Returns the session stream path - that's where clients read their messages.
 
 ```mermaid
 flowchart TB
-    subgraph Subscriptions Package
-        D1[(D1 Database)]
+    subgraph Subscriptions Worker
         W[Worker]
+    end
+
+    subgraph Durable Objects
+        DO_A["SubscriptionDO(streamA)"]
+        DO_B["SubscriptionDO(streamB)"]
     end
 
     subgraph Core Package
@@ -100,7 +96,8 @@ flowchart TB
     end
 
     Client --> W
-    W --> D1
+    W --> DO_A
+    W --> DO_B
     W --> SS1
     W --> SS2
     Client -.->|reads from| SS1
@@ -112,79 +109,75 @@ layout: section
 
 # Story 2: A Session Subscribes to a Stream
 
-Follow subscription creation
+Focus on SubscriptionDO internals
 
 ---
 
-# 1. Subscribe Schema
+# 1. SubscriptionDO Overview
 
-<<< @/../src/routes/subscribe.ts#L25-L34 ts
+<<< @/../src/subscription_do.ts#L1-L43 ts
 
-Subscriptions link a session to a source stream.
-
----
-
-# 2. Adding a Subscription
-
-<<< @/../src/storage.ts#L57-L75 ts
-
-Subscription is added with `ON CONFLICT DO NOTHING` - re-subscribing is safe (idempotent).
+Each stream gets its own SubscriptionDO with a local SQLite `subscribers` table. `blockConcurrencyWhile` ensures the schema is initialized before any requests.
 
 ---
 
-# 3. Getting Subscribers for a Stream
+# 2. Adding a Subscriber
 
-<<< @/../src/storage.ts#L99-L108 ts
+<<< @/../src/subscription_do.ts#L93-L126 ts
 
-This query powers fanout - get all sessions subscribed to a stream.
+`ON CONFLICT DO NOTHING` makes subscribe idempotent — re-subscribing the same session is a safe no-op.
+
+---
+
+# 3. Getting Subscribers
+
+<<< @/../src/subscription_do.ts#L330-L337 ts
+
+Subscriber lookup is a synchronous local SQLite query — no D1 round trip, no network hop.
 
 ---
 
 # Subscription Data Model
 
 ```mermaid
-erDiagram
-    sessions ||--o{ subscriptions : has
-    subscriptions }o--|| streams : "subscribes to"
+flowchart TB
+    subgraph "SubscriptionDO(streamA)"
+        DB_A[("SQLite<br/>subscribers")]
+    end
 
-    sessions {
-        string session_id PK
-        int created_at
-        int last_active_at
-        int ttl_seconds
-        int marked_for_deletion_at
-    }
+    subgraph "SubscriptionDO(streamB)"
+        DB_B[("SQLite<br/>subscribers")]
+    end
 
-    subscriptions {
-        string session_id PK_FK
-        string stream_id PK
-        int subscribed_at
-    }
+    DB_A --- R1["session_id TEXT PK<br/>subscribed_at INTEGER"]
+    DB_B --- R2["session_id TEXT PK<br/>subscribed_at INTEGER"]
 ```
+
+Each stream's SubscriptionDO has its own isolated `subscribers(session_id, subscribed_at)` table.
 
 ---
 
 # 4. Unsubscribe Flow
 
-<<< @/../src/routes/subscribe.ts#L98-L112 ts
+<<< @/../src/routes/subscribe.ts#L126-L157 ts
 
-DELETE `/unsubscribe` removes a subscription. The session remains active.
+DELETE `/unsubscribe` routes to `SubscriptionDO(streamId)` to remove the subscriber. The session itself remains active.
 
 ---
 
-# 5. Querying Session Details
+# 5. Session Info
 
-<<< @/../src/routes/session.ts#L19-L43 ts
+<<< @/../src/routes/session.ts#L27-L67 ts
 
-GET `/session/:sessionId` returns session info and all subscriptions.
+GET `/session/:sessionId` does a HEAD request to Core to check if the session stream exists, then queries Analytics Engine for subscription data.
 
 ---
 
 # 6. Touch (Extend TTL)
 
-<<< @/../src/routes/session.ts#L45-L68 ts
+<<< @/../src/routes/session.ts#L75-L112 ts
 
-POST `/session/:sessionId/touch` extends the session's TTL by updating `last_active_at`.
+POST `/session/:sessionId/touch` extends the session's TTL by sending a PUT to Core with an updated `X-Stream-Expires-At` header.
 
 ---
 layout: section
@@ -192,71 +185,47 @@ layout: section
 
 # Story 3: A Message is Published and Fanned Out
 
-Follow a message from publish to all subscribers
+Follow a message from publish to all subscribers — no queue, no D1
 
 ---
 
 # 1. The Publish Route
 
-<<< @/../src/routes/publish.ts#L12-L35 ts
+<<< @/../src/routes/publish.ts#L29-L77 ts
 
-Publisher sends message to stream. Producer headers enable deduplication.
-
----
-
-# 2. Write to Source Stream
-
-<<< @/../src/routes/publish.ts#L36-L51 ts
-
-Message is written to the source stream in Core first.
+Validates `streamId` against `STREAM_ID_PATTERN`, then delegates entirely to `SubscriptionDO(streamId)`. Producer headers are passed through for deduplication.
 
 ---
 
-# 3. Fanout to Subscribers
+# 2. SubscriptionDO: Write to Source Stream
 
-<<< @/../src/routes/publish.ts#L66-L89 ts
+<<< @/../src/subscription_do.ts#L166-L208 ts
 
-After writing, fanout delivers to all subscribed sessions. Response includes fanout stats.
-
----
-
-# 4. The Fanout Decision
-
-<<< @/../src/fanout.ts#L25-L42 ts
-
-Get subscribers from D1. If count > threshold (default 100) and queue available, use queue.
+The DO writes to the source stream in Core first (source of truth). The response's `X-Stream-Next-Offset` is used to build fanout producer headers for deduplication.
 
 ---
 
-# 5. Queue-Based Fanout
+# 3. SubscriptionDO: Fanout
 
-<<< @/../src/fanout.ts#L42-L66 ts
+<<< @/../src/subscription_do.ts#L223-L262 ts
 
-High subscriber counts batch messages to Cloudflare Queues (100 per batch).
-
----
-
-# 6. Inline Fanout
-
-<<< @/../src/fanout.ts#L68-L103 ts
-
-Low subscriber counts use `Promise.allSettled` for parallel delivery.
+Local SQLite query gets all subscribers. `Promise.allSettled` delivers to all session streams in parallel. Stale subscribers (404 responses) are auto-removed from SQLite.
 
 ---
 
-# 7. Queue Consumer
+# 4. Stale Subscriber Cleanup
 
-<<< @/../src/fanout.ts#L215-L267 ts
+<<< @/../src/subscription_do.ts#L237-L257 ts
 
-Queue consumer handles retries: 5xx errors retry with backoff, 4xx errors ack to prevent loops.
+When a session stream returns 404 during fanout, the subscriber is immediately removed from local SQLite. This keeps the subscriber list clean without waiting for the cleanup cron.
 
 ---
 
-# 8. Worker Queue Handler
+# 5. Response with Fanout Headers
 
-<<< @/../src/worker.ts#L126-L142 ts
+<<< @/../src/subscription_do.ts#L267-L278 ts
 
-The worker's queue handler processes batches and records metrics.
+`X-Fanout-Count`, `X-Fanout-Successes`, and `X-Fanout-Failures` headers let the publisher know exactly what happened.
 
 ---
 
@@ -266,22 +235,17 @@ The worker's queue handler processes batches and records metrics.
 sequenceDiagram
     participant P as Publisher
     participant W as Worker
-    participant D1 as D1 Database
+    participant DO as SubscriptionDO
     participant Core as Core Package
-    participant Q as Queue
 
-    P->>W: POST /v1/publish/events
-    W->>Core: POST to source stream
-    W->>D1: getStreamSubscribers()
-    D1-->>W: [session-a, session-b, ...]
-
-    alt < 100 subscribers
-        W->>Core: Write to each session stream
-    else >= 100 subscribers
-        W->>Q: Batch to queue
-        Q->>Core: Process batches
-    end
-
+    P->>W: POST /v1/publish/:streamId
+    W->>DO: Route to DO(streamId)
+    DO->>Core: POST to source stream
+    Core-->>DO: 200 + offset
+    DO->>DO: Local SQLite query (subscribers)
+    DO->>Core: Write to each session stream
+    Core-->>DO: Results
+    DO-->>W: 200 + X-Fanout-* headers
     W-->>P: 200 + X-Fanout-* headers
 ```
 
@@ -293,75 +257,75 @@ layout: section
 
 ---
 
-# Two-Phase Session Cleanup
+# 1. Session Cleanup Overview
 
-<<< @/../src/cleanup.ts#L26-L42 ts
+<<< @/../src/cleanup.ts#L1-L10 ts
 
-Phase 1 marks expired sessions. Phase 2 deletes after grace period.
-
----
-
-# Phase 2: Deleting Sessions
-
-<<< @/../src/cleanup.ts#L54-L77 ts
-
-Deletes session streams from Core, then removes D1 records.
+Cleanup uses Analytics Engine to find expired sessions, removes their subscriptions from SubscriptionDOs, then deletes their session streams from Core. Single-phase — no marking/grace period.
 
 ---
 
-# Marking Expired Sessions
+# 2. Cleanup Implementation
 
-<<< @/../src/storage.ts#L149-L163 ts
+<<< @/../src/cleanup.ts#L138-L183 ts
 
-Sessions past their TTL are marked with timestamp.
-
----
-
-# Getting Sessions to Delete
-
-<<< @/../src/storage.ts#L167-L185 ts
-
-Only delete sessions marked longer than grace period AND still expired.
+Queries Analytics Engine for expired sessions, then processes them in parallel batches of 10.
 
 ---
 
-# Touching Sessions (Prevents Deletion)
+# 3. Removing Subscriptions + Deleting Streams
 
-<<< @/../src/storage.ts#L39-L48 ts
+<<< @/../src/cleanup.ts#L49-L129 ts
 
-Touch clears the deletion mark - prevents race conditions during cleanup.
-
----
-
-# Scheduled Cleanup
-
-<<< @/../src/worker.ts#L96-L124 ts
-
-Runs every 5 minutes via cron. Records cleanup metrics.
+For each expired session: query its subscriptions from Analytics Engine, remove from each SubscriptionDO, then delete the session stream from Core.
 
 ---
 
-# Metrics: Fanout & Queue Events
+# 4. Scheduled Handler
 
-<<< @/../src/metrics.ts#L9-L50 ts
+<<< @/../src/worker.ts#L128-L161 ts
 
-Tracks fanout success/failure rates, queue batch processing, and retry attempts.
-
----
-
-# Metrics: Session Lifecycle
-
-<<< @/../src/metrics.ts#L69-L100 ts
-
-Records session creation, touch, delete, and expiration events.
+Runs every 5 minutes via cron. Records cleanup metrics including expired session count, stream deletes, and subscription removals.
 
 ---
 
-# Metrics: Cleanup & HTTP Events
+# 5. Input Validation
 
-<<< @/../src/metrics.ts#L102-L141 ts
+<<< @/../src/constants.ts#L1-L17 ts
 
-Tracks cleanup batches, HTTP request latency, and publish operations.
+`SESSION_ID_PATTERN` and `STREAM_ID_PATTERN` restrict IDs to safe characters — preventing SQL injection in Analytics Engine queries where values are interpolated into SQL strings.
+
+---
+
+# 6. Core Client
+
+<<< @/../src/core-client.ts#L16-L39 ts
+
+`fetchFromCore` prefers the `CORE` service binding (no network hop, no auth needed). Falls back to HTTP with bearer auth if the binding isn't available.
+
+---
+
+# 7. Metrics Overview
+
+<<< @/../src/metrics.ts#L1-L8 ts
+
+All metrics use Analytics Engine with a consistent structure: `blobs` for dimensions, `doubles` for values, `indexes` for query filtering.
+
+---
+
+# 8. Metrics: Fanout & Subscription
+
+<<< @/../src/metrics.ts#L9-L67 ts
+
+Tracks fanout success/failure rates per stream, plus subscribe/unsubscribe events.
+
+---
+
+# 9. Metrics: Session Lifecycle & Cleanup
+
+<<< @/../src/metrics.ts#L69-L141 ts
+
+Records session creation, touch, delete, and expiration events. Cleanup batch metrics track streams deleted and subscriptions removed.
 
 ---
 
@@ -370,11 +334,11 @@ Tracks cleanup batches, HTTP request latency, and publish operations.
 | Category | Events | Doubles |
 |----------|--------|---------|
 | `fanout` | Per-message fanout | subscribers, success, failures |
-| `queue` | Queue batch processing | size, success, retries |
 | `subscription` | Subscribe/unsubscribe | count, latency, isNewSession |
 | `session` | Create/touch/delete/expire | count, latency, ttl/age |
-| `cleanup` | Two-phase cleanup | marked, deleted, success, fail |
+| `cleanup` | Expired session cleanup | expired, streamsDeleted, subsRemoved, subsFailed |
 | `publish` | Message publish | count, fanoutCount, latency |
+| `http` | HTTP request metrics | count, latency |
 
 Queryable via Analytics Engine SQL.
 
