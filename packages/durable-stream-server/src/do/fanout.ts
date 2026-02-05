@@ -3,7 +3,7 @@ import { isJsonContentType } from "../protocol/headers";
 import type { StreamContext } from "../http/context";
 import type { StreamMeta } from "../storage/storage";
 
-const FANOUT_SUBSCRIBER_THRESHOLD = 200;
+const FANOUT_SUBSCRIBER_THRESHOLD = 0;
 const SESSION_STREAM_PREFIX = "subscriptions/";
 
 export type FanInEnvelope = {
