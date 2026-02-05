@@ -349,21 +349,28 @@ export default {
     }
 
     if (streamId !== REGISTRY_STREAM) {
-      if (request.method === "PUT" && response.status === 201) {
-        const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
-        ctx.waitUntil(
-          recordRegistryEvent(env.STREAMS, {
-            type: "stream",
-            key: streamId,
-            value: {
-              path: streamId,
-              contentType,
-              createdAt: Date.now(),
-            },
-            headers: { operation: "insert" },
-          }),
-        );
+      if (request.method === "PUT") {
+        console.log(`[registry-debug] PUT ${streamId} -> ${response.status}`);
+        if (response.status === 201) {
+          const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
+          console.log(`[registry-debug] Recording insert for ${streamId}`);
+          ctx.waitUntil(
+            recordRegistryEvent(env.STREAMS, {
+              type: "stream",
+              key: streamId,
+              value: {
+                path: streamId,
+                contentType,
+                createdAt: Date.now(),
+              },
+              headers: { operation: "insert" },
+            }),
+          );
+        } else if (response.status === 200) {
+          console.log(`[registry-debug] Stream ${streamId} already exists, no registry event`);
+        }
       } else if (request.method === "DELETE" && response.status === 204) {
+        console.log(`[registry-debug] Recording delete for ${streamId}`);
         ctx.waitUntil(
           recordRegistryEvent(env.STREAMS, {
             type: "stream",
