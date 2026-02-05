@@ -8,18 +8,27 @@ import {
 import { buildAppendBatch } from "../../engine/stream";
 import { closeStreamOnly } from "../../engine/close";
 import type { StreamContext } from "../../http/context";
-import type { ValidatedPostInput, PostExecutionResult, Result } from "../types";
+import type {
+  ValidatedPostInput,
+  PostExecutionResult,
+  Result,
+  CloseOnlyPostInput,
+  AppendPostInput,
+} from "../types";
 
 /**
  * Execute a close-only operation (empty body with close flag).
  */
 export async function executeCloseOnly(
   ctx: StreamContext,
-  input: Extract<ValidatedPostInput, { kind: "close_only" }>,
+  input: CloseOnlyPostInput,
 ): Promise<Result<PostExecutionResult>> {
   const { meta, producer } = input;
 
+  const doneClose = ctx.timing?.start("stream.close");
   const closeResult = await closeStreamOnly(ctx.storage, meta, producer ?? undefined);
+  doneClose?.();
+
   if (closeResult.error) {
     return { kind: "error", response: closeResult.error };
   }
@@ -42,7 +51,7 @@ export async function executeCloseOnly(
  */
 export async function executeAppend(
   ctx: StreamContext,
-  input: Extract<ValidatedPostInput, { kind: "append" }>,
+  input: AppendPostInput,
 ): Promise<Result<PostExecutionResult>> {
   const { streamId, contentType, bodyBytes, streamSeq, producer, closeStream, meta } = input;
 

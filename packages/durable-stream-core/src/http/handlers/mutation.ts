@@ -19,6 +19,39 @@ import { extractPostInput, parsePostInput } from "../../mutations/post/parse";
 import { validateStreamExists, validatePostInput } from "../../mutations/post/validate";
 import { executePost } from "../../mutations/post/execute";
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Validate request body constraints (Content-Length header and body size).
+ * Returns an error response if validation fails, null if valid.
+ */
+function validateRequestBody(
+  request: Request,
+  bodyLength: number,
+): Response | null {
+  const contentLengthError = validateContentLength(
+    request.headers.get("Content-Length"),
+    bodyLength,
+  );
+  if (contentLengthError) return contentLengthError;
+  return validateBodySize(bodyLength);
+}
+
+/**
+ * Schedule segment rotation as a background task if needed.
+ */
+function scheduleSegmentRotation(
+  ctx: StreamContext,
+  streamId: string,
+  result: { rotateSegment?: boolean; forceRotation?: boolean },
+): void {
+  if (result.rotateSegment) {
+    ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: result.forceRotation }));
+  }
+}
+
 export async function handlePut(
   ctx: StreamContext,
   streamId: string,
@@ -33,14 +66,8 @@ export async function handlePut(
     if (parsed.kind === "error") return parsed.response;
 
     // 2. Validate content-length and body size
-    const contentLengthError = validateContentLength(
-      request.headers.get("Content-Length"),
-      parsed.value.bodyBytes.length,
-    );
-    if (contentLengthError) return contentLengthError;
-
-    const bodySizeError = validateBodySize(parsed.value.bodyBytes.length);
-    if (bodySizeError) return bodySizeError;
+    const bodyError = validateRequestBody(request, parsed.value.bodyBytes.length);
+    if (bodyError) return bodyError;
 
     // 3. Validate against existing stream
     const existing = await ctx.getStream(streamId);
@@ -52,9 +79,7 @@ export async function handlePut(
     if (result.kind === "error") return result.response;
 
     // 5. Side effects (segment rotation)
-    if (result.value.rotateSegment) {
-      ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: result.value.forceRotation }));
-    }
+    scheduleSegmentRotation(ctx, streamId, result.value);
 
     return new Response(null, { status: result.value.status, headers: result.value.headers });
   });
@@ -77,16 +102,15 @@ export async function handlePost(
     if (parsed.kind === "error") return parsed.response;
 
     // 3. Validate content-length and body size
-    const contentLengthError = validateContentLength(
-      request.headers.get("Content-Length"),
-      parsed.value.bodyBytes.length,
-    );
-    if (contentLengthError) return contentLengthError;
-
-    const bodySizeError = validateBodySize(parsed.value.bodyBytes.length);
-    if (bodySizeError) return bodySizeError;
+    const bodyError = validateRequestBody(request, parsed.value.bodyBytes.length);
+    if (bodyError) return bodyError;
 
     // 4. Evaluate producer (for duplicate detection)
+    // POST evaluates producer BEFORE validation to enable early duplicate detection.
+    // This differs from PUT (which defers to execute) because:
+    // 1. POST appends to existing streams where duplicates are common
+    // 2. PUT creates streams, so duplicates only occur on retry of the same creation
+    // 3. Early detection in POST avoids unnecessary validation work
     let producerEval: ProducerEval = { kind: "none" };
     if (parsed.value.producer) {
       producerEval = await evaluateProducer(ctx.storage, streamId, parsed.value.producer);
@@ -133,9 +157,7 @@ export async function handlePost(
       );
     }
 
-    if (result.value.rotateSegment) {
-      ctx.state.waitUntil(ctx.rotateSegment(streamId, { force: result.value.forceRotation }));
-    }
+    scheduleSegmentRotation(ctx, streamId, result.value);
 
     // Record metrics for message append
     if (ctx.env.METRICS && validated.value.kind === "append") {
@@ -162,8 +184,9 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     await closeAllSseClients(ctx);
 
     if (ctx.env.R2 && segments.length > 0) {
+      const r2 = ctx.env.R2; // Narrowed to non-null by conditional
       ctx.state.waitUntil(
-        Promise.all(segments.map((segment) => ctx.env.R2!.delete(segment.r2_key))).then(
+        Promise.all(segments.map((segment) => r2.delete(segment.r2_key))).then(
           () => undefined,
         ),
       );

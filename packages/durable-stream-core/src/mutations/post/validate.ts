@@ -1,3 +1,11 @@
+/**
+ * POST validation helpers.
+ *
+ * This file uses two validator patterns (see shared.ts for details):
+ * - Simple validators return `Response | null` for brevity
+ * - Complex validators return `Result<T>` for composability
+ */
+
 import { normalizeContentType } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
 import { validateStreamSeq, buildClosedConflict } from "../../engine/stream";
