@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { createMetrics } from "../metrics";
 import { fetchFromCore, type CoreClientEnv } from "../core-client";
+import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../constants";
 
 export interface SubscribeEnv {
   Bindings: CoreClientEnv & {
@@ -13,14 +14,14 @@ export interface SubscribeEnv {
 }
 
 const subscribeSchema = z.object({
-  sessionId: z.string().min(1),
-  streamId: z.string().min(1),
+  sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
+  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
   contentType: z.string().optional().default("application/json"),
 });
 
 const unsubscribeSchema = z.object({
-  sessionId: z.string().min(1),
-  streamId: z.string().min(1),
+  sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
+  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
 });
 
 export const subscribeRoutes = new Hono<SubscribeEnv>();
@@ -84,6 +85,18 @@ subscribeRoutes.post("/subscribe", zValidator("json", subscribeSchema), async (c
   if (!doResponse.ok) {
     const errorText = await doResponse.text();
     console.error(`Failed to add subscription to DO: ${doResponse.status} - ${errorText}`);
+
+    // Rollback: delete the session stream we just created to prevent orphans
+    if (isNewSession) {
+      try {
+        await fetchFromCore(c.env, `/v1/stream/session:${sessionId}`, {
+          method: "DELETE",
+        });
+      } catch (rollbackErr) {
+        console.error(`Failed to rollback session stream ${sessionId}:`, rollbackErr);
+      }
+    }
+
     return c.json({ error: "Failed to add subscription" }, 500);
   }
 

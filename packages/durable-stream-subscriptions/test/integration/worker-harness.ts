@@ -44,35 +44,8 @@ export async function createPersistDir(prefix = "durable-streams-sub-"): Promise
   return mkdtemp(path.join(tmpdir(), prefix));
 }
 
-export async function applySubscriptionsMigrations(persistDir: string): Promise<void> {
-  const child = spawn(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "migrations",
-      "apply",
-      "subscriptions",
-      "--local",
-      "--persist-to",
-      persistDir,
-    ],
-    {
-      cwd: SUBSCRIPTIONS_CWD,
-      stdio: "ignore",
-      env: {
-        ...process.env,
-        CI: "1",
-      },
-    },
-  );
-
-  const [exitCode] = await once(child, "exit");
-  if (typeof exitCode === "number" && exitCode !== 0) {
-    throw new Error(`wrangler subscriptions migrations failed with exit code ${exitCode}`);
-  }
-}
+// D1 migrations removed - subscriptions now uses SubscriptionDO (Durable Objects with SQLite)
+// No separate migration step needed; DO migrations are handled by wrangler.toml [[migrations]]
 
 export async function applyCoreMigrations(persistDir: string): Promise<void> {
   const child = spawn(
@@ -174,7 +147,7 @@ export async function startSubscriptionsWorker(options?: {
   const coreUrl = options?.coreUrl ?? "http://localhost:8787";
   const vars = options?.vars ?? {};
 
-  await applySubscriptionsMigrations(persistDir);
+  // No D1 migrations needed - subscriptions uses SubscriptionDO
 
   const extraVars: string[] = [
     "--var",

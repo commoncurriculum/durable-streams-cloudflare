@@ -234,12 +234,26 @@ export class SubscriptionDO {
         ),
       );
 
-      for (const result of results) {
-        if (result.status === "fulfilled" && result.value.ok) {
-          successCount++;
+      const staleSessionIds: string[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === "fulfilled") {
+          if (result.value.ok) {
+            successCount++;
+          } else if (result.value.status === 404) {
+            staleSessionIds.push(subscribers[i]);
+            failureCount++;
+          } else {
+            failureCount++;
+          }
         } else {
           failureCount++;
         }
+      }
+
+      // Remove stale subscribers (sync - SQLite is local)
+      for (const sessionId of staleSessionIds) {
+        this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
       }
 
       // Record fanout metrics

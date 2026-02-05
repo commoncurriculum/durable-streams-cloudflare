@@ -31,6 +31,103 @@ export interface CleanupResult {
   subscriptionRemoveFailures: number;
 }
 
+interface SessionCleanupResult {
+  streamDeleteSuccess: boolean;
+  subscriptionSuccesses: number;
+  subscriptionFailures: number;
+}
+
+interface ExpiredSession {
+  sessionId: string;
+  lastActivity: number;
+  ttlSeconds: number;
+}
+
+/**
+ * Clean up a single session: remove subscriptions and delete stream.
+ */
+async function cleanupSession(
+  env: CleanupEnv,
+  analyticsEnv: AnalyticsQueryEnv,
+  datasetName: string,
+  session: ExpiredSession,
+  metrics: ReturnType<typeof createMetrics>,
+): Promise<SessionCleanupResult> {
+  let subscriptionSuccesses = 0;
+  let subscriptionFailures = 0;
+  let streamDeleteSuccess = false;
+
+  // Record session expiry metric
+  metrics.sessionExpire(session.sessionId, 0, Date.now() - session.lastActivity);
+
+  // Get subscriptions for this session from Analytics Engine
+  const subscriptionsResult = await getSessionSubscriptions(
+    analyticsEnv,
+    datasetName,
+    session.sessionId,
+  );
+
+  if (subscriptionsResult.error) {
+    console.error(`Failed to get subscriptions for session ${session.sessionId}: ${subscriptionsResult.error}`);
+    // Continue with session deletion even if subscription lookup fails
+  }
+
+  const subscriptions = subscriptionsResult.data;
+
+  // Remove from each SubscriptionDO
+  for (const sub of subscriptions) {
+    try {
+      const doId = env.SUBSCRIPTION_DO.idFromName(sub.streamId);
+      const stub = env.SUBSCRIPTION_DO.get(doId);
+
+      const response = await stub.fetch(
+        new Request("http://do/subscriber", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Stream-Id": sub.streamId,
+          },
+          body: JSON.stringify({ sessionId: session.sessionId }),
+        }),
+      );
+
+      if (response.ok) {
+        subscriptionSuccesses++;
+      } else {
+        subscriptionFailures++;
+      }
+    } catch (err) {
+      console.error(
+        `Failed to remove subscription ${session.sessionId} from ${sub.streamId}:`,
+        err,
+      );
+      subscriptionFailures++;
+    }
+  }
+
+  // Delete session stream from core
+  try {
+    const response = await fetchFromCore(
+      env,
+      `/v1/stream/session:${session.sessionId}`,
+      { method: "DELETE" },
+    );
+
+    if (response.ok || response.status === 404) {
+      streamDeleteSuccess = true;
+      metrics.sessionDelete(session.sessionId, 0);
+    }
+  } catch (err) {
+    console.error(`Failed to delete session stream ${session.sessionId}:`, err);
+  }
+
+  return {
+    streamDeleteSuccess,
+    subscriptionSuccesses,
+    subscriptionFailures,
+  };
+}
+
 /**
  * Clean up expired sessions.
  *
@@ -90,73 +187,25 @@ export async function cleanupExpiredSessions(env: CleanupEnv): Promise<CleanupRe
   let subscriptionRemoveSuccesses = 0;
   let subscriptionRemoveFailures = 0;
 
-  // 2. For each expired session, clean up subscriptions and delete session stream
-  for (const session of expiredSessions) {
-    // Record session expiry metric
-    metrics.sessionExpire(session.sessionId, 0, Date.now() - session.lastActivity);
+  // 2. Process expired sessions in parallel batches
+  const BATCH_SIZE = 10;
 
-    // Get subscriptions for this session from Analytics Engine
-    const subscriptionsResult = await getSessionSubscriptions(
-      analyticsEnv,
-      datasetName,
-      session.sessionId,
+  for (let i = 0; i < expiredSessions.length; i += BATCH_SIZE) {
+    const batch = expiredSessions.slice(i, i + BATCH_SIZE);
+
+    const results = await Promise.allSettled(
+      batch.map(session => cleanupSession(env, analyticsEnv, datasetName, session, metrics)),
     );
 
-    if (subscriptionsResult.error) {
-      console.error(`Failed to get subscriptions for session ${session.sessionId}: ${subscriptionsResult.error}`);
-      // Continue with session deletion even if subscription lookup fails
-    }
-
-    const subscriptions = subscriptionsResult.data;
-
-    // Remove from each SubscriptionDO
-    for (const sub of subscriptions) {
-      try {
-        const doId = env.SUBSCRIPTION_DO.idFromName(sub.streamId);
-        const stub = env.SUBSCRIPTION_DO.get(doId);
-
-        const response = await stub.fetch(
-          new Request("http://do/subscriber", {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Stream-Id": sub.streamId,
-            },
-            body: JSON.stringify({ sessionId: session.sessionId }),
-          }),
-        );
-
-        if (response.ok) {
-          subscriptionRemoveSuccesses++;
-        } else {
-          subscriptionRemoveFailures++;
-        }
-      } catch (err) {
-        console.error(
-          `Failed to remove subscription ${session.sessionId} from ${sub.streamId}:`,
-          err,
-        );
-        subscriptionRemoveFailures++;
-      }
-    }
-
-    // Delete session stream from core
-    try {
-      const response = await fetchFromCore(
-        env,
-        `/v1/stream/session:${session.sessionId}`,
-        { method: "DELETE" },
-      );
-
-      if (response.ok || response.status === 404) {
-        streamDeleteSuccesses++;
-        metrics.sessionDelete(session.sessionId, 0);
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        streamDeleteSuccesses += result.value.streamDeleteSuccess ? 1 : 0;
+        streamDeleteFailures += result.value.streamDeleteSuccess ? 0 : 1;
+        subscriptionRemoveSuccesses += result.value.subscriptionSuccesses;
+        subscriptionRemoveFailures += result.value.subscriptionFailures;
       } else {
         streamDeleteFailures++;
       }
-    } catch (err) {
-      console.error(`Failed to delete session stream ${session.sessionId}:`, err);
-      streamDeleteFailures++;
     }
   }
 

@@ -4,7 +4,6 @@ import {
   createCoreClient,
   uniqueSessionId,
   uniqueStreamId,
-  delay,
   type SubscriptionsClient,
   type CoreClient,
   type SessionResponse,
@@ -23,26 +22,10 @@ beforeAll(() => {
 });
 
 describe("cleanup integration", () => {
-  // Note: These tests verify the cleanup-related functionality that can be
-  // tested without waiting for actual TTL expiry. Full TTL expiry tests would
-  // require either very short TTLs or mocking, which is covered in unit tests.
-
-  it("touched sessions are preserved during cleanup checks", async () => {
-    const sessionId = uniqueSessionId();
-    const streamId = uniqueStreamId();
-
-    await subs.subscribe(sessionId, streamId);
-
-    // Touch to ensure activity
-    await subs.touchSession(sessionId);
-
-    // Run reconcile (no cleanup) - session should be valid
-    const reconcileRes = await subs.reconcile(false);
-    expect(reconcileRes.status).toBe(200);
-
-    const reconcile = (await reconcileRes.json()) as ReconcileResponse;
-    expect(reconcile.orphanedSessionIds).not.toContain(sessionId);
-  });
+  // Note: In the new architecture, cleanup is handled lazily:
+  // - Session streams in core are the source of truth
+  // - SubscriptionDOs clean up stale subscribers during fanout (404 response)
+  // - The cleanup cron handles expired sessions via Analytics Engine queries
 
   it("session streams are accessible after subscription", async () => {
     const sessionId = uniqueSessionId();
@@ -53,56 +36,17 @@ describe("cleanup integration", () => {
     // Session stream should exist in core
     const coreRes = await core.getStreamHead(`session:${sessionId}`);
     expect(coreRes.ok).toBe(true);
-
-    // Session should be valid according to reconcile
-    const reconcileRes = await subs.reconcile(false);
-    const reconcile = (await reconcileRes.json()) as ReconcileResponse;
-    expect(reconcile.validSessions).toBeGreaterThanOrEqual(1);
   });
 
-  it("reconcile identifies orphaned D1 records", async () => {
-    const sessionId = uniqueSessionId("orphan");
-    const streamId = uniqueStreamId();
-
-    // Create subscription (creates both D1 record and core stream)
-    await subs.subscribe(sessionId, streamId);
-
-    // Manually delete the core stream to create orphan
-    await core.deleteStream(`session:${sessionId}`);
-
-    // Allow deletion to propagate
-    await delay(100);
-
-    // Reconcile should identify this as orphaned
+  it("reconcile endpoint returns informational message", async () => {
+    // In the new architecture, reconcile doesn't do D1 cleanup
+    // It returns a message explaining the new approach
     const reconcileRes = await subs.reconcile(false);
     expect(reconcileRes.status).toBe(200);
 
     const reconcile = (await reconcileRes.json()) as ReconcileResponse;
-    expect(reconcile.orphanedSessionIds).toContain(sessionId);
-    expect(reconcile.orphanedInD1).toBeGreaterThanOrEqual(1);
-  });
-
-  it("reconcile cleanup removes orphaned records", async () => {
-    const sessionId = uniqueSessionId("cleanup");
-    const streamId = uniqueStreamId();
-
-    // Create subscription
-    await subs.subscribe(sessionId, streamId);
-
-    // Delete core stream to create orphan
-    await core.deleteStream(`session:${sessionId}`);
-    await delay(100);
-
-    // Reconcile with cleanup
-    const reconcileRes = await subs.reconcile(true);
-    expect(reconcileRes.status).toBe(200);
-
-    const reconcile = (await reconcileRes.json()) as ReconcileResponse;
-    expect(reconcile.cleaned).toBeGreaterThanOrEqual(1);
-
-    // Session should now be gone from D1
-    const sessionRes = await subs.getSession(sessionId);
-    expect(sessionRes.status).toBe(404);
+    expect(reconcile.message).toContain("handled automatically");
+    expect(reconcile.message).toContain("source of truth");
   });
 
   it("delete session removes session streams from core", async () => {
@@ -124,7 +68,7 @@ describe("cleanup integration", () => {
     expect(afterRes.status).toBe(404);
   });
 
-  it("multiple subscriptions are cleaned up with session", async () => {
+  it("multiple subscriptions work with same session", async () => {
     const sessionId = uniqueSessionId();
     const streams = Array.from({ length: 3 }, (_, i) => uniqueStreamId(`clean-${i}`));
 
@@ -134,16 +78,30 @@ describe("cleanup integration", () => {
       await subs.subscribe(sessionId, streamId);
     }
 
-    // Verify subscriptions
-    const beforeRes = await subs.getSession(sessionId);
-    const before = (await beforeRes.json()) as SessionResponse;
-    expect(before.subscriptions).toHaveLength(3);
+    // Session should exist
+    const sessionRes = await subs.getSession(sessionId);
+    expect(sessionRes.status).toBe(200);
 
     // Delete session
     await subs.deleteSession(sessionId);
 
-    // All subscriptions should be gone
+    // Session should be gone (404)
     const afterRes = await subs.getSession(sessionId);
     expect(afterRes.status).toBe(404);
+  });
+
+  it("session touch works", async () => {
+    const sessionId = uniqueSessionId();
+    const streamId = uniqueStreamId();
+
+    await subs.subscribe(sessionId, streamId);
+
+    // Touch should succeed
+    const touchRes = await subs.touchSession(sessionId);
+    expect(touchRes.status).toBe(200);
+
+    // Session should still exist
+    const sessionRes = await subs.getSession(sessionId);
+    expect(sessionRes.status).toBe(200);
   });
 });

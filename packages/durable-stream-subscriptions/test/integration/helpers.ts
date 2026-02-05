@@ -136,22 +136,21 @@ export interface SubscribeResponse {
 
 export interface SessionResponse {
   sessionId: string;
-  createdAt: number;
-  lastActiveAt: number;
-  ttlSeconds: number;
-  expiresAt: number;
   sessionStreamPath: string;
   subscriptions: Array<{
     streamId: string;
-    subscribedAt: number;
   }>;
 }
 
+export interface TouchResponse {
+  sessionId: string;
+  expiresAt: number;
+}
+
 export interface ReconcileResponse {
+  message: string;
   totalSessions: number;
   validSessions: number;
   orphanedInD1: number;
-  orphanedSessionIds: string[];
   cleaned: number;
-  errors?: string[];
 }
