@@ -14,9 +14,11 @@ import {
   RefreshCw,
   TrendingUp,
   Zap,
+  Clock,
+  Layers,
 } from "lucide-react";
-import { getHealth, listSessions, getHotStreams, getSystemMetrics } from "../lib/admin-api";
-import type { HealthResponse, HotStream, SystemMetrics } from "../lib/admin-api";
+import { getHealth, listSessions, getHotStreams, getSystemMetrics, getQueueLatency } from "../lib/admin-api";
+import type { HealthResponse, HotStream, SystemMetrics, QueueLatencyMetrics } from "../lib/admin-api";
 import { useStreamDB } from "../lib/stream-db-context";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -124,6 +126,7 @@ function OverviewPage() {
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [hotStreams, setHotStreams] = useState<HotStream[]>([]);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
+  const [queueLatency, setQueueLatency] = useState<QueueLatencyMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -134,16 +137,18 @@ function OverviewPage() {
   const fetchData = async (showRefresh = false) => {
     try {
       if (showRefresh) setIsRefreshing(true);
-      const [healthData, sessionsData, hotStreamsData, systemData] = await Promise.all([
+      const [healthData, sessionsData, hotStreamsData, systemData, queueData] = await Promise.all([
         getHealth().catch(() => null),
         listSessions({ limit: 1000 }).catch(() => null),
         getHotStreams({ minutes: 5, limit: 5 }).catch(() => null),
         getSystemMetrics().catch(() => null),
+        getQueueLatency({ minutes: 60 }).catch(() => null),
       ]);
       if (healthData) setHealth(healthData);
       if (sessionsData) setSessionCount(sessionsData.sessions.length);
       if (hotStreamsData) setHotStreams(hotStreamsData.streams);
       if (systemData) setSystemMetrics(systemData);
+      if (queueData) setQueueLatency(queueData);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -279,6 +284,71 @@ function OverviewPage() {
                   </div>
                 </Link>
               ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue Latency */}
+        {queueLatency && queueLatency.totalMessages > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="w-4 h-4 text-surface-500" />
+                Queue Latency
+                <Badge variant="secondary" className="ml-auto text-xs">
+                  Last {queueLatency.periodMinutes} min
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="p-3 bg-surface-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-surface-500 text-xs mb-1">
+                    <Clock className="w-3 h-3" />
+                    Avg Lag
+                  </div>
+                  <div className="text-xl font-semibold text-surface-900 tabular-nums">
+                    {queueLatency.avgLagTime}ms
+                  </div>
+                </div>
+                <div className="p-3 bg-surface-50 rounded-lg">
+                  <div className="text-surface-500 text-xs mb-1">P50</div>
+                  <div className="text-xl font-semibold text-surface-900 tabular-nums">
+                    {queueLatency.p50LagTime}ms
+                  </div>
+                </div>
+                <div className="p-3 bg-surface-50 rounded-lg">
+                  <div className="text-surface-500 text-xs mb-1">P90</div>
+                  <div className="text-xl font-semibold text-surface-900 tabular-nums">
+                    {queueLatency.p90LagTime}ms
+                  </div>
+                </div>
+                <div className="p-3 bg-surface-50 rounded-lg">
+                  <div className="text-surface-500 text-xs mb-1">P99</div>
+                  <div className="text-xl font-semibold text-surface-900 tabular-nums">
+                    {queueLatency.p99LagTime}ms
+                  </div>
+                </div>
+              </div>
+              {queueLatency.buckets.length > 0 && (
+                <div className="h-16 flex items-end gap-0.5">
+                  {queueLatency.buckets.slice(-60).map((bucket, i) => {
+                    const maxLag = Math.max(...queueLatency.buckets.slice(-60).map(b => b.avgLagTime), 1);
+                    const height = (bucket.avgLagTime / maxLag) * 100;
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 bg-primary-200 hover:bg-primary-300 transition-colors rounded-t"
+                        style={{ height: `${Math.max(height, 2)}%` }}
+                        title={`${bucket.minute}: ${bucket.avgLagTime}ms avg, ${bucket.messageCount} msgs`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+              <div className="mt-2 text-xs text-surface-500 text-center">
+                {queueLatency.totalMessages.toLocaleString()} messages processed
+              </div>
             </CardContent>
           </Card>
         )}

@@ -203,6 +203,22 @@ export interface StreamSubscribersResponse {
   activeSubscribers: number;
 }
 
+export interface QueueLatencyBucket {
+  minute: string;
+  avgLagTime: number;
+  messageCount: number;
+}
+
+export interface QueueLatencyMetrics {
+  avgLagTime: number;
+  p50LagTime: number;
+  p90LagTime: number;
+  p99LagTime: number;
+  totalMessages: number;
+  buckets: QueueLatencyBucket[];
+  periodMinutes: number;
+}
+
 // Metrics API
 export async function getHotStreams(options?: {
   minutes?: number;
@@ -239,6 +255,16 @@ export async function getStreamSubscribers(
   return fetchJson<StreamSubscribersResponse>(
     `/admin/api/metrics/streams/${encodeURIComponent(streamId)}/subscribers`
   );
+}
+
+export async function getQueueLatency(options?: {
+  minutes?: number;
+}): Promise<QueueLatencyMetrics> {
+  const params = new URLSearchParams();
+  if (options?.minutes) params.set("minutes", options.minutes.toString());
+
+  const query = params.toString();
+  return fetchJson<QueueLatencyMetrics>(`/admin/api/metrics/queue/latency${query ? `?${query}` : ""}`);
 }
 
 // Export error class for handling

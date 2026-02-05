@@ -8,7 +8,6 @@ compatibility_date = "2026-02-02"
 [assets]
 directory = "dist/admin-ui"
 binding = "ASSETS"
-serve_directly = false
 
 [durable_objects]
 bindings = [

@@ -100,7 +100,7 @@ pnpx wrangler deploy
 
 ### 6. (Optional) Enable Admin Metrics Dashboard
 
-The admin UI shows real-time metrics (hot streams, throughput sparklines, subscriber counts) when configured. These metrics are written by the deployed worker to Analytics Engine, so they only work in production.
+The admin UI shows real-time metrics (hot streams, throughput sparklines, subscriber counts, queue latency) when configured. These metrics are written by the deployed worker to Analytics Engine, so they only work in production.
 
 ```bash
 # Get your account ID
@@ -118,6 +118,8 @@ To create the `METRICS_API_TOKEN`:
 1. Go to https://dash.cloudflare.com/profile/api-tokens
 2. Create a token with **Account Analytics Read** permission
 3. Copy the token and paste when prompted
+
+**Queue Latency Metrics**: The dashboard also displays queue latency metrics (avg lag, P50/P90/P99 percentiles) for the fanout queue. This uses Cloudflare's built-in queue metrics via the GraphQL Analytics API. The queue ID is looked up automatically from the queue name configured in `wrangler.toml`. Queue latency data only appears when messages are processed through the queue (subscriber count > 200 threshold).
 
 ### 7. (Optional) Enable API Authentication
 

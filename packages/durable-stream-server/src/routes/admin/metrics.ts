@@ -9,6 +9,7 @@ import {
   getSystemThroughput,
   getTotalActiveSubscribers,
 } from "../../services/analytics";
+import { getQueueLatencyMetrics } from "../../services/queue-metrics";
 
 const streamIdParamSchema = z.object({
   streamId: z.string().min(1),
@@ -21,6 +22,10 @@ const throughputQuerySchema = z.object({
 const hotStreamsQuerySchema = z.object({
   minutes: z.coerce.number().int().min(1).max(60).optional().default(5),
   limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+});
+
+const queueLatencyQuerySchema = z.object({
+  minutes: z.coerce.number().int().min(1).max(1440).optional().default(60),
 });
 
 export function createAdminMetricsRoutes() {
@@ -170,6 +175,39 @@ export function createAdminMetricsRoutes() {
       } catch (error) {
         console.error("Failed to fetch subscriber count:", error);
         return c.json({ error: "Failed to fetch metrics" }, 500);
+      }
+    }
+  );
+
+  /**
+   * GET /queue/latency - Queue latency metrics from Cloudflare Queues
+   */
+  app.get(
+    "/queue/latency",
+    zValidator("query", queueLatencyQuerySchema),
+    async (c) => {
+      const config = checkMetricsConfig(c);
+      if (!config) {
+        return c.json({ error: "Metrics not configured" }, 503);
+      }
+
+      // Queue name from wrangler.toml binding - the API will look up the UUID
+      const queueName = "durable-streams-fanout-queue";
+
+      const { minutes } = c.req.valid("query");
+
+      try {
+        const metrics = await getQueueLatencyMetrics(
+          config.accountId,
+          config.apiToken,
+          queueName,
+          { minutes }
+        );
+
+        return c.json(metrics);
+      } catch (error) {
+        console.error("Failed to fetch queue latency metrics:", error);
+        return c.json({ error: "Failed to fetch queue metrics" }, 500);
       }
     }
   );

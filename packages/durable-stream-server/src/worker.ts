@@ -20,7 +20,6 @@ export interface Env {
   METRICS?: AnalyticsEngineDataset;
   CF_ACCOUNT_ID?: string;
   METRICS_API_TOKEN?: string;
-  FANOUT_QUEUE_ID?: string;
 }
 
 const edgeApp = createEdgeApp();
