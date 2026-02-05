@@ -127,6 +127,25 @@ Cloudflare’s DOs.
 - `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare server.
 - `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare server.
 
+## Code Walkthroughs
+
+Each package includes a Slidev presentation that tells the story of how data flows through the system:
+
+| Package | Run Command | Stories |
+|---------|-------------|---------|
+| Core | `cd packages/durable-stream-core/docs && pnpm install && pnpm dev` | Write, Read, Real-time |
+| Subscriptions | `cd packages/durable-stream-subscriptions/docs && pnpm install && pnpm dev` | Session, Subscribe, Fanout |
+| Admin | `cd packages/durable-stream-admin/docs && pnpm install && pnpm dev` | Registry, Metrics |
+
+Opens at http://localhost:3030. Arrow keys to navigate.
+
+### Updating
+
+Presentations import code directly from source files. To update:
+1. Edit `docs/walkthrough.md` in the relevant package
+2. Code changes are reflected automatically
+3. See https://sli.dev/guide/syntax for Slidev syntax
+
 ## More Details
 See `packages/durable-stream-server/README.md` for implementation specifics,
 limitations, and additional operational notes.
