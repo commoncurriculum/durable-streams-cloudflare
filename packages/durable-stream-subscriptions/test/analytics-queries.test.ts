@@ -3,7 +3,7 @@ import {
   getSessionSubscriptions,
   getExpiredSessions,
   getActiveStreamIds,
-} from "../src/analytics-queries";
+} from "../src/analytics";
 
 // Mock global fetch
 let mockFetch: ReturnType<typeof vi.fn>;

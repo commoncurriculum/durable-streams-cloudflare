@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Mock cloudflare:workers (worker re-exports SubscriptionDO which extends DurableObject)
+vi.mock("cloudflare:workers", () => ({
+  DurableObject: class {},
+}));
+
 // Mock dependencies
 vi.mock("../src/metrics", () => ({
   createMetrics: vi.fn(() => ({
@@ -30,7 +35,7 @@ function createBaseEnv() {
 }
 
 async function createTestWorker() {
-  const { default: worker } = await import("../src/worker");
+  const { default: worker } = await import("../src/http/worker");
   return worker;
 }
 

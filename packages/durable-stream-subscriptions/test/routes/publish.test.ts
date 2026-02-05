@@ -1,60 +1,48 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import type { PublishResult } from "../../src/subscriptions/types";
+
+// Mock service function
+const mockPublish = vi.fn();
+
+vi.mock("../../src/subscriptions/publish", () => ({
+  publish: (...args: unknown[]) => mockPublish(...args),
+}));
 
 // Mock metrics
 vi.mock("../../src/metrics", () => ({
   createMetrics: vi.fn(() => ({
-    publish: vi.fn(),
     publishError: vi.fn(),
   })),
 }));
 
 function createTestApp() {
-  return import("../../src/routes/publish").then(({ publishRoutes }) => {
+  return import("../../src/http/routes/publish").then(({ publishRoutes }) => {
     const app = new Hono();
     app.route("/v1", publishRoutes);
     return app;
   });
 }
 
-function createMockDoResponse(options: {
-  ok?: boolean;
-  status?: number;
-  body?: string;
-  headers?: Record<string, string>;
-} = {}) {
-  const {
-    ok = true,
-    status = 200,
-    body = "{}",
-    headers = {},
-  } = options;
-
-  return new Response(body, {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...headers,
-    },
-  });
-}
-
-function createMockDoFetch(response: Response) {
-  return vi.fn().mockResolvedValue(response);
-}
-
-function createMockDoNamespace(mockDoFetch: ReturnType<typeof vi.fn>) {
+function createMockEnv() {
   return {
-    idFromName: vi.fn().mockReturnValue("do-id"),
-    get: vi.fn().mockReturnValue({ fetch: mockDoFetch }),
+    CORE_URL: "http://localhost:8787",
+    SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+    METRICS: {} as AnalyticsEngineDataset,
   };
 }
 
-function createMockEnv(mockDoNamespace: ReturnType<typeof createMockDoNamespace>) {
+function createPublishResult(overrides: Partial<PublishResult> = {}): PublishResult {
   return {
-    CORE_URL: "http://localhost:8787",
-    SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
-    METRICS: {} as AnalyticsEngineDataset,
+    status: 200,
+    nextOffset: null,
+    upToDate: null,
+    streamClosed: null,
+    body: "{}",
+    fanoutCount: 0,
+    fanoutSuccesses: 0,
+    fanoutFailures: 0,
+    ...overrides,
   };
 }
 
@@ -65,17 +53,13 @@ describe("POST /publish/:streamId", () => {
 
   describe("streamId validation", () => {
     it("rejects invalid streamId with semicolon", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       // URL-encode the semicolon so it reaches the handler as part of the streamId
       const response = await app.request("/v1/publish/bad%3Bid", {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(response.status).toBe(400);
       // Zod validation returns error in 'success' and 'error' fields with array of issues
@@ -84,39 +68,29 @@ describe("POST /publish/:streamId", () => {
     });
 
     it("rejects streamId with SQL-like content", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const response = await app.request("/v1/publish/'; DROP TABLE --", {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(response.status).toBe(400);
     });
 
     it("rejects streamId with quotes", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const response = await app.request("/v1/publish/test'id", {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(response.status).toBe(400);
     });
 
     it("accepts valid streamId formats", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       const validIds = ["stream-123", "my_stream", "user:stream:1", "Stream.Name.123"];
@@ -125,88 +99,56 @@ describe("POST /publish/:streamId", () => {
           method: "POST",
           body: JSON.stringify({ data: "test" }),
           headers: { "Content-Type": "application/json" },
-        }, createMockEnv(mockDoNamespace));
+        }, createMockEnv());
         expect(response.status).not.toBe(400);
       }
     });
   });
 
-  describe("routing to SubscriptionDO", () => {
-    it("routes to SubscriptionDO for the correct streamId", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+  describe("routing to publish service", () => {
+    it("calls publish service with correct streamId", async () => {
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
+      const env = createMockEnv();
       await app.request("/v1/publish/my-stream-id", {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, env);
 
-      // Verify DO was addressed by streamId
-      expect(mockDoNamespace.idFromName).toHaveBeenCalledWith("my-stream-id");
-      expect(mockDoNamespace.get).toHaveBeenCalled();
-    });
-
-    it("calls DO publish endpoint", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/test-stream", {
-        method: "POST",
-        body: JSON.stringify({ message: "hello" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(mockDoFetch).toHaveBeenCalledWith(
+      expect(mockPublish).toHaveBeenCalledWith(
+        env,
+        "my-stream-id",
         expect.objectContaining({
-          method: "POST",
-          url: "http://do/publish",
+          contentType: "application/json",
         }),
       );
     });
 
-    it("passes Content-Type header to DO", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("passes Content-Type to publish service", async () => {
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "plain text",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("Content-Type")).toBe("text/plain");
-    });
-
-    it("passes X-Stream-Id header to DO", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/target-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
-
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("X-Stream-Id")).toBe("target-stream");
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.anything(),
+        "my-stream",
+        expect.objectContaining({
+          contentType: "text/plain",
+        }),
+      );
     });
   });
 
   describe("producer headers (idempotency)", () => {
-    it("passes Producer-Id header when present", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("passes Producer-Id when present", async () => {
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -216,16 +158,19 @@ describe("POST /publish/:streamId", () => {
           "Content-Type": "text/plain",
           "Producer-Id": "producer-1",
         },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("Producer-Id")).toBe("producer-1");
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.anything(),
+        "my-stream",
+        expect.objectContaining({
+          producerId: "producer-1",
+        }),
+      );
     });
 
-    it("passes Producer-Epoch header when present", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("passes Producer-Epoch when present", async () => {
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -235,16 +180,19 @@ describe("POST /publish/:streamId", () => {
           "Content-Type": "text/plain",
           "Producer-Epoch": "5",
         },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("Producer-Epoch")).toBe("5");
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.anything(),
+        "my-stream",
+        expect.objectContaining({
+          producerEpoch: "5",
+        }),
+      );
     });
 
-    it("passes Producer-Seq header when present", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("passes Producer-Seq when present", async () => {
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -254,16 +202,19 @@ describe("POST /publish/:streamId", () => {
           "Content-Type": "text/plain",
           "Producer-Seq": "123",
         },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("Producer-Seq")).toBe("123");
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.anything(),
+        "my-stream",
+        expect.objectContaining({
+          producerSeq: "123",
+        }),
+      );
     });
 
     it("passes all producer headers together", async () => {
-      const mockResponse = createMockDoResponse();
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+      mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -275,31 +226,33 @@ describe("POST /publish/:streamId", () => {
           "Producer-Epoch": "1",
           "Producer-Seq": "42",
         },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      expect(doRequest.headers.get("Producer-Id")).toBe("producer-1");
-      expect(doRequest.headers.get("Producer-Epoch")).toBe("1");
-      expect(doRequest.headers.get("Producer-Seq")).toBe("42");
+      expect(mockPublish).toHaveBeenCalledWith(
+        expect.anything(),
+        "my-stream",
+        expect.objectContaining({
+          producerId: "producer-1",
+          producerEpoch: "1",
+          producerSeq: "42",
+        }),
+      );
     });
   });
 
   describe("error handling", () => {
-    it("returns DO error response status", async () => {
-      const mockResponse = createMockDoResponse({
-        ok: false,
+    it("returns publish service error status", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({
         status: 500,
         body: JSON.stringify({ error: "Failed to write to stream" }),
-      });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+      }));
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(500);
     });
@@ -308,25 +261,21 @@ describe("POST /publish/:streamId", () => {
       const { createMetrics } = await import("../../src/metrics");
 
       const mockMetrics = {
-        publish: vi.fn(),
         publishError: vi.fn(),
       };
       vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
 
-      const mockResponse = createMockDoResponse({
-        ok: false,
+      mockPublish.mockResolvedValue(createPublishResult({
         status: 503,
         body: JSON.stringify({ error: "Service unavailable" }),
-      });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+      }));
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(mockMetrics.publishError).toHaveBeenCalledWith(
         "my-stream",
@@ -335,75 +284,80 @@ describe("POST /publish/:streamId", () => {
       );
     });
 
-    it("returns 400 for DO 400 response", async () => {
-      const mockResponse = createMockDoResponse({ ok: false, status: 400 });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("returns 400 for publish result with 400 status", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({ status: 400 }));
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
-    it("returns 404 for DO 404 response", async () => {
-      const mockResponse = createMockDoResponse({ ok: false, status: 404 });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("returns 404 for publish result with 404 status", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({ status: 404 }));
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(404);
+    });
+
+    it("returns 500 when publish service throws", async () => {
+      mockPublish.mockRejectedValue(new Error("DO unavailable"));
+
+      const app = await createTestApp();
+      const res = await app.request("/v1/publish/my-stream", {
+        method: "POST",
+        body: "test",
+        headers: { "Content-Type": "text/plain" },
+      }, createMockEnv());
+
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Failed to publish");
     });
   });
 
   describe("response", () => {
-    it("returns DO response body on success", async () => {
-      const mockResponse = createMockDoResponse({
+    it("returns publish result body on success", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({
         body: JSON.stringify({ offset: 42 }),
-      });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+      }));
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toEqual({ offset: 42 });
     });
 
-    it("preserves DO response headers", async () => {
-      const mockResponse = createMockDoResponse({
-        headers: {
-          "X-Stream-Next-Offset": "999",
-          "X-Fanout-Count": "5",
-          "X-Fanout-Successes": "4",
-          "X-Fanout-Failures": "1",
-        },
-      });
-      const mockDoFetch = createMockDoFetch(mockResponse);
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+    it("sets response headers from publish result", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({
+        nextOffset: "999",
+        fanoutCount: 5,
+        fanoutSuccesses: 4,
+        fanoutFailures: 1,
+      }));
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.headers.get("X-Stream-Next-Offset")).toBe("999");
       expect(res.headers.get("X-Fanout-Count")).toBe("5");

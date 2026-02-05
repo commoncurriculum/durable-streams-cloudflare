@@ -3,14 +3,14 @@ import { cors } from "hono/cors";
 import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
 import { sessionRoutes } from "./routes/session";
-import { cleanupExpiredSessions } from "./cleanup";
-import { createMetrics } from "./metrics";
-import { SubscriptionDO } from "./subscription_do";
+import { cleanupExpiredSessions } from "../cleanup";
+import { createMetrics } from "../metrics";
+import { SubscriptionDO } from "../subscriptions/do";
 
 export { SubscriptionDO };
 
 export interface Env {
-  SUBSCRIPTION_DO: DurableObjectNamespace;
+  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
   CORE?: Fetcher;
   CORE_URL: string;
   AUTH_TOKEN?: string;

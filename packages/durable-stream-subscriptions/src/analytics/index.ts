@@ -7,7 +7,7 @@
  * @see https://developers.cloudflare.com/analytics/analytics-engine/worker-querying/
  */
 
-import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "./constants";
+import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../constants";
 
 export interface AnalyticsQueryEnv {
   ACCOUNT_ID: string;

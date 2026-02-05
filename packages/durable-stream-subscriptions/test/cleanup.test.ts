@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the analytics queries module
-vi.mock("../src/analytics-queries", () => ({
+vi.mock("../src/analytics", () => ({
   getExpiredSessions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
   getSessionSubscriptions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
 }));
@@ -14,7 +14,7 @@ vi.mock("../src/metrics", () => ({
   })),
 }));
 
-// Mock fetch for core requests
+// Mock fetch for core requests (fetchFromCore falls back to global fetch)
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
@@ -42,7 +42,7 @@ describe("cleanup", () => {
     });
 
     it("should return early if no expired sessions found", async () => {
-      const { getExpiredSessions } = await import("../src/analytics-queries");
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({ data: [], error: undefined });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
@@ -66,7 +66,7 @@ describe("cleanup", () => {
 
     it("should clean up expired sessions", async () => {
       const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics-queries"
+        "../src/analytics"
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
@@ -79,9 +79,9 @@ describe("cleanup", () => {
         error: undefined,
       });
 
-      // Mock DO fetch
-      const mockDoFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ removed: true })));
-      const mockDoStub = { fetch: mockDoFetch };
+      // Mock DO RPC - removeSubscriber succeeds
+      const mockRemoveSubscriber = vi.fn().mockResolvedValue(undefined);
+      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
       const mockDoNamespace = {
         idFromName: vi.fn().mockReturnValue("do-id"),
         get: vi.fn().mockReturnValue(mockDoStub),
@@ -106,8 +106,9 @@ describe("cleanup", () => {
       expect(result.subscriptionRemoveSuccesses).toBe(2);
       expect(result.streamDeleteSuccesses).toBe(1);
 
-      // Verify DO was called to remove subscriptions
-      expect(mockDoFetch).toHaveBeenCalledTimes(2);
+      // Verify DO RPC was called to remove subscriptions
+      expect(mockRemoveSubscriber).toHaveBeenCalledTimes(2);
+      expect(mockRemoveSubscriber).toHaveBeenCalledWith("session-1");
 
       // Verify core was called to delete session stream
       expect(mockFetch).toHaveBeenCalledWith(
@@ -116,9 +117,9 @@ describe("cleanup", () => {
       );
     });
 
-    it("should handle DO fetch failures gracefully", async () => {
+    it("should handle DO RPC failures gracefully", async () => {
       const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics-queries"
+        "../src/analytics"
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
@@ -131,9 +132,9 @@ describe("cleanup", () => {
         error: undefined,
       });
 
-      // Mock DO fetch to fail
-      const mockDoFetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
-      const mockDoStub = { fetch: mockDoFetch };
+      // Mock DO RPC to fail
+      const mockRemoveSubscriber = vi.fn().mockRejectedValue(new Error("DO error"));
+      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
       const mockDoNamespace = {
         idFromName: vi.fn().mockReturnValue("do-id"),
         get: vi.fn().mockReturnValue(mockDoStub),
@@ -160,7 +161,7 @@ describe("cleanup", () => {
 
     it("should handle core deletion failures gracefully", async () => {
       const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics-queries"
+        "../src/analytics"
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
@@ -190,7 +191,7 @@ describe("cleanup", () => {
 
     it("should treat 404 from core as success (already deleted)", async () => {
       const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics-queries"
+        "../src/analytics"
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
@@ -219,7 +220,7 @@ describe("cleanup", () => {
     });
 
     it("should use default dataset name if not provided", async () => {
-      const { getExpiredSessions } = await import("../src/analytics-queries");
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({ data: [], error: undefined });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
@@ -241,7 +242,7 @@ describe("cleanup", () => {
     });
 
     it("should handle analytics query errors gracefully", async () => {
-      const { getExpiredSessions } = await import("../src/analytics-queries");
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
         data: [],
         error: "Analytics Engine query failed",
@@ -267,9 +268,8 @@ describe("cleanup", () => {
   describe("cleanup metrics", () => {
     it("reports correct subscription removal stats", async () => {
       const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics-queries"
+        "../src/analytics"
       );
-      const { createMetrics } = await import("../src/metrics");
 
       // Setup: 1 expired session with 2 subscriptions
       vi.mocked(getExpiredSessions).mockResolvedValue({
@@ -282,11 +282,11 @@ describe("cleanup", () => {
         error: undefined,
       });
 
-      // Mock DO fetch - first succeeds, second fails
-      const mockDoFetch = vi.fn()
-        .mockResolvedValueOnce(new Response(JSON.stringify({ removed: true })))
-        .mockResolvedValueOnce(new Response(null, { status: 500 }));
-      const mockDoStub = { fetch: mockDoFetch };
+      // Mock DO RPC - first succeeds, second fails
+      const mockRemoveSubscriber = vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("DO error"));
+      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
       const mockDoNamespace = {
         idFromName: vi.fn().mockReturnValue("do-id"),
         get: vi.fn().mockReturnValue(mockDoStub),

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock fetchFromCore
 const mockFetchFromCore = vi.fn();
-vi.mock("../src/core-client", () => ({
+vi.mock("../src/client", () => ({
   fetchFromCore: (...args: unknown[]) => mockFetchFromCore(...args),
 }));
 
@@ -14,6 +14,18 @@ const mockMetrics = {
 };
 vi.mock("../src/metrics", () => ({
   createMetrics: vi.fn(() => mockMetrics),
+}));
+
+// Mock DurableObject base class
+vi.mock("cloudflare:workers", () => ({
+  DurableObject: class {
+    protected ctx: unknown;
+    protected env: unknown;
+    constructor(ctx: unknown, env: unknown) {
+      this.ctx = ctx;
+      this.env = env;
+    }
+  },
 }));
 
 // Mock SQL storage for SubscriptionDO
@@ -106,7 +118,7 @@ describe("SubscriptionDO", () => {
 
   describe("initialization", () => {
     it("should create subscribers table on init", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       expect(mockState.blockConcurrencyWhile).toHaveBeenCalled();
@@ -114,50 +126,20 @@ describe("SubscriptionDO", () => {
     });
   });
 
-  describe("subscribe endpoint", () => {
+  describe("addSubscriber", () => {
     it("should add a subscriber", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      const request = new Request("http://do/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ sessionId: "session-123" }),
-      });
+      await dobj.addSubscriber("session-123");
 
-      const response = await dobj.fetch(request);
-      const body = (await response.json()) as { sessionId: string; streamId: string };
-
-      expect(response.status).toBe(200);
-      expect(body.sessionId).toBe("session-123");
-      expect(body.streamId).toBe("test-stream");
       expect(mockSql._data.has("session-123")).toBe(true);
-    });
-
-    it("should return 400 if sessionId is missing", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
-      const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
-
-      const request = new Request("http://do/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({}),
-      });
-
-      const response = await dobj.fetch(request);
-      expect(response.status).toBe(400);
     });
   });
 
-  describe("unsubscribe endpoint", () => {
+  describe("removeSubscriber", () => {
     it("should remove a subscriber", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // First add a subscriber
@@ -166,26 +148,15 @@ describe("SubscriptionDO", () => {
         subscribed_at: Date.now(),
       });
 
-      const request = new Request("http://do/unsubscribe", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ sessionId: "session-123" }),
-      });
+      await dobj.removeSubscriber("session-123");
 
-      const response = await dobj.fetch(request);
-      const body = (await response.json()) as { unsubscribed: boolean };
-
-      expect(response.status).toBe(200);
-      expect(body.unsubscribed).toBe(true);
+      expect(mockSql._data.has("session-123")).toBe(false);
     });
   });
 
-  describe("subscribers endpoint", () => {
+  describe("getSubscribers", () => {
     it("should return all subscribers", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add some subscribers
@@ -198,37 +169,17 @@ describe("SubscriptionDO", () => {
         subscribed_at: 2000,
       });
 
-      const request = new Request("http://do/subscribers", {
-        method: "GET",
-        headers: { "X-Stream-Id": "test-stream" },
-      });
+      const result = await dobj.getSubscribers("test-stream");
 
-      const response = await dobj.fetch(request);
-      const body = (await response.json()) as { count: number; subscribers: unknown[] };
-
-      expect(response.status).toBe(200);
-      expect(body.count).toBe(2);
-      expect(body.subscribers).toHaveLength(2);
+      expect(result.count).toBe(2);
+      expect(result.subscribers).toHaveLength(2);
+      expect(result.streamId).toBe("test-stream");
     });
   });
 
-  describe("404 handling", () => {
-    it("should return 404 for unknown paths", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
-      const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
-
-      const request = new Request("http://do/unknown", {
-        method: "GET",
-      });
-
-      const response = await dobj.fetch(request);
-      expect(response.status).toBe(404);
-    });
-  });
-
-  describe("publish endpoint", () => {
+  describe("publish", () => {
     it("should write to core and fanout to subscribers", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add subscribers
@@ -247,21 +198,15 @@ describe("SubscriptionDO", () => {
       mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
       mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      const result = await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
 
-      const response = await dobj.fetch(request);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("X-Fanout-Count")).toBe("2");
-      expect(response.headers.get("X-Fanout-Successes")).toBe("2");
-      expect(response.headers.get("X-Fanout-Failures")).toBe("0");
+      expect(result.status).toBe(200);
+      expect(result.fanoutCount).toBe(2);
+      expect(result.fanoutSuccesses).toBe(2);
+      expect(result.fanoutFailures).toBe(0);
 
       // Verify core write was called first
       expect(mockFetchFromCore).toHaveBeenNthCalledWith(
@@ -276,7 +221,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should return error when core write fails", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add a subscriber
@@ -287,27 +232,20 @@ describe("SubscriptionDO", () => {
         new Response("Internal error", { status: 500 }),
       );
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      const result = await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
 
-      const response = await dobj.fetch(request);
-
-      expect(response.status).toBe(500);
-      const body = (await response.json()) as { error: string };
-      expect(body.error).toBe("Failed to write to stream");
+      expect(result.status).toBe(500);
+      expect(JSON.parse(result.body).error).toBe("Failed to write to stream");
 
       // Verify no fanout was attempted
       expect(mockFetchFromCore).toHaveBeenCalledTimes(1);
     });
 
     it("should forward producer headers to core", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Mock core write success
@@ -318,19 +256,13 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-          "Producer-Id": "producer-123",
-          "Producer-Epoch": "1",
-          "Producer-Seq": "42",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
+        producerId: "producer-123",
+        producerEpoch: "1",
+        producerSeq: "42",
       });
-
-      await dobj.fetch(request);
 
       expect(mockFetchFromCore).toHaveBeenCalledWith(
         mockEnv,
@@ -346,7 +278,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should use fanout producer headers with source offset", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add subscriber
@@ -363,16 +295,10 @@ describe("SubscriptionDO", () => {
       // Mock fanout write
       mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "my-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      await dobj.publish("my-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
-
-      await dobj.fetch(request);
 
       // Verify fanout used correct producer headers
       expect(mockFetchFromCore).toHaveBeenNthCalledWith(
@@ -390,7 +316,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should remove stale subscriber when fanout returns 404", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add subscribers - one valid, one stale
@@ -415,20 +341,14 @@ describe("SubscriptionDO", () => {
         return Promise.resolve(new Response(null, { status: 200 }));
       });
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      const result = await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
 
-      const response = await dobj.fetch(request);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("X-Fanout-Successes")).toBe("1");
-      expect(response.headers.get("X-Fanout-Failures")).toBe("1");
+      expect(result.status).toBe(200);
+      expect(result.fanoutSuccesses).toBe(1);
+      expect(result.fanoutFailures).toBe(1);
 
       // Verify stale subscriber was removed from SQLite
       expect(mockSql._data.has("stale-session")).toBe(false);
@@ -437,7 +357,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should record metrics correctly", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Add subscriber
@@ -454,16 +374,10 @@ describe("SubscriptionDO", () => {
       // Mock fanout write
       mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
-
-      await dobj.fetch(request);
 
       expect(mockMetrics.publish).toHaveBeenCalledWith(
         "test-stream",
@@ -481,7 +395,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should record error metrics when core write fails", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Mock core write failure
@@ -489,16 +403,10 @@ describe("SubscriptionDO", () => {
         new Response("Internal error", { status: 500 }),
       );
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
-
-      await dobj.fetch(request);
 
       expect(mockMetrics.publishError).toHaveBeenCalledWith(
         "test-stream",
@@ -508,7 +416,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should handle publish with no subscribers", async () => {
-      const { SubscriptionDO } = await import("../src/subscription_do");
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // No subscribers added
@@ -521,21 +429,15 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      const request = new Request("http://do/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Stream-Id": "test-stream",
-        },
-        body: JSON.stringify({ message: "hello" }),
+      const result = await dobj.publish("test-stream", {
+        payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
+        contentType: "application/json",
       });
 
-      const response = await dobj.fetch(request);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("X-Fanout-Count")).toBe("0");
-      expect(response.headers.get("X-Fanout-Successes")).toBe("0");
-      expect(response.headers.get("X-Fanout-Failures")).toBe("0");
+      expect(result.status).toBe(200);
+      expect(result.fanoutCount).toBe(0);
+      expect(result.fanoutSuccesses).toBe(0);
+      expect(result.fanoutFailures).toBe(0);
 
       // Only core write should have been called
       expect(mockFetchFromCore).toHaveBeenCalledTimes(1);

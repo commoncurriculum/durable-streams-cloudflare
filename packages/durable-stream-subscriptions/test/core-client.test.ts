@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchFromCore, getAuthHeaders, type CoreClientEnv } from "../src/core-client";
+import { fetchFromCore, getAuthHeaders, type CoreClientEnv } from "../src/client";
 
 // Mock global fetch
 const mockFetch = vi.fn();

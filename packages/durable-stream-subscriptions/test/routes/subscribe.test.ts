@@ -1,50 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 
-// Mock core-client
-vi.mock("../../src/core-client", () => ({
-  fetchFromCore: vi.fn(),
+// Mock service functions
+const mockSubscribe = vi.fn();
+const mockUnsubscribe = vi.fn();
+const mockDeleteSession = vi.fn();
+
+vi.mock("../../src/subscriptions/subscribe", () => ({
+  subscribe: (...args: unknown[]) => mockSubscribe(...args),
 }));
 
-// Mock metrics
-vi.mock("../../src/metrics", () => ({
-  createMetrics: vi.fn(() => ({
-    subscribe: vi.fn(),
-    unsubscribe: vi.fn(),
-    sessionCreate: vi.fn(),
-    sessionDelete: vi.fn(),
-  })),
+vi.mock("../../src/subscriptions/unsubscribe", () => ({
+  unsubscribe: (...args: unknown[]) => mockUnsubscribe(...args),
+}));
+
+vi.mock("../../src/session", () => ({
+  deleteSession: (...args: unknown[]) => mockDeleteSession(...args),
 }));
 
 function createTestApp() {
-  return import("../../src/routes/subscribe").then(({ subscribeRoutes }) => {
+  return import("../../src/http/routes/subscribe").then(({ subscribeRoutes }) => {
     const app = new Hono();
     app.route("/v1", subscribeRoutes);
     return app;
   });
 }
 
-function createMockDoFetch(options: { ok?: boolean; status?: number; body?: object } = {}) {
-  const { ok = true, status = 200, body = {} } = options;
-  return vi.fn().mockResolvedValue(
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { "Content-Type": "application/json" },
-    }),
-  );
-}
-
-function createMockDoNamespace(mockDoFetch: ReturnType<typeof vi.fn>) {
-  return {
-    idFromName: vi.fn().mockReturnValue("do-id"),
-    get: vi.fn().mockReturnValue({ fetch: mockDoFetch }),
-  };
-}
-
-function createMockEnv(mockDoNamespace: ReturnType<typeof createMockDoNamespace>) {
+function createMockEnv() {
   return {
     CORE_URL: "http://localhost:8787",
-    SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+    SUBSCRIPTION_DO: {} as DurableObjectNamespace,
     METRICS: {} as AnalyticsEngineDataset,
     SESSION_TTL_SECONDS: "1800",
   };
@@ -57,416 +42,138 @@ describe("POST /subscribe", () => {
 
   describe("validation", () => {
     it("returns 400 when sessionId is missing", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 when streamId is missing", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 when sessionId contains invalid characters", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session;DROP TABLE", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 when streamId contains invalid characters", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session-1", streamId: "stream'OR'1'='1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 when sessionId contains spaces", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session with spaces", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("accepts valid sessionId with allowed special characters", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
+      mockSubscribe.mockResolvedValue({
+        sessionId: "user:123_test-session.v2",
+        streamId: "stream-1",
+        sessionStreamPath: "/v1/stream/session:user:123_test-session.v2",
+        expiresAt: Date.now() + 1800000,
+        isNewSession: true,
+      });
 
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "user:123_test-session.v2", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(200);
     });
   });
 
-  describe("session stream creation", () => {
-    it("creates session stream in core with PUT request", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
+  describe("subscription flow", () => {
+    it("calls subscribe service with correct params", async () => {
+      mockSubscribe.mockResolvedValue({
+        sessionId: "session-123",
+        streamId: "stream-abc",
+        sessionStreamPath: "/v1/stream/session:session-123",
+        expiresAt: Date.now() + 1800000,
+        isNewSession: true,
+      });
 
       const app = await createTestApp();
-      await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "new-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        "/v1/stream/session:new-session",
-        expect.objectContaining({
-          method: "PUT",
-          headers: expect.objectContaining({
-            "Content-Type": "application/json",
-            "X-Stream-Expires-At": expect.any(String),
-          }),
-        }),
-      );
-    });
-
-    it("handles 409 conflict from core (session already exists)", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: false,
-        status: 409,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "existing-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      // 409 means session already exists, which is fine - continue with subscription
-      expect(res.status).toBe(200);
-    });
-
-    it("returns 500 when core fails with non-409 error", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: vi.fn().mockResolvedValue("Internal error"),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(res.status).toBe(500);
-      const body = (await res.json()) as { error: string };
-      expect(body.error).toBe("Failed to create session stream");
-    });
-  });
-
-  describe("subscription via SubscriptionDO", () => {
-    it("routes subscription to SubscriptionDO with correct streamId", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
+      const env = createMockEnv();
       await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session-123", streamId: "stream-abc" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, env);
 
-      // Verify DO was addressed by streamId
-      expect(mockDoNamespace.idFromName).toHaveBeenCalledWith("stream-abc");
-      expect(mockDoNamespace.get).toHaveBeenCalled();
-
-      // Verify DO was called with correct subscribe request
-      expect(mockDoFetch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: "POST",
-          url: "http://do/subscribe",
-        }),
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        env,
+        "stream-abc",
+        "session-123",
+        "application/json",
       );
     });
 
-    it("passes sessionId in DO request body", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "my-session", streamId: "my-stream" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      // Verify the DO received the correct body
-      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
-      const doBody = await doRequest.json();
-      expect(doBody).toEqual({ sessionId: "my-session" });
-    });
-
-    it("returns 500 when DO subscription fails", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch({ ok: false, status: 500 });
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
+    it("returns 500 when subscribe service throws", async () => {
+      mockSubscribe.mockRejectedValue(new Error("Failed to create session stream: 500"));
 
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(500);
       const body = (await res.json()) as { error: string };
-      expect(body.error).toBe("Failed to add subscription");
-    });
-
-    it("rolls back session stream when DO subscription fails for new session", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch({ ok: false, status: 500 });
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      // First call: create session (success - new session)
-      // Second call: rollback delete
-      vi.mocked(fetchFromCore)
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 201,
-          text: vi.fn().mockResolvedValue(""),
-        } as unknown as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          text: vi.fn().mockResolvedValue(""),
-        } as unknown as Response);
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "new-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(res.status).toBe(500);
-
-      // Verify rollback DELETE was called
-      expect(fetchFromCore).toHaveBeenCalledTimes(2);
-      expect(fetchFromCore).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        "/v1/stream/session:new-session",
-        expect.objectContaining({ method: "DELETE" }),
-      );
-    });
-
-    it("does not rollback session stream when DO fails for existing session", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch({ ok: false, status: 500 });
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      // 409 means session already exists - not a new session
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: false,
-        status: 409,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "existing-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(res.status).toBe(500);
-
-      // Verify no rollback DELETE was called (only the initial PUT)
-      expect(fetchFromCore).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("metrics", () => {
-    it("records subscribe metric with isNewSession=true for new sessions", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { createMetrics } = await import("../../src/metrics");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      const mockMetrics = {
-        subscribe: vi.fn(),
-        unsubscribe: vi.fn(),
-        sessionCreate: vi.fn(),
-        sessionDelete: vi.fn(),
-      };
-      vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
-
-      // ok: true means new session created
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "new-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(mockMetrics.subscribe).toHaveBeenCalledWith(
-        "stream-1",
-        "new-session",
-        true, // isNewSession
-        expect.any(Number),
-      );
-      expect(mockMetrics.sessionCreate).toHaveBeenCalledWith(
-        "new-session",
-        1800,
-        expect.any(Number),
-      );
-    });
-
-    it("records subscribe metric with isNewSession=false for existing sessions", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { createMetrics } = await import("../../src/metrics");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      const mockMetrics = {
-        subscribe: vi.fn(),
-        unsubscribe: vi.fn(),
-        sessionCreate: vi.fn(),
-        sessionDelete: vi.fn(),
-      };
-      vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
-
-      // 409 means session already exists
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: false,
-        status: 409,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
-
-      const app = await createTestApp();
-      await app.request("/v1/subscribe", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: "existing-session", streamId: "stream-1" }),
-        headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
-
-      expect(mockMetrics.subscribe).toHaveBeenCalledWith(
-        "stream-1",
-        "existing-session",
-        false, // isNewSession
-        expect.any(Number),
-      );
-      expect(mockMetrics.sessionCreate).not.toHaveBeenCalled();
+      expect(body.error).toBe("Failed to subscribe");
     });
   });
 
   describe("response", () => {
     it("returns sessionId, streamId, and sessionStreamPath", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-      vi.mocked(fetchFromCore).mockResolvedValue({
-        ok: true,
-        status: 201,
-        text: vi.fn().mockResolvedValue(""),
-      } as unknown as Response);
+      mockSubscribe.mockResolvedValue({
+        sessionId: "my-session-id",
+        streamId: "my-stream",
+        sessionStreamPath: "/v1/stream/session:my-session-id",
+        expiresAt: Date.now() + 1800000,
+        isNewSession: true,
+      });
 
       const app = await createTestApp();
       const res = await app.request("/v1/subscribe", {
         method: "POST",
         body: JSON.stringify({ sessionId: "my-session-id", streamId: "my-stream" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -492,94 +199,41 @@ describe("DELETE /unsubscribe", () => {
 
   describe("validation", () => {
     it("returns 400 when sessionId contains invalid characters", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/unsubscribe", {
         method: "DELETE",
         body: JSON.stringify({ sessionId: "session;DROP TABLE", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 when streamId contains invalid characters", async () => {
-      const mockDoFetch = createMockDoFetch();
-      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
       const app = await createTestApp();
       const res = await app.request("/v1/unsubscribe", {
         method: "DELETE",
         body: JSON.stringify({ sessionId: "session-1", streamId: "stream'OR'1'='1" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv(mockDoNamespace));
+      }, createMockEnv());
 
       expect(res.status).toBe(400);
     });
   });
 
-  it("routes unsubscription to SubscriptionDO", async () => {
-    const mockDoFetch = createMockDoFetch({ body: { unsubscribed: true } });
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    const app = await createTestApp();
-    await app.request("/v1/unsubscribe", {
-      method: "DELETE",
-      body: JSON.stringify({ sessionId: "session-1", streamId: "stream-abc" }),
-      headers: { "Content-Type": "application/json" },
-    }, createMockEnv(mockDoNamespace));
-
-    // Verify DO was addressed by streamId
-    expect(mockDoNamespace.idFromName).toHaveBeenCalledWith("stream-abc");
-
-    // Verify DO was called with correct unsubscribe request
-    expect(mockDoFetch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        method: "DELETE",
-        url: "http://do/unsubscribe",
-      }),
-    );
-  });
-
-  it("records unsubscribe metric", async () => {
-    const { createMetrics } = await import("../../src/metrics");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    const mockMetrics = {
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-      sessionCreate: vi.fn(),
-      sessionDelete: vi.fn(),
-    };
-    vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
-
-    const app = await createTestApp();
-    await app.request("/v1/unsubscribe", {
-      method: "DELETE",
-      body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
-      headers: { "Content-Type": "application/json" },
-    }, createMockEnv(mockDoNamespace));
-
-    expect(mockMetrics.unsubscribe).toHaveBeenCalledWith(
-      "stream-1",
-      "session-1",
-      expect.any(Number),
-    );
-  });
-
-  it("returns confirmation response", async () => {
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+  it("calls unsubscribe service and returns result", async () => {
+    mockUnsubscribe.mockResolvedValue({
+      sessionId: "session-1",
+      streamId: "stream-1",
+      unsubscribed: true,
+    });
 
     const app = await createTestApp();
     const res = await app.request("/v1/unsubscribe", {
       method: "DELETE",
       body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
       headers: { "Content-Type": "application/json" },
-    }, createMockEnv(mockDoNamespace));
+    }, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId: string; streamId: string; unsubscribed: boolean };
@@ -588,16 +242,15 @@ describe("DELETE /unsubscribe", () => {
     expect(body.unsubscribed).toBe(true);
   });
 
-  it("returns 500 when DO unsubscribe fails", async () => {
-    const mockDoFetch = createMockDoFetch({ ok: false, status: 500 });
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+  it("returns 500 when unsubscribe service throws", async () => {
+    mockUnsubscribe.mockRejectedValue(new Error("DO error"));
 
     const app = await createTestApp();
     const res = await app.request("/v1/unsubscribe", {
       method: "DELETE",
       body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
       headers: { "Content-Type": "application/json" },
-    }, createMockEnv(mockDoNamespace));
+    }, createMockEnv());
 
     expect(res.status).toBe(500);
   });
@@ -608,129 +261,38 @@ describe("DELETE /session/:sessionId", () => {
     vi.clearAllMocks();
   });
 
-  it("deletes session stream from core", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    vi.mocked(fetchFromCore).mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
+  it("calls deleteSession service", async () => {
+    mockDeleteSession.mockResolvedValue({ sessionId: "session-123", deleted: true });
 
     const app = await createTestApp();
+    const env = createMockEnv();
     await app.request("/v1/session/session-123", {
       method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
+    }, env);
 
-    expect(fetchFromCore).toHaveBeenCalledWith(
-      expect.anything(),
-      "/v1/stream/session:session-123",
-      expect.objectContaining({ method: "DELETE" }),
-    );
+    expect(mockDeleteSession).toHaveBeenCalledWith(env, "session-123");
   });
 
-  it("returns 500 when core deletion fails", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    vi.mocked(fetchFromCore).mockResolvedValue({
-      ok: false,
-      status: 500,
-      text: vi.fn().mockResolvedValue("Internal error"),
-    } as unknown as Response);
+  it("returns 500 when deleteSession service throws", async () => {
+    mockDeleteSession.mockRejectedValue(new Error("Failed to delete session"));
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/session-123", {
       method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
+    }, createMockEnv());
 
     expect(res.status).toBe(500);
     const body = await res.json() as { error: string };
     expect(body.error).toBe("Failed to delete session stream");
-  });
-
-  it("returns success when core returns 404 (already deleted)", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    vi.mocked(fetchFromCore).mockResolvedValue({
-      ok: false,
-      status: 404,
-      text: vi.fn().mockResolvedValue("Not found"),
-    } as unknown as Response);
-
-    const app = await createTestApp();
-    const res = await app.request("/v1/session/session-123", {
-      method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
-
-    expect(res.status).toBe(200);
-  });
-
-  it("returns 500 when network error occurs", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    vi.mocked(fetchFromCore).mockRejectedValue(new Error("Network error"));
-
-    const app = await createTestApp();
-    const res = await app.request("/v1/session/session-123", {
-      method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
-
-    expect(res.status).toBe(500);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("Failed to delete session stream");
-  });
-
-  it("records sessionDelete metric", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const { createMetrics } = await import("../../src/metrics");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    const mockMetrics = {
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-      sessionCreate: vi.fn(),
-      sessionDelete: vi.fn(),
-    };
-    vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
-
-    vi.mocked(fetchFromCore).mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
-
-    const app = await createTestApp();
-    await app.request("/v1/session/session-123", {
-      method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
-
-    expect(mockMetrics.sessionDelete).toHaveBeenCalledWith(
-      "session-123",
-      expect.any(Number),
-    );
   });
 
   it("returns confirmation response", async () => {
-    const { fetchFromCore } = await import("../../src/core-client");
-    const mockDoFetch = createMockDoFetch();
-    const mockDoNamespace = createMockDoNamespace(mockDoFetch);
-
-    vi.mocked(fetchFromCore).mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
+    mockDeleteSession.mockResolvedValue({ sessionId: "my-session", deleted: true });
 
     const app = await createTestApp();
     const res = await app.request("/v1/session/my-session", {
       method: "DELETE",
-    }, createMockEnv(mockDoNamespace));
+    }, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId: string; deleted: boolean };
