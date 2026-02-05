@@ -1,89 +1,150 @@
-import {
-  markExpiredSessions,
-  getSessionsToDelete,
-  deleteExpiredSessions,
-  getSubscriptionCount,
-} from "./storage";
-import { deleteSessionStreamWithEnv, type FanoutEnv } from "./fanout";
-import { createMetrics } from "./metrics";
+/**
+ * Session cleanup using Analytics Engine queries.
+ *
+ * Flow:
+ * 1. Query Analytics Engine for expired sessions
+ * 2. For each expired session:
+ *    a. Get its subscriptions from Analytics Engine
+ *    b. Remove from each SubscriptionDO
+ *    c. Delete the session stream from core
+ */
 
-export interface CleanupEnv extends FanoutEnv {
-  SESSION_TTL_SECONDS?: string;
+import { fetchFromCore, type CoreClientEnv } from "./core-client";
+import { createMetrics } from "./metrics";
+import {
+  getExpiredSessions,
+  getSessionSubscriptions,
+  type AnalyticsQueryEnv,
+} from "./analytics-queries";
+
+export interface CleanupEnv extends CoreClientEnv, Partial<AnalyticsQueryEnv> {
+  SUBSCRIPTION_DO: DurableObjectNamespace;
+  METRICS?: AnalyticsEngineDataset;
+  ANALYTICS_DATASET?: string;
 }
 
-// Grace period: sessions must be marked for deletion for this long
-// before actually being deleted. This prevents race conditions where
-// a session gets a new subscription while cleanup is running.
-const GRACE_PERIOD_MS = 60_000; // 1 minute
-
 export interface CleanupResult {
-  marked: number;
   deleted: number;
   streamDeleteSuccesses: number;
   streamDeleteFailures: number;
+  subscriptionRemoveSuccesses: number;
+  subscriptionRemoveFailures: number;
 }
 
+/**
+ * Clean up expired sessions.
+ *
+ * Uses Analytics Engine to find expired sessions, then:
+ * - Removes their subscriptions from SubscriptionDOs
+ * - Deletes their session streams from core
+ */
 export async function cleanupExpiredSessions(env: CleanupEnv): Promise<CleanupResult> {
-  const start = Date.now();
   const metrics = createMetrics(env.METRICS);
 
-  // Phase 1: Mark newly expired sessions
-  const { marked } = await markExpiredSessions(env.DB);
-
-  // Phase 2: Delete sessions that have been marked for > grace period
-  // AND are still expired (not touched since being marked)
-  const sessionsToDelete = await getSessionsToDelete(env.DB, GRACE_PERIOD_MS);
-
-  if (sessionsToDelete.length === 0) {
-    const latencyMs = Date.now() - start;
-    metrics.cleanupBatch(marked, 0, 0, 0, latencyMs);
-    return { marked, deleted: 0, streamDeleteSuccesses: 0, streamDeleteFailures: 0 };
+  // Check if Analytics query credentials are configured
+  if (!env.ACCOUNT_ID || !env.API_TOKEN) {
+    console.log("Cleanup skipped: ACCOUNT_ID and API_TOKEN required for Analytics Engine queries");
+    return {
+      deleted: 0,
+      streamDeleteSuccesses: 0,
+      streamDeleteFailures: 0,
+      subscriptionRemoveSuccesses: 0,
+      subscriptionRemoveFailures: 0,
+    };
   }
 
-  // Record per-session expiry metrics before deletion (parallelized for performance)
-  const subCountPromises = sessionsToDelete.map((session) =>
-    getSubscriptionCount(env.DB, session.session_id),
-  );
-  const subCounts = await Promise.all(subCountPromises);
+  const analyticsEnv = {
+    ACCOUNT_ID: env.ACCOUNT_ID,
+    API_TOKEN: env.API_TOKEN,
+  };
+  const datasetName = env.ANALYTICS_DATASET ?? "subscriptions_metrics";
 
-  sessionsToDelete.forEach((session, index) => {
-    const ageMs = Date.now() - session.created_at;
-    metrics.sessionExpire(session.session_id, subCounts[index], ageMs);
-  });
+  // 1. Query Analytics Engine for expired sessions
+  const expiredSessions = await getExpiredSessions(analyticsEnv, datasetName);
 
-  // Delete session streams from core using Promise.allSettled
-  // Uses service binding if available for better performance
-  const deleteResults = await Promise.allSettled(
-    sessionsToDelete.map((session) =>
-      deleteSessionStreamWithEnv(env, session.session_id),
-    ),
-  );
+  if (expiredSessions.length === 0) {
+    return {
+      deleted: 0,
+      streamDeleteSuccesses: 0,
+      streamDeleteFailures: 0,
+      subscriptionRemoveSuccesses: 0,
+      subscriptionRemoveFailures: 0,
+    };
+  }
 
-  const streamDeleteSuccesses = deleteResults.filter(
-    (r) => r.status === "fulfilled" && (r.value.ok || r.value.status === 404),
-  ).length;
-  const streamDeleteFailures = deleteResults.length - streamDeleteSuccesses;
+  let streamDeleteSuccesses = 0;
+  let streamDeleteFailures = 0;
+  let subscriptionRemoveSuccesses = 0;
+  let subscriptionRemoveFailures = 0;
 
-  if (streamDeleteFailures > 0) {
-    console.error(
-      `Failed to delete ${streamDeleteFailures}/${sessionsToDelete.length} session streams from core`,
+  // 2. For each expired session, clean up subscriptions and delete session stream
+  for (const session of expiredSessions) {
+    // Record session expiry metric
+    metrics.sessionExpire(session.sessionId, 0, Date.now() - session.lastActivity);
+
+    // Get subscriptions for this session from Analytics Engine
+    const subscriptions = await getSessionSubscriptions(
+      analyticsEnv,
+      datasetName,
+      session.sessionId,
     );
+
+    // Remove from each SubscriptionDO
+    for (const sub of subscriptions) {
+      try {
+        const doId = env.SUBSCRIPTION_DO.idFromName(sub.streamId);
+        const stub = env.SUBSCRIPTION_DO.get(doId);
+
+        const response = await stub.fetch(
+          new Request("http://do/subscriber", {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Stream-Id": sub.streamId,
+            },
+            body: JSON.stringify({ sessionId: session.sessionId }),
+          }),
+        );
+
+        if (response.ok) {
+          subscriptionRemoveSuccesses++;
+        } else {
+          subscriptionRemoveFailures++;
+        }
+      } catch (err) {
+        console.error(
+          `Failed to remove subscription ${session.sessionId} from ${sub.streamId}:`,
+          err,
+        );
+        subscriptionRemoveFailures++;
+      }
+    }
+
+    // Delete session stream from core
+    try {
+      const response = await fetchFromCore(
+        env,
+        `/v1/stream/session:${session.sessionId}`,
+        { method: "DELETE" },
+      );
+
+      if (response.ok || response.status === 404) {
+        streamDeleteSuccesses++;
+        metrics.sessionDelete(session.sessionId, 0);
+      } else {
+        streamDeleteFailures++;
+      }
+    } catch (err) {
+      console.error(`Failed to delete session stream ${session.sessionId}:`, err);
+      streamDeleteFailures++;
+    }
   }
-
-  // Delete session records and subscriptions from D1
-  // Even if some core deletions failed, we still clean up D1
-  // The reconciliation endpoint can be used to handle edge cases
-  const sessionIds = sessionsToDelete.map((s) => s.session_id);
-  await deleteExpiredSessions(env.DB, sessionIds);
-
-  // Record aggregate cleanup metrics
-  const latencyMs = Date.now() - start;
-  metrics.cleanupBatch(marked, sessionsToDelete.length, streamDeleteSuccesses, streamDeleteFailures, latencyMs);
 
   return {
-    marked,
-    deleted: sessionsToDelete.length,
+    deleted: expiredSessions.length,
     streamDeleteSuccesses,
     streamDeleteFailures,
+    subscriptionRemoveSuccesses,
+    subscriptionRemoveFailures,
   };
 }

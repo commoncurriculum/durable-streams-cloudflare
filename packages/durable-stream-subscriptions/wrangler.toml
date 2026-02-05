@@ -5,35 +5,25 @@ compatibility_date = "2024-01-01"
 [vars]
 CORE_URL = "http://localhost:8787"
 SESSION_TTL_SECONDS = "1800"
-FANOUT_THRESHOLD = "100"
+# Required for Analytics Engine SQL queries (cleanup)
+# ACCOUNT_ID = "<your-cloudflare-account-id>"
+# API_TOKEN should be set via: npx wrangler secret put API_TOKEN
+ANALYTICS_DATASET = "subscriptions_metrics"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "subscriptions"
-database_id = "placeholder-subscriptions-db-id"
-migrations_dir = "migrations"
+# Durable Objects for per-stream subscriber storage
+[durable_objects]
+bindings = [
+  { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SubscriptionDO"]
 
 # Analytics Engine for observability metrics
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "subscriptions_metrics"
-
-# Optional queue for high-subscriber fanout
-# [[queues.producers]]
-# binding = "FANOUT_QUEUE"
-# queue = "subscription-fanout"
-
-# [[queues.consumers]]
-# queue = "subscription-fanout"
-# max_batch_size = 100
-# max_batch_timeout = 1
-# max_retries = 5
-# dead_letter_queue = "subscription-fanout-dlq"
-
-# Dead letter queue for failed messages
-# [[queues.producers]]
-# binding = "FANOUT_DLQ"
-# queue = "subscription-fanout-dlq"
 
 # Service binding to core worker (recommended for production)
 # [[services]]

@@ -3,18 +3,23 @@ import { cors } from "hono/cors";
 import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
 import { sessionRoutes } from "./routes/session";
-import { cleanupExpiredSessions, type CleanupEnv } from "./cleanup";
-import { processQueueBatch, type FanoutEnv, type FanoutMessage } from "./fanout";
+import { cleanupExpiredSessions } from "./cleanup";
 import { createMetrics } from "./metrics";
+import { SubscriptionDO } from "./subscription_do";
 
-export interface Env extends CleanupEnv {
-  DB: D1Database;
+export { SubscriptionDO };
+
+export interface Env {
+  SUBSCRIPTION_DO: DurableObjectNamespace;
+  CORE?: Fetcher;
   CORE_URL: string;
   AUTH_TOKEN?: string;
   SESSION_TTL_SECONDS?: string;
-  FANOUT_QUEUE?: Queue<FanoutMessage>;
-  FANOUT_THRESHOLD?: string;
   METRICS?: AnalyticsEngineDataset;
+  // Required for Analytics Engine SQL queries (cleanup)
+  ACCOUNT_ID?: string;
+  API_TOKEN?: string;
+  ANALYTICS_DATASET?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -93,7 +98,7 @@ app.all("*", (c) => {
 export default {
   fetch: app.fetch,
 
-  // Scheduled handler for session cleanup (two-phase: mark then delete)
+  // Scheduled handler for session cleanup
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       (async () => {
@@ -104,16 +109,16 @@ export default {
         // Record cleanup metrics
         const metrics = createMetrics(env.METRICS);
         metrics.cleanupBatch(
-          result.marked,
+          result.deleted,
           result.deleted,
           result.streamDeleteSuccesses,
           result.streamDeleteFailures,
           latencyMs,
         );
 
-        if (result.marked > 0 || result.deleted > 0) {
+        if (result.deleted > 0) {
           console.log(
-            `Session cleanup: marked ${result.marked}, deleted ${result.deleted} ` +
+            `Session cleanup: deleted ${result.deleted} sessions ` +
               `(core: ${result.streamDeleteSuccesses} ok, ${result.streamDeleteFailures} failed)`,
           );
         }
@@ -121,22 +126,5 @@ export default {
         console.error("Session cleanup failed:", err);
       }),
     );
-  },
-
-  // Queue handler for high-subscriber fanout
-  async queue(batch: MessageBatch<FanoutMessage>, env: Env): Promise<void> {
-    const start = Date.now();
-    const result = await processQueueBatch(env, batch.messages);
-    const latencyMs = Date.now() - start;
-
-    // Record queue batch metrics
-    const metrics = createMetrics(env.METRICS);
-    metrics.queueBatch(result.processed, result.succeeded, result.retried, latencyMs);
-
-    if (result.retried > 0) {
-      console.log(
-        `Queue batch processed: ${result.processed} messages, ${result.succeeded} succeeded, ${result.retried} retried`,
-      );
-    }
   },
 };

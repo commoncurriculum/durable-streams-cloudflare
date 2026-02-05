@@ -1,89 +1,70 @@
 import { Hono } from "hono";
-import { fanOutToSubscribers, type FanoutEnv } from "../fanout";
 import { createMetrics } from "../metrics";
-import { fetchFromCore } from "../core-client";
+import type { CoreClientEnv } from "../core-client";
 
 export interface PublishEnv {
-  Bindings: FanoutEnv;
+  Bindings: CoreClientEnv & {
+    SUBSCRIPTION_DO: DurableObjectNamespace;
+    METRICS?: AnalyticsEngineDataset;
+  };
 }
 
 export const publishRoutes = new Hono<PublishEnv>();
 
-// POST /publish/:streamId - Publish to a stream and fan out to subscribers
+/**
+ * POST /publish/:streamId - Publish to a stream and fan out to subscribers.
+ *
+ * Routes to SubscriptionDO(streamId) which handles:
+ * 1. Write to core stream (source of truth)
+ * 2. Look up subscribers (LOCAL SQLite query - no D1!)
+ * 3. Fan out to all subscriber session streams
+ */
 publishRoutes.post("/publish/:streamId", async (c) => {
   const start = Date.now();
   const streamId = c.req.param("streamId");
   const contentType = c.req.header("Content-Type") ?? "application/json";
-  const payload = await c.req.arrayBuffer();
   const metrics = createMetrics(c.env.METRICS);
 
-  // Pass through producer headers from client (if present) for deduplication
+  // Route to SubscriptionDO(streamId) - it handles write + fanout
+  const doId = c.env.SUBSCRIPTION_DO.idFromName(streamId);
+  const stub = c.env.SUBSCRIPTION_DO.get(doId);
+
+  // Clone the request and forward to DO
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    "X-Stream-Id": streamId,
+  };
+
+  // Pass through producer headers for deduplication
   const producerId = c.req.header("Producer-Id");
   const producerEpoch = c.req.header("Producer-Epoch");
   const producerSeq = c.req.header("Producer-Seq");
 
-  const headers: Record<string, string> = {
-    "Content-Type": contentType,
-  };
+  if (producerId) headers["Producer-Id"] = producerId;
+  if (producerEpoch) headers["Producer-Epoch"] = producerEpoch;
+  if (producerSeq) headers["Producer-Seq"] = producerSeq;
 
-  // Include producer headers if client provided them for idempotency
-  if (producerId && producerEpoch && producerSeq) {
-    headers["Producer-Id"] = producerId;
-    headers["Producer-Epoch"] = producerEpoch;
-    headers["Producer-Seq"] = producerSeq;
-  }
+  // Read the body as ArrayBuffer to avoid streaming issues
+  const body = await c.req.arrayBuffer();
 
-  // 1. Write to the source stream in core (uses service binding if available)
-  const writeResponse = await fetchFromCore(c.env, `/v1/stream/${streamId}`, {
-    method: "POST",
-    headers,
-    body: payload,
-  });
-
-  if (!writeResponse.ok) {
-    const errorText = await writeResponse.text();
-    // Record publish error metric
-    metrics.publishError(streamId, `http_${writeResponse.status}`, Date.now() - start);
-    return c.json(
-      { error: "Failed to write to stream", details: errorText },
-      writeResponse.status as 400 | 404 | 500,
-    );
-  }
-
-  // Get the offset for fanout deduplication
-  const sourceOffset = writeResponse.headers.get("X-Stream-Next-Offset");
-
-  // Build producer headers for fanout deduplication
-  let fanoutProducerHeaders: Record<string, string> | undefined;
-  if (sourceOffset) {
-    fanoutProducerHeaders = {
-      "Producer-Id": `fanout:${streamId}`,
-      "Producer-Epoch": "1",
-      "Producer-Seq": sourceOffset,
-    };
-  }
-
-  // 2. Fan out to all subscribed session streams
-  const { fanoutCount, successCount, failureCount } = await fanOutToSubscribers(
-    c.env,
-    streamId,
-    payload,
-    contentType,
-    fanoutProducerHeaders,
+  const doResponse = await stub.fetch(
+    new Request("http://do/publish", {
+      method: "POST",
+      headers,
+      body,
+    }),
   );
 
-  // Record publish metric
+  // Record latency metric (fanout metrics recorded by DO)
   const latencyMs = Date.now() - start;
-  metrics.publish(streamId, fanoutCount, latencyMs);
 
-  // Return the response from core with fanout info
-  const responseHeaders = new Headers(writeResponse.headers);
-  responseHeaders.set("X-Fanout-Count", fanoutCount.toString());
-  responseHeaders.set("X-Fanout-Successes", successCount.toString());
-  responseHeaders.set("X-Fanout-Failures", failureCount.toString());
+  if (!doResponse.ok) {
+    metrics.publishError(streamId, `http_${doResponse.status}`, latencyMs);
+  }
 
-  return new Response(writeResponse.body, {
-    status: writeResponse.status,
-    headers: responseHeaders,
+  // Return DO response with headers
+  return new Response(doResponse.body, {
+    status: doResponse.status,
+    headers: doResponse.headers,
   });
 });

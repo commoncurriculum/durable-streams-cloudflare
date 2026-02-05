@@ -1,22 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 
-// Mock fanout
-vi.mock("../../src/fanout", () => ({
-  fanOutToSubscribers: vi.fn(),
-}));
-
 // Mock metrics
 vi.mock("../../src/metrics", () => ({
   createMetrics: vi.fn(() => ({
     publish: vi.fn(),
     publishError: vi.fn(),
   })),
-}));
-
-// Mock core-client
-vi.mock("../../src/core-client", () => ({
-  fetchFromCore: vi.fn(),
 }));
 
 function createTestApp() {
@@ -27,39 +17,45 @@ function createTestApp() {
   });
 }
 
-function createMockEnv() {
-  return {
-    DB: {} as D1Database,
-    CORE_URL: "http://localhost:8787",
-    METRICS: {} as AnalyticsEngineDataset,
-  };
-}
-
-function createMockCoreResponse(options: {
-  status?: number;
+function createMockDoResponse(options: {
   ok?: boolean;
+  status?: number;
   body?: string;
   headers?: Record<string, string>;
 } = {}) {
   const {
-    status = 200,
     ok = true,
+    status = 200,
     body = "{}",
     headers = {},
   } = options;
 
-  return {
-    ok,
+  return new Response(body, {
     status,
-    headers: new Headers(headers),
-    text: vi.fn().mockResolvedValue(body),
-    body: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(body));
-        controller.close();
-      },
-    }),
-  } as unknown as Response;
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+  });
+}
+
+function createMockDoFetch(response: Response) {
+  return vi.fn().mockResolvedValue(response);
+}
+
+function createMockDoNamespace(mockDoFetch: ReturnType<typeof vi.fn>) {
+  return {
+    idFromName: vi.fn().mockReturnValue("do-id"),
+    get: vi.fn().mockReturnValue({ fetch: mockDoFetch }),
+  };
+}
+
+function createMockEnv(mockDoNamespace: ReturnType<typeof createMockDoNamespace>) {
+  return {
+    CORE_URL: "http://localhost:8787",
+    SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+    METRICS: {} as AnalyticsEngineDataset,
+  };
 }
 
 describe("POST /publish/:streamId", () => {
@@ -67,101 +63,82 @@ describe("POST /publish/:streamId", () => {
     vi.clearAllMocks();
   });
 
-  describe("core write", () => {
-    it("calls fetchFromCore with correct path /v1/stream/:streamId", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+  describe("routing to SubscriptionDO", () => {
+    it("routes to SubscriptionDO for the correct streamId", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request("/v1/publish/my-stream-id", {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        "/v1/stream/my-stream",
-        expect.any(Object),
-      );
+      // Verify DO was addressed by streamId
+      expect(mockDoNamespace.idFromName).toHaveBeenCalledWith("my-stream-id");
+      expect(mockDoNamespace.get).toHaveBeenCalled();
     });
 
-    it("passes request body to core", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+    it("calls DO publish endpoint", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request("/v1/publish/test-stream", {
         method: "POST",
         body: JSON.stringify({ message: "hello" }),
         headers: { "Content-Type": "application/json" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
+      expect(mockDoFetch).toHaveBeenCalledWith(
         expect.objectContaining({
           method: "POST",
-          body: expect.any(ArrayBuffer),
+          url: "http://do/publish",
         }),
       );
     });
 
-    it("passes Content-Type header to core", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+    it("passes Content-Type header to DO", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "plain text",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Content-Type": "text/plain",
-          }),
-        }),
-      );
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("Content-Type")).toBe("text/plain");
+    });
+
+    it("passes X-Stream-Id header to DO", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
+
+      const app = await createTestApp();
+      await app.request("/v1/publish/target-stream", {
+        method: "POST",
+        body: "test",
+        headers: { "Content-Type": "text/plain" },
+      }, createMockEnv(mockDoNamespace));
+
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("X-Stream-Id")).toBe("target-stream");
     });
   });
 
   describe("producer headers (idempotency)", () => {
     it("passes Producer-Id header when present", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -170,32 +147,17 @@ describe("POST /publish/:streamId", () => {
         headers: {
           "Content-Type": "text/plain",
           "Producer-Id": "producer-1",
-          "Producer-Epoch": "1",
-          "Producer-Seq": "42",
         },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Producer-Id": "producer-1",
-          }),
-        }),
-      );
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("Producer-Id")).toBe("producer-1");
     });
 
     it("passes Producer-Epoch header when present", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -203,33 +165,37 @@ describe("POST /publish/:streamId", () => {
         body: "test",
         headers: {
           "Content-Type": "text/plain",
-          "Producer-Id": "producer-1",
           "Producer-Epoch": "5",
-          "Producer-Seq": "42",
         },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Producer-Epoch": "5",
-          }),
-        }),
-      );
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("Producer-Epoch")).toBe("5");
     });
 
     it("passes Producer-Seq header when present", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
+      const app = await createTestApp();
+      await app.request("/v1/publish/my-stream", {
+        method: "POST",
+        body: "test",
+        headers: {
+          "Content-Type": "text/plain",
+          "Producer-Seq": "123",
+        },
+      }, createMockEnv(mockDoNamespace));
+
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("Producer-Seq")).toBe("123");
+    });
+
+    it("passes all producer headers together", async () => {
+      const mockResponse = createMockDoResponse();
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
@@ -239,93 +205,60 @@ describe("POST /publish/:streamId", () => {
           "Content-Type": "text/plain",
           "Producer-Id": "producer-1",
           "Producer-Epoch": "1",
-          "Producer-Seq": "123",
+          "Producer-Seq": "42",
         },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
-      expect(fetchFromCore).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Producer-Seq": "123",
-          }),
-        }),
-      );
-    });
-
-    it("omits producer headers when any are missing", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-
-      // Only providing Producer-Id, missing Epoch and Seq
-      await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: {
-          "Content-Type": "text/plain",
-          "Producer-Id": "producer-1",
-        },
-      }, createMockEnv());
-
-      const callArgs = vi.mocked(fetchFromCore).mock.calls[0];
-      const headers = callArgs[2]?.headers as Record<string, string>;
-
-      expect(headers["Producer-Id"]).toBeUndefined();
-      expect(headers["Producer-Epoch"]).toBeUndefined();
-      expect(headers["Producer-Seq"]).toBeUndefined();
+      const doRequest = mockDoFetch.mock.calls[0][0] as Request;
+      expect(doRequest.headers.get("Producer-Id")).toBe("producer-1");
+      expect(doRequest.headers.get("Producer-Epoch")).toBe("1");
+      expect(doRequest.headers.get("Producer-Seq")).toBe("42");
     });
   });
 
   describe("error handling", () => {
-    it("returns error response when core write fails", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ ok: false, status: 500, body: "Internal error" }),
-      );
+    it("returns DO error response status", async () => {
+      const mockResponse = createMockDoResponse({
+        ok: false,
+        status: 500,
+        body: JSON.stringify({ error: "Failed to write to stream" }),
+      });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(res.status).toBe(500);
-      const body = (await res.json()) as { error: string };
-      expect(body.error).toBe("Failed to write to stream");
     });
 
-    it("records publishError metric with status code on failure", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
+    it("records publishError metric on failure", async () => {
       const { createMetrics } = await import("../../src/metrics");
 
       const mockMetrics = {
         publish: vi.fn(),
         publishError: vi.fn(),
       };
-      vi.mocked(createMetrics).mockReturnValue(mockMetrics as any);
+      vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
 
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ ok: false, status: 503, body: "Service unavailable" }),
-      );
+      const mockResponse = createMockDoResponse({
+        ok: false,
+        status: 503,
+        body: JSON.stringify({ error: "Service unavailable" }),
+      });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(mockMetrics.publishError).toHaveBeenCalledWith(
         "my-stream",
@@ -334,332 +267,80 @@ describe("POST /publish/:streamId", () => {
       );
     });
 
-    it("returns 400 for 400 core response", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ ok: false, status: 400, body: "Bad request" }),
-      );
+    it("returns 400 for DO 400 response", async () => {
+      const mockResponse = createMockDoResponse({ ok: false, status: 400 });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(res.status).toBe(400);
     });
 
-    it("returns 404 for 404 core response", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ ok: false, status: 404, body: "Not found" }),
-      );
+    it("returns 404 for DO 404 response", async () => {
+      const mockResponse = createMockDoResponse({ ok: false, status: 404 });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(res.status).toBe(404);
-    });
-
-    it("returns 500 for 500 core response", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ ok: false, status: 500, body: "Server error" }),
-      );
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(res.status).toBe(500);
-    });
-  });
-
-  describe("fanout", () => {
-    it("fans out to subscribers after successful core write", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 5,
-        successCount: 5,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(fanOutToSubscribers).toHaveBeenCalledWith(
-        expect.anything(),
-        "my-stream",
-        expect.any(ArrayBuffer),
-        "text/plain",
-        undefined, // No producer headers when X-Stream-Next-Offset is not present
-      );
-    });
-
-    it("uses X-Stream-Next-Offset from core for fanout deduplication", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({
-          headers: { "X-Stream-Next-Offset": "100" },
-        }),
-      );
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 1,
-        successCount: 1,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(fanOutToSubscribers).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.any(ArrayBuffer),
-        expect.any(String),
-        expect.objectContaining({
-          "Producer-Seq": "100",
-        }),
-      );
-    });
-
-    it("creates fanout producer headers with fanout:streamId prefix", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({
-          headers: { "X-Stream-Next-Offset": "42" },
-        }),
-      );
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 1,
-        successCount: 1,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/my-stream-id", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(fanOutToSubscribers).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        expect.any(ArrayBuffer),
-        expect.any(String),
-        expect.objectContaining({
-          "Producer-Id": "fanout:my-stream-id",
-          "Producer-Epoch": "1",
-        }),
-      );
     });
   });
 
   describe("response", () => {
-    it("returns core response body on success", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({ body: '{"offset": 42}' }),
-      );
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
+    it("returns DO response body on success", async () => {
+      const mockResponse = createMockDoResponse({
+        body: JSON.stringify({ offset: 42 }),
       });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ offset: 42 });
     });
 
-    it("includes X-Fanout-Count header", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 10,
-        successCount: 8,
-        failureCount: 2,
+    it("preserves DO response headers", async () => {
+      const mockResponse = createMockDoResponse({
+        headers: {
+          "X-Stream-Next-Offset": "999",
+          "X-Fanout-Count": "5",
+          "X-Fanout-Successes": "4",
+          "X-Fanout-Failures": "1",
+        },
       });
+      const mockDoFetch = createMockDoFetch(mockResponse);
+      const mockDoNamespace = createMockDoNamespace(mockDoFetch);
 
       const app = await createTestApp();
       const res = await app.request("/v1/publish/my-stream", {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(res.headers.get("X-Fanout-Count")).toBe("10");
-    });
-
-    it("includes X-Fanout-Successes header", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 10,
-        successCount: 8,
-        failureCount: 2,
-      });
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(res.headers.get("X-Fanout-Successes")).toBe("8");
-    });
-
-    it("includes X-Fanout-Failures header", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 10,
-        successCount: 8,
-        failureCount: 2,
-      });
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(res.headers.get("X-Fanout-Failures")).toBe("2");
-    });
-
-    it("preserves core response headers", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-
-      vi.mocked(fetchFromCore).mockResolvedValue(
-        createMockCoreResponse({
-          headers: {
-            "X-Stream-Next-Offset": "999",
-            "X-Custom-Header": "custom-value",
-          },
-        }),
-      );
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
+      }, createMockEnv(mockDoNamespace));
 
       expect(res.headers.get("X-Stream-Next-Offset")).toBe("999");
-      expect(res.headers.get("X-Custom-Header")).toBe("custom-value");
-    });
-  });
-
-  describe("metrics", () => {
-    it("records publish metric on success with fanoutCount and latency", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-      const { createMetrics } = await import("../../src/metrics");
-
-      const mockMetrics = {
-        publish: vi.fn(),
-        publishError: vi.fn(),
-      };
-      vi.mocked(createMetrics).mockReturnValue(mockMetrics as any);
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 15,
-        successCount: 15,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      expect(mockMetrics.publish).toHaveBeenCalledWith(
-        "my-stream",
-        15, // fanoutCount
-        expect.any(Number), // latency
-      );
-    });
-
-    it("records latency from request start to response", async () => {
-      const { fetchFromCore } = await import("../../src/core-client");
-      const { fanOutToSubscribers } = await import("../../src/fanout");
-      const { createMetrics } = await import("../../src/metrics");
-
-      const mockMetrics = {
-        publish: vi.fn(),
-        publishError: vi.fn(),
-      };
-      vi.mocked(createMetrics).mockReturnValue(mockMetrics as any);
-
-      vi.mocked(fetchFromCore).mockResolvedValue(createMockCoreResponse());
-      vi.mocked(fanOutToSubscribers).mockResolvedValue({
-        fanoutCount: 0,
-        successCount: 0,
-        failureCount: 0,
-      });
-
-      const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
-        method: "POST",
-        body: "test",
-        headers: { "Content-Type": "text/plain" },
-      }, createMockEnv());
-
-      const latency = mockMetrics.publish.mock.calls[0][2];
-      expect(typeof latency).toBe("number");
-      expect(latency).toBeGreaterThanOrEqual(0);
+      expect(res.headers.get("X-Fanout-Count")).toBe("5");
+      expect(res.headers.get("X-Fanout-Successes")).toBe("4");
+      expect(res.headers.get("X-Fanout-Failures")).toBe("1");
     });
   });
 });

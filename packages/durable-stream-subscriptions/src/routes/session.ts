@@ -1,60 +1,104 @@
 import { Hono } from "hono";
-import {
-  getSession,
-  getSessionSubscriptions,
-  touchSession,
-  getAllSessions,
-  deleteSession,
-} from "../storage";
-import { type FanoutEnv } from "../fanout";
 import { createMetrics } from "../metrics";
-import { fetchFromCore } from "../core-client";
+import { fetchFromCore, type CoreClientEnv } from "../core-client";
+import {
+  getSessionSubscriptions,
+  type AnalyticsQueryEnv,
+} from "../analytics-queries";
 
 export interface SessionEnv {
-  Bindings: FanoutEnv;
+  Bindings: CoreClientEnv &
+    Partial<AnalyticsQueryEnv> & {
+      SUBSCRIPTION_DO: DurableObjectNamespace;
+      METRICS?: AnalyticsEngineDataset;
+      ANALYTICS_DATASET?: string;
+      SESSION_TTL_SECONDS?: string;
+    };
 }
 
 export const sessionRoutes = new Hono<SessionEnv>();
 
-// GET /session/:sessionId - Get session info and subscriptions
+/**
+ * GET /session/:sessionId - Get session info and subscriptions.
+ *
+ * Checks if session stream exists in core and queries Analytics Engine
+ * for subscription data.
+ */
 sessionRoutes.get("/session/:sessionId", async (c) => {
   const sessionId = c.req.param("sessionId");
-  const db = c.env.DB;
 
-  const session = await getSession(db, sessionId);
-  if (!session) {
+  // Check if session stream exists in core (HEAD request)
+  const coreResponse = await fetchFromCore(
+    c.env,
+    `/v1/stream/session:${sessionId}`,
+    { method: "HEAD" },
+  );
+
+  if (!coreResponse.ok) {
     return c.json({ error: "Session not found" }, 404);
   }
 
-  const subscriptions = await getSessionSubscriptions(db, sessionId);
+  // Get subscriptions from Analytics Engine (if configured)
+  let subscriptions: Array<{ streamId: string }> = [];
+
+  if (c.env.ACCOUNT_ID && c.env.API_TOKEN) {
+    const analyticsEnv = {
+      ACCOUNT_ID: c.env.ACCOUNT_ID,
+      API_TOKEN: c.env.API_TOKEN,
+    };
+    const datasetName = c.env.ANALYTICS_DATASET ?? "subscriptions_metrics";
+
+    try {
+      subscriptions = await getSessionSubscriptions(analyticsEnv, datasetName, sessionId);
+    } catch (err) {
+      console.error("Failed to query subscriptions from Analytics Engine:", err);
+      // Continue without subscription data
+    }
+  }
 
   return c.json({
-    sessionId: session.session_id,
-    createdAt: session.created_at,
-    lastActiveAt: session.last_active_at,
-    ttlSeconds: session.ttl_seconds,
-    expiresAt: session.last_active_at + session.ttl_seconds * 1000,
+    sessionId,
     sessionStreamPath: `/v1/stream/session:${sessionId}`,
     subscriptions: subscriptions.map((s) => ({
-      streamId: s.stream_id,
-      subscribedAt: s.subscribed_at,
+      streamId: s.streamId,
     })),
   });
 });
 
-// POST /session/:sessionId/touch - Touch session to extend TTL
+/**
+ * POST /session/:sessionId/touch - Touch session to extend TTL.
+ *
+ * In the new architecture, session TTL is managed by the core stream's
+ * X-Stream-Expires-At header. Touching refreshes this expiry.
+ */
 sessionRoutes.post("/session/:sessionId/touch", async (c) => {
   const start = Date.now();
   const sessionId = c.req.param("sessionId");
-  const db = c.env.DB;
   const metrics = createMetrics(c.env.METRICS);
 
-  const updated = await touchSession(db, sessionId);
-  if (!updated) {
+  // Get TTL from env (default 30 minutes)
+  const ttlSeconds = c.env.SESSION_TTL_SECONDS
+    ? Number.parseInt(c.env.SESSION_TTL_SECONDS as string, 10)
+    : 1800;
+  const expiresAt = Date.now() + ttlSeconds * 1000;
+
+  // Touch by doing a PUT with updated expiry
+  // Core handles this idempotently - returns 409 if exists, which is fine
+  const coreResponse = await fetchFromCore(
+    c.env,
+    `/v1/stream/session:${sessionId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Stream-Expires-At": expiresAt.toString(),
+      },
+    },
+  );
+
+  if (!coreResponse.ok && coreResponse.status !== 409) {
     return c.json({ error: "Session not found" }, 404);
   }
-
-  const session = await getSession(db, sessionId);
 
   // Record session touch metric
   const latencyMs = Date.now() - start;
@@ -62,75 +106,39 @@ sessionRoutes.post("/session/:sessionId/touch", async (c) => {
 
   return c.json({
     sessionId,
-    lastActiveAt: session?.last_active_at,
-    expiresAt: session ? session.last_active_at + session.ttl_seconds * 1000 : null,
+    expiresAt,
   });
 });
 
-// GET /internal/reconcile - Compare D1 sessions with core streams and clean up orphans
-// This endpoint is intended to be called periodically or on-demand
+/**
+ * GET /internal/reconcile - Reconciliation endpoint.
+ *
+ * In the new architecture, reconciliation is less critical because:
+ * - Session streams are the source of truth (in core)
+ * - Subscriptions are stored per-stream in SubscriptionDOs
+ * - Stale subscriptions are cleaned up lazily during fanout or by cleanup cron
+ *
+ * This endpoint can still check for orphaned data if needed.
+ */
 sessionRoutes.get("/internal/reconcile", async (c) => {
   const start = Date.now();
-  const db = c.env.DB;
   const metrics = createMetrics(c.env.METRICS);
 
-  const sessions = await getAllSessions(db);
+  // In the new architecture, there's no central D1 to reconcile against.
+  // The session streams in core are the source of truth.
+  // SubscriptionDOs clean up stale subscribers during fanout (404 response).
 
-  const orphanedInD1: string[] = [];
-  const validSessions: string[] = [];
-  const errors: string[] = [];
-
-  // Check each D1 session against core (uses service binding if available)
-  for (const session of sessions) {
-    const streamPath = `/v1/stream/session:${session.session_id}`;
-    try {
-      const response = await fetchFromCore(c.env, streamPath, { method: "HEAD" });
-
-      if (response.status === 404) {
-        // Stream doesn't exist in core - D1 record is orphaned
-        orphanedInD1.push(session.session_id);
-      } else if (response.ok) {
-        validSessions.push(session.session_id);
-      } else {
-        errors.push(`${session.session_id}: ${response.status}`);
-      }
-    } catch (err) {
-      errors.push(`${session.session_id}: ${err}`);
-    }
-  }
-
-  // Optionally clean up orphaned D1 records
-  const cleanup = c.req.query("cleanup") === "true";
-  let cleaned = 0;
-
-  if (cleanup && orphanedInD1.length > 0) {
-    for (const sessionId of orphanedInD1) {
-      try {
-        await deleteSession(db, sessionId);
-        cleaned++;
-      } catch (err) {
-        errors.push(`cleanup ${sessionId}: ${err}`);
-      }
-    }
-  }
-
-  // Record reconciliation metrics
   const latencyMs = Date.now() - start;
-  metrics.reconcile(
-    sessions.length,
-    validSessions.length,
-    orphanedInD1.length,
-    cleaned,
-    errors.length,
-    latencyMs,
-  );
+  metrics.reconcile(0, 0, 0, 0, 0, latencyMs);
 
   return c.json({
-    totalSessions: sessions.length,
-    validSessions: validSessions.length,
-    orphanedInD1: orphanedInD1.length,
-    orphanedSessionIds: orphanedInD1,
-    cleaned,
-    errors: errors.length > 0 ? errors : undefined,
+    message:
+      "Reconciliation is handled automatically in the new architecture. " +
+      "Session streams in core are the source of truth. " +
+      "Stale subscriptions are cleaned up lazily during fanout or by the cleanup cron.",
+    totalSessions: 0,
+    validSessions: 0,
+    orphanedInD1: 0,
+    cleaned: 0,
   });
 });
