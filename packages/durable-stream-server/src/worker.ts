@@ -20,6 +20,7 @@ export interface Env {
   METRICS?: AnalyticsEngineDataset;
   CF_ACCOUNT_ID?: string;
   METRICS_API_TOKEN?: string;
+  FANOUT_QUEUE_ID?: string;
 }
 
 const edgeApp = createEdgeApp();
@@ -179,20 +180,31 @@ async function recordRegistryEvent(
   const headers = new Headers({ "Content-Type": "application/json" });
   if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
 
-  await fetch(
-    new Request(registryUrl, {
-      method: "PUT",
-      headers,
-    }),
-  );
+  try {
+    const putResponse = await fetch(
+      new Request(registryUrl, {
+        method: "PUT",
+        headers,
+      }),
+    );
+    if (!putResponse.ok && putResponse.status !== 200) {
+      console.error(`Registry PUT failed: ${putResponse.status} ${await putResponse.text()}`);
+      return;
+    }
 
-  await fetch(
-    new Request(registryUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(event),
-    }),
-  );
+    const postResponse = await fetch(
+      new Request(registryUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(event),
+      }),
+    );
+    if (!postResponse.ok) {
+      console.error(`Registry POST failed: ${postResponse.status} ${await postResponse.text()}`);
+    }
+  } catch (err) {
+    console.error("Registry event failed:", err);
+  }
 }
 
 export default {
