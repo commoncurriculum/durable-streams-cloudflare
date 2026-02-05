@@ -224,7 +224,15 @@ export default {
       const assetPath = url.pathname.slice(ADMIN_PREFIX.length) || "/";
       const assetUrl = new URL(assetPath, url.origin);
       assetUrl.search = url.search;
-      return env.ASSETS.fetch(new Request(assetUrl, request));
+      const assetResponse = await env.ASSETS.fetch(new Request(assetUrl, request));
+
+      // SPA fallback: if asset not found, serve index.html for client-side routing
+      if (assetResponse.status === 404 && !assetPath.includes(".")) {
+        const indexUrl = new URL("/", url.origin);
+        return env.ASSETS.fetch(new Request(indexUrl, request));
+      }
+
+      return assetResponse;
     }
 
     // Other Hono routes (subscriptions, sessions)
