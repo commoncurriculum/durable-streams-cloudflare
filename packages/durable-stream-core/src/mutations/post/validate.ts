@@ -23,16 +23,24 @@ export function isCloseOnlyOperation(input: ParsedPostInput): boolean {
 }
 
 /**
+ * Type guard that checks if content-type is present.
+ * Narrows input.contentType from `string | null` to `string`.
+ */
+export function hasContentType<T extends { contentType: string | null }>(
+  input: T,
+): input is T & { contentType: string } {
+  return input.contentType !== null;
+}
+
+/**
  * Validate content-type matches the stream's content-type.
+ * Assumes content-type is already validated as non-null via hasContentType.
  * Returns an error response if mismatch, null if valid.
  */
 export function validateContentTypeMatch(
-  requestContentType: string | null,
+  requestContentType: string,
   streamContentType: string,
 ): Response | null {
-  if (!requestContentType) {
-    return errorResponse(400, "Content-Type is required");
-  }
   if (normalizeContentType(streamContentType) !== requestContentType) {
     return errorResponse(409, "content-type mismatch");
   }
@@ -101,12 +109,16 @@ export function validatePostInput(
     return { kind: "error", response: closedError };
   }
 
-  // Content-type is required and must match
+  // Content-type is required
+  if (!hasContentType(input)) {
+    return { kind: "error", response: errorResponse(400, "Content-Type is required") };
+  }
+
+  // Content-type must match stream's content-type
   const contentTypeError = validateContentTypeMatch(input.contentType, meta.content_type);
   if (contentTypeError) {
     return { kind: "error", response: contentTypeError };
   }
-  const contentType = input.contentType!; // Safe: validateContentTypeMatch returns error if null
 
   // Validate stream sequence if provided
   const seqError = validateStreamSeq(meta, input.streamSeq);
@@ -120,7 +132,7 @@ export function validatePostInput(
       kind: "append",
       meta,
       streamId: input.streamId,
-      contentType,
+      contentType: input.contentType,
       bodyBytes: input.bodyBytes,
       streamSeq: input.streamSeq,
       producer: input.producer,
