@@ -85,6 +85,38 @@ Single stream queries merge registry data with live config from Core.
 
 ---
 
+# 8. Stats Endpoint
+
+<<< @/../src/routes/streams.ts#L40-L44 ts
+
+GET `/streams/stats` returns aggregate statistics.
+
+---
+
+# 9. Stats Query
+
+<<< @/../src/services/d1.ts#L74-L107 ts
+
+Counts active/deleted streams, total segments, and storage size.
+
+---
+
+# 10. Segments Endpoint
+
+<<< @/../src/routes/streams.ts#L76-L81 ts
+
+GET `/streams/:streamId/segments` lists all R2 segments for a stream.
+
+---
+
+# 11. Segments Query
+
+<<< @/../src/services/d1.ts#L63-L72 ts
+
+Returns segment metadata: offsets, R2 keys, sizes, and message counts.
+
+---
+
 # The Registry Flow
 
 ```mermaid
@@ -135,7 +167,23 @@ Summary returns per-stream metrics aggregated over the time range.
 
 ---
 
-# 3. Building the Query
+# 3. The Totals Endpoint
+
+<<< @/../src/routes/metrics.ts#L47-L57 ts
+
+GET `/metrics/totals` returns aggregate totals across all streams.
+
+---
+
+# 4. The Top Streams Endpoint
+
+<<< @/../src/routes/metrics.ts#L76-L86 ts
+
+GET `/metrics/top-streams` returns the N most active streams by message count.
+
+---
+
+# 5. Building the Summary Query
 
 <<< @/../src/services/analytics.ts#L81-L99 ts
 
@@ -143,7 +191,23 @@ SQL query aggregates metrics from Analytics Engine by stream_id.
 
 ---
 
-# 4. Executing Against Analytics Engine
+# 6. Building the Totals Query
+
+<<< @/../src/services/analytics.ts#L101-L116 ts
+
+Totals aggregate all streams: total messages, bytes, unique streams, event count.
+
+---
+
+# 7. Building the Top Streams Query
+
+<<< @/../src/services/analytics.ts#L142-L164 ts
+
+Orders by messages written descending, with configurable limit.
+
+---
+
+# 8. Executing Against Analytics Engine
 
 <<< @/../src/services/analytics.ts#L36-L74 ts
 
@@ -151,7 +215,7 @@ The Analytics Engine API accepts SQL queries and returns JSON results.
 
 ---
 
-# 5. Timeline Queries
+# 9. Timeline Queries
 
 <<< @/../src/services/analytics.ts#L166-L185 ts
 
@@ -233,7 +297,7 @@ class: text-center
 
 # Questions?
 
-[Admin Source](../src) | [Core Package](../../durable-stream-core/docs/walkthrough.md)
+[Source Code](../src) | [Core](../../durable-stream-core/docs/walkthrough.md) | [Subscriptions](../../durable-stream-subscriptions/docs/walkthrough.md)
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded bg-gray-100">

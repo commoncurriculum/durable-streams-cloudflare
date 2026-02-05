@@ -15,7 +15,7 @@ Data Flow Walkthrough
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded bg-gray-100">
-    Three stories showing how data moves through the system
+    Five stories showing how data moves through the system
   </span>
 </div>
 
@@ -209,17 +209,87 @@ sequenceDiagram
 layout: section
 ---
 
-# Story 3: A Client Listens in Real-Time
+# Story 3: Long-Polling for Updates
+
+Follow a long-poll request from wait to data delivery
+
+---
+
+# 1. Long-Poll Handler Setup
+
+<<< @/../src/http/handlers/realtime.ts#L23-L47 ts
+
+The handler validates the offset, resolves cache mode, and checks for closed streams at tail.
+
+---
+
+# 2. Checking for Immediate Data
+
+<<< @/../src/http/handlers/realtime.ts#L61-L74 ts
+
+If data is immediately available, return it without waiting.
+
+---
+
+# 3. The Waiting Game
+
+<<< @/../src/http/handlers/realtime.ts#L76-L92 ts
+
+If no data available, wait up to `LONG_POLL_TIMEOUT_MS` (default 30s). On timeout, return 204.
+
+---
+
+# 4. The Long-Poll Queue
+
+<<< @/../src/live/long_poll.ts#L1-L45 ts
+
+Waiters register with their current offset. When new data arrives, `notify()` wakes waiters.
+
+---
+
+# The Long-Poll Path
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant DO as StreamDO
+    participant Q as LongPollQueue
+
+    C->>DO: GET ?live=long-poll&offset=X
+    DO->>DO: Check for immediate data
+
+    alt Data available
+        DO-->>C: 200 + data
+    else No data
+        DO->>Q: waitForData(offset, timeout)
+
+        alt Writer arrives
+            Note over DO: POST /v1/stream/abc
+            DO->>Q: notify(newTailOffset)
+            Q-->>DO: {timedOut: false}
+            DO-->>C: 200 + data
+        else Timeout
+            Q-->>DO: {timedOut: true}
+            DO-->>C: 204 No Content
+        end
+    end
+```
+
+---
+layout: section
+---
+
+# Story 4: A Client Listens via SSE
 
 Follow an SSE connection from open to message delivery
 
 ---
 
-# 1. Detecting SSE Mode
+# 1. SSE Mode Detection
 
 <<< @/../src/http/handlers/catchup.ts#L30-L37 ts
 
-The `live` query parameter determines streaming mode.
+The `live` query parameter determines streaming mode: `sse` or `long-poll`.
 
 ---
 
@@ -291,6 +361,57 @@ sequenceDiagram
 layout: section
 ---
 
+# Story 5: Deleting a Stream
+
+Follow a DELETE request through cascade cleanup
+
+---
+
+# 1. The Delete Handler
+
+<<< @/../src/http/handlers/mutation.ts#L175-L205 ts
+
+DELETE cascades through all storage layers: SQLite ops → R2 segments → D1 admin registry.
+
+---
+
+# 2. Notify Connected Clients
+
+When a stream is deleted, both long-poll waiters and SSE clients are notified immediately:
+
+- `longPoll.notifyAll()` wakes all waiting clients
+- `closeAllSseClients()` cleanly closes SSE connections
+
+---
+
+# The Delete Path
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant DO as StreamDO
+    participant SQL as SQLite
+    participant R2 as R2 Storage
+    participant D1 as D1 Registry
+
+    C->>DO: DELETE /v1/stream/abc
+    DO->>DO: blockConcurrencyWhile
+    DO->>SQL: listSegments()
+    DO->>SQL: deleteStreamData()
+    DO->>DO: notifyAll() long-poll
+    DO->>DO: closeAllSseClients()
+
+    Note over DO: Background cleanup
+    DO-->>R2: Delete segment objects
+    DO-->>D1: DELETE FROM segments_admin
+
+    DO-->>C: 204 No Content
+```
+
+---
+layout: section
+---
+
 # Supporting Topics
 
 ---
@@ -325,6 +446,59 @@ Messages are serialized to R2, then ops are deleted from SQLite.
 
 ---
 
+# Producer Deduplication (Types)
+
+<<< @/../src/engine/producer.ts#L15-L26 ts
+
+Producers provide idempotency through epoch/sequence tracking.
+
+---
+
+# Producer Deduplication (State Machine)
+
+<<< @/../src/engine/producer.ts#L54-L102 ts
+
+The state machine handles: new producer, epoch bump, duplicate, sequence gap.
+
+---
+
+# R2 Cold Storage - The ReadPath Class
+
+<<< @/../src/do/read_path.ts#L14-L27 ts
+
+ReadPath provides a unified read interface with coalescing and caching.
+
+---
+
+# R2 Cold Storage - Segment Lookup
+
+<<< @/../src/do/read_path.ts#L72-L114 ts
+
+When offset is below `segment_start`, read from R2 segments instead of SQLite.
+
+---
+
+# R2 Cold Storage - Decoding Segments
+
+<<< @/../src/do/read_path.ts#L140-L165 ts
+
+Segment data is fetched from R2, then decoded and filtered by offset.
+
+---
+
+# HEAD Endpoint (Metadata Queries)
+
+The HEAD method returns stream metadata without body content:
+
+- `Stream-Next-Offset`: Current tail offset (encoded)
+- `Stream-Closed`: Whether the stream is closed
+- `Content-Type`: The stream's content type
+- `ETag`: Current state hash for caching
+
+Useful for checking stream existence or polling for state changes.
+
+---
+
 # Error Responses
 
 <<< @/../src/protocol/errors.ts#L1-L6 ts
@@ -338,7 +512,7 @@ class: text-center
 
 # Questions?
 
-[Source Code](../src) | [README](../README.md)
+[Source Code](../src) | [Subscriptions](../../durable-stream-subscriptions/docs/walkthrough.md) | [Admin](../../durable-stream-admin/docs/walkthrough.md)
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded bg-gray-100">

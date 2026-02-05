@@ -1,0 +1,39 @@
+{
+  "name": "durable-stream-core",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "dev": "wrangler dev --local --port 8787",
+    "lint": "oxlint src test",
+    "format": "oxfmt --write src test",
+    "format:check": "oxfmt --check src test",
+    "conformance": "pnpm exec vitest run --config vitest.conformance.config.ts",
+    "test": "pnpm run test:implementation",
+    "test:unit": "pnpm exec vitest run --config vitest.unit.config.ts",
+    "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
+    "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4",
+    "@hono/zod-validator": "^0.4",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@durable-streams/server-conformance-tests": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  },
+  "exports": {
+    ".": "./src/worker.ts",
+    "./hono": "./src/hono/index.ts",
+    "./hono/app": "./src/hono/app.ts",
+    "./hono/types": "./src/hono/types.ts"
+  }
+}

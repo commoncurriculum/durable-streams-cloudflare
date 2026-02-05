@@ -1,0 +1,30 @@
+{
+  "name": "durable-stream-subscriptions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "dev": "wrangler dev --local --port 8788",
+    "lint": "oxlint src test",
+    "format": "oxfmt --write src test",
+    "format:check": "oxfmt --check src test",
+    "test": "pnpm exec vitest run",
+    "test:integration": "pnpm exec vitest run --config vitest.integration.config.ts",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4",
+    "@hono/zod-validator": "^0.4",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}

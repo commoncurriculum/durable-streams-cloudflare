@@ -1,0 +1,36 @@
+name = "durable-streams"
+main = "src/worker.ts"
+compatibility_date = "2026-02-02"
+
+[durable_objects]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[d1_databases]]
+binding = "ADMIN_DB"
+database_name = "durable-streams"
+database_id = "c0ff514c-c85f-4296-8429-23453105648a"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
+[vars]
+# Optional: set to require auth
+# AUTH_TOKEN = "replace-with-token"
+# Optional: set cache mode explicitly: "shared" or "private"
+# CACHE_MODE = "shared"
+# SEGMENT_MAX_MESSAGES = "1000"
+# SEGMENT_MAX_BYTES = "4194304"
+
+[observability]
+enabled = true

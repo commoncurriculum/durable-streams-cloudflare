@@ -1,6 +1,6 @@
 packages:
   - packages/*
-  - packages/durable-stream-server/admin-ui
+  - packages/durable-stream-core/admin-ui
 
 patchedDependencies:
   '@durable-streams/state': patches/@durable-streams__state.patch

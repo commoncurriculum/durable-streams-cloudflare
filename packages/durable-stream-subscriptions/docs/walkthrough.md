@@ -163,6 +163,30 @@ erDiagram
 ```
 
 ---
+
+# 4. Unsubscribe Flow
+
+<<< @/../src/routes/subscribe.ts#L98-L112 ts
+
+DELETE `/unsubscribe` removes a subscription. The session remains active.
+
+---
+
+# 5. Querying Session Details
+
+<<< @/../src/routes/session.ts#L19-L43 ts
+
+GET `/session/:sessionId` returns session info and all subscriptions.
+
+---
+
+# 6. Touch (Extend TTL)
+
+<<< @/../src/routes/session.ts#L45-L68 ts
+
+POST `/session/:sessionId/touch` extends the session's TTL by updating `last_active_at`.
+
+---
 layout: section
 ---
 
@@ -316,13 +340,52 @@ Touch clears the deletion mark - prevents race conditions during cleanup.
 Runs every 5 minutes via cron. Records cleanup metrics.
 
 ---
+
+# Metrics: Fanout & Queue Events
+
+<<< @/../src/metrics.ts#L9-L50 ts
+
+Tracks fanout success/failure rates, queue batch processing, and retry attempts.
+
+---
+
+# Metrics: Session Lifecycle
+
+<<< @/../src/metrics.ts#L69-L100 ts
+
+Records session creation, touch, delete, and expiration events.
+
+---
+
+# Metrics: Cleanup & HTTP Events
+
+<<< @/../src/metrics.ts#L102-L141 ts
+
+Tracks cleanup batches, HTTP request latency, and publish operations.
+
+---
+
+# Metrics Event Types
+
+| Category | Events | Doubles |
+|----------|--------|---------|
+| `fanout` | Per-message fanout | subscribers, success, failures |
+| `queue` | Queue batch processing | size, success, retries |
+| `subscription` | Subscribe/unsubscribe | count, latency, isNewSession |
+| `session` | Create/touch/delete/expire | count, latency, ttl/age |
+| `cleanup` | Two-phase cleanup | marked, deleted, success, fail |
+| `publish` | Message publish | count, fanoutCount, latency |
+
+Queryable via Analytics Engine SQL.
+
+---
 layout: center
 class: text-center
 ---
 
 # Questions?
 
-[Source Code](../src) | [Core Package](../../durable-stream-core/docs/walkthrough.md)
+[Source Code](../src) | [Core](../../durable-stream-core/docs/walkthrough.md) | [Admin](../../durable-stream-admin/docs/walkthrough.md)
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded bg-gray-100">
