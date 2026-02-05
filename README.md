@@ -139,12 +139,46 @@ Each package includes a Slidev presentation that tells the story of how data flo
 
 Opens at http://localhost:3030. Arrow keys to navigate.
 
-### Updating
+### When to Update
 
-Presentations import code directly from source files. To update:
-1. Edit `docs/walkthrough.md` in the relevant package
-2. Code changes are reflected automatically
-3. See https://sli.dev/guide/syntax for Slidev syntax
+Update the walkthroughs when:
+- **Adding a new HTTP endpoint** — Add slides showing the route handler and any service functions
+- **Adding a new feature** (e.g., new storage layer, auth method) — Create a new story or expand supporting topics
+- **Changing data flow** — Update sequence diagrams to match
+- **Refactoring that moves code** — Update line number references in `<<< @/../src/...` imports
+
+You don't need to update for:
+- Bug fixes that don't change the API or data flow
+- Internal refactors that keep the same file structure
+- Test changes
+
+### How to Update
+
+Presentations use [Slidev](https://sli.dev) and import code directly from source files:
+
+```markdown
+<<< @/../src/routes/streams.ts#L21-L38 ts
+```
+
+This imports lines 21-38 from the source file. When source code changes:
+1. **Line numbers shift** — Update the `#L21-L38` ranges to match new locations
+2. **Code is renamed/moved** — Update the file path
+3. **New feature added** — Add new slides with appropriate imports
+
+To preview changes:
+```bash
+cd packages/durable-stream-core/docs
+pnpm install
+pnpm dev
+```
+
+**Tips:**
+- Keep slides focused — one concept per slide
+- Use sequence diagrams for multi-step flows
+- Link related packages in the final slide
+- Run `pnpm dev` to verify imports resolve before committing
+
+See https://sli.dev/guide/syntax for full Slidev syntax.
 
 ## More Details
 See `packages/durable-stream-server/README.md` for implementation specifics,
