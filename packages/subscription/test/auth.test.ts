@@ -126,7 +126,7 @@ describe("bearerTokenAuth", () => {
 
   it("returns 401 JSON response on rejection", async () => {
     const request = new Request("http://localhost");
-    const result = auth(request, dummyRoute, { AUTH_TOKEN: "secret" });
+    const result = await auth(request, dummyRoute, { AUTH_TOKEN: "secret" });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(401);

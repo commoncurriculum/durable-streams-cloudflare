@@ -22,6 +22,7 @@ interface Subscriber {
   subscribed_at: number;
 }
 
+// #region synced-to-docs:do-overview
 export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private sql: SqlStorage;
 
@@ -39,7 +40,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       );
     `);
   }
+  // #endregion synced-to-docs:do-overview
 
+  // #region synced-to-docs:add-subscriber
   async addSubscriber(sessionId: string): Promise<void> {
     this.sql.exec(
       `INSERT INTO subscribers (session_id, subscribed_at)
@@ -49,11 +52,13 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       Date.now(),
     );
   }
+  // #endregion synced-to-docs:add-subscriber
 
   async removeSubscriber(sessionId: string): Promise<void> {
     this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
   }
 
+  // #region synced-to-docs:get-subscribers
   async getSubscribers(streamId: string): Promise<GetSubscribersResult> {
     const subscribers = this.getSubscribersWithTimestamps();
     return {
@@ -65,7 +70,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       count: subscribers.length,
     };
   }
+  // #endregion synced-to-docs:get-subscribers
 
+  // #region synced-to-docs:publish-to-source
   async publish(streamId: string, params: PublishParams): Promise<PublishResult> {
     const start = Date.now();
     const metrics = createMetrics(this.env.METRICS);
@@ -90,6 +97,8 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         body: params.payload,
       },
     );
+
+    // #endregion synced-to-docs:publish-to-source
 
     if (!writeResponse.ok) {
       const errorText = await writeResponse.text();
@@ -119,6 +128,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       };
     }
 
+    // #region synced-to-docs:fanout
     // 2. Get subscribers (local DO SQLite query)
     const subscribers = this.getSubscriberSessionIds();
 
@@ -137,7 +147,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         );
         results.push(...batchResults);
       }
+      // #endregion synced-to-docs:fanout
 
+      // #region synced-to-docs:stale-cleanup
       const staleSessionIds: string[] = [];
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
@@ -159,6 +171,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       for (const sessionId of staleSessionIds) {
         this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
       }
+      // #endregion synced-to-docs:stale-cleanup
 
       // Record fanout metrics
       const latencyMs = Date.now() - start;
@@ -171,6 +184,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // Read body from write response
     const body = await writeResponse.text();
 
+    // #region synced-to-docs:publish-response
     return {
       status: writeResponse.status,
       nextOffset: writeResponse.headers.get("X-Stream-Next-Offset"),
@@ -182,6 +196,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       fanoutFailures: failureCount,
     };
   }
+  // #endregion synced-to-docs:publish-response
 
   private getSubscriberSessionIds(): string[] {
     const cursor = this.sql.exec("SELECT session_id FROM subscribers");

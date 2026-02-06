@@ -12,6 +12,7 @@ const streamIdParamSchema = z.object({
   streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
 });
 
+// #region synced-to-docs:publish-route
 publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema), async (c) => {
   const start = Date.now();
   const streamId = c.req.param("streamId");
@@ -25,6 +26,7 @@ publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema
       producerEpoch: c.req.header("Producer-Epoch") ?? undefined,
       producerSeq: c.req.header("Producer-Seq") ?? undefined,
     });
+    // #endregion synced-to-docs:publish-route
 
     if (result.status >= 400) {
       metrics.publishError(streamId, `http_${result.status}`, Date.now() - start);

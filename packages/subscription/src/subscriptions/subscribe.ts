@@ -4,6 +4,7 @@ import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
 import type { AppEnv } from "../env";
 import type { SubscribeResult } from "./types";
 
+// #region synced-to-docs:create-session-stream
 export async function subscribe(
   env: AppEnv,
   streamId: string,
@@ -27,6 +28,7 @@ export async function subscribe(
   });
 
   const isNewSession = coreResponse.ok;
+  // #endregion synced-to-docs:create-session-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
     const errorText = await coreResponse.text();
@@ -34,6 +36,7 @@ export async function subscribe(
     throw new Error(`Failed to create session stream: ${coreResponse.status}`);
   }
 
+  // #region synced-to-docs:add-subscription-to-do
   // 2. Add subscription to DO
   const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamId));
   try {
@@ -50,6 +53,7 @@ export async function subscribe(
     }
     throw err;
   }
+  // #endregion synced-to-docs:add-subscription-to-do
 
   // 3. Metrics
   const latencyMs = Date.now() - start;
@@ -58,6 +62,7 @@ export async function subscribe(
     metrics.sessionCreate(sessionId, ttlSeconds, latencyMs);
   }
 
+  // #region synced-to-docs:subscribe-response
   return {
     sessionId,
     streamId,
@@ -65,4 +70,5 @@ export async function subscribe(
     expiresAt,
     isNewSession,
   };
+  // #endregion synced-to-docs:subscribe-response
 }

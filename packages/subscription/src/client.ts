@@ -13,6 +13,7 @@ export interface CoreClientEnv {
  * Fetch from core worker using service binding if available, otherwise use HTTP.
  * Service bindings are faster (no network hop) and don't require auth.
  */
+// #region synced-to-docs:fetch-from-core
 export function fetchFromCore(
   env: CoreClientEnv,
   path: string,
@@ -37,3 +38,4 @@ export function fetchFromCore(
     headers,
   });
 }
+// #endregion synced-to-docs:fetch-from-core

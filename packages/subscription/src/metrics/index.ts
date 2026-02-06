@@ -1,3 +1,4 @@
+// #region synced-to-docs:metrics-overview
 /**
  * Metrics helper for Analytics Engine observability.
  *
@@ -8,7 +9,9 @@
  */
 export class Metrics {
   constructor(private ae: AnalyticsEngineDataset | undefined) {}
+  // #endregion synced-to-docs:metrics-overview
 
+  // #region synced-to-docs:metrics-fanout-subscription
   // Fanout events
   fanout(p: { streamId: string; subscribers: number; success: number; failures: number; latencyMs: number }) {
     this.ae?.writeDataPoint({
@@ -34,7 +37,9 @@ export class Metrics {
       indexes: ["subscription"],
     });
   }
+  // #endregion synced-to-docs:metrics-fanout-subscription
 
+  // #region synced-to-docs:metrics-session-cleanup
   // Session lifecycle events
   sessionCreate(sessionId: string, ttlSeconds: number, latencyMs: number) {
     this.ae?.writeDataPoint({
@@ -67,6 +72,7 @@ export class Metrics {
       indexes: ["session"],
     });
   }
+  // #endregion synced-to-docs:metrics-session-cleanup
 
   // Cleanup events
   cleanupBatch(p: { expiredSessions: number; streamsDeleted: number; subscriptionsRemoved: number; subscriptionsFailed: number; latencyMs: number }) {

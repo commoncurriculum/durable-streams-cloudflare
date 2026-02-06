@@ -45,14 +45,14 @@ function parseCorsOrigins(
   };
 }
 
-// #region worker-entry
+// #region synced-to-docs:worker-entry
 export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   config?: SubscriptionWorkerConfig<E>,
 ) {
   const app = new Hono<{ Bindings: E }>();
-  // #endregion worker-entry
+  // #endregion synced-to-docs:worker-entry
 
-  // #region middleware
+  // #region synced-to-docs:middleware
   // CORS middleware
   app.use("*", async (c, next) => {
     const corsOrigin = parseCorsOrigins(c.env.CORS_ORIGINS);
@@ -105,7 +105,7 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     const path = new URL(c.req.url).pathname;
     metrics.http(path, c.req.method, c.res.status, latencyMs);
   });
-  // #endregion middleware
+  // #endregion synced-to-docs:middleware
 
   // Health check
   app.get("/health", (c) => {
@@ -122,7 +122,7 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     return c.json({ error: "Not found" }, 404);
   });
 
-  // #region scheduled-handler
+  // #region synced-to-docs:scheduled-handler
   return {
     fetch: app.fetch,
 
@@ -157,5 +157,5 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
       );
     },
   };
-  // #endregion scheduled-handler
+  // #endregion synced-to-docs:scheduled-handler
 }

@@ -7,6 +7,7 @@ import { deleteSession } from "../../session";
 import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../../constants";
 import type { AppEnv } from "../../env";
 
+// #region synced-to-docs:subscribe-schema
 const subscribeSchema = z.object({
   sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
   streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
@@ -17,6 +18,7 @@ const unsubscribeSchema = z.object({
   sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
   streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
 });
+// #endregion synced-to-docs:subscribe-schema
 
 export const subscribeRoutes = new Hono<{ Bindings: AppEnv }>();
 

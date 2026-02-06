@@ -31,7 +31,7 @@ Follow session creation from request to SubscriptionDO
 
 # 1. The Worker Entry Point
 
-<<< @/../src/http/create_worker.ts#worker-entry ts
+<<< @/../src/http/create_worker.ts#synced-to-docs:worker-entry ts
 
 `createSubscriptionWorker(config?)` builds the Hono app. Pass an `authorize` callback for pluggable auth, or omit it for no auth. The default worker uses `bearerTokenAuth()` which checks `AUTH_TOKEN`.
 
@@ -39,7 +39,7 @@ Follow session creation from request to SubscriptionDO
 
 # 2. Middleware Stack
 
-<<< @/../src/http/create_worker.ts#middleware ts
+<<< @/../src/http/create_worker.ts#synced-to-docs:middleware ts
 
 CORS is configurable via `CORS_ORIGINS` (single origin, comma-separated list, or `*`). Auth middleware calls `parseRoute()` then `config.authorize()` if a route matched — `/health` is always skipped. HTTP metrics record every request.
 
@@ -47,7 +47,7 @@ CORS is configurable via `CORS_ORIGINS` (single origin, comma-separated list, or
 
 # 3. Subscribe Route (Schema + Validation)
 
-<<< @/../src/http/routes/subscribe.ts#subscribe-schema ts
+<<< @/../src/http/routes/subscribe.ts#synced-to-docs:subscribe-schema ts
 
 Zod schemas validate `sessionId` and `streamId` against `SESSION_ID_PATTERN` / `STREAM_ID_PATTERN` to prevent SQL injection in Analytics Engine queries.
 
@@ -55,7 +55,7 @@ Zod schemas validate `sessionId` and `streamId` against `SESSION_ID_PATTERN` / `
 
 # 4. Creating the Session Stream in Core
 
-<<< @/../src/subscriptions/subscribe.ts#create-session-stream ts
+<<< @/../src/subscriptions/subscribe.ts#synced-to-docs:create-session-stream ts
 
 The session stream is created in Core first (source of truth). Uses `X-Stream-Expires-At` to set TTL. A `409` means the stream already exists — that's fine.
 
@@ -63,7 +63,7 @@ The session stream is created in Core first (source of truth). Uses `X-Stream-Ex
 
 # 5. Adding Subscription to SubscriptionDO
 
-<<< @/../src/subscriptions/subscribe.ts#add-subscription-to-do ts
+<<< @/../src/subscriptions/subscribe.ts#synced-to-docs:add-subscription-to-do ts
 
 Routes to `SubscriptionDO(streamId)` via `idFromName`. The DO stores the subscriber in local SQLite. If the DO call fails, the session stream is rolled back.
 
@@ -71,7 +71,7 @@ Routes to `SubscriptionDO(streamId)` via `idFromName`. The DO stores the subscri
 
 # 6. The Response
 
-<<< @/../src/subscriptions/subscribe.ts#subscribe-response ts
+<<< @/../src/subscriptions/subscribe.ts#synced-to-docs:subscribe-response ts
 
 Returns the session stream path, expiry timestamp, and whether this was a new session.
 
@@ -115,7 +115,7 @@ Focus on SubscriptionDO internals
 
 # 1. SubscriptionDO Overview
 
-<<< @/../src/subscriptions/do.ts#do-overview ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:do-overview ts
 
 Each stream gets its own SubscriptionDO with a local SQLite `subscribers` table. `blockConcurrencyWhile` ensures the schema is initialized before any requests.
 
@@ -123,7 +123,7 @@ Each stream gets its own SubscriptionDO with a local SQLite `subscribers` table.
 
 # 2. Adding a Subscriber
 
-<<< @/../src/subscriptions/do.ts#add-subscriber ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:add-subscriber ts
 
 `ON CONFLICT DO NOTHING` makes subscribe idempotent — re-subscribing the same session is a safe no-op.
 
@@ -131,7 +131,7 @@ Each stream gets its own SubscriptionDO with a local SQLite `subscribers` table.
 
 # 3. Getting Subscribers
 
-<<< @/../src/subscriptions/do.ts#get-subscribers ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:get-subscribers ts
 
 Subscriber lookup is a synchronous local SQLite query — no network hop.
 
@@ -159,7 +159,7 @@ Each stream's SubscriptionDO has its own isolated `subscribers(session_id, subsc
 
 # 4. Unsubscribe Flow
 
-<<< @/../src/subscriptions/unsubscribe.ts#unsubscribe ts
+<<< @/../src/subscriptions/unsubscribe.ts#synced-to-docs:unsubscribe ts
 
 The `unsubscribe()` function routes to `SubscriptionDO(streamId)` to remove the subscriber. The session itself remains active.
 
@@ -167,7 +167,7 @@ The `unsubscribe()` function routes to `SubscriptionDO(streamId)` to remove the 
 
 # 5. Session Info
 
-<<< @/../src/session/index.ts#get-session ts
+<<< @/../src/session/index.ts#synced-to-docs:get-session ts
 
 `getSession()` does a HEAD request to Core to check if the session stream exists, then queries Analytics Engine for subscription data.
 
@@ -175,7 +175,7 @@ The `unsubscribe()` function routes to `SubscriptionDO(streamId)` to remove the 
 
 # 6. Touch (Extend TTL)
 
-<<< @/../src/session/index.ts#touch-session ts
+<<< @/../src/session/index.ts#synced-to-docs:touch-session ts
 
 `touchSession()` extends the session's TTL by sending a PUT to Core with an updated `X-Stream-Expires-At` header.
 
@@ -191,7 +191,7 @@ Follow a message from publish to all subscribers — no queue needed
 
 # 1. The Publish Route
 
-<<< @/../src/http/routes/publish.ts#publish-route ts
+<<< @/../src/http/routes/publish.ts#synced-to-docs:publish-route ts
 
 Validates `streamId` against `STREAM_ID_PATTERN`, then delegates entirely to `SubscriptionDO(streamId)`. Producer headers are passed through for deduplication.
 
@@ -199,7 +199,7 @@ Validates `streamId` against `STREAM_ID_PATTERN`, then delegates entirely to `Su
 
 # 2. SubscriptionDO: Write to Source Stream
 
-<<< @/../src/subscriptions/do.ts#publish-to-source ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:publish-to-source ts
 
 The DO writes to the source stream in Core first (source of truth). The response's `X-Stream-Next-Offset` is used to build fanout producer headers for deduplication.
 
@@ -207,7 +207,7 @@ The DO writes to the source stream in Core first (source of truth). The response
 
 # 3. SubscriptionDO: Fanout
 
-<<< @/../src/subscriptions/do.ts#fanout ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:fanout ts
 
 Local SQLite query gets all subscribers. `Promise.allSettled` delivers to all session streams in parallel. Stale subscribers (404 responses) are auto-removed from SQLite.
 
@@ -215,7 +215,7 @@ Local SQLite query gets all subscribers. `Promise.allSettled` delivers to all se
 
 # 4. Stale Subscriber Cleanup
 
-<<< @/../src/subscriptions/do.ts#stale-cleanup ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:stale-cleanup ts
 
 When a session stream returns 404 during fanout, the subscriber is immediately removed from local SQLite. This keeps the subscriber list clean without waiting for the cleanup cron.
 
@@ -223,7 +223,7 @@ When a session stream returns 404 during fanout, the subscriber is immediately r
 
 # 5. Response with Fanout Headers
 
-<<< @/../src/subscriptions/do.ts#publish-response ts
+<<< @/../src/subscriptions/do.ts#synced-to-docs:publish-response ts
 
 `X-Fanout-Count`, `X-Fanout-Successes`, and `X-Fanout-Failures` headers let the publisher know exactly what happened.
 
@@ -259,7 +259,7 @@ layout: section
 
 # 1. Session Cleanup Overview
 
-<<< @/../src/cleanup/index.ts#cleanup-overview ts
+<<< @/../src/cleanup/index.ts#synced-to-docs:cleanup-overview ts
 
 Cleanup uses Analytics Engine to find expired sessions, removes their subscriptions from SubscriptionDOs, then deletes their session streams from Core. Single-phase — no marking/grace period.
 
@@ -267,7 +267,7 @@ Cleanup uses Analytics Engine to find expired sessions, removes their subscripti
 
 # 2. Cleanup Implementation
 
-<<< @/../src/cleanup/index.ts#cleanup-main ts
+<<< @/../src/cleanup/index.ts#synced-to-docs:cleanup-main ts
 
 Queries Analytics Engine for expired sessions, then processes them in parallel batches of 10.
 
@@ -275,7 +275,7 @@ Queries Analytics Engine for expired sessions, then processes them in parallel b
 
 # 3. Removing Subscriptions + Deleting Streams
 
-<<< @/../src/cleanup/index.ts#cleanup-session ts
+<<< @/../src/cleanup/index.ts#synced-to-docs:cleanup-session ts
 
 For each expired session: query its subscriptions from Analytics Engine, remove from each SubscriptionDO, then delete the session stream from Core.
 
@@ -283,7 +283,7 @@ For each expired session: query its subscriptions from Analytics Engine, remove 
 
 # 4. Scheduled Handler
 
-<<< @/../src/http/create_worker.ts#scheduled-handler ts
+<<< @/../src/http/create_worker.ts#synced-to-docs:scheduled-handler ts
 
 Runs every 5 minutes via cron. Records cleanup metrics including expired session count, stream deletes, and subscription removals.
 
@@ -291,7 +291,7 @@ Runs every 5 minutes via cron. Records cleanup metrics including expired session
 
 # 5. Input Validation
 
-<<< @/../src/constants.ts#id-patterns ts
+<<< @/../src/constants.ts#synced-to-docs:id-patterns ts
 
 `SESSION_ID_PATTERN` and `STREAM_ID_PATTERN` restrict IDs to safe characters — preventing SQL injection in Analytics Engine queries where values are interpolated into SQL strings.
 
@@ -299,7 +299,7 @@ Runs every 5 minutes via cron. Records cleanup metrics including expired session
 
 # 6. Core Client
 
-<<< @/../src/client.ts#fetch-from-core ts
+<<< @/../src/client.ts#synced-to-docs:fetch-from-core ts
 
 `fetchFromCore` prefers the `CORE` service binding (no network hop, no auth needed). Falls back to HTTP with bearer auth if the binding isn't available.
 
@@ -307,7 +307,7 @@ Runs every 5 minutes via cron. Records cleanup metrics including expired session
 
 # 7. Metrics Overview
 
-<<< @/../src/metrics/index.ts#metrics-overview ts
+<<< @/../src/metrics/index.ts#synced-to-docs:metrics-overview ts
 
 All metrics use Analytics Engine with a consistent structure: `blobs` for dimensions, `doubles` for values, `indexes` for query filtering.
 
@@ -315,7 +315,7 @@ All metrics use Analytics Engine with a consistent structure: `blobs` for dimens
 
 # 8. Metrics: Fanout & Subscription
 
-<<< @/../src/metrics/index.ts#metrics-fanout-subscription ts
+<<< @/../src/metrics/index.ts#synced-to-docs:metrics-fanout-subscription ts
 
 Tracks fanout success/failure rates per stream, plus subscribe/unsubscribe events.
 
@@ -323,7 +323,7 @@ Tracks fanout success/failure rates per stream, plus subscribe/unsubscribe event
 
 # 9. Metrics: Session Lifecycle & Cleanup
 
-<<< @/../src/metrics/index.ts#metrics-session-cleanup ts
+<<< @/../src/metrics/index.ts#synced-to-docs:metrics-session-cleanup ts
 
 Records session creation, touch, delete, and expiration events. Cleanup batch metrics track streams deleted and subscriptions removed.
 

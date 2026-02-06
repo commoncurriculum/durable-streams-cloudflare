@@ -5,6 +5,7 @@ import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
 import type { AppEnv } from "../env";
 import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../subscriptions/types";
 
+// #region synced-to-docs:get-session
 export async function getSession(env: AppEnv, sessionId: string): Promise<SessionInfo | null> {
   const coreResponse = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "HEAD" });
   if (!coreResponse.ok) return null;
@@ -29,7 +30,9 @@ export async function getSession(env: AppEnv, sessionId: string): Promise<Sessio
     subscriptions,
   };
 }
+// #endregion synced-to-docs:get-session
 
+// #region synced-to-docs:touch-session
 export async function touchSession(env: AppEnv, sessionId: string): Promise<TouchSessionResult> {
   const start = Date.now();
   const ttlSeconds = env.SESSION_TTL_SECONDS
@@ -52,6 +55,7 @@ export async function touchSession(env: AppEnv, sessionId: string): Promise<Touc
   createMetrics(env.METRICS).sessionTouch(sessionId, Date.now() - start);
   return { sessionId, expiresAt };
 }
+// #endregion synced-to-docs:touch-session
 
 export async function deleteSession(env: AppEnv, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();

@@ -2,6 +2,7 @@
  * Shared constants for durable-stream-subscriptions
  */
 
+// #region synced-to-docs:id-patterns
 /**
  * Pattern for valid session IDs.
  * Allows alphanumeric characters, hyphens, underscores, colons, and periods.
@@ -15,6 +16,7 @@ export const SESSION_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
  * Same rules as session IDs.
  */
 export const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
+// #endregion synced-to-docs:id-patterns
 
 /**
  * Default session TTL in seconds (30 minutes).

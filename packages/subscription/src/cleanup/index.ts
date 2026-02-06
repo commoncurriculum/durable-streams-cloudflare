@@ -1,3 +1,4 @@
+// #region synced-to-docs:cleanup-overview
 /**
  * Session cleanup using Analytics Engine queries.
  *
@@ -8,6 +9,7 @@
  *    b. Remove from each SubscriptionDO via RPC
  *    c. Delete the session stream from core
  */
+// #endregion synced-to-docs:cleanup-overview
 
 import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
@@ -63,6 +65,7 @@ async function cleanupSession(
 
   const subscriptions = subscriptionsResult.data;
 
+  // #region synced-to-docs:cleanup-session
   // Remove from each SubscriptionDO via RPC
   for (const sub of subscriptions) {
     try {
@@ -93,6 +96,7 @@ async function cleanupSession(
   } catch (err) {
     console.error(`Failed to delete session stream ${session.sessionId}:`, err);
   }
+  // #endregion synced-to-docs:cleanup-session
 
   return {
     streamDeleteSuccess,
@@ -151,6 +155,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
   let subscriptionRemoveSuccesses = 0;
   let subscriptionRemoveFailures = 0;
 
+  // #region synced-to-docs:cleanup-main
   const BATCH_SIZE = 10;
 
   for (let i = 0; i < expiredSessions.length; i += BATCH_SIZE) {
@@ -159,6 +164,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
     const results = await Promise.allSettled(
       batch.map(session => cleanupSession(env, analyticsEnv, datasetName, session, metrics)),
     );
+    // #endregion synced-to-docs:cleanup-main
 
     for (const result of results) {
       if (result.status === "fulfilled") {
