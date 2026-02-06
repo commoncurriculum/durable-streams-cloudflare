@@ -1,0 +1,24 @@
+{
+  "name": "@durable-streams-cloudflare/cli",
+  "version": "0.1.0",
+  "description": "CLI for scaffolding, deploying, and managing Durable Streams on Cloudflare",
+  "type": "module",
+  "bin": {
+    "durable-streams": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT"
+}

@@ -176,6 +176,22 @@ curl -X DELETE $SUB/v1/unsubscribe \
   -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
 ```
 
+## Releasing
+
+This repo uses [Changesets](https://github.com/changesets/changesets) for versioning and npm publishing.
+
+1. **Add a changeset** before merging your PR:
+   ```bash
+   pnpm changeset
+   ```
+   Pick which packages changed and whether it's a patch, minor, or major bump. This creates a markdown file in `.changeset/`.
+
+2. **Merge to main.** The publish workflow detects pending changesets and opens a "chore: version packages" PR that bumps versions and updates changelogs.
+
+3. **Merge the version PR.** The workflow publishes to npm automatically via trusted publishing (OIDC). No tokens required.
+
+All three public packages (`core`, `subscription`, `cli`) stay on the same version number via the `fixed` config in `.changeset/config.json`.
+
 ## Credits
 
 Core implements the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol by Electric SQL. Conformance-tested against the official test suite.
