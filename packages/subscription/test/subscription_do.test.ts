@@ -546,6 +546,44 @@ describe("SubscriptionDO", () => {
         expect(mockSendBatch).toHaveBeenCalled();
       });
 
+      it("should chunk sendBatch calls when messages exceed 100", async () => {
+        const mockSendBatch = vi.fn().mockResolvedValue(undefined);
+        const envWithQueue = createMockEnv({
+          FANOUT_QUEUE: { sendBatch: mockSendBatch },
+          FANOUT_QUEUE_THRESHOLD: "0", // Always queue
+        });
+
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envWithQueue);
+
+        // Add 6000 subscribers → 120 queue messages (at FANOUT_QUEUE_BATCH_SIZE=50)
+        // Should require 2 sendBatch calls (100 + 20)
+        for (let i = 0; i < 6000; i++) {
+          await dobj.addSubscriber(`s${i}`);
+        }
+
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "1" },
+          }),
+        );
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        expect(result.fanoutMode).toBe("queued");
+        expect(mockSendBatch).toHaveBeenCalledTimes(2);
+        // First call: 100 messages, second call: 20 messages
+        expect(mockSendBatch.mock.calls[0][0]).toHaveLength(100);
+        expect(mockSendBatch.mock.calls[1][0]).toHaveLength(20);
+      });
+
       it("should fall back to inline when queue enqueue fails", async () => {
         const mockSendBatch = vi.fn().mockRejectedValue(new Error("Queue unavailable"));
         const envWithQueue = createMockEnv({

@@ -11,6 +11,7 @@ import { DurableObject } from "cloudflare:workers";
 import { fetchFromCore, type CoreClientEnv } from "../client";
 import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
+import { bufferToBase64 } from "../util/base64";
 import { FANOUT_QUEUE_THRESHOLD, FANOUT_QUEUE_BATCH_SIZE } from "../constants";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
@@ -174,7 +175,6 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         // #endregion synced-to-docs:fanout
 
         // #region synced-to-docs:stale-cleanup
-        // Remove stale subscribers (sync - SQLite is local)
         this.removeStaleSubscribers(result.staleSessionIds);
         // #endregion synced-to-docs:stale-cleanup
       }
@@ -231,7 +231,11 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       });
     }
 
-    await queue.sendBatch(messages);
+    // sendBatch has a 100-message limit — chunk if needed
+    const SEND_BATCH_LIMIT = 100;
+    for (let i = 0; i < messages.length; i += SEND_BATCH_LIMIT) {
+      await queue.sendBatch(messages.slice(i, i + SEND_BATCH_LIMIT));
+    }
   }
 
   private removeStaleSubscribers(sessionIds: string[]): void {
@@ -260,13 +264,4 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
     return results;
   }
-}
-
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }

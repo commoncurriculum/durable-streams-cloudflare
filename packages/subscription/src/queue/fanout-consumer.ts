@@ -1,5 +1,6 @@
 import { fanoutToSubscribers } from "../subscriptions/fanout";
 import { createMetrics } from "../metrics";
+import { base64ToBuffer } from "../util/base64";
 import type { AppEnv } from "../env";
 import type { FanoutQueueMessage } from "../subscriptions/types";
 
@@ -46,17 +47,9 @@ export async function handleFanoutQueue(
       } else {
         message.ack();
       }
-    } catch {
+    } catch (err) {
+      console.error(`Fanout queue message failed for stream ${streamId}:`, err);
       message.retry();
     }
   }
-}
-
-function base64ToBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer as ArrayBuffer;
 }

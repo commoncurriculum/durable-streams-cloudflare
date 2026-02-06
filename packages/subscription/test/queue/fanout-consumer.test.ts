@@ -167,9 +167,10 @@ describe("handleFanoutQueue", () => {
     expect(msg.ack).not.toHaveBeenCalled();
   });
 
-  it("retries when fanout throws", async () => {
+  it("retries and logs when fanout throws", async () => {
     mockFanoutToSubscribers.mockRejectedValue(new Error("Network error"));
     const { env } = createMockEnv();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const msg = createMessage({
       streamId: "test-stream",
@@ -185,6 +186,12 @@ describe("handleFanoutQueue", () => {
 
     expect(msg.retry).toHaveBeenCalled();
     expect(msg.ack).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("test-stream"),
+      expect.any(Error),
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 
   it("processes multiple messages in a batch", async () => {

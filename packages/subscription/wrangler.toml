@@ -30,17 +30,18 @@ dataset = "subscriptions_metrics"
 # binding = "CORE"
 # service = "durable-streams"
 
-# Queue-based fanout for hot topics
-[[queues.producers]]
-binding = "FANOUT_QUEUE"
-queue = "subscription-fanout"
-
-[[queues.consumers]]
-queue = "subscription-fanout"
-max_batch_size = 10
-max_batch_timeout = 1
-max_retries = 3
-dead_letter_queue = "subscription-fanout-dlq"
+# Queue-based fanout for hot topics (uncomment to enable)
+# Without this, fanout is always inline — safe for local dev.
+# [[queues.producers]]
+# binding = "FANOUT_QUEUE"
+# queue = "subscription-fanout"
+#
+# [[queues.consumers]]
+# queue = "subscription-fanout"
+# max_batch_size = 10
+# max_batch_timeout = 1
+# max_retries = 3
+# dead_letter_queue = "subscription-fanout-dlq"
 
 # Session cleanup cron
 [triggers]
