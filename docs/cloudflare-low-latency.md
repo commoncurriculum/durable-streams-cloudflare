@@ -7,7 +7,7 @@ This document describes the Cloudflare-only architecture for Durable Streams wit
 - **Durable Object (one per stream/document)** provides strict ordering, live fan-out, and protocol behavior.
 - **DO SQLite** is the **durable hot log**. ACK only after a SQLite commit.
 - **R2** is cold storage for immutable segments, never on the ACK path.
-- **Optional D1 admin index** provides global listing of segments for cleanup/ops.
+- **Analytics Engine** for optional metrics and observability.
 
 ## Core Principle
 Object storage is **not** in the ACK path. The ACK path is **Durable Object + SQLite**.
@@ -19,7 +19,6 @@ Client
        -> Durable Object (per stream)
             -> SQLite (hot log, metadata, producer state)
             -> R2 (cold segments)
-            -> D1 (optional admin index)
 ```
 
 ## Durable Object Responsibilities

@@ -1,6 +1,6 @@
 # Durable Streams Cloudflare Server (Worker + DO + R2)
 
-Cloudflare-only implementation of the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **SQLite in DO storage** as the hot log. R2 stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops.
+Cloudflare-only implementation of the Durable Streams protocol with **low-latency, consistent writes** using a Durable Object as the sequencer and **SQLite in DO storage** as the hot log. R2 stores immutable cold segments.
 
 ## What This Server Includes
 - Worker router with optional bearer token auth.
@@ -10,7 +10,6 @@ Cloudflare-only implementation of the Durable Streams protocol with **low-latenc
 - JSON mode support (flatten arrays, validate JSON, return arrays on GET).
 - TTL/Expires-At enforcement.
 - R2 segments for cold storage (length-prefixed segment format).
-- Optional D1 admin index for global segment listing.
 
 ## What It Does Not Include (Yet)
 - Background compaction scheduling (runs opportunistically on writes).
@@ -42,11 +41,7 @@ from the worker; it does not interpret offsets itself.
    ```bash
    pnpm install
    ```
-2. (Optional) Apply admin D1 migrations locally:
-   ```bash
-   pnpx wrangler d1 migrations apply durable-streams --local
-   ```
-3. Run the worker locally (uses local R2 via Miniflare; DO SQLite is auto-initialized):
+2. Run the worker locally (uses local R2 via Miniflare; DO SQLite is auto-initialized):
    ```bash
    pnpm run dev
    ```
@@ -62,66 +57,19 @@ pnpx wrangler login
 ### 2. Create Resources
 
 ```bash
-# Create D1 database for admin index
-pnpx wrangler d1 create durable-streams
-
 # Create R2 bucket for cold segment storage
 pnpx wrangler r2 bucket create durable-streams
-
-# Create queue for fan-out
-pnpx wrangler queues create durable-streams-fanout-queue
-```
-
-After creating D1, copy the `database_id` from the output and update `wrangler.toml`:
-```toml
-[[d1_databases]]
-database_id = "your-database-id-here"  # Replace with actual ID
 ```
 
 The Analytics Engine dataset is created automatically on first deploy.
 
-### 3. Apply Migrations
-
-```bash
-pnpx wrangler d1 migrations apply durable-streams --remote
-```
-
-### 4. Build Admin UI
-
-```bash
-pnpm run build:admin-ui
-```
-
-### 5. Deploy Worker
+### 3. Deploy Worker
 
 ```bash
 pnpx wrangler deploy
 ```
 
-### 6. (Optional) Enable Admin Metrics Dashboard
-
-The admin UI shows real-time metrics (hot streams, throughput sparklines, subscriber counts, queue latency) when configured. These metrics are written by the deployed worker to Analytics Engine, so they only work in production.
-
-```bash
-# Get your account ID
-pnpx wrangler whoami
-
-# Set secrets for metrics API access
-pnpx wrangler secret put CF_ACCOUNT_ID
-# Enter your account ID when prompted
-
-pnpx wrangler secret put METRICS_API_TOKEN
-# Enter your API token when prompted (see below)
-```
-
-To create the `METRICS_API_TOKEN`:
-1. Go to https://dash.cloudflare.com/profile/api-tokens
-2. Create a token with **Account Analytics Read** permission
-3. Copy the token and paste when prompted
-
-**Queue Latency Metrics**: The dashboard also displays queue latency metrics (avg lag, P50/P90/P99 percentiles) for the fanout queue. This uses Cloudflare's built-in queue metrics via the GraphQL Analytics API. The queue ID is looked up automatically from the queue name configured in `wrangler.toml`. Queue latency data only appears when messages are processed through the queue (subscriber count > 200 threshold).
-
-### 7. (Optional) Enable API Authentication
+### 4. (Optional) Enable API Authentication
 
 The `AUTH_TOKEN` secret enables bearer token authentication for **all stream API endpoints** (`/v1/stream/*`). When set, clients must include `Authorization: Bearer <token>` header.
 
@@ -141,38 +89,6 @@ pnpx wrangler secret delete AUTH_TOKEN
 **When to use AUTH_TOKEN:**
 - You have server-to-server clients that can include the bearer token
 - You want to prevent unauthorized access to stream endpoints
-- You're NOT using the admin UI for stream management
-
-**When NOT to use AUTH_TOKEN:**
-- You want the admin UI to manage streams (create/delete)
-- Use Cloudflare Access instead to protect the admin UI
-
-### 8. (Optional) Protect Admin UI with Cloudflare Access
-
-To restrict admin UI access to authorized users only (recommended for production):
-
-1. Go to **Cloudflare Dashboard → Zero Trust → Access → Applications**
-2. Click **Add an application** → **Self-hosted**
-3. Configure:
-   - **Name**: `Durable Streams Admin`
-   - **Domain**: `durable-streams.<your-subdomain>.workers.dev`
-   - **Path**: `/admin/*`
-4. Add a policy to allow specific users/emails
-5. Save
-
-This protects the admin UI without breaking its functionality (unlike AUTH_TOKEN).
-
-## Setup (local)
-
-```bash
-pnpm install
-pnpx wrangler d1 migrations apply durable-streams --local
-pnpm run dev
-```
-
-Admin UI available at http://localhost:8787/admin
-
-Note: Metrics features (hot streams, sparklines) only work on deployed workers since Analytics Engine data is written in production.
 
 ## Conformance
 Run the server conformance suite against the local worker:
@@ -292,7 +208,6 @@ The worker exposes these response headers for browser clients:
 
 ## Files
 - `wrangler.toml`
-- `migrations/0001_segments_admin.sql`
 - `src/http/worker.ts` — Edge worker (auth, cache, routing to DO)
 - `src/http/durable_object.ts` — StreamDO class (concurrency, context, debug actions)
 - `src/http/router.ts` — Method dispatch + StreamContext/CacheMode types

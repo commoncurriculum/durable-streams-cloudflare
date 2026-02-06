@@ -18,6 +18,7 @@ export type SegmentRotationResult = {
   };
 };
 
+// #region docs-rotate-check
 export async function rotateSegment(params: {
   env: StreamEnv;
   storage: StreamStorage;
@@ -26,7 +27,6 @@ export async function rotateSegment(params: {
   segmentMaxBytes: number;
   force?: boolean;
   retainOps?: boolean;
-  recordAdminSegment?: (segment: NonNullable<SegmentRotationResult["segment"]>) => void;
 }): Promise<SegmentRotationResult> {
   const {
     env,
@@ -36,7 +36,6 @@ export async function rotateSegment(params: {
     segmentMaxBytes,
     force,
     retainOps,
-    recordAdminSegment,
   } = params;
 
   if (!env.R2) return { rotated: false };
@@ -47,6 +46,7 @@ export async function rotateSegment(params: {
   const shouldRotate =
     force || meta.segment_messages >= segmentMaxMessages || meta.segment_bytes >= segmentMaxBytes;
   if (!shouldRotate) return { rotated: false };
+  // #endregion docs-rotate-check
 
   const deleteOps = env.R2_DELETE_OPS !== "0" && !retainOps;
 
@@ -68,6 +68,7 @@ export async function rotateSegment(params: {
   const resolvedEnd = ops[ops.length - 1].end_offset;
   if (resolvedEnd !== segmentEnd) return { rotated: false };
 
+  // #region docs-rotate-store
   const now = Date.now();
   const messages = ops.map((chunk) => toUint8Array(chunk.body));
   const body = encodeSegmentMessages(messages);
@@ -92,6 +93,7 @@ export async function rotateSegment(params: {
     sizeBytes,
     messageCount,
   });
+  // #endregion docs-rotate-store
 
   const remainingStats = await storage.getOpsStatsFrom(streamId, segmentEnd);
   await storage.batch([
@@ -113,8 +115,6 @@ export async function rotateSegment(params: {
     sizeBytes,
     messageCount,
   };
-
-  recordAdminSegment?.(segment);
 
   if (deleteOps) {
     await storage.deleteOpsThrough(streamId, segmentEnd);

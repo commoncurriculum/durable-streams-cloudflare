@@ -53,6 +53,7 @@ function scheduleSegmentRotation(
   }
 }
 
+// #region docs-handle-put
 export async function handlePut(
   ctx: StreamContext,
   streamId: string,
@@ -85,7 +86,9 @@ export async function handlePut(
     return new Response(null, { status: result.value.status, headers: result.value.headers });
   });
 }
+// #endregion docs-handle-put
 
+// #region docs-handle-post
 export async function handlePost(
   ctx: StreamContext,
   streamId: string,
@@ -125,6 +128,7 @@ export async function handlePost(
         return producerDuplicateResponse(producerEval.state, dupOffset, streamResult.value.closed === 1);
       }
     }
+    // #endregion docs-handle-post
 
     // 5. Validate post operation
     const encodedTailOffset = await ctx.encodeTailOffset(streamId, streamResult.value);
@@ -135,6 +139,7 @@ export async function handlePost(
     const result = await executePost(ctx, validated.value);
     if (result.kind === "error") return result.response;
 
+    // #region docs-side-effects
     // 7. Side effects (notifications, broadcast, metrics)
     ctx.longPoll.notify(result.value.newTailOffset);
 
@@ -168,11 +173,13 @@ export async function handlePost(
         doubles: [1, parsed.value.bodyBytes.length],
       });
     }
+    // #endregion docs-side-effects
 
     return new Response(null, { status: result.value.status, headers: result.value.headers });
   });
 }
 
+// #region docs-handle-delete
 export async function handleDelete(ctx: StreamContext, streamId: string): Promise<Response> {
   return ctx.state.blockConcurrencyWhile(async () => {
     const meta = await ctx.getStream(streamId);
@@ -193,14 +200,7 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
       );
     }
 
-    if (ctx.env.ADMIN_DB) {
-      ctx.state.waitUntil(
-        ctx.env.ADMIN_DB.prepare("DELETE FROM segments_admin WHERE stream_id = ?")
-          .bind(streamId)
-          .run(),
-      );
-    }
-
     return new Response(null, { status: 204, headers: baseHeaders() });
   });
 }
+// #endregion docs-handle-delete

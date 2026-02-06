@@ -9,7 +9,6 @@ export interface Env {
   CACHE_MODE?: string;
   READ_JWT_SECRET?: string;
   R2?: R2Bucket;
-  ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
 }
@@ -63,6 +62,7 @@ type AuthResult =
       response: Response;
     };
 
+// #region docs-authorize-request
 function authorizeRequest(request: Request, env: Env, timing: Timing | null): AuthResult {
   if (!env.AUTH_TOKEN) return { ok: true };
   const doneAuth = timing?.start("edge.auth");
@@ -73,6 +73,7 @@ function authorizeRequest(request: Request, env: Env, timing: Timing | null): Au
   }
   return { ok: true };
 }
+// #endregion docs-authorize-request
 
 type ReadAuthResult = { ok: true; sessionId: string } | { ok: false; response: Response };
 
@@ -130,6 +131,7 @@ async function verifySessionJwt(
   }
 }
 
+// #region docs-authorize-read
 async function authorizeRead(
   request: Request,
   secret: string,
@@ -146,37 +148,10 @@ async function authorizeRead(
   }
   return { ok: true, sessionId: claims.sessionId };
 }
-
-async function recordStreamInD1(
-  db: D1Database,
-  streamId: string,
-  contentType: string,
-  createdAt: number,
-): Promise<void> {
-  try {
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO streams (stream_id, content_type, created_at) VALUES (?, ?, ?)",
-      )
-      .bind(streamId, contentType, createdAt)
-      .run();
-  } catch (err) {
-    console.error("Failed to record stream in D1:", err);
-  }
-}
-
-async function deleteStreamFromD1(db: D1Database, streamId: string): Promise<void> {
-  try {
-    await db
-      .prepare("UPDATE streams SET deleted_at = ? WHERE stream_id = ?")
-      .bind(Date.now(), streamId)
-      .run();
-  } catch (err) {
-    console.error("Failed to delete stream from D1:", err);
-  }
-}
+// #endregion docs-authorize-read
 
 export default {
+  // #region docs-request-arrives
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const timingEnabled = env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
@@ -192,6 +167,7 @@ export default {
     const isStreamRead =
       url.pathname.startsWith(STREAM_PREFIX) && (method === "GET" || method === "HEAD");
     let sessionId: string | null = null;
+    // #endregion docs-request-arrives
 
     if (isStreamRead && env.READ_JWT_SECRET) {
       const readAuth = await authorizeRead(request, env.READ_JWT_SECRET, timing);
@@ -229,6 +205,7 @@ export default {
       authMode: undefined,
     });
 
+    // #region docs-extract-stream-id
     if (!url.pathname.startsWith(STREAM_PREFIX)) {
       return corsError(404, "not found");
     }
@@ -242,6 +219,7 @@ export default {
     if (!streamId) {
       return corsError(400, "missing stream id");
     }
+    // #endregion docs-extract-stream-id
 
     const cacheable = cacheMode === "shared" && shouldUseCache(request, url);
     const cache = caches.default;
@@ -258,6 +236,7 @@ export default {
       timing?.record("edge.cache", 0, "miss");
     }
 
+    // #region docs-route-to-do
     const id = env.STREAMS.idFromName(streamId);
     const stub = env.STREAMS.get(id);
 
@@ -282,19 +261,10 @@ export default {
       statusText: response.statusText,
       headers: responseHeaders,
     });
+    // #endregion docs-route-to-do
 
     if (cacheable && isCacheableResponse(wrapped)) {
       ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
-    }
-
-    // Record stream creates/deletes to D1 for admin querying
-    if (env.ADMIN_DB) {
-      if (request.method === "PUT" && response.status === 201) {
-        const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
-        ctx.waitUntil(recordStreamInD1(env.ADMIN_DB, streamId, contentType, Date.now()));
-      } else if (request.method === "DELETE" && response.status === 204) {
-        ctx.waitUntil(deleteStreamFromD1(env.ADMIN_DB, streamId));
-      }
     }
 
     return attachTiming(wrapped, timing);

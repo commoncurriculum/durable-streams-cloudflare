@@ -47,7 +47,7 @@ sequenceDiagram
   Client->>Doc: Catch-up GET offset=lastOffset (on reconnect)
 ```
 
-## Data Model (D1)
+## Data Model
 ```sql
 CREATE TABLE session_subscriptions (
   session_id TEXT NOT NULL,
@@ -366,7 +366,7 @@ This keeps live push fast while preserving correctness via catch-up.
 ## Hub Responsibilities (Server Side)
 - Track connected `session_id` -> connection.
 - Maintain a lightweight in-memory map of active subscriptions for fast push.
-- On new connection, optionally hydrate subscriptions from D1.
+- On new connection, optionally hydrate subscriptions from storage.
 - Push full payloads to live connections; no storage is required for live push.
 - Hub memory is ephemeral. On restart, clients reconnect and rehydrate via
   `session_offsets` + doc stream catch-up.
@@ -390,7 +390,7 @@ Recommendations:
 - **Shard hubs**: route `session_id` to `hub:<tenantId>:<shard>` to keep
   per-DO connection counts low.
 - **Bound in-memory state**: store only connected session ids and an LRU of
-  active subscriptions; reload from D1 on demand.
+  active subscriptions; reload from storage on demand.
 - **Separate live push from durable pointers**: keep live push inline and
   move pointer upserts to the queue when fan-out is large.
 - **Apply payload caps**: above a size threshold, switch to notify-only.
@@ -446,7 +446,7 @@ virtual nodes so you can add capacity without moving every session.
 ## Behavior Guarantees
 - **Online**: full payloads arrive via live push; no double request.
 - **Offline/reconnect**: missing ops are fetched from the doc stream.
-- **No server memory dependency**: subscriptions and pointers are in D1.
+- **No server memory dependency**: subscriptions and pointers are in durable storage.
 - **At-least-once delivery**: client can dedupe on `{stream_id, offset}`.
 
 ## Tradeoffs

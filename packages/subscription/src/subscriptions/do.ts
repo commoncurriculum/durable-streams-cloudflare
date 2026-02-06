@@ -2,7 +2,7 @@
  * SubscriptionDO - A Durable Object that manages subscribers for a single stream.
  *
  * Each stream gets its own SubscriptionDO instance with its own SQLite database.
- * This eliminates the D1 bottleneck by making subscriber lookups local to each DO.
+ * Subscriber lookups are local to each DO (no external database needed).
  *
  * Uses DO RPC — typed methods, no HTTP inside the DO.
  */
@@ -119,7 +119,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       };
     }
 
-    // 2. Get subscribers (LOCAL query - no D1!)
+    // 2. Get subscribers (local DO SQLite query)
     const subscribers = this.getSubscriberSessionIds();
 
     // 3. Fan out to all subscriber session streams

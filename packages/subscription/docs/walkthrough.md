@@ -133,7 +133,7 @@ Each stream gets its own SubscriptionDO with a local SQLite `subscribers` table.
 
 <<< @/../src/subscriptions/do.ts#L56-L66 ts
 
-Subscriber lookup is a synchronous local SQLite query — no D1 round trip, no network hop.
+Subscriber lookup is a synchronous local SQLite query — no network hop.
 
 ---
 
@@ -185,7 +185,7 @@ layout: section
 
 # Story 3: A Message is Published and Fanned Out
 
-Follow a message from publish to all subscribers — no queue, no D1
+Follow a message from publish to all subscribers — no queue needed
 
 ---
 

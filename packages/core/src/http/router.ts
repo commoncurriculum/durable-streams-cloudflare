@@ -15,7 +15,6 @@ import { handleGet, handleHead } from "./handlers/read";
 export type StreamEnv = {
   STREAMS?: DurableObjectNamespace;
   R2?: R2Bucket;
-  ADMIN_DB?: D1Database;
   DEBUG_COALESCE?: string;
   DEBUG_TESTING?: string;
   DEBUG_TIMING?: string;
@@ -72,6 +71,7 @@ export function normalizeCacheMode(value: string | null | undefined): CacheMode 
   return null;
 }
 
+// #region docs-cache-mode
 export function resolveCacheMode(params: {
   envMode?: string | null;
   authMode?: CacheMode;
@@ -85,6 +85,7 @@ export function resolveCacheMode(params: {
 export function getCacheMode(request: Request): CacheMode {
   return normalizeCacheMode(request.headers.get(CACHE_MODE_HEADER)) ?? "private";
 }
+// #endregion docs-cache-mode
 
 // ============================================================================
 // Read Auth
@@ -96,6 +97,7 @@ export const SESSION_ID_HEADER = "X-Session-Id";
 // Router
 // ============================================================================
 
+// #region docs-route-request
 export async function routeRequest(
   ctx: StreamContext,
   streamId: string,
@@ -120,3 +122,4 @@ export async function routeRequest(
     return errorResponse(500, e instanceof Error ? e.message : "internal error");
   }
 }
+// #endregion docs-route-request

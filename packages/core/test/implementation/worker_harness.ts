@@ -44,36 +44,6 @@ export async function createPersistDir(prefix = "durable-streams-poc-"): Promise
   return await mkdtemp(path.join(tmpdir(), prefix));
 }
 
-export async function applyMigrations(persistDir: string): Promise<void> {
-  const child = spawn(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "migrations",
-      "apply",
-      "durable-streams",
-      "--local",
-      "--persist-to",
-      persistDir,
-    ],
-    {
-      cwd: WORKER_CWD,
-      stdio: "ignore",
-      env: {
-        ...process.env,
-        CI: "1",
-      },
-    },
-  );
-
-  const [exitCode] = await once(child, "exit");
-  if (typeof exitCode === "number" && exitCode !== 0) {
-    throw new Error(`wrangler migrations failed with exit code ${exitCode}`);
-  }
-}
-
 export async function startWorker(options?: {
   port?: number;
   persistDir?: string;
@@ -82,8 +52,6 @@ export async function startWorker(options?: {
   const port = options?.port ?? (await getAvailablePort());
   const persistDir = options?.persistDir ?? (await createPersistDir());
   const vars = options?.vars ?? {};
-
-  await applyMigrations(persistDir);
 
   const extraVars: string[] = [];
   for (const [key, value] of Object.entries(vars)) {

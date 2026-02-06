@@ -4,8 +4,7 @@ Cloudflare-first **Durable Streams** server: a production‑ready implementation
 of the Durable Streams HTTP protocol with **low‑latency writes**, **consistent
 ordering**, and **CDN‑compatible catch‑up reads**. It uses a **Durable Object
 per stream** as the sequencer, **SQLite in DO storage** as the hot log, and **R2
-segments** for immutable cold storage. An **optional D1 admin index** provides a
-global segment listing for cleanup/ops.
+segments** for immutable cold storage.
 
 If you need **real‑time streams with strong ordering guarantees** and **fast
 catch‑up**, this is the drop‑in server.
@@ -77,13 +76,8 @@ pnpm run conformance
 
 ## Deploy (Cloudflare)
 1. Create an **R2 bucket** (required).
-2. (Optional) Create a **D1 database** for the admin index.
-3. Update `packages/durable-stream-server/wrangler.toml` with ids.
-4. (Optional) Apply admin migrations:
-   ```bash
-   pnpm -C packages/durable-stream-server exec wrangler d1 migrations apply durable_streams_admin
-   ```
-5. Deploy:
+2. Update `packages/durable-stream-server/wrangler.toml` with ids.
+3. Deploy:
    ```bash
    pnpm -C packages/durable-stream-server exec wrangler deploy
    ```
@@ -123,7 +117,7 @@ This server layers the **Durable Streams protocol + storage model** on top of
 Cloudflare’s DOs.
 
 ## Repo Layout
-- `packages/durable-stream-server/` — Cloudflare Worker + Durable Object + D1 + R2 implementation.
+- `packages/durable-stream-server/` — Cloudflare Worker + Durable Object + R2 implementation.
 - `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare server.
 - `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare server.
 
@@ -135,7 +129,6 @@ Each package includes a Slidev presentation that tells the story of how data flo
 |---------|-------------|---------|
 | Core | `cd packages/durable-stream-core/docs && pnpm install && pnpm dev` | Write, Read, Real-time |
 | Subscriptions | `cd packages/durable-stream-subscriptions/docs && pnpm install && pnpm dev` | Session, Subscribe, Fanout |
-| Admin | `cd packages/durable-stream-admin/docs && pnpm install && pnpm dev` | Registry, Metrics |
 
 Opens at http://localhost:3030. Arrow keys to navigate.
 

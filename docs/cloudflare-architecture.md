@@ -1,7 +1,7 @@
 # Cloudflare Durable Streams POC Architecture
 
 ## Overview
-The Cloudflare POC is a single-worker deployment that routes requests to a **Durable Object (DO) per stream**. The DO is the sequencer for all writes and serves live reads. **DO SQLite** stores the hot log and metadata. **R2** stores immutable cold segments. An **optional D1 admin index** provides a global listing of segments for cleanup/ops only.
+The Cloudflare POC is a single-worker deployment that routes requests to a **Durable Object (DO) per stream**. The DO is the sequencer for all writes and serves live reads. **DO SQLite** stores the hot log and metadata. **R2** stores immutable cold segments.
 
 ## Request Flow
 1. **Worker** (`src/http/worker.ts`) validates auth (optional), applies CORS, normalizes cache keys, and routes `/v1/stream/<stream-id>` to the stream DO.
@@ -46,9 +46,6 @@ The Cloudflare POC is a single-worker deployment that routes requests to a **Dur
 
 ## Cold Storage / Rotation
 The DO compacts the hot tail into length-prefixed **R2 segments** once segment thresholds are hit or on close, then increments `read_seq` and starts a new segment. Catch-up reads prefer R2 segments when available and fall back to the hot log only for the current segment.
-
-## Admin Index (Optional)
-A small D1 table `segments_admin` can be populated asynchronously to provide a global listing of segments for cleanup and ops. It is never on the ACK path.
 
 ## Registry Stream
 The worker emits create/delete events to a system stream (`__registry__`) for clients that need discovery or monitoring.

@@ -13,7 +13,6 @@ export type EdgeEnv = {
   CACHE_MODE?: string;
   READ_JWT_SECRET?: string;
   R2?: R2Bucket;
-  ADMIN_DB?: D1Database;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
 };

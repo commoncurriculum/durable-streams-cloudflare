@@ -13,9 +13,6 @@
 cd packages/durable-stream-server
 pnpm install
 
-# Optional: apply admin D1 migrations
-pnpm exec wrangler d1 migrations apply durable_streams_admin --local
-
 # Start local worker (DO SQLite + local R2)
 pnpm run dev
 ```

@@ -9,7 +9,7 @@ import { routeRequest } from "./router";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
 import { ReadPath } from "../stream/read/path";
-import { rotateSegment, type SegmentRotationResult } from "../stream/rotate";
+import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
 
 export type Env = StreamEnv;
@@ -33,6 +33,7 @@ export class StreamDO {
     });
   }
 
+  // #region docs-do-fetch
   async fetch(request: Request): Promise<Response> {
     const timingEnabled =
       this.env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
@@ -53,6 +54,7 @@ export class StreamDO {
     if (!streamId) {
       return errorResponse(400, "missing stream id");
     }
+    // #endregion docs-do-fetch
 
     if (this.env.DEBUG_TESTING === "1") {
       const debugAction = request.headers.get("X-Debug-Action");
@@ -61,6 +63,7 @@ export class StreamDO {
       }
     }
 
+    // #region docs-build-context
     const ctx: StreamContext = {
       state: this.state,
       env: this.env,
@@ -82,6 +85,7 @@ export class StreamDO {
     const response = await routeRequest(ctx, streamId, request);
     doneTotal?.();
     return attachTiming(response, timing);
+    // #endregion docs-build-context
   }
 
   private async getStream(streamId: string): Promise<StreamMeta | null> {
@@ -115,41 +119,10 @@ export class StreamDO {
         segmentMaxBytes: this.segmentMaxBytes(),
         force: options?.force,
         retainOps: options?.retainOps,
-        recordAdminSegment: (segment) =>
-          this.recordAdminSegmentToD1(streamId, segment),
       });
     } finally {
       this.rotating = false;
     }
-  }
-
-  private recordAdminSegmentToD1(
-    streamId: string,
-    segment: NonNullable<SegmentRotationResult["segment"]>,
-  ): void {
-    if (!this.env.ADMIN_DB) return;
-    this.state.waitUntil(
-      this.env.ADMIN_DB.prepare(
-        `INSERT INTO segments_admin (
-          stream_id, read_seq, start_offset, end_offset, r2_key,
-          content_type, created_at, expires_at, size_bytes, message_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-        .bind(
-          streamId,
-          segment.readSeq,
-          segment.startOffset,
-          segment.endOffset,
-          segment.r2Key,
-          segment.contentType,
-          segment.createdAt,
-          segment.expiresAt,
-          segment.sizeBytes,
-          segment.messageCount,
-        )
-        .run()
-        .catch((err) => console.error("Failed to record segment to D1:", err)),
-    );
   }
 
   private segmentMaxMessages(): number {
