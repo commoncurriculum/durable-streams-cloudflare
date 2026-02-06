@@ -21,6 +21,14 @@ export class Metrics {
     });
   }
 
+  fanoutQueued(streamId: string, subscribers: number, latencyMs: number) {
+    this.ae?.writeDataPoint({
+      blobs: [streamId, "", "fanout_queued", ""],
+      doubles: [subscribers, latencyMs, 0, 0],
+      indexes: ["fanout"],
+    });
+  }
+
   // Subscription events
   subscribe(streamId: string, sessionId: string, isNewSession: boolean, latencyMs: number) {
     this.ae?.writeDataPoint({

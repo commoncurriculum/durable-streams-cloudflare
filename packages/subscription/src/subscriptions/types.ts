@@ -34,6 +34,21 @@ export interface PublishResult {
   fanoutCount: number;
   fanoutSuccesses: number;
   fanoutFailures: number;
+  fanoutMode: "inline" | "queued";
+}
+
+export interface FanoutQueueMessage {
+  streamId: string;
+  sessionIds: string[];
+  payload: string; // base64-encoded
+  contentType: string;
+  producerHeaders?: Record<string, string>;
+}
+
+export interface FanoutResult {
+  successes: number;
+  failures: number;
+  staleSessionIds: string[];
 }
 
 export interface SessionInfo {

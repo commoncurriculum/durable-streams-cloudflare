@@ -39,6 +39,7 @@ publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema
     headers.set("X-Fanout-Count", result.fanoutCount.toString());
     headers.set("X-Fanout-Successes", result.fanoutSuccesses.toString());
     headers.set("X-Fanout-Failures", result.fanoutFailures.toString());
+    headers.set("X-Fanout-Mode", result.fanoutMode);
 
     return new Response(result.body, { status: result.status, headers });
   } catch {

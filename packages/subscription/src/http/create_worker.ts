@@ -4,10 +4,12 @@ import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
 import { sessionRoutes } from "./routes/session";
 import { cleanupExpiredSessions } from "../cleanup";
+import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
 import { parseRoute } from "./auth";
 import type { AppEnv } from "../env";
 import type { AuthorizeSubscription } from "./auth";
+import type { FanoutQueueMessage } from "../subscriptions/types";
 
 export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
   authorize?: AuthorizeSubscription<E>;
@@ -71,6 +73,7 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
         "X-Fanout-Count",
         "X-Fanout-Successes",
         "X-Fanout-Failures",
+        "X-Fanout-Mode",
         "X-Stream-Next-Offset",
         "X-Stream-Up-To-Date",
         "X-Stream-Closed",
@@ -125,6 +128,11 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   // #region synced-to-docs:scheduled-handler
   return {
     fetch: app.fetch,
+
+    // Queue handler for async fanout
+    async queue(batch: MessageBatch<FanoutQueueMessage>, env: E, _ctx: ExecutionContext): Promise<void> {
+      await handleFanoutQueue(batch, env);
+    },
 
     // Scheduled handler for session cleanup
     async scheduled(event: ScheduledEvent, env: E, ctx: ExecutionContext): Promise<void> {

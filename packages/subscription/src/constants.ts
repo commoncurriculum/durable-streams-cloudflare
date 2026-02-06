@@ -1,5 +1,5 @@
 /**
- * Shared constants for durable-stream-subscriptions
+ * Shared constants for durable-streams-subscriptions
  */
 
 // #region synced-to-docs:id-patterns
@@ -27,6 +27,17 @@ export const DEFAULT_SESSION_TTL_SECONDS = 1800;
  * Maximum number of concurrent fanout writes per batch.
  */
 export const FANOUT_BATCH_SIZE = 50;
+
+/**
+ * Subscriber count threshold above which fanout is offloaded to a queue.
+ * Below this threshold, fanout happens inline (synchronous with publish).
+ */
+export const FANOUT_QUEUE_THRESHOLD = 200;
+
+/**
+ * Number of session IDs per queue message when using queued fanout.
+ */
+export const FANOUT_QUEUE_BATCH_SIZE = 50;
 
 /**
  * Default Analytics Engine dataset name.

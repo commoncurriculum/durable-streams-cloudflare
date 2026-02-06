@@ -43,6 +43,7 @@ function createPublishResult(overrides: Partial<PublishResult> = {}): PublishRes
     fanoutCount: 0,
     fanoutSuccesses: 0,
     fanoutFailures: 0,
+    fanoutMode: "inline",
     ...overrides,
   };
 }
@@ -364,6 +365,23 @@ describe("POST /publish/:streamId", () => {
       expect(res.headers.get("X-Fanout-Count")).toBe("5");
       expect(res.headers.get("X-Fanout-Successes")).toBe("4");
       expect(res.headers.get("X-Fanout-Failures")).toBe("1");
+      expect(res.headers.get("X-Fanout-Mode")).toBe("inline");
+    });
+
+    it("sets X-Fanout-Mode header to queued when fanout was queued", async () => {
+      mockPublish.mockResolvedValue(createPublishResult({
+        fanoutCount: 500,
+        fanoutMode: "queued",
+      }));
+
+      const app = await createTestApp();
+      const res = await app.request("/v1/publish/my-stream", {
+        method: "POST",
+        body: "test",
+        headers: { "Content-Type": "text/plain" },
+      }, createMockEnv());
+
+      expect(res.headers.get("X-Fanout-Mode")).toBe("queued");
     });
   });
 });

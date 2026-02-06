@@ -7,11 +7,18 @@ vi.mock("../src/client", () => ({
   fetchFromCore: (...args: unknown[]) => mockFetchFromCore(...args),
 }));
 
+// Mock fanoutToSubscribers
+const mockFanoutToSubscribers = vi.fn();
+vi.mock("../src/subscriptions/fanout", () => ({
+  fanoutToSubscribers: (...args: unknown[]) => mockFanoutToSubscribers(...args),
+}));
+
 // Mock metrics
 const mockMetrics = {
   publish: vi.fn(),
   publishError: vi.fn(),
   fanout: vi.fn(),
+  fanoutQueued: vi.fn(),
 };
 vi.mock("../src/metrics", () => ({
   createMetrics: vi.fn(() => mockMetrics),
@@ -36,10 +43,11 @@ function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStor
   };
 }
 
-function createMockEnv() {
+function createMockEnv(overrides: Record<string, unknown> = {}) {
   return {
     CORE_URL: "http://localhost:8787",
     METRICS: undefined,
+    ...overrides,
   };
 }
 
@@ -53,6 +61,7 @@ describe("SubscriptionDO", () => {
     mockEnv = createMockEnv();
     vi.clearAllMocks();
     mockFetchFromCore.mockReset();
+    mockFanoutToSubscribers.mockReset();
   });
 
   afterEach(() => {
@@ -105,6 +114,22 @@ describe("SubscriptionDO", () => {
     });
   });
 
+  describe("removeSubscribers", () => {
+    it("should remove multiple subscribers", async () => {
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
+      const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
+
+      await dobj.addSubscriber("s1");
+      await dobj.addSubscriber("s2");
+      await dobj.addSubscriber("s3");
+      await dobj.removeSubscribers(["s1", "s3"]);
+
+      const result = await dobj.getSubscribers("test-stream");
+      expect(result.count).toBe(1);
+      expect(result.subscribers[0].sessionId).toBe("s2");
+    });
+  });
+
   describe("getSubscribers", () => {
     it("should return all subscribers", async () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
@@ -122,7 +147,7 @@ describe("SubscriptionDO", () => {
   });
 
   describe("publish", () => {
-    it("should write to core and fanout to subscribers", async () => {
+    it("should write to core and fanout to subscribers with inline mode", async () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
@@ -137,9 +162,12 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      // Mock fanout writes
-      mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
-      mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      // Mock fanout
+      mockFanoutToSubscribers.mockResolvedValueOnce({
+        successes: 2,
+        failures: 0,
+        staleSessionIds: [],
+      });
 
       const result = await dobj.publish("test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -150,20 +178,20 @@ describe("SubscriptionDO", () => {
       expect(result.fanoutCount).toBe(2);
       expect(result.fanoutSuccesses).toBe(2);
       expect(result.fanoutFailures).toBe(0);
+      expect(result.fanoutMode).toBe("inline");
 
-      // Verify core write was called first
-      expect(mockFetchFromCore).toHaveBeenNthCalledWith(
-        1,
+      // Verify core write was called
+      expect(mockFetchFromCore).toHaveBeenCalledWith(
         mockEnv,
         "/v1/stream/test-stream",
         expect.objectContaining({ method: "POST" }),
       );
 
-      // Verify fanout writes were made
-      expect(mockFetchFromCore).toHaveBeenCalledTimes(3);
+      // Verify shared fanout function was called
+      expect(mockFanoutToSubscribers).toHaveBeenCalledTimes(1);
     });
 
-    it("should return error when core write fails", async () => {
+    it("should return error when core write fails with inline mode", async () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
@@ -180,10 +208,11 @@ describe("SubscriptionDO", () => {
       });
 
       expect(result.status).toBe(500);
+      expect(result.fanoutMode).toBe("inline");
       expect(JSON.parse(result.body).error).toBe("Failed to write to stream");
 
       // Verify no fanout was attempted
-      expect(mockFetchFromCore).toHaveBeenCalledTimes(1);
+      expect(mockFanoutToSubscribers).not.toHaveBeenCalled();
     });
 
     it("should forward producer headers to core", async () => {
@@ -197,6 +226,8 @@ describe("SubscriptionDO", () => {
           headers: { "Content-Type": "application/json" },
         }),
       );
+
+      mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 0, failures: 0, staleSessionIds: [] });
 
       await dobj.publish("test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -233,8 +264,7 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      // Mock fanout write
-      mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
       await dobj.publish("my-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -242,17 +272,16 @@ describe("SubscriptionDO", () => {
       });
 
       // Verify fanout used correct producer headers
-      expect(mockFetchFromCore).toHaveBeenNthCalledWith(
-        2,
+      expect(mockFanoutToSubscribers).toHaveBeenCalledWith(
         mockEnv,
-        "/v1/stream/session:session-1",
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Producer-Id": "fanout:my-stream",
-            "Producer-Epoch": "1",
-            "Producer-Seq": "99",
-          }),
-        }),
+        ["session-1"],
+        expect.any(ArrayBuffer),
+        "application/json",
+        {
+          "Producer-Id": "fanout:my-stream",
+          "Producer-Epoch": "1",
+          "Producer-Seq": "99",
+        },
       );
     });
 
@@ -274,12 +303,11 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      // Mock fanout: first succeeds, second returns 404
-      mockFetchFromCore.mockImplementation((_env: unknown, path: string) => {
-        if (path.includes("stale-session")) {
-          return Promise.resolve(new Response("Not found", { status: 404 }));
-        }
-        return Promise.resolve(new Response(null, { status: 200 }));
+      // Mock fanout with stale session
+      mockFanoutToSubscribers.mockResolvedValueOnce({
+        successes: 1,
+        failures: 1,
+        staleSessionIds: ["stale-session"],
       });
 
       const result = await dobj.publish("test-stream", {
@@ -290,6 +318,7 @@ describe("SubscriptionDO", () => {
       expect(result.status).toBe(200);
       expect(result.fanoutSuccesses).toBe(1);
       expect(result.fanoutFailures).toBe(1);
+      expect(result.fanoutMode).toBe("inline");
 
       // Verify stale subscriber was removed via getSubscribers
       const after = await dobj.getSubscribers("test-stream");
@@ -311,8 +340,7 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      // Mock fanout write
-      mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
       await dobj.publish("test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -376,9 +404,188 @@ describe("SubscriptionDO", () => {
       expect(result.fanoutCount).toBe(0);
       expect(result.fanoutSuccesses).toBe(0);
       expect(result.fanoutFailures).toBe(0);
+      expect(result.fanoutMode).toBe("inline");
 
-      // Only core write should have been called
-      expect(mockFetchFromCore).toHaveBeenCalledTimes(1);
+      // No fanout should have been attempted
+      expect(mockFanoutToSubscribers).not.toHaveBeenCalled();
+    });
+
+    describe("queued fanout", () => {
+      it("should enqueue when above threshold and queue binding exists", async () => {
+        const mockSendBatch = vi.fn().mockResolvedValue(undefined);
+        const envWithQueue = createMockEnv({
+          FANOUT_QUEUE: { sendBatch: mockSendBatch },
+          FANOUT_QUEUE_THRESHOLD: "2", // Low threshold for testing
+        });
+
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envWithQueue);
+
+        // Add 3 subscribers (above threshold of 2)
+        await dobj.addSubscriber("s1");
+        await dobj.addSubscriber("s2");
+        await dobj.addSubscriber("s3");
+
+        // Mock core write success
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "10" },
+          }),
+        );
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        expect(result.fanoutMode).toBe("queued");
+        expect(result.fanoutSuccesses).toBe(0); // Not counted for queued
+        expect(result.fanoutFailures).toBe(0);
+        expect(result.fanoutCount).toBe(3);
+        expect(mockSendBatch).toHaveBeenCalled();
+        expect(mockFanoutToSubscribers).not.toHaveBeenCalled();
+        expect(mockMetrics.fanoutQueued).toHaveBeenCalledWith("test-stream", 3, expect.any(Number));
+      });
+
+      it("should use inline when below threshold even with queue binding", async () => {
+        const mockSendBatch = vi.fn();
+        const envWithQueue = createMockEnv({
+          FANOUT_QUEUE: { sendBatch: mockSendBatch },
+          FANOUT_QUEUE_THRESHOLD: "10",
+        });
+
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envWithQueue);
+
+        await dobj.addSubscriber("s1");
+        await dobj.addSubscriber("s2");
+
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+
+        mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        expect(result.fanoutMode).toBe("inline");
+        expect(mockSendBatch).not.toHaveBeenCalled();
+        expect(mockFanoutToSubscribers).toHaveBeenCalled();
+      });
+
+      it("should use inline when no queue binding exists", async () => {
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const envNoQueue = createMockEnv({ FANOUT_QUEUE_THRESHOLD: "1" });
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envNoQueue);
+
+        await dobj.addSubscriber("s1");
+        await dobj.addSubscriber("s2");
+
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+
+        mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        expect(result.fanoutMode).toBe("inline");
+        expect(mockFanoutToSubscribers).toHaveBeenCalled();
+      });
+
+      it("should respect env var override for threshold", async () => {
+        const mockSendBatch = vi.fn().mockResolvedValue(undefined);
+        const envWithQueue = createMockEnv({
+          FANOUT_QUEUE: { sendBatch: mockSendBatch },
+          FANOUT_QUEUE_THRESHOLD: "1", // Override to 1
+        });
+
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envWithQueue);
+
+        await dobj.addSubscriber("s1");
+        await dobj.addSubscriber("s2");
+
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        expect(result.fanoutMode).toBe("queued");
+        expect(mockSendBatch).toHaveBeenCalled();
+      });
+
+      it("should fall back to inline when queue enqueue fails", async () => {
+        const mockSendBatch = vi.fn().mockRejectedValue(new Error("Queue unavailable"));
+        const envWithQueue = createMockEnv({
+          FANOUT_QUEUE: { sendBatch: mockSendBatch },
+          FANOUT_QUEUE_THRESHOLD: "1",
+        });
+
+        const sqlStorage = await createTestSqlStorage();
+        const state = createMockState(sqlStorage);
+
+        const { SubscriptionDO } = await import("../src/subscriptions/do");
+        const dobj = new SubscriptionDO(state as unknown as DurableObjectState, envWithQueue);
+
+        await dobj.addSubscriber("s1");
+        await dobj.addSubscriber("s2");
+
+        mockFetchFromCore.mockResolvedValueOnce(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+
+        mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
+
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const result = await dobj.publish("test-stream", {
+          payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
+          contentType: "text/plain",
+        });
+
+        // Should have fallen back to inline
+        expect(result.fanoutMode).toBe("inline");
+        expect(mockFanoutToSubscribers).toHaveBeenCalled();
+        expect(result.fanoutSuccesses).toBe(2);
+        expect(consoleErrorSpy).toHaveBeenCalled();
+
+        consoleErrorSpy.mockRestore();
+      });
     });
   });
 });

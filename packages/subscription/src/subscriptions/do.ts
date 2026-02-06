@@ -9,12 +9,15 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { fetchFromCore, type CoreClientEnv } from "../client";
+import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
-import { FANOUT_BATCH_SIZE } from "../constants";
-import type { PublishParams, PublishResult, GetSubscribersResult } from "./types";
+import { FANOUT_QUEUE_THRESHOLD, FANOUT_QUEUE_BATCH_SIZE } from "../constants";
+import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
 export interface SubscriptionDOEnv extends CoreClientEnv {
   METRICS?: AnalyticsEngineDataset;
+  FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
+  FANOUT_QUEUE_THRESHOLD?: string;
 }
 
 interface Subscriber {
@@ -56,6 +59,12 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
   async removeSubscriber(sessionId: string): Promise<void> {
     this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
+  }
+
+  async removeSubscribers(sessionIds: string[]): Promise<void> {
+    for (const sessionId of sessionIds) {
+      this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
+    }
   }
 
   // #region synced-to-docs:get-subscribers
@@ -112,6 +121,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         fanoutCount: 0,
         fanoutSuccesses: 0,
         fanoutFailures: 0,
+        fanoutMode: "inline",
       };
     }
 
@@ -135,47 +145,45 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // 3. Fan out to all subscriber session streams
     let successCount = 0;
     let failureCount = 0;
+    let fanoutMode: "inline" | "queued" = "inline";
 
     if (subscribers.length > 0) {
-      const results: PromiseSettledResult<Response>[] = [];
-      for (let i = 0; i < subscribers.length; i += FANOUT_BATCH_SIZE) {
-        const batch = subscribers.slice(i, i + FANOUT_BATCH_SIZE);
-        const batchResults = await Promise.allSettled(
-          batch.map((sessionId) =>
-            this.writeToSessionStream(sessionId, params.payload, params.contentType, fanoutProducerHeaders),
-          ),
-        );
-        results.push(...batchResults);
-      }
-      // #endregion synced-to-docs:fanout
+      const threshold = this.env.FANOUT_QUEUE_THRESHOLD
+        ? parseInt(this.env.FANOUT_QUEUE_THRESHOLD, 10)
+        : FANOUT_QUEUE_THRESHOLD;
 
-      // #region synced-to-docs:stale-cleanup
-      const staleSessionIds: string[] = [];
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        if (result.status === "fulfilled") {
-          if (result.value.ok) {
-            successCount++;
-          } else if (result.value.status === 404) {
-            staleSessionIds.push(subscribers[i]);
-            failureCount++;
-          } else {
-            failureCount++;
-          }
-        } else {
-          failureCount++;
+      if (this.env.FANOUT_QUEUE && subscribers.length > threshold) {
+        // Queued fanout — enqueue and return immediately
+        try {
+          await this.enqueueFanout(streamId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          fanoutMode = "queued";
+          metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
+        } catch (err) {
+          // Fallback to inline on queue failure
+          console.error("Queue enqueue failed, falling back to inline fanout:", err);
+          const result = await fanoutToSubscribers(this.env, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          successCount = result.successes;
+          failureCount = result.failures;
+          this.removeStaleSubscribers(result.staleSessionIds);
         }
+      } else {
+        // Inline fanout
+        const result = await fanoutToSubscribers(this.env, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+        successCount = result.successes;
+        failureCount = result.failures;
+        // #endregion synced-to-docs:fanout
+
+        // #region synced-to-docs:stale-cleanup
+        // Remove stale subscribers (sync - SQLite is local)
+        this.removeStaleSubscribers(result.staleSessionIds);
+        // #endregion synced-to-docs:stale-cleanup
       }
 
-      // Remove stale subscribers (sync - SQLite is local)
-      for (const sessionId of staleSessionIds) {
-        this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
+      // Record fanout metrics (only for inline — queued records its own)
+      if (fanoutMode === "inline") {
+        const latencyMs = Date.now() - start;
+        metrics.fanout({ streamId, subscribers: subscribers.length, success: successCount, failures: failureCount, latencyMs });
       }
-      // #endregion synced-to-docs:stale-cleanup
-
-      // Record fanout metrics
-      const latencyMs = Date.now() - start;
-      metrics.fanout({ streamId, subscribers: subscribers.length, success: successCount, failures: failureCount, latencyMs });
     }
 
     // Record publish metric
@@ -194,9 +202,43 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       fanoutCount: subscribers.length,
       fanoutSuccesses: successCount,
       fanoutFailures: failureCount,
+      fanoutMode,
     };
   }
   // #endregion synced-to-docs:publish-response
+
+  private async enqueueFanout(
+    streamId: string,
+    sessionIds: string[],
+    payload: ArrayBuffer,
+    contentType: string,
+    producerHeaders?: Record<string, string>,
+  ): Promise<void> {
+    const queue = this.env.FANOUT_QUEUE!;
+    const payloadBase64 = bufferToBase64(payload);
+
+    const messages: { body: FanoutQueueMessage }[] = [];
+    for (let i = 0; i < sessionIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+      const batch = sessionIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+      messages.push({
+        body: {
+          streamId,
+          sessionIds: batch,
+          payload: payloadBase64,
+          contentType,
+          producerHeaders,
+        },
+      });
+    }
+
+    await queue.sendBatch(messages);
+  }
+
+  private removeStaleSubscribers(sessionIds: string[]): void {
+    for (const sessionId of sessionIds) {
+      this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
+    }
+  }
 
   private getSubscriberSessionIds(): string[] {
     const cursor = this.sql.exec("SELECT session_id FROM subscribers");
@@ -218,23 +260,13 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
     return results;
   }
+}
 
-  private async writeToSessionStream(
-    sessionId: string,
-    payload: ArrayBuffer,
-    contentType: string,
-    extraHeaders?: Record<string, string>,
-  ): Promise<Response> {
-    const path = `/v1/stream/session:${sessionId}`;
-    const headers: Record<string, string> = {
-      "Content-Type": contentType,
-      ...extraHeaders,
-    };
-
-    return fetchFromCore(this.env, path, {
-      method: "POST",
-      headers,
-      body: payload,
-    });
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
+  return btoa(binary);
 }
