@@ -23,27 +23,30 @@ const unsubscribeSchema = z.object({
 export const subscribeRoutes = new Hono<{ Bindings: AppEnv }>();
 
 subscribeRoutes.post("/subscribe", zValidator("json", subscribeSchema), async (c) => {
+  const projectId = c.req.param("project")!;
   const { sessionId, streamId, contentType } = c.req.valid("json");
   try {
-    return c.json(await subscribe(c.env, streamId, sessionId, contentType));
+    return c.json(await subscribe(c.env, projectId, streamId, sessionId, contentType));
   } catch {
     return c.json({ error: "Failed to subscribe" }, 500);
   }
 });
 
 subscribeRoutes.delete("/unsubscribe", zValidator("json", unsubscribeSchema), async (c) => {
+  const projectId = c.req.param("project")!;
   const { sessionId, streamId } = c.req.valid("json");
   try {
-    return c.json(await unsubscribe(c.env, streamId, sessionId));
+    return c.json(await unsubscribe(c.env, projectId, streamId, sessionId));
   } catch {
     return c.json({ error: "Failed to remove subscription" }, 500);
   }
 });
 
 subscribeRoutes.delete("/session/:sessionId", async (c) => {
+  const projectId = c.req.param("project")!;
   const sessionId = c.req.param("sessionId");
   try {
-    return c.json(await deleteSession(c.env, sessionId));
+    return c.json(await deleteSession(c.env, projectId, sessionId));
   } catch {
     return c.json({ error: "Failed to delete session stream" }, 500);
   }

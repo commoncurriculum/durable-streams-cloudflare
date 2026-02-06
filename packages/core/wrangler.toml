@@ -19,6 +19,11 @@ bucket_name = "durable-streams"
 binding = "METRICS"
 dataset = "durable_streams_metrics"
 
+# KV namespace for project API keys (multi-project auth)
+# [[kv_namespaces]]
+# binding = "PROJECT_KEYS"
+# id = "<your-kv-namespace-id>"
+
 [vars]
 # Optional: set to require auth
 # AUTH_TOKEN = "replace-with-token"

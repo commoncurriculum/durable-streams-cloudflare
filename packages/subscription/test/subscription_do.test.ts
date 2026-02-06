@@ -36,6 +36,8 @@ vi.mock("cloudflare:workers", () => ({
   },
 }));
 
+const PROJECT_ID = "test-project";
+
 function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStorage>>) {
   return {
     storage: { sql: sqlStorage },
@@ -169,7 +171,7 @@ describe("SubscriptionDO", () => {
         staleSessionIds: [],
       });
 
-      const result = await dobj.publish("test-stream", {
+      const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -180,10 +182,10 @@ describe("SubscriptionDO", () => {
       expect(result.fanoutFailures).toBe(0);
       expect(result.fanoutMode).toBe("inline");
 
-      // Verify core write was called
+      // Verify core write was called (project-scoped path)
       expect(mockFetchFromCore).toHaveBeenCalledWith(
         mockEnv,
-        "/v1/stream/test-stream",
+        `/v1/${PROJECT_ID}/stream/test-stream`,
         expect.objectContaining({ method: "POST" }),
       );
 
@@ -202,7 +204,7 @@ describe("SubscriptionDO", () => {
         new Response("Internal error", { status: 500 }),
       );
 
-      const result = await dobj.publish("test-stream", {
+      const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -229,7 +231,7 @@ describe("SubscriptionDO", () => {
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 0, failures: 0, staleSessionIds: [] });
 
-      await dobj.publish("test-stream", {
+      await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
         producerId: "producer-123",
@@ -239,7 +241,7 @@ describe("SubscriptionDO", () => {
 
       expect(mockFetchFromCore).toHaveBeenCalledWith(
         mockEnv,
-        "/v1/stream/test-stream",
+        `/v1/${PROJECT_ID}/stream/test-stream`,
         expect.objectContaining({
           headers: expect.objectContaining({
             "Producer-Id": "producer-123",
@@ -266,14 +268,15 @@ describe("SubscriptionDO", () => {
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
-      await dobj.publish("my-stream", {
+      await dobj.publish(PROJECT_ID, "my-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
 
-      // Verify fanout used correct producer headers
+      // Verify fanout used correct producer headers (with projectId as second arg)
       expect(mockFanoutToSubscribers).toHaveBeenCalledWith(
         mockEnv,
+        PROJECT_ID,
         ["session-1"],
         expect.any(ArrayBuffer),
         "application/json",
@@ -310,7 +313,7 @@ describe("SubscriptionDO", () => {
         staleSessionIds: ["stale-session"],
       });
 
-      const result = await dobj.publish("test-stream", {
+      const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -342,7 +345,7 @@ describe("SubscriptionDO", () => {
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
-      await dobj.publish("test-stream", {
+      await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -371,7 +374,7 @@ describe("SubscriptionDO", () => {
         new Response("Internal error", { status: 500 }),
       );
 
-      await dobj.publish("test-stream", {
+      await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -395,7 +398,7 @@ describe("SubscriptionDO", () => {
         }),
       );
 
-      const result = await dobj.publish("test-stream", {
+      const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
         contentType: "application/json",
       });
@@ -437,7 +440,7 @@ describe("SubscriptionDO", () => {
           }),
         );
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });
@@ -476,7 +479,7 @@ describe("SubscriptionDO", () => {
 
         mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });
@@ -505,7 +508,7 @@ describe("SubscriptionDO", () => {
 
         mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });
@@ -537,7 +540,7 @@ describe("SubscriptionDO", () => {
           }),
         );
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });
@@ -572,7 +575,7 @@ describe("SubscriptionDO", () => {
           }),
         );
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });
@@ -611,7 +614,7 @@ describe("SubscriptionDO", () => {
 
         const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-        const result = await dobj.publish("test-stream", {
+        const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
           contentType: "text/plain",
         });

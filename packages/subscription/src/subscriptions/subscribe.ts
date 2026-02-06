@@ -7,6 +7,7 @@ import type { SubscribeResult } from "./types";
 // #region synced-to-docs:create-session-stream
 export async function subscribe(
   env: AppEnv,
+  projectId: string,
   streamId: string,
   sessionId: string,
   contentType = "application/json",
@@ -18,8 +19,8 @@ export async function subscribe(
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  // 1. Create/touch session stream in core
-  const coreResponse = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, {
+  // 1. Create/touch session stream in core (project-scoped)
+  const coreResponse = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, {
     method: "PUT",
     headers: {
       "Content-Type": contentType,
@@ -37,8 +38,9 @@ export async function subscribe(
   }
 
   // #region synced-to-docs:add-subscription-to-do
-  // 2. Add subscription to DO
-  const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamId));
+  // 2. Add subscription to DO (project-scoped key)
+  const doKey = `${projectId}/${streamId}`;
+  const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
   try {
     await stub.addSubscriber(sessionId);
   } catch (err) {
@@ -46,7 +48,7 @@ export async function subscribe(
     // Rollback session if we just created it
     if (isNewSession) {
       try {
-        await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "DELETE" });
+        await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, { method: "DELETE" });
       } catch (rollbackErr) {
         console.error(`Failed to rollback session stream ${sessionId}:`, rollbackErr);
       }
@@ -59,14 +61,14 @@ export async function subscribe(
   const latencyMs = Date.now() - start;
   metrics.subscribe(streamId, sessionId, isNewSession, latencyMs);
   if (isNewSession) {
-    metrics.sessionCreate(sessionId, ttlSeconds, latencyMs);
+    metrics.sessionCreate(sessionId, projectId, ttlSeconds, latencyMs);
   }
 
   // #region synced-to-docs:subscribe-response
   return {
     sessionId,
     streamId,
-    sessionStreamPath: `/v1/stream/session:${sessionId}`,
+    sessionStreamPath: `/v1/${projectId}/stream/${sessionId}`,
     expiresAt,
     isNewSession,
   };

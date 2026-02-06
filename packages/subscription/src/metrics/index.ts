@@ -49,9 +49,9 @@ export class Metrics {
 
   // #region synced-to-docs:metrics-session-cleanup
   // Session lifecycle events
-  sessionCreate(sessionId: string, ttlSeconds: number, latencyMs: number) {
+  sessionCreate(sessionId: string, project: string, ttlSeconds: number, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: ["", sessionId, "session_create", ""],
+      blobs: [project, sessionId, "session_create", ""],
       doubles: [1, latencyMs, ttlSeconds, 0],
       indexes: ["session"],
     });

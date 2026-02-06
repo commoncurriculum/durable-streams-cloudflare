@@ -76,11 +76,15 @@ describe("analytics-queries", () => {
       expect(result).toEqual({ data: [], error: "Invalid sessionId format", errorType: "validation" });
     });
 
-    it("accepts valid sessionId formats", async () => {
+    it("accepts valid sessionId formats (UUIDs)", async () => {
       const mockEnv = createMockEnv();
       mockFetch.mockResolvedValue(createSuccessResponse([]));
 
-      const validIds = ["abc123", "user-123", "session_456", "a:b:c", "User.Session.1"];
+      const validIds = [
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "00000000-0000-0000-0000-000000000000",
+        "AABBCCDD-1122-3344-5566-778899AABBCC",
+      ];
       for (const id of validIds) {
         const result = await getSessionSubscriptions(mockEnv, "dataset", id);
         expect(result.error).toBeUndefined();
@@ -93,7 +97,8 @@ describe("analytics-queries", () => {
       const mockEnv = createMockEnv();
       mockFetch.mockResolvedValue(createSuccessResponse([
         {
-          sessionId: "test-session",
+          sessionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          project: "myapp",
           ttlSeconds: 1800,
           lastActivity: new Date().toISOString(),
         },
@@ -163,7 +168,7 @@ describe("analytics-queries", () => {
       const mockEnv = createMockEnv();
       mockFetch.mockResolvedValue(createErrorResponse(500, "Server error"));
 
-      const result = await getSessionSubscriptions(mockEnv, "dataset", "valid-session");
+      const result = await getSessionSubscriptions(mockEnv, "dataset", "a1b2c3d4-e5f6-7890-abcd-ef1234567890");
       expect(result.error).toBe("Analytics Engine query failed: 500 - Server error");
       expect(result.errorType).toBe("query");
     });
@@ -186,7 +191,7 @@ describe("analytics-queries", () => {
         { streamId: "stream-2", net: 2 },
       ]));
 
-      const result = await getSessionSubscriptions(mockEnv, "dataset", "session-123");
+      const result = await getSessionSubscriptions(mockEnv, "dataset", "a1b2c3d4-e5f6-7890-abcd-ef1234567890");
       expect(result.data).toEqual([
         { streamId: "stream-1" },
         { streamId: "stream-2" },

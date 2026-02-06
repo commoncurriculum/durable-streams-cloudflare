@@ -6,8 +6,8 @@ import type { AppEnv } from "../env";
 import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../subscriptions/types";
 
 // #region synced-to-docs:get-session
-export async function getSession(env: AppEnv, sessionId: string): Promise<SessionInfo | null> {
-  const coreResponse = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "HEAD" });
+export async function getSession(env: AppEnv, projectId: string, sessionId: string): Promise<SessionInfo | null> {
+  const coreResponse = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, { method: "HEAD" });
   if (!coreResponse.ok) return null;
 
   let subscriptions: Array<{ streamId: string }> = [];
@@ -26,21 +26,21 @@ export async function getSession(env: AppEnv, sessionId: string): Promise<Sessio
 
   return {
     sessionId,
-    sessionStreamPath: `/v1/stream/session:${sessionId}`,
+    sessionStreamPath: `/v1/${projectId}/stream/${sessionId}`,
     subscriptions,
   };
 }
 // #endregion synced-to-docs:get-session
 
 // #region synced-to-docs:touch-session
-export async function touchSession(env: AppEnv, sessionId: string): Promise<TouchSessionResult> {
+export async function touchSession(env: AppEnv, projectId: string, sessionId: string): Promise<TouchSessionResult> {
   const start = Date.now();
   const ttlSeconds = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  const response = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, {
+  const response = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -57,9 +57,9 @@ export async function touchSession(env: AppEnv, sessionId: string): Promise<Touc
 }
 // #endregion synced-to-docs:touch-session
 
-export async function deleteSession(env: AppEnv, sessionId: string): Promise<DeleteSessionResult> {
+export async function deleteSession(env: AppEnv, projectId: string, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();
-  const response = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "DELETE" });
+  const response = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, { method: "DELETE" });
   if (!response.ok && response.status !== 404) {
     throw new Error(`Failed to delete session: ${sessionId}`);
   }

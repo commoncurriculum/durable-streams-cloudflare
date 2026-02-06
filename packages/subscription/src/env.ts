@@ -11,4 +11,5 @@ export interface AppEnv extends CoreClientEnv, Partial<AnalyticsQueryEnv> {
   CORS_ORIGINS?: string;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
+  PROJECT_KEYS?: KVNamespace;
 }

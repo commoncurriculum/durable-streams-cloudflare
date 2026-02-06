@@ -11,10 +11,13 @@ vi.mock("../../src/session", () => ({
   touchSession: (...args: unknown[]) => mockTouchSession(...args),
 }));
 
+const PROJECT_ID = "test-project";
+const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
 function createTestApp() {
   return import("../../src/http/routes/session").then(({ sessionRoutes }) => {
     const app = new Hono();
-    app.route("/v1", sessionRoutes);
+    app.route(`/v1/:project`, sessionRoutes);
     return app;
   });
 }
@@ -40,7 +43,7 @@ describe("GET /session/:sessionId", () => {
     mockGetSession.mockResolvedValue(null);
 
     const app = await createTestApp();
-    const res = await app.request("/v1/session/nonexistent", {}, createMockEnv());
+    const res = await app.request(`/v1/${PROJECT_ID}/session/nonexistent`, {}, createMockEnv());
 
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
@@ -49,27 +52,27 @@ describe("GET /session/:sessionId", () => {
 
   it("calls getSession service with correct params", async () => {
     mockGetSession.mockResolvedValue({
-      sessionId: "session-123",
-      sessionStreamPath: "/v1/stream/session:session-123",
+      sessionId: SESSION_ID,
+      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       subscriptions: [],
     });
 
     const app = await createTestApp();
     const env = createMockEnv();
-    await app.request("/v1/session/session-123", {}, env);
+    await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, env);
 
-    expect(mockGetSession).toHaveBeenCalledWith(env, "session-123");
+    expect(mockGetSession).toHaveBeenCalledWith(env, PROJECT_ID, SESSION_ID);
   });
 
   it("returns session info when session exists", async () => {
     mockGetSession.mockResolvedValue({
-      sessionId: "session-123",
-      sessionStreamPath: "/v1/stream/session:session-123",
+      sessionId: SESSION_ID,
+      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       subscriptions: [],
     });
 
     const app = await createTestApp();
-    const res = await app.request("/v1/session/session-123", {}, createMockEnv());
+    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -77,14 +80,14 @@ describe("GET /session/:sessionId", () => {
       sessionStreamPath: string;
       subscriptions: Array<{ streamId: string }>;
     };
-    expect(body.sessionId).toBe("session-123");
-    expect(body.sessionStreamPath).toBe("/v1/stream/session:session-123");
+    expect(body.sessionId).toBe(SESSION_ID);
+    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
   });
 
   it("includes subscriptions from service", async () => {
     mockGetSession.mockResolvedValue({
-      sessionId: "session-123",
-      sessionStreamPath: "/v1/stream/session:session-123",
+      sessionId: SESSION_ID,
+      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       subscriptions: [
         { streamId: "stream-a" },
         { streamId: "stream-b" },
@@ -92,7 +95,7 @@ describe("GET /session/:sessionId", () => {
     });
 
     const app = await createTestApp();
-    const res = await app.request("/v1/session/session-123", {}, createMockEnv());
+    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { subscriptions: Array<{ streamId: string }> };
@@ -109,19 +112,19 @@ describe("POST /session/:sessionId/touch", () => {
 
   it("calls touchSession service with correct params", async () => {
     mockTouchSession.mockResolvedValue({
-      sessionId: "session-123",
+      sessionId: SESSION_ID,
       expiresAt: Date.now() + 1800000,
     });
 
     const app = await createTestApp();
     const env = createMockEnv();
     await app.request(
-      "/v1/session/session-123/touch",
+      `/v1/${PROJECT_ID}/session/${SESSION_ID}/touch`,
       { method: "POST" },
       env,
     );
 
-    expect(mockTouchSession).toHaveBeenCalledWith(env, "session-123");
+    expect(mockTouchSession).toHaveBeenCalledWith(env, PROJECT_ID, SESSION_ID);
   });
 
   it("returns 404 when touchSession throws", async () => {
@@ -129,7 +132,7 @@ describe("POST /session/:sessionId/touch", () => {
 
     const app = await createTestApp();
     const res = await app.request(
-      "/v1/session/nonexistent/touch",
+      `/v1/${PROJECT_ID}/session/nonexistent/touch`,
       { method: "POST" },
       createMockEnv(),
     );
@@ -142,21 +145,20 @@ describe("POST /session/:sessionId/touch", () => {
   it("returns sessionId and expiresAt on success", async () => {
     const expiresAt = Date.now() + 1800000;
     mockTouchSession.mockResolvedValue({
-      sessionId: "session-123",
+      sessionId: SESSION_ID,
       expiresAt,
     });
 
     const app = await createTestApp();
     const res = await app.request(
-      "/v1/session/session-123/touch",
+      `/v1/${PROJECT_ID}/session/${SESSION_ID}/touch`,
       { method: "POST" },
       createMockEnv(),
     );
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId: string; expiresAt: number };
-    expect(body.sessionId).toBe("session-123");
+    expect(body.sessionId).toBe(SESSION_ID);
     expect(body.expiresAt).toBe(expiresAt);
   });
 });
-

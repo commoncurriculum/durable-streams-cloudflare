@@ -19,10 +19,14 @@ vi.mock("../../src/session", () => ({
   deleteSession: (...args: unknown[]) => mockDeleteSession(...args),
 }));
 
+const PROJECT_ID = "test-project";
+const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+const SESSION_ID_2 = "b2c3d4e5-f6a7-8901-bcde-f12345678901";
+
 function createTestApp() {
   return import("../../src/http/routes/subscribe").then(({ subscribeRoutes }) => {
     const app = new Hono();
-    app.route("/v1", subscribeRoutes);
+    app.route(`/v1/:project`, subscribeRoutes);
     return app;
   });
 }
@@ -44,7 +48,7 @@ describe("POST /subscribe", () => {
   describe("validation", () => {
     it("returns 400 when sessionId is missing", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
         body: JSON.stringify({ streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
@@ -55,9 +59,9 @@ describe("POST /subscribe", () => {
 
     it("returns 400 when streamId is missing", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1" }),
+        body: JSON.stringify({ sessionId: SESSION_ID }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -66,7 +70,7 @@ describe("POST /subscribe", () => {
 
     it("returns 400 when sessionId contains invalid characters", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
         body: JSON.stringify({ sessionId: "session;DROP TABLE", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
@@ -77,9 +81,9 @@ describe("POST /subscribe", () => {
 
     it("returns 400 when streamId contains invalid characters", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", streamId: "stream'OR'1'='1" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream'OR'1'='1" }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -88,7 +92,7 @@ describe("POST /subscribe", () => {
 
     it("returns 400 when sessionId contains spaces", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
         body: JSON.stringify({ sessionId: "session with spaces", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
@@ -97,19 +101,19 @@ describe("POST /subscribe", () => {
       expect(res.status).toBe(400);
     });
 
-    it("accepts valid sessionId with allowed special characters", async () => {
+    it("accepts valid sessionId (UUID format)", async () => {
       mockSubscribe.mockResolvedValue({
-        sessionId: "user:123_test-session.v2",
+        sessionId: SESSION_ID,
         streamId: "stream-1",
-        sessionStreamPath: "/v1/stream/session:user:123_test-session.v2",
+        sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
         expiresAt: Date.now() + 1800000,
         isNewSession: true,
       });
 
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "user:123_test-session.v2", streamId: "stream-1" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -120,25 +124,26 @@ describe("POST /subscribe", () => {
   describe("subscription flow", () => {
     it("calls subscribe service with correct params", async () => {
       mockSubscribe.mockResolvedValue({
-        sessionId: "session-123",
+        sessionId: SESSION_ID,
         streamId: "stream-abc",
-        sessionStreamPath: "/v1/stream/session:session-123",
+        sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
         expiresAt: Date.now() + 1800000,
         isNewSession: true,
       });
 
       const app = await createTestApp();
       const env = createMockEnv();
-      await app.request("/v1/subscribe", {
+      await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-123", streamId: "stream-abc" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream-abc" }),
         headers: { "Content-Type": "application/json" },
       }, env);
 
       expect(mockSubscribe).toHaveBeenCalledWith(
         env,
+        PROJECT_ID,
         "stream-abc",
-        "session-123",
+        SESSION_ID,
         "application/json",
       );
     });
@@ -147,9 +152,9 @@ describe("POST /subscribe", () => {
       mockSubscribe.mockRejectedValue(new Error("Failed to create session stream: 500"));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -162,17 +167,17 @@ describe("POST /subscribe", () => {
   describe("response", () => {
     it("returns sessionId, streamId, and sessionStreamPath", async () => {
       mockSubscribe.mockResolvedValue({
-        sessionId: "my-session-id",
+        sessionId: SESSION_ID,
         streamId: "my-stream",
-        sessionStreamPath: "/v1/stream/session:my-session-id",
+        sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
         expiresAt: Date.now() + 1800000,
         isNewSession: true,
       });
 
       const app = await createTestApp();
-      const res = await app.request("/v1/subscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
-        body: JSON.stringify({ sessionId: "my-session-id", streamId: "my-stream" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "my-stream" }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -184,9 +189,9 @@ describe("POST /subscribe", () => {
         expiresAt: number;
         isNewSession: boolean;
       };
-      expect(body.sessionId).toBe("my-session-id");
+      expect(body.sessionId).toBe(SESSION_ID);
       expect(body.streamId).toBe("my-stream");
-      expect(body.sessionStreamPath).toBe("/v1/stream/session:my-session-id");
+      expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
       expect(body.isNewSession).toBe(true);
       expect(typeof body.expiresAt).toBe("number");
     });
@@ -201,7 +206,7 @@ describe("DELETE /unsubscribe", () => {
   describe("validation", () => {
     it("returns 400 when sessionId contains invalid characters", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/unsubscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/unsubscribe`, {
         method: "DELETE",
         body: JSON.stringify({ sessionId: "session;DROP TABLE", streamId: "stream-1" }),
         headers: { "Content-Type": "application/json" },
@@ -212,9 +217,9 @@ describe("DELETE /unsubscribe", () => {
 
     it("returns 400 when streamId contains invalid characters", async () => {
       const app = await createTestApp();
-      const res = await app.request("/v1/unsubscribe", {
+      const res = await app.request(`/v1/${PROJECT_ID}/unsubscribe`, {
         method: "DELETE",
-        body: JSON.stringify({ sessionId: "session-1", streamId: "stream'OR'1'='1" }),
+        body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream'OR'1'='1" }),
         headers: { "Content-Type": "application/json" },
       }, createMockEnv());
 
@@ -224,21 +229,21 @@ describe("DELETE /unsubscribe", () => {
 
   it("calls unsubscribe service and returns result", async () => {
     mockUnsubscribe.mockResolvedValue({
-      sessionId: "session-1",
+      sessionId: SESSION_ID,
       streamId: "stream-1",
       unsubscribed: true,
     });
 
     const app = await createTestApp();
-    const res = await app.request("/v1/unsubscribe", {
+    const res = await app.request(`/v1/${PROJECT_ID}/unsubscribe`, {
       method: "DELETE",
-      body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
+      body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream-1" }),
       headers: { "Content-Type": "application/json" },
     }, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId: string; streamId: string; unsubscribed: boolean };
-    expect(body.sessionId).toBe("session-1");
+    expect(body.sessionId).toBe(SESSION_ID);
     expect(body.streamId).toBe("stream-1");
     expect(body.unsubscribed).toBe(true);
   });
@@ -247,9 +252,9 @@ describe("DELETE /unsubscribe", () => {
     mockUnsubscribe.mockRejectedValue(new Error("DO error"));
 
     const app = await createTestApp();
-    const res = await app.request("/v1/unsubscribe", {
+    const res = await app.request(`/v1/${PROJECT_ID}/unsubscribe`, {
       method: "DELETE",
-      body: JSON.stringify({ sessionId: "session-1", streamId: "stream-1" }),
+      body: JSON.stringify({ sessionId: SESSION_ID, streamId: "stream-1" }),
       headers: { "Content-Type": "application/json" },
     }, createMockEnv());
 
@@ -263,22 +268,22 @@ describe("DELETE /session/:sessionId", () => {
   });
 
   it("calls deleteSession service", async () => {
-    mockDeleteSession.mockResolvedValue({ sessionId: "session-123", deleted: true });
+    mockDeleteSession.mockResolvedValue({ sessionId: SESSION_ID, deleted: true });
 
     const app = await createTestApp();
     const env = createMockEnv();
-    await app.request("/v1/session/session-123", {
+    await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {
       method: "DELETE",
     }, env);
 
-    expect(mockDeleteSession).toHaveBeenCalledWith(env, "session-123");
+    expect(mockDeleteSession).toHaveBeenCalledWith(env, PROJECT_ID, SESSION_ID);
   });
 
   it("returns 500 when deleteSession service throws", async () => {
     mockDeleteSession.mockRejectedValue(new Error("Failed to delete session"));
 
     const app = await createTestApp();
-    const res = await app.request("/v1/session/session-123", {
+    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {
       method: "DELETE",
     }, createMockEnv());
 
@@ -288,16 +293,16 @@ describe("DELETE /session/:sessionId", () => {
   });
 
   it("returns confirmation response", async () => {
-    mockDeleteSession.mockResolvedValue({ sessionId: "my-session", deleted: true });
+    mockDeleteSession.mockResolvedValue({ sessionId: SESSION_ID_2, deleted: true });
 
     const app = await createTestApp();
-    const res = await app.request("/v1/session/my-session", {
+    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID_2}`, {
       method: "DELETE",
     }, createMockEnv());
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId: string; deleted: boolean };
-    expect(body.sessionId).toBe("my-session");
+    expect(body.sessionId).toBe(SESSION_ID_2);
     expect(body.deleted).toBe(true);
   });
 });

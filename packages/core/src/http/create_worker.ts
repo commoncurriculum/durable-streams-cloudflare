@@ -17,6 +17,7 @@ export type BaseEnv = {
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
+  PROJECT_KEYS?: KVNamespace;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -28,7 +29,7 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 // Internal Helpers
 // ============================================================================
 
-const STREAM_PREFIX = "/v1/stream/";
+const STREAM_PATH_RE = /^\/v1\/([^/]+)\/stream\/(.+)$/;
 
 function corsError(status: number, message: string): Response {
   const headers = new Headers({ "Cache-Control": "no-store" });
@@ -102,24 +103,30 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return new Response(null, { status: 204, headers });
       }
 
-      // Parse stream ID early so auth callbacks have access to it
-      if (!url.pathname.startsWith(STREAM_PREFIX)) {
+      // #region docs-extract-stream-id
+      // Parse project + stream ID from /v1/:project/stream/:id
+      const pathMatch = STREAM_PATH_RE.exec(url.pathname);
+      if (!pathMatch) {
         return corsError(404, "not found");
       }
 
-      // #region docs-extract-stream-id
+      let projectId: string;
       let streamId: string;
       try {
-        streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
+        projectId = decodeURIComponent(pathMatch[1]);
+        streamId = decodeURIComponent(pathMatch[2]);
       } catch {
         return corsError(400, "malformed stream id");
       }
-      if (!streamId) {
-        return corsError(400, "missing stream id");
+      if (!projectId || !streamId) {
+        return corsError(400, "missing project or stream id");
       }
+
+      // DO key combines project + stream for isolation
+      const doKey = `${projectId}/${streamId}`;
       // #endregion docs-extract-stream-id
 
-      // Admin introspection: GET /v1/stream/:id/admin
+      // Admin introspection: GET /v1/:project/stream/:id/admin
       if (streamId.endsWith("/admin") && request.method.toUpperCase() === "GET") {
         const actualStreamId = streamId.slice(0, -"/admin".length);
         if (!actualStreamId) return corsError(400, "missing stream id");
@@ -130,8 +137,9 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           return corsError(401, "unauthorized");
         }
 
-        const stub = env.STREAMS.getByName(actualStreamId);
-        const introspection = await stub.getIntrospection(actualStreamId);
+        const actualDoKey = `${projectId}/${actualStreamId}`;
+        const stub = env.STREAMS.getByName(actualDoKey);
+        const introspection = await stub.getIntrospection(actualDoKey);
         if (!introspection) return corsError(404, "stream not found");
 
         const headers = new Headers({
@@ -147,12 +155,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       let authStreamId: string | null = null;
 
       // #region docs-authorize-request
+      // Auth callbacks receive doKey (projectId/streamId) so they can check project scope
       if (isStreamRead && config?.authorizeRead) {
-        const readAuth = await config.authorizeRead(request, streamId, env, timing);
+        const readAuth = await config.authorizeRead(request, doKey, env, timing);
         if (!readAuth.ok) return wrapAuthError(readAuth.response);
         authStreamId = readAuth.streamId;
       } else if (!isStreamRead && config?.authorizeMutation) {
-        const mutAuth = await config.authorizeMutation(request, streamId, env, timing);
+        const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
         if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
       }
       // #endregion docs-authorize-request
@@ -178,11 +187,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
 
       // #region docs-route-to-do
-      const stub = env.STREAMS.getByName(streamId);
+      const stub = env.STREAMS.getByName(doKey);
 
       const doneOrigin = timing?.start("edge.origin");
       const response = await stub.routeStreamRequest(
-        streamId,
+        doKey,
         cacheMode,
         authStreamId,
         timingEnabled,

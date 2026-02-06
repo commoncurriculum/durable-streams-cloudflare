@@ -19,6 +19,9 @@ vi.mock("../src/metrics", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+const PROJECT_ID = "test-project";
+const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
 describe("cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,7 +74,7 @@ describe("cleanup", () => {
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
@@ -109,11 +112,11 @@ describe("cleanup", () => {
 
       // Verify DO RPC was called to remove subscriptions
       expect(mockRemoveSubscriber).toHaveBeenCalledTimes(2);
-      expect(mockRemoveSubscriber).toHaveBeenCalledWith("session-1");
+      expect(mockRemoveSubscriber).toHaveBeenCalledWith(SESSION_ID);
 
-      // Verify core was called to delete session stream
+      // Verify core was called to delete session stream (project-scoped path)
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/stream/session:session-1"),
+        expect.stringContaining(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`),
         expect.objectContaining({ method: "DELETE" }),
       );
     });
@@ -124,7 +127,7 @@ describe("cleanup", () => {
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
@@ -166,7 +169,7 @@ describe("cleanup", () => {
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
@@ -196,7 +199,7 @@ describe("cleanup", () => {
       );
 
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
@@ -274,7 +277,7 @@ describe("cleanup", () => {
 
       // Setup: 1 expired session with 2 subscriptions
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: "session-1", lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 

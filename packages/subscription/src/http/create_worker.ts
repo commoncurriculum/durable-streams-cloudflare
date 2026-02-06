@@ -115,10 +115,10 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     return c.json({ status: "ok" });
   });
 
-  // Mount routes
-  app.route("/v1", subscribeRoutes);
-  app.route("/v1", publishRoutes);
-  app.route("/v1", sessionRoutes);
+  // Mount routes under /v1/:project
+  app.route("/v1/:project", subscribeRoutes);
+  app.route("/v1/:project", publishRoutes);
+  app.route("/v1/:project", sessionRoutes);
 
   // Catch-all
   app.all("*", (c) => {

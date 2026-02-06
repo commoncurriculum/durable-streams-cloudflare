@@ -104,6 +104,7 @@ export interface SessionSubscription {
 
 export interface ExpiredSessionInfo {
   sessionId: string;
+  project: string;
   lastActivity: number;
   ttlSeconds: number;
 }
@@ -181,13 +182,13 @@ export async function getExpiredSessions(
   const safeLookbackHours = lookbackHours > 0 ? lookbackHours : 24;
   const nowMs = Date.now();
 
-  // Query for sessions with their last activity time and TTL
-  // blob2 = sessionId, blob3 = eventType, double3 = ttlSeconds (for session events)
-  // We need to find the max timestamp per session and check if it's expired
-  // IMPORTANT: Use argMax to get TTL from the most recent event, not MAX
+  // Query for sessions with their last activity time, TTL, and project
+  // blob1 = project (from session_create), blob2 = sessionId, blob3 = eventType, double3 = ttlSeconds
+  // IMPORTANT: Use argMax to get TTL and project from the most recent event, not MAX
   const query = `
     SELECT
       blob2 as sessionId,
+      argMax(blob1, timestamp) as project,
       MAX(timestamp) as lastActivity,
       argMax(double3, timestamp) as ttlSeconds
     FROM ${datasetName}
@@ -200,6 +201,7 @@ export async function getExpiredSessions(
 
   const result = await queryAnalyticsEngine<{
     sessionId: string;
+    project: string;
     lastActivity: string;
     ttlSeconds: number;
   }>(env, query);
@@ -211,6 +213,7 @@ export async function getExpiredSessions(
   return {
     data: result.data.map((r) => ({
       sessionId: r.sessionId,
+      project: r.project,
       lastActivity: new Date(r.lastActivity).getTime(),
       ttlSeconds: r.ttlSeconds,
     })),

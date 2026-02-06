@@ -2,7 +2,6 @@
   "name": "@durable-streams-cloudflare/admin-subscription",
   "version": "0.2.0",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
   "repository": {
@@ -10,11 +9,20 @@
     "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/admin-subscription"
   },
+  "files": [
+    "dist/server",
+    "dist/client",
+    "!dist/server/.dev.vars"
+  ],
+  "exports": {
+    "./worker": "./dist/server/index.js"
+  },
   "scripts": {
     "dev": "vite dev --port 8789",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
+    "prepublishOnly": "pnpm run build",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run",
     "cf-typegen": "wrangler types"

@@ -16,6 +16,8 @@ import { handleFanoutQueue } from "../../src/queue/fanout-consumer";
 import type { AppEnv } from "../../src/env";
 import type { FanoutQueueMessage } from "../../src/subscriptions/types";
 
+const PROJECT_ID = "test-project";
+
 function createMockEnv() {
   const mockRemoveSubscribers = vi.fn();
   return {
@@ -57,6 +59,7 @@ describe("handleFanoutQueue", () => {
     const { env } = createMockEnv();
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["s1", "s2"],
       payload: encodePayload("hello world"),
@@ -70,6 +73,7 @@ describe("handleFanoutQueue", () => {
 
     expect(mockFanoutToSubscribers).toHaveBeenCalledWith(
       env,
+      PROJECT_ID,
       ["s1", "s2"],
       expect.any(ArrayBuffer),
       "text/plain",
@@ -77,7 +81,7 @@ describe("handleFanoutQueue", () => {
     );
 
     // Verify decoded payload
-    const passedPayload = mockFanoutToSubscribers.mock.calls[0][2] as ArrayBuffer;
+    const passedPayload = mockFanoutToSubscribers.mock.calls[0][3] as ArrayBuffer;
     const decoded = new TextDecoder().decode(passedPayload);
     expect(decoded).toBe("hello world");
 
@@ -96,6 +100,7 @@ describe("handleFanoutQueue", () => {
     };
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["s1"],
       payload: encodePayload("test"),
@@ -110,6 +115,7 @@ describe("handleFanoutQueue", () => {
 
     expect(mockFanoutToSubscribers).toHaveBeenCalledWith(
       env,
+      PROJECT_ID,
       ["s1"],
       expect.any(ArrayBuffer),
       "application/json",
@@ -126,6 +132,7 @@ describe("handleFanoutQueue", () => {
     const { env, mockRemoveSubscribers } = createMockEnv();
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["active", "stale-session"],
       payload: encodePayload("test"),
@@ -152,6 +159,7 @@ describe("handleFanoutQueue", () => {
     const { env } = createMockEnv();
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["s1", "s2"],
       payload: encodePayload("test"),
@@ -173,6 +181,7 @@ describe("handleFanoutQueue", () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["s1"],
       payload: encodePayload("test"),
@@ -199,12 +208,14 @@ describe("handleFanoutQueue", () => {
     const { env } = createMockEnv();
 
     const msg1 = createMessage({
+      projectId: PROJECT_ID,
       streamId: "stream-1",
       sessionIds: ["s1"],
       payload: encodePayload("msg1"),
       contentType: "text/plain",
     });
     const msg2 = createMessage({
+      projectId: PROJECT_ID,
       streamId: "stream-1",
       sessionIds: ["s2"],
       payload: encodePayload("msg2"),
@@ -226,6 +237,7 @@ describe("handleFanoutQueue", () => {
     const { env } = createMockEnv();
 
     const msg = createMessage({
+      projectId: PROJECT_ID,
       streamId: "test-stream",
       sessionIds: ["s1", "s2", "s3", "stale"],
       payload: encodePayload("test"),

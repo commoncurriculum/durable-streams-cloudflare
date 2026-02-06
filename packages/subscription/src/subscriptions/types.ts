@@ -38,6 +38,7 @@ export interface PublishResult {
 }
 
 export interface FanoutQueueMessage {
+  projectId: string;
   streamId: string;
   sessionIds: string[];
   payload: string; // base64-encoded

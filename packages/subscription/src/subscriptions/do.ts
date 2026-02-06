@@ -83,7 +83,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   // #endregion synced-to-docs:get-subscribers
 
   // #region synced-to-docs:publish-to-source
-  async publish(streamId: string, params: PublishParams): Promise<PublishResult> {
+  async publish(projectId: string, streamId: string, params: PublishParams): Promise<PublishResult> {
     const start = Date.now();
     const metrics = createMetrics(this.env.METRICS);
 
@@ -97,10 +97,10 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       headers["Producer-Seq"] = params.producerSeq;
     }
 
-    // 1. Write to source stream in core
+    // 1. Write to source stream in core (project-scoped)
     const writeResponse = await fetchFromCore(
       this.env,
-      `/v1/stream/${streamId}`,
+      `/v1/${projectId}/stream/${streamId}`,
       {
         method: "POST",
         headers,
@@ -156,20 +156,20 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       if (this.env.FANOUT_QUEUE && subscribers.length > threshold) {
         // Queued fanout — enqueue and return immediately
         try {
-          await this.enqueueFanout(streamId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          await this.enqueueFanout(projectId, streamId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
           fanoutMode = "queued";
           metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
         } catch (err) {
           // Fallback to inline on queue failure
           console.error("Queue enqueue failed, falling back to inline fanout:", err);
-          const result = await fanoutToSubscribers(this.env, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          const result = await fanoutToSubscribers(this.env, projectId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
           successCount = result.successes;
           failureCount = result.failures;
           this.removeStaleSubscribers(result.staleSessionIds);
         }
       } else {
         // Inline fanout
-        const result = await fanoutToSubscribers(this.env, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+        const result = await fanoutToSubscribers(this.env, projectId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
         successCount = result.successes;
         failureCount = result.failures;
         // #endregion synced-to-docs:fanout
@@ -208,6 +208,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   // #endregion synced-to-docs:publish-response
 
   private async enqueueFanout(
+    projectId: string,
     streamId: string,
     sessionIds: string[],
     payload: ArrayBuffer,
@@ -222,6 +223,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       const batch = sessionIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
       messages.push({
         body: {
+          projectId,
           streamId,
           sessionIds: batch,
           payload: payloadBase64,

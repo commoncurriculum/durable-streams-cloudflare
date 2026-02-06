@@ -8,6 +8,8 @@ vi.mock("../../src/client", () => ({
 import { fanoutToSubscribers } from "../../src/subscriptions/fanout";
 import type { CoreClientEnv } from "../../src/client";
 
+const PROJECT_ID = "test-project";
+
 function createEnv(): CoreClientEnv {
   return { CORE_URL: "http://localhost:8787" };
 }
@@ -23,6 +25,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       env,
+      PROJECT_ID,
       ["s1", "s2", "s3"],
       new TextEncoder().encode("hello").buffer as ArrayBuffer,
       "text/plain",
@@ -35,12 +38,12 @@ describe("fanoutToSubscribers", () => {
 
     expect(mockFetchFromCore).toHaveBeenCalledWith(
       env,
-      "/v1/stream/session:s1",
+      `/v1/${PROJECT_ID}/stream/s1`,
       expect.objectContaining({ method: "POST" }),
     );
     expect(mockFetchFromCore).toHaveBeenCalledWith(
       env,
-      "/v1/stream/session:s2",
+      `/v1/${PROJECT_ID}/stream/s2`,
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -59,6 +62,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       sessionIds,
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
@@ -78,6 +82,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       ["active-1", "stale-1", "active-2", "stale-2"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
@@ -93,6 +98,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       ["s1", "s2"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
@@ -108,6 +114,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       ["s1"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
@@ -124,6 +131,7 @@ describe("fanoutToSubscribers", () => {
 
     await fanoutToSubscribers(
       env,
+      PROJECT_ID,
       ["s1"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "application/json",
@@ -132,7 +140,7 @@ describe("fanoutToSubscribers", () => {
 
     expect(mockFetchFromCore).toHaveBeenCalledWith(
       env,
-      "/v1/stream/session:s1",
+      `/v1/${PROJECT_ID}/stream/s1`,
       expect.objectContaining({
         headers: expect.objectContaining({
           "Content-Type": "application/json",
@@ -153,6 +161,7 @@ describe("fanoutToSubscribers", () => {
 
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       ["ok", "stale", "error", "network-fail"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
@@ -166,6 +175,7 @@ describe("fanoutToSubscribers", () => {
   it("handles empty session list", async () => {
     const result = await fanoutToSubscribers(
       createEnv(),
+      PROJECT_ID,
       [],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",

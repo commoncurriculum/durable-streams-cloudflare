@@ -21,6 +21,10 @@ vi.mock("../src/analytics", () => ({
   getSessionSubscriptions: (...args: unknown[]) => mockGetSessionSubscriptions(...args),
 }));
 
+const PROJECT_ID = "test-project";
+const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+const SESSION_ID_MISSING = "00000000-0000-0000-0000-000000000000";
+
 function createEnv() {
   return {
     CORE_URL: "http://localhost:8787",
@@ -46,7 +50,7 @@ describe("getSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 404 }));
 
     const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, "session-missing");
+    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID_MISSING);
 
     expect(result).toBeNull();
   });
@@ -58,11 +62,11 @@ describe("getSession", () => {
     });
 
     const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, "session-123");
+    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
     expect(result).toEqual({
-      sessionId: "session-123",
-      sessionStreamPath: "/v1/stream/session:session-123",
+      sessionId: SESSION_ID,
+      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       subscriptions: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
     });
   });
@@ -75,11 +79,11 @@ describe("getSession", () => {
     });
 
     const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, "session-123");
+    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
     expect(result).toEqual({
-      sessionId: "session-123",
-      sessionStreamPath: "/v1/stream/session:session-123",
+      sessionId: SESSION_ID,
+      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       subscriptions: [],
     });
   });
@@ -99,9 +103,9 @@ describe("touchSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     const { touchSession } = await import("../src/session");
-    const result = await touchSession(createEnv() as never, "session-123");
+    const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
-    expect(result.sessionId).toBe("session-123");
+    expect(result.sessionId).toBe(SESSION_ID);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
     expect(mockMetrics.sessionTouch).toHaveBeenCalled();
   });
@@ -110,9 +114,9 @@ describe("touchSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 409 }));
 
     const { touchSession } = await import("../src/session");
-    const result = await touchSession(createEnv() as never, "session-123");
+    const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
-    expect(result.sessionId).toBe("session-123");
+    expect(result.sessionId).toBe(SESSION_ID);
     expect(mockMetrics.sessionTouch).toHaveBeenCalled();
   });
 
@@ -120,8 +124,8 @@ describe("touchSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 500 }));
 
     const { touchSession } = await import("../src/session");
-    await expect(touchSession(createEnv() as never, "session-123")).rejects.toThrow(
-      "Failed to touch session: session-123 (status: 500)",
+    await expect(touchSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
+      `Failed to touch session: ${SESSION_ID} (status: 500)`,
     );
   });
 });
@@ -140,9 +144,9 @@ describe("deleteSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     const { deleteSession } = await import("../src/session");
-    const result = await deleteSession(createEnv() as never, "session-123");
+    const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
-    expect(result).toEqual({ sessionId: "session-123", deleted: true });
+    expect(result).toEqual({ sessionId: SESSION_ID, deleted: true });
     expect(mockMetrics.sessionDelete).toHaveBeenCalled();
   });
 
@@ -150,17 +154,17 @@ describe("deleteSession", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 404 }));
 
     const { deleteSession } = await import("../src/session");
-    const result = await deleteSession(createEnv() as never, "session-123");
+    const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
 
-    expect(result).toEqual({ sessionId: "session-123", deleted: true });
+    expect(result).toEqual({ sessionId: SESSION_ID, deleted: true });
   });
 
   it("throws on 500", async () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 500 }));
 
     const { deleteSession } = await import("../src/session");
-    await expect(deleteSession(createEnv() as never, "session-123")).rejects.toThrow(
-      "Failed to delete session: session-123",
+    await expect(deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
+      `Failed to delete session: ${SESSION_ID}`,
     );
   });
 });

@@ -15,11 +15,12 @@ const streamIdParamSchema = z.object({
 // #region synced-to-docs:publish-route
 publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema), async (c) => {
   const start = Date.now();
+  const projectId = c.req.param("project")!;
   const streamId = c.req.param("streamId");
   const metrics = createMetrics(c.env.METRICS);
 
   try {
-    const result = await publish(c.env, streamId, {
+    const result = await publish(c.env, projectId, streamId, {
       payload: await c.req.arrayBuffer(),
       contentType: c.req.header("Content-Type") ?? "application/json",
       producerId: c.req.header("Producer-Id") ?? undefined,

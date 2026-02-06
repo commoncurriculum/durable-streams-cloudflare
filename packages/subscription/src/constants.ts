@@ -5,17 +5,23 @@
 // #region synced-to-docs:id-patterns
 /**
  * Pattern for valid session IDs.
+ * Must be a UUID (8-4-4-4-12 hex format).
+ */
+export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Pattern for valid stream IDs.
  * Allows alphanumeric characters, hyphens, underscores, colons, and periods.
  * Does not allow quotes, semicolons, spaces, or other special characters
  * that could be used in SQL injection attacks.
  */
-export const SESSION_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
+export const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
 /**
- * Pattern for valid stream IDs.
- * Same rules as session IDs.
+ * Pattern for valid project IDs.
+ * Allows alphanumeric characters, hyphens, and underscores.
  */
-export const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
+export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // #endregion synced-to-docs:id-patterns
 
 /**
@@ -60,4 +66,13 @@ export function isValidSessionId(sessionId: string): boolean {
  */
 export function isValidStreamId(streamId: string): boolean {
   return STREAM_ID_PATTERN.test(streamId);
+}
+
+/**
+ * Validates a project ID against the allowed pattern.
+ * @param projectId - The project ID to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidProjectId(projectId: string): boolean {
+  return PROJECT_ID_PATTERN.test(projectId);
 }

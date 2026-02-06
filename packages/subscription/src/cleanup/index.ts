@@ -36,6 +36,7 @@ interface SessionCleanupResult {
 
 interface ExpiredSession {
   sessionId: string;
+  project: string;
   lastActivity: number;
   ttlSeconds: number;
 }
@@ -66,10 +67,11 @@ async function cleanupSession(
   const subscriptions = subscriptionsResult.data;
 
   // #region synced-to-docs:cleanup-session
-  // Remove from each SubscriptionDO via RPC
+  // Remove from each SubscriptionDO via RPC (project-scoped key)
   for (const sub of subscriptions) {
     try {
-      const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(sub.streamId));
+      const doKey = `${session.project}/${sub.streamId}`;
+      const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
       await stub.removeSubscriber(session.sessionId);
       subscriptionSuccesses++;
     } catch (err) {
@@ -81,11 +83,11 @@ async function cleanupSession(
     }
   }
 
-  // Delete session stream from core
+  // Delete session stream from core (project-scoped)
   try {
     const response = await fetchFromCore(
       env,
-      `/v1/stream/session:${session.sessionId}`,
+      `/v1/${session.project}/stream/${session.sessionId}`,
       { method: "DELETE" },
     );
 

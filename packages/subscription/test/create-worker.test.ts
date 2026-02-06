@@ -23,6 +23,8 @@ vi.mock("../src/cleanup", () => ({
   }),
 }));
 
+const PROJECT_ID = "test-project";
+
 function createBaseEnv(): AppEnv {
   return {
     CORE_URL: "http://localhost:8787",
@@ -58,7 +60,7 @@ describe("createSubscriptionWorker", () => {
 
     // GET session should not be blocked (no auth configured)
     const response = await worker.fetch(
-      new Request("http://localhost/v1/session/test-session"),
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`),
       env,
       {} as ExecutionContext,
     );
@@ -77,7 +79,7 @@ describe("createSubscriptionWorker", () => {
     const env = createBaseEnv();
 
     const response = await worker.fetch(
-      new Request("http://localhost/v1/publish/my-stream", { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
       env,
       {} as ExecutionContext,
     );
@@ -119,12 +121,12 @@ describe("createSubscriptionWorker", () => {
     const env = createBaseEnv();
 
     await worker.fetch(
-      new Request("http://localhost/v1/publish/my-stream", { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
       env,
       {} as ExecutionContext,
     );
 
-    expect(capturedRoute).toEqual({ action: "publish", streamId: "my-stream" });
+    expect(capturedRoute).toEqual({ action: "publish", project: PROJECT_ID, streamId: "my-stream" });
   });
 
   it("bearerTokenAuth — rejects without token", async () => {
@@ -135,7 +137,7 @@ describe("createSubscriptionWorker", () => {
     const env = { ...createBaseEnv(), AUTH_TOKEN: "secret" };
 
     const response = await worker.fetch(
-      new Request("http://localhost/v1/publish/my-stream", { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
       env,
       {} as ExecutionContext,
     );
@@ -151,7 +153,7 @@ describe("createSubscriptionWorker", () => {
     const env = { ...createBaseEnv(), AUTH_TOKEN: "secret" };
 
     const response = await worker.fetch(
-      new Request("http://localhost/v1/publish/my-stream", {
+      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "{}",
         headers: { Authorization: "Bearer secret" },

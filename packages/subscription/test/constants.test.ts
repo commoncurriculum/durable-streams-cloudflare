@@ -8,12 +8,11 @@ import {
 
 describe("constants", () => {
   describe("SESSION_ID_PATTERN", () => {
-    it("matches valid session IDs", () => {
-      expect(SESSION_ID_PATTERN.test("abc123")).toBe(true);
-      expect(SESSION_ID_PATTERN.test("user-123")).toBe(true);
-      expect(SESSION_ID_PATTERN.test("session_456")).toBe(true);
-      expect(SESSION_ID_PATTERN.test("a:b:c")).toBe(true);
-      expect(SESSION_ID_PATTERN.test("User.Session.123")).toBe(true);
+    it("matches valid session IDs (UUID format)", () => {
+      expect(SESSION_ID_PATTERN.test("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBe(true);
+      expect(SESSION_ID_PATTERN.test("00000000-0000-0000-0000-000000000000")).toBe(true);
+      expect(SESSION_ID_PATTERN.test("ABCDEF12-3456-7890-ABCD-EF1234567890")).toBe(true);
+      expect(SESSION_ID_PATTERN.test("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
     });
 
     it("rejects invalid session IDs", () => {
@@ -23,6 +22,8 @@ describe("constants", () => {
       expect(SESSION_ID_PATTERN.test("")).toBe(false);
       expect(SESSION_ID_PATTERN.test("has;semicolon")).toBe(false);
       expect(SESSION_ID_PATTERN.test("'; DROP TABLE --")).toBe(false);
+      expect(SESSION_ID_PATTERN.test("abc123")).toBe(false);
+      expect(SESSION_ID_PATTERN.test("not-a-uuid-format")).toBe(false);
     });
   });
 

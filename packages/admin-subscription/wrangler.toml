@@ -12,9 +12,9 @@ binding = "CORE"
 service = "durable-streams"
 
 [vars]
-# ADMIN_TOKEN = "shared-admin-token"
 # CF_ACCOUNT_ID = "your-account-id"
 # CF_API_TOKEN = "your-api-token"
+# CF_ACCESS_TEAM_DOMAIN = "your-team-name"
 
 [observability]
 enabled = true

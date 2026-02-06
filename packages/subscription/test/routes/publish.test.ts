@@ -17,10 +17,12 @@ vi.mock("../../src/metrics", () => ({
   })),
 }));
 
+const PROJECT_ID = "test-project";
+
 function createTestApp() {
   return import("../../src/http/routes/publish").then(({ publishRoutes }) => {
     const app = new Hono();
-    app.route("/v1", publishRoutes);
+    app.route(`/v1/:project`, publishRoutes);
     return app;
   });
 }
@@ -57,7 +59,7 @@ describe("POST /publish/:streamId", () => {
     it("rejects invalid streamId with semicolon", async () => {
       const app = await createTestApp();
       // URL-encode the semicolon so it reaches the handler as part of the streamId
-      const response = await app.request("/v1/publish/bad%3Bid", {
+      const response = await app.request(`/v1/${PROJECT_ID}/publish/bad%3Bid`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -71,7 +73,7 @@ describe("POST /publish/:streamId", () => {
 
     it("rejects streamId with SQL-like content", async () => {
       const app = await createTestApp();
-      const response = await app.request("/v1/publish/'; DROP TABLE --", {
+      const response = await app.request(`/v1/${PROJECT_ID}/publish/'; DROP TABLE --`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -82,7 +84,7 @@ describe("POST /publish/:streamId", () => {
 
     it("rejects streamId with quotes", async () => {
       const app = await createTestApp();
-      const response = await app.request("/v1/publish/test'id", {
+      const response = await app.request(`/v1/${PROJECT_ID}/publish/test'id`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -97,7 +99,7 @@ describe("POST /publish/:streamId", () => {
       const app = await createTestApp();
       const validIds = ["stream-123", "my_stream", "user:stream:1", "Stream.Name.123"];
       for (const id of validIds) {
-        const response = await app.request(`/v1/publish/${encodeURIComponent(id)}`, {
+        const response = await app.request(`/v1/${PROJECT_ID}/publish/${encodeURIComponent(id)}`, {
           method: "POST",
           body: JSON.stringify({ data: "test" }),
           headers: { "Content-Type": "application/json" },
@@ -113,7 +115,7 @@ describe("POST /publish/:streamId", () => {
 
       const app = await createTestApp();
       const env = createMockEnv();
-      await app.request("/v1/publish/my-stream-id", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream-id`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -121,6 +123,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         env,
+        PROJECT_ID,
         "my-stream-id",
         expect.objectContaining({
           contentType: "application/json",
@@ -132,7 +135,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "plain text",
         headers: { "Content-Type": "text/plain" },
@@ -140,6 +143,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         expect.anything(),
+        PROJECT_ID,
         "my-stream",
         expect.objectContaining({
           contentType: "text/plain",
@@ -153,7 +157,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: {
@@ -164,6 +168,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         expect.anything(),
+        PROJECT_ID,
         "my-stream",
         expect.objectContaining({
           producerId: "producer-1",
@@ -175,7 +180,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: {
@@ -186,6 +191,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         expect.anything(),
+        PROJECT_ID,
         "my-stream",
         expect.objectContaining({
           producerEpoch: "5",
@@ -197,7 +203,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: {
@@ -208,6 +214,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         expect.anything(),
+        PROJECT_ID,
         "my-stream",
         expect.objectContaining({
           producerSeq: "123",
@@ -219,7 +226,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult());
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: {
@@ -232,6 +239,7 @@ describe("POST /publish/:streamId", () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         expect.anything(),
+        PROJECT_ID,
         "my-stream",
         expect.objectContaining({
           producerId: "producer-1",
@@ -250,7 +258,7 @@ describe("POST /publish/:streamId", () => {
       }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -273,7 +281,7 @@ describe("POST /publish/:streamId", () => {
       }));
 
       const app = await createTestApp();
-      await app.request("/v1/publish/my-stream", {
+      await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -290,7 +298,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult({ status: 400 }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -303,7 +311,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockResolvedValue(createPublishResult({ status: 404 }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -316,7 +324,7 @@ describe("POST /publish/:streamId", () => {
       mockPublish.mockRejectedValue(new Error("DO unavailable"));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -335,7 +343,7 @@ describe("POST /publish/:streamId", () => {
       }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -355,7 +363,7 @@ describe("POST /publish/:streamId", () => {
       }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },
@@ -375,7 +383,7 @@ describe("POST /publish/:streamId", () => {
       }));
 
       const app = await createTestApp();
-      const res = await app.request("/v1/publish/my-stream", {
+      const res = await app.request(`/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "test",
         headers: { "Content-Type": "text/plain" },

@@ -25,6 +25,11 @@ new_sqlite_classes = ["SubscriptionDO"]
 binding = "METRICS"
 dataset = "subscriptions_metrics"
 
+# KV namespace for project API keys (multi-project auth)
+# [[kv_namespaces]]
+# binding = "PROJECT_KEYS"
+# id = "<your-kv-namespace-id>"
+
 # Service binding to core worker (recommended for production)
 # [[services]]
 # binding = "CORE"

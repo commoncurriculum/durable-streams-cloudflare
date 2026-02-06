@@ -168,6 +168,47 @@ export const sendTestAction = createServerFn({ method: "POST" })
     };
   });
 
+export const getStreamMessages = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: streamId }) => {
+    const core = (env as Record<string, unknown>).CORE as ServiceBinding;
+    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
+      | string
+      | undefined;
+
+    const headers: Record<string, string> = {};
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+
+    const response = await core.fetch(
+      new Request(
+        `https://internal/v1/stream/${encodeURIComponent(streamId)}?offset=0000000000000000_0000000000000000`,
+        { headers },
+      ),
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Stream read failed (${response.status}): ${text}`);
+    }
+
+    const nextOffset = response.headers.get("Stream-Next-Offset") ?? null;
+    const upToDate = response.headers.get("Stream-Up-To-Date") === "true";
+    const contentType = response.headers.get("Content-Type") ?? "";
+
+    let messages: Record<string, {}>[] = [];
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      messages = Array.isArray(body) ? body : [body];
+    } else {
+      const text = await response.text();
+      if (text.trim()) {
+        messages = [{ _raw: text }];
+      }
+    }
+
+    return { messages, nextOffset, upToDate };
+  });
+
 export const getSseProxyUrl = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: streamId }) => {

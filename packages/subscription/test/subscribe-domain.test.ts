@@ -21,6 +21,9 @@ const mockAddSubscriber = vi.fn();
 const mockStub = { addSubscriber: mockAddSubscriber };
 const mockIdFromName = vi.fn().mockReturnValue("do-id");
 
+const PROJECT_ID = "test-project";
+const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
 function createEnv() {
   return {
     SUBSCRIPTION_DO: {
@@ -49,13 +52,13 @@ describe("subscribe domain", () => {
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     const env = createEnv();
-    const result = await subscribe(env as never, "stream-1", "session-1", "application/json");
+    const result = await subscribe(env as never, PROJECT_ID, "stream-1", SESSION_ID, "application/json");
 
     expect(result.isNewSession).toBe(true);
-    expect(result.sessionId).toBe("session-1");
+    expect(result.sessionId).toBe(SESSION_ID);
     expect(result.streamId).toBe("stream-1");
-    expect(result.sessionStreamPath).toBe("/v1/stream/session:session-1");
-    expect(mockMetrics.subscribe).toHaveBeenCalledWith("stream-1", "session-1", true, expect.any(Number));
+    expect(result.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
+    expect(mockMetrics.subscribe).toHaveBeenCalledWith("stream-1", SESSION_ID, true, expect.any(Number));
     expect(mockMetrics.sessionCreate).toHaveBeenCalled();
   });
 
@@ -64,10 +67,10 @@ describe("subscribe domain", () => {
     mockAddSubscriber.mockResolvedValueOnce(undefined);
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
-    const result = await subscribe(createEnv() as never, "stream-1", "session-1");
+    const result = await subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID);
 
     expect(result.isNewSession).toBe(false);
-    expect(mockMetrics.subscribe).toHaveBeenCalledWith("stream-1", "session-1", false, expect.any(Number));
+    expect(mockMetrics.subscribe).toHaveBeenCalledWith("stream-1", SESSION_ID, false, expect.any(Number));
     expect(mockMetrics.sessionCreate).not.toHaveBeenCalled();
   });
 
@@ -80,14 +83,14 @@ describe("subscribe domain", () => {
     mockFetchFromCore.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
-    await expect(subscribe(createEnv() as never, "stream-1", "session-1")).rejects.toThrow("DO error");
+    await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");
 
     // Verify DELETE was called to rollback
     expect(mockFetchFromCore).toHaveBeenCalledTimes(2);
     expect(mockFetchFromCore).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
-      "/v1/stream/session:session-1",
+      `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -99,7 +102,7 @@ describe("subscribe domain", () => {
     mockAddSubscriber.mockRejectedValueOnce(new Error("DO error"));
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
-    await expect(subscribe(createEnv() as never, "stream-1", "session-1")).rejects.toThrow("DO error");
+    await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");
 
     // No rollback DELETE
     expect(mockFetchFromCore).toHaveBeenCalledTimes(1);
@@ -114,6 +117,6 @@ describe("subscribe domain", () => {
     mockFetchFromCore.mockRejectedValueOnce(new Error("rollback failed"));
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
-    await expect(subscribe(createEnv() as never, "stream-1", "session-1")).rejects.toThrow("DO error");
+    await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");
   });
 });

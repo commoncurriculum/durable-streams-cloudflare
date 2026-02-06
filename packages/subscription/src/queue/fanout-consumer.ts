@@ -17,16 +17,17 @@ export async function handleFanoutQueue(
   const metrics = createMetrics(env.METRICS);
 
   for (const message of batch.messages) {
-    const { streamId, sessionIds, payload: payloadBase64, contentType, producerHeaders } = message.body;
+    const { projectId, streamId, sessionIds, payload: payloadBase64, contentType, producerHeaders } = message.body;
     const start = Date.now();
 
     try {
       const payload = base64ToBuffer(payloadBase64);
-      const result = await fanoutToSubscribers(env, sessionIds, payload, contentType, producerHeaders);
+      const result = await fanoutToSubscribers(env, projectId, sessionIds, payload, contentType, producerHeaders);
 
-      // Remove stale subscribers via DO RPC
+      // Remove stale subscribers via DO RPC (project-scoped key)
       if (result.staleSessionIds.length > 0) {
-        const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamId));
+        const doKey = `${projectId}/${streamId}`;
+        const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
         await stub.removeSubscribers(result.staleSessionIds);
       }
 

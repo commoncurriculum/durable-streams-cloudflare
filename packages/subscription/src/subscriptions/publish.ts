@@ -3,9 +3,11 @@ import type { AppEnv } from "../env";
 
 export async function publish(
   env: AppEnv,
+  projectId: string,
   streamId: string,
   params: PublishParams,
 ): Promise<PublishResult> {
-  const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamId));
-  return stub.publish(streamId, params);
+  const doKey = `${projectId}/${streamId}`;
+  const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
+  return stub.publish(projectId, streamId, params);
 }

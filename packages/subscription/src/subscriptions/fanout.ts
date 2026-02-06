@@ -11,6 +11,7 @@ import type { FanoutResult } from "./types";
  */
 export async function fanoutToSubscribers(
   env: CoreClientEnv,
+  projectId: string,
   sessionIds: string[],
   payload: ArrayBuffer,
   contentType: string,
@@ -25,7 +26,7 @@ export async function fanoutToSubscribers(
     const batch = sessionIds.slice(i, i + FANOUT_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((sessionId) => {
-        const path = `/v1/stream/session:${sessionId}`;
+        const path = `/v1/${projectId}/stream/${sessionId}`;
         const headers: Record<string, string> = {
           "Content-Type": contentType,
           ...producerHeaders,
