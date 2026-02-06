@@ -1,9 +1,31 @@
 {
-  "name": "core",
-  "private": true,
+  "name": "@durable-streams-cloudflare/core",
+  "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
+  "description": "Core durable-streams protocol for Cloudflare Workers + Durable Objects",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/durable-streams",
+    "directory": "packages/core"
+  },
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/http/worker.d.ts",
+      "import": "./dist/http/worker.js"
+    },
+    "./hono": {
+      "types": "./dist/http/hono.d.ts",
+      "import": "./dist/http/hono.js"
+    }
+  },
+  "main": "./dist/http/worker.js",
+  "types": "./dist/http/worker.d.ts",
   "scripts": {
-    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build",
     "dev": "wrangler dev --local --port 8787",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
@@ -20,6 +42,9 @@
     "@hono/zod-validator": "^0.4",
     "zod": "^3"
   },
+  "peerDependencies": {
+    "@cloudflare/workers-types": ">=4"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
     "@durable-streams/server-conformance-tests": "latest",
@@ -28,10 +53,6 @@
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest",
-    "wrangler": "latest"
-  },
-  "exports": {
-    ".": "./src/http/worker.ts",
-    "./hono": "./src/http/hono.ts"
+    "wrangler": "^4.63.0"
   }
 }

@@ -184,7 +184,7 @@ export async function handlePost(
     }
 
     // Record metrics for stream close
-    if (ctx.env.METRICS && validated.value.closeStream) {
+    if (ctx.env.METRICS && (validated.value.kind === "close_only" || validated.value.closeStream)) {
       ctx.env.METRICS.writeDataPoint({
         indexes: [streamId],
         blobs: [streamId, "close", parsed.value.producer?.id ?? "anonymous"],

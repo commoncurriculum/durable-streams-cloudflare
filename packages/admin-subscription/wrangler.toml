@@ -1,0 +1,17 @@
+name = "durable-streams-admin-subscription"
+main = "src/worker.ts"
+compatibility_date = "2026-02-02"
+
+[[services]]
+binding = "SUBSCRIPTION"
+service = "durable-streams-subscriptions"
+
+[vars]
+# ADMIN_TOKEN = "shared-admin-token"
+# CF_ACCOUNT_ID = "your-account-id"
+# CF_API_TOKEN = "your-api-token"
+# SUBSCRIPTION_PUBLIC_URL = "..."
+# CORE_PUBLIC_URL = "..."
+
+[observability]
+enabled = true

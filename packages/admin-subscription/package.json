@@ -1,13 +1,13 @@
 {
-  "name": "@durable-streams-cloudflare/admin-core",
+  "name": "@durable-streams-cloudflare/admin-subscription",
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
-  "description": "Admin dashboard for durable-streams core on Cloudflare Workers",
+  "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/durable-streams",
-    "directory": "packages/admin-core"
+    "directory": "packages/admin-subscription"
   },
   "files": ["dist"],
   "exports": {
@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
-    "dev": "wrangler dev --port 8790",
+    "dev": "wrangler dev --port 8789",
     "deploy": "wrangler deploy",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run"
