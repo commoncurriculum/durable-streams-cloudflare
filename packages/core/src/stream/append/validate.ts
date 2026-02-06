@@ -1,11 +1,3 @@
-/**
- * POST validation helpers.
- *
- * This file uses two validator patterns (see shared.ts for details):
- * - Simple validators return `Response | null` for brevity
- * - Complex validators return `Result<T>` for composability
- */
-
 import { normalizeContentType } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
 import { validateStreamSeq, buildClosedConflict } from "../close";
@@ -14,7 +6,6 @@ import type { ParsedPostInput, ValidatedPostInput, Result } from "../types";
 
 /**
  * Validate that a stream exists.
- * Returns an error response if stream not found.
  */
 export function validateStreamExists(meta: StreamMeta | null): Result<StreamMeta> {
   if (!meta) {
@@ -42,45 +33,41 @@ export function hasContentType<T extends { contentType: string | null }>(
 
 /**
  * Validate content-type matches the stream's content-type.
- * Assumes content-type is already validated as non-null via hasContentType.
- * Returns an error response if mismatch, null if valid.
  */
 export function validateContentTypeMatch(
   requestContentType: string,
   streamContentType: string,
-): Response | null {
+): Result<null> {
   if (normalizeContentType(streamContentType) !== requestContentType) {
-    return errorResponse(409, "content-type mismatch");
+    return { kind: "error", response: errorResponse(409, "content-type mismatch") };
   }
-  return null;
+  return { kind: "ok", value: null };
 }
 
 /**
  * Validate that the stream is not closed for append operations.
- * Returns the closed conflict response if stream is closed.
  */
 export function validateStreamNotClosed(
   meta: StreamMeta,
   nextOffsetHeader: string,
-): Response | null {
+): Result<null> {
   if (meta.closed === 1) {
-    return buildClosedConflict(meta, nextOffsetHeader);
+    return { kind: "error", response: buildClosedConflict(meta, nextOffsetHeader) };
   }
-  return null;
+  return { kind: "ok", value: null };
 }
 
 /**
  * Validate that body is not empty for non-close operations.
- * Returns an error response if body is empty without close flag.
  */
 export function validateNonEmptyBody(
   bodyLength: number,
   closeStream: boolean,
-): Response | null {
+): Result<null> {
   if (bodyLength === 0 && !closeStream) {
-    return errorResponse(400, "empty body");
+    return { kind: "error", response: errorResponse(400, "empty body") };
   }
-  return null;
+  return { kind: "ok", value: null };
 }
 
 /**
@@ -106,16 +93,12 @@ export function validatePostInput(
   }
 
   // Empty body without close flag is an error
-  const emptyError = validateNonEmptyBody(input.bodyBytes.length, input.closeStream);
-  if (emptyError) {
-    return { kind: "error", response: emptyError };
-  }
+  const emptyResult = validateNonEmptyBody(input.bodyBytes.length, input.closeStream);
+  if (emptyResult.kind === "error") return emptyResult;
 
   // Stream must not be closed for append operations
-  const closedError = validateStreamNotClosed(meta, encodedTailOffset);
-  if (closedError) {
-    return { kind: "error", response: closedError };
-  }
+  const closedResult = validateStreamNotClosed(meta, encodedTailOffset);
+  if (closedResult.kind === "error") return closedResult;
 
   // Content-type is required
   if (!hasContentType(input)) {
@@ -123,16 +106,12 @@ export function validatePostInput(
   }
 
   // Content-type must match stream's content-type
-  const contentTypeError = validateContentTypeMatch(input.contentType, meta.content_type);
-  if (contentTypeError) {
-    return { kind: "error", response: contentTypeError };
-  }
+  const contentTypeResult = validateContentTypeMatch(input.contentType, meta.content_type);
+  if (contentTypeResult.kind === "error") return contentTypeResult;
 
   // Validate stream sequence if provided
-  const seqError = validateStreamSeq(meta, input.streamSeq);
-  if (seqError) {
-    return { kind: "error", response: seqError };
-  }
+  const seqResult = validateStreamSeq(meta, input.streamSeq);
+  if (seqResult.kind === "error") return seqResult;
 
   return {
     kind: "ok",

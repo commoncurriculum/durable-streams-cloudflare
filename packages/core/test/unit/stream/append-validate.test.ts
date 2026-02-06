@@ -118,56 +118,62 @@ describe("hasContentType", () => {
 });
 
 describe("validateContentTypeMatch", () => {
-  it("returns null for matching content types", () => {
+  it("returns ok for matching content types", () => {
     const result = validateContentTypeMatch("application/json", "application/json");
-    expect(result).toBeNull();
+    expect(result.kind).toBe("ok");
   });
 
-  it("returns 409 for mismatched content types", () => {
+  it("returns error for mismatched content types", () => {
     const result = validateContentTypeMatch("text/plain", "application/json");
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe(409);
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.response.status).toBe(409);
+    }
   });
 
   it("normalizes content types for comparison", () => {
     // Both should normalize to "application/json"
     const result = validateContentTypeMatch("application/json", "application/json; charset=utf-8");
     // The stream's content type is already normalized when stored
-    expect(result).toBeNull();
+    expect(result.kind).toBe("ok");
   });
 });
 
 describe("validateStreamNotClosed", () => {
-  it("returns null for open stream", () => {
+  it("returns ok for open stream", () => {
     const meta = baseStreamMeta({ closed: 0 });
     const result = validateStreamNotClosed(meta, "offset-header");
 
-    expect(result).toBeNull();
+    expect(result.kind).toBe("ok");
   });
 
-  it("returns 409 for closed stream", () => {
+  it("returns error for closed stream", () => {
     const meta = baseStreamMeta({ closed: 1 });
     const result = validateStreamNotClosed(meta, "offset-header");
 
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe(409);
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.response.status).toBe(409);
+    }
   });
 });
 
 describe("validateNonEmptyBody", () => {
-  it("returns null for non-empty body", () => {
+  it("returns ok for non-empty body", () => {
     const result = validateNonEmptyBody(10, false);
-    expect(result).toBeNull();
+    expect(result.kind).toBe("ok");
   });
 
-  it("returns null for empty body with close flag", () => {
+  it("returns ok for empty body with close flag", () => {
     const result = validateNonEmptyBody(0, true);
-    expect(result).toBeNull();
+    expect(result.kind).toBe("ok");
   });
 
-  it("returns 400 for empty body without close flag", () => {
+  it("returns error for empty body without close flag", () => {
     const result = validateNonEmptyBody(0, false);
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe(400);
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") {
+      expect(result.response.status).toBe(400);
+    }
   });
 });

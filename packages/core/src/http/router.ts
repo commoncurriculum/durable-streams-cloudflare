@@ -9,7 +9,7 @@ import { handleDelete, handlePost, handlePut } from "./handlers/write";
 import { handleGet, handleHead } from "./handlers/read";
 
 // ============================================================================
-// StreamEnv + StreamContext (from context.ts)
+// StreamEnv + StreamContext
 // ============================================================================
 
 export type StreamEnv = {
@@ -58,7 +58,7 @@ export type StreamContext = {
 };
 
 // ============================================================================
-// Cache Mode (from cache_mode.ts)
+// Cache Mode
 // ============================================================================
 
 export type CacheMode = "shared" | "private";
@@ -87,7 +87,7 @@ export function getCacheMode(request: Request): CacheMode {
 }
 
 // ============================================================================
-// Read Auth (from read_auth.ts)
+// Read Auth
 // ============================================================================
 
 export const SESSION_ID_HEADER = "X-Session-Id";

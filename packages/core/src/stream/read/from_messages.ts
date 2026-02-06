@@ -1,6 +1,7 @@
 import { isJsonContentType } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
-import { getContentStrategy, type ChunkInfo } from "../content_strategy";
+import { buildJsonArray, emptyJsonArray } from "../../protocol/json";
+import { concatBuffers } from "../../protocol/encoding";
 import {
   emptyResult,
   errorResult,
@@ -37,7 +38,6 @@ function readJsonMessages(
   closed: boolean,
   segmentStart: number,
 ): ReadResult {
-  const strategy = getContentStrategy("application/json");
   const relativeOffset = offset - segmentStart;
 
   // Validate offset bounds
@@ -46,7 +46,7 @@ function readJsonMessages(
   }
 
   // Collect chunks up to byte limit
-  const chunks: ChunkInfo[] = [];
+  const chunks: Array<{ body: Uint8Array; sizeBytes: number }> = [];
   let bytes = 0;
 
   for (let i = relativeOffset; i < messages.length; i++) {
@@ -62,12 +62,16 @@ function readJsonMessages(
   // Build result
   if (chunks.length === 0) {
     const upToDate = offset === tailOffset;
-    return emptyResult(offset, { upToDate, closedAtTail: closed && upToDate, strategy });
+    return emptyResult(offset, {
+      upToDate,
+      closedAtTail: closed && upToDate,
+      emptyBody: emptyJsonArray(),
+    });
   }
 
   const nextOffset = offset + chunks.length;
   return dataResult({
-    body: strategy.buildBody(chunks),
+    body: buildJsonArray(chunks.map((c) => ({ body: c.body, sizeBytes: c.sizeBytes }))),
     nextOffset,
     tailOffset,
     closed,
@@ -82,8 +86,7 @@ function readBinaryMessages(
   closed: boolean,
   segmentStart: number,
 ): ReadResult {
-  const strategy = getContentStrategy("application/octet-stream");
-  const chunks: ChunkInfo[] = [];
+  const chunks: Array<{ body: Uint8Array; sizeBytes: number }> = [];
   let bytes = 0;
   let cursor = segmentStart;
 
@@ -118,12 +121,12 @@ function readBinaryMessages(
   // Build result
   if (chunks.length === 0) {
     const upToDate = offset === tailOffset;
-    return emptyResult(offset, { upToDate, closedAtTail: closed && upToDate, strategy });
+    return emptyResult(offset, { upToDate, closedAtTail: closed && upToDate });
   }
 
   const nextOffset = offset + bytes;
   return dataResult({
-    body: strategy.buildBody(chunks),
+    body: concatBuffers(chunks.map((c) => c.body)),
     nextOffset,
     tailOffset,
     closed,

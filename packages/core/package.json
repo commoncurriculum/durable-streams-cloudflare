@@ -32,8 +32,6 @@
   },
   "exports": {
     ".": "./src/http/worker.ts",
-    "./hono": "./src/http/hono.ts",
-    "./hono/app": "./src/http/hono.ts",
-    "./hono/types": "./src/http/hono.ts"
+    "./hono": "./src/http/hono.ts"
   }
 }

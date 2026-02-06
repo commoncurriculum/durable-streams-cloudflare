@@ -1,9 +1,9 @@
 import { errorResponse } from "../../protocol/errors";
 import { isJsonContentType } from "../../protocol/headers";
+import { emptyJsonArray } from "../../protocol/json";
 import type { Timing } from "../../protocol/timing";
 import { readFromOffset } from "./from_offset";
 import { readFromMessages } from "./from_messages";
-import { getContentStrategy } from "../content_strategy";
 import {
   emptyResult,
   errorResult,
@@ -224,10 +224,10 @@ export class ReadPath {
 
     // Handle empty messages
     if (decoded.messages.length === 0) {
-      const strategy = getContentStrategy(segment.content_type);
       const upToDate = offset === meta.tail_offset;
       const closedAtTail = meta.closed === 1 && upToDate;
-      return emptyResult(offset, { upToDate, closedAtTail, strategy, source: "r2" });
+      const emptyBody = isJsonContentType(segment.content_type) ? emptyJsonArray() : undefined;
+      return emptyResult(offset, { upToDate, closedAtTail, emptyBody, source: "r2" });
     }
 
     // Read from decoded messages

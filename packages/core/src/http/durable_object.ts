@@ -206,8 +206,8 @@ export class StreamDO {
     }
 
     if (action === "ops-count") {
-      const ops = await this.storage.selectAllOps(streamId);
-      return new Response(JSON.stringify({ count: ops.length }), {
+      const stats = await this.storage.getOpsStatsFrom(streamId, 0);
+      return new Response(JSON.stringify({ count: stats.messageCount }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

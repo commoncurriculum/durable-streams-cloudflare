@@ -7,6 +7,10 @@ import type { StreamMeta, StreamStorage } from "../storage/types";
 // Offset encoding
 // ============================================================================
 
+export function encodeCurrentOffset(meta: StreamMeta): string {
+  return encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
+}
+
 export async function encodeTailOffset(
   storage: StreamStorage,
   streamId: string,
@@ -28,7 +32,7 @@ export async function encodeTailOffset(
       );
     }
   }
-  return encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
+  return encodeCurrentOffset(meta);
 }
 
 export async function encodeStreamOffset(

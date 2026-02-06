@@ -23,7 +23,7 @@ import type { StreamContext } from "../router";
 import { getCacheMode } from "../router";
 
 // ============================================================================
-// SSE Types (from live/types.ts)
+// SSE Types
 // ============================================================================
 
 export type SseClient = {
@@ -43,7 +43,7 @@ export type SseState = {
 };
 
 // ============================================================================
-// LongPollQueue (from live/long_poll.ts)
+// LongPollQueue
 // ============================================================================
 
 export type Waiter = {
@@ -92,8 +92,10 @@ export class LongPollQueue {
   }
 }
 
+const textEncoder = new TextEncoder();
+
 // ============================================================================
-// SSE Event Builders (from live/sse.ts)
+// SSE Event Builders
 // ============================================================================
 
 export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): string {
@@ -143,7 +145,7 @@ export function buildSseControlEvent(params: {
 }
 
 // ============================================================================
-// Long-Poll Headers (from engine/stream.ts)
+// Long-Poll Headers
 // ============================================================================
 
 export function buildLongPollHeaders(params: {
@@ -451,7 +453,6 @@ async function writeSseData(
   upToDate: boolean,
   streamClosed: boolean,
 ): Promise<void> {
-  const encoder = new TextEncoder();
   const dataEvent = buildSseDataEvent(payload, client.useBase64);
   const control = buildSseControlEvent({
     nextOffset: nextOffsetHeader,
@@ -460,7 +461,7 @@ async function writeSseData(
     cursor: client.cursor,
   });
   if (control.nextCursor) client.cursor = control.nextCursor;
-  await client.writer.write(encoder.encode(dataEvent + control.payload));
+  await client.writer.write(textEncoder.encode(dataEvent + control.payload));
 }
 
 async function writeSseControl(
@@ -469,7 +470,6 @@ async function writeSseControl(
   upToDate: boolean,
   streamClosed: boolean,
 ): Promise<void> {
-  const encoder = new TextEncoder();
   const control = buildSseControlEvent({
     nextOffset: nextOffsetHeader,
     upToDate,
@@ -477,5 +477,5 @@ async function writeSseControl(
     cursor: client.cursor,
   });
   if (control.nextCursor) client.cursor = control.nextCursor;
-  await client.writer.write(encoder.encode(control.payload));
+  await client.writer.write(textEncoder.encode(control.payload));
 }

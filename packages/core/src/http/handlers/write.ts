@@ -25,18 +25,19 @@ import { executePost } from "../../stream/append/execute";
 
 /**
  * Validate request body constraints (Content-Length header and body size).
- * Returns an error response if validation fails, null if valid.
  */
 function validateRequestBody(
   request: Request,
   bodyLength: number,
 ): Response | null {
-  const contentLengthError = validateContentLength(
+  const contentLengthResult = validateContentLength(
     request.headers.get("Content-Length"),
     bodyLength,
   );
-  if (contentLengthError) return contentLengthError;
-  return validateBodySize(bodyLength);
+  if (contentLengthResult.kind === "error") return contentLengthResult.response;
+  const bodySizeResult = validateBodySize(bodyLength);
+  if (bodySizeResult.kind === "error") return bodySizeResult.response;
+  return null;
 }
 
 /**

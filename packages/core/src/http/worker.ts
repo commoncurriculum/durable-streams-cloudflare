@@ -233,7 +233,12 @@ export default {
       return corsError(404, "not found");
     }
 
-    const streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
+    let streamId: string;
+    try {
+      streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
+    } catch {
+      return corsError(400, "malformed stream id");
+    }
     if (!streamId) {
       return corsError(400, "missing stream id");
     }

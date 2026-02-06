@@ -2,12 +2,10 @@
  * Builder utilities for constructing ReadResult objects.
  *
  * These helpers reduce boilerplate and ensure consistency across:
- * - read_path.ts
- * - stream.ts
- * - segments.ts
+ * - path.ts
+ * - from_offset.ts
+ * - from_messages.ts
  */
-
-import type { ContentStrategy } from "../content_strategy";
 
 export type ReadResult = {
   body: ArrayBuffer;
@@ -28,12 +26,11 @@ export function emptyResult(
     source?: "hot" | "r2";
     upToDate?: boolean;
     closedAtTail?: boolean;
-    strategy?: ContentStrategy;
+    emptyBody?: ArrayBuffer;
   } = {}
 ): ReadResult {
-  const body = opts.strategy ? opts.strategy.emptyBody() : new ArrayBuffer(0);
   return {
-    body,
+    body: opts.emptyBody ?? new ArrayBuffer(0),
     nextOffset: offset,
     upToDate: opts.upToDate ?? false,
     closedAtTail: opts.closedAtTail ?? false,

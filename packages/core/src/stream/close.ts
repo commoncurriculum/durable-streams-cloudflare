@@ -5,8 +5,9 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   baseHeaders,
 } from "../protocol/headers";
-import { encodeOffset } from "../protocol/offsets";
 import { errorResponse } from "../protocol/errors";
+import { encodeCurrentOffset } from "./offsets";
+import type { Result } from "./types";
 import type { StreamMeta, StreamStorage } from "../storage/types";
 import type { ProducerInput } from "./producer";
 
@@ -23,11 +24,11 @@ export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string):
   return new Response("stream is closed", { status: 409, headers });
 }
 
-export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): Response | null {
+export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): Result<null> {
   if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
-    return errorResponse(409, "Stream-Seq regression");
+    return { kind: "error", response: errorResponse(409, "Stream-Seq regression") };
   }
-  return null;
+  return { kind: "ok", value: null };
 }
 
 export async function closeStreamOnly(
@@ -35,13 +36,14 @@ export async function closeStreamOnly(
   meta: StreamMeta,
   producer?: ProducerInput,
 ): Promise<CloseOnlyResult> {
+  const nextOffsetHeader = encodeCurrentOffset(meta);
+
   if (meta.closed === 1 && producer) {
     if (
       meta.closed_by_producer_id === producer.id &&
       meta.closed_by_epoch === producer.epoch &&
       meta.closed_by_seq === producer.seq
     ) {
-      const nextOffsetHeader = encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq);
       const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
         [HEADER_STREAM_CLOSED]: "true",
@@ -53,10 +55,7 @@ export async function closeStreamOnly(
 
     return {
       headers: baseHeaders(),
-      error: buildClosedConflict(
-        meta,
-        encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq),
-      ),
+      error: buildClosedConflict(meta, nextOffsetHeader),
     };
   }
 
@@ -69,7 +68,7 @@ export async function closeStreamOnly(
   }
 
   const headers = baseHeaders({
-    [HEADER_STREAM_NEXT_OFFSET]: encodeOffset(meta.tail_offset - meta.segment_start, meta.read_seq),
+    [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_STREAM_CLOSED]: "true",
   });
 
