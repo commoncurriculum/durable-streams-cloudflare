@@ -14,3 +14,9 @@ node_modules/
 upstream/
 upstream-server/
 dist/
+
+# tsc build artifacts (prevent stray emissions in src/)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
