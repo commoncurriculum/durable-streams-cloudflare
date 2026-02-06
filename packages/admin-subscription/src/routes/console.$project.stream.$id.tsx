@@ -9,12 +9,12 @@ type LogEvent = {
   timestamp: Date;
 };
 
-export const Route = createFileRoute("/console/stream/$id")({
+export const Route = createFileRoute("/console/$project/stream/$id")({
   component: StreamConsolePage,
 });
 
 function StreamConsolePage() {
-  const { id } = Route.useParams();
+  const { project, id } = Route.useParams();
   const { data, isLoading, error } = useStreamSubscribers(id);
 
   const [contentType, setContentType] = useState("application/json");
@@ -36,6 +36,7 @@ function StreamConsolePage() {
       const result = await sendTestAction({
         data: {
           action: "publish",
+          projectId: project,
           streamId: id,
           contentType,
           body,
@@ -50,7 +51,7 @@ function StreamConsolePage() {
     } finally {
       setSending(false);
     }
-  }, [id, contentType, body, addEvent]);
+  }, [project, id, contentType, body, addEvent]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -114,8 +115,14 @@ function StreamConsolePage() {
                     key={i}
                     className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
                   >
-                    <td className="px-4 py-2 font-mono text-sm text-zinc-400">
-                      {row.session_id as string}
+                    <td className="px-4 py-2 font-mono text-sm">
+                      <Link
+                        to="/console/$project/session/$id"
+                        params={{ project, id: row.session_id as string }}
+                        className="text-blue-400 hover:underline"
+                      >
+                        {row.session_id as string}
+                      </Link>
                     </td>
                     <td className="px-4 py-2 font-mono text-sm text-zinc-400">
                       {row.net as number}

@@ -1,3 +1,9 @@
+export function parseDoKey(doKey: string): { projectId: string; streamId: string } {
+  const i = doKey.indexOf("/");
+  if (i === -1) return { projectId: "default", streamId: doKey };
+  return { projectId: doKey.slice(0, i), streamId: doKey.slice(i + 1) };
+}
+
 export function formatBytes(b: number): string {
   if (b === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];

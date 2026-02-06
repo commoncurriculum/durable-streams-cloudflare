@@ -13,13 +13,13 @@ const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
   { value: "delete", label: "Delete" },
 ];
 
-export const Route = createFileRoute("/console/session/$id")({
+export const Route = createFileRoute("/console/$project/session/$id")({
   component: SessionConsolePage,
 });
 
 function SessionConsolePage() {
-  const { id } = Route.useParams();
-  const { data, isLoading, error } = useSessionInspect(id);
+  const { project, id } = Route.useParams();
+  const { data, isLoading, error } = useSessionInspect(id, project);
 
   const [action, setAction] = useState<SessionAction>("subscribe");
   const [streamIdInput, setStreamIdInput] = useState("");
@@ -39,15 +39,16 @@ function SessionConsolePage() {
           if (!streamIdInput.trim()) return;
           payload = {
             action,
+            projectId: project,
             sessionId: id,
             streamId: streamIdInput.trim(),
           };
           break;
         case "touch":
-          payload = { action, sessionId: id };
+          payload = { action, projectId: project, sessionId: id };
           break;
         case "delete":
-          payload = { action, sessionId: id };
+          payload = { action, projectId: project, sessionId: id };
           break;
       }
 
@@ -59,7 +60,7 @@ function SessionConsolePage() {
 
       if (action === "subscribe") {
         setSseUrl(
-          `/api/sse/session:${encodeURIComponent(id)}?live=sse&offset=now`,
+          `/api/sse/${encodeURIComponent(project)}/${encodeURIComponent(id)}?live=sse&offset=now`,
         );
       }
     } catch (e) {
@@ -67,7 +68,7 @@ function SessionConsolePage() {
     } finally {
       setSending(false);
     }
-  }, [action, id, streamIdInput, addEvent]);
+  }, [action, project, id, streamIdInput, addEvent]);
 
   if (isLoading) {
     return (
@@ -145,8 +146,8 @@ function SessionConsolePage() {
                     >
                       <td className="px-4 py-2 font-mono text-sm">
                         <Link
-                          to="/console/stream/$id"
-                          params={{ id: sid }}
+                          to="/console/$project/stream/$id"
+                          params={{ project, id: sid }}
                           className="text-blue-400 hover:underline"
                         >
                           {sid}

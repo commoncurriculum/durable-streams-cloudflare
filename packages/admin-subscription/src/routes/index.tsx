@@ -7,7 +7,7 @@ import {
   useTimeseries,
   useErrors,
 } from "../lib/queries";
-import { formatRate, relTime } from "../lib/formatters";
+import { formatRate, relTime, parseDoKey } from "../lib/formatters";
 import type { AnalyticsRow } from "../types";
 import {
   AreaChart,
@@ -181,24 +181,27 @@ function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {hot.data!.map((row) => (
-                <tr
-                  key={row.stream_id as string}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>
-                    <Link
-                      to="/console/stream/$id"
-                      params={{ id: row.stream_id as string }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {row.stream_id as string}
-                    </Link>
-                  </Td>
-                  <Td>{row.publishes as number}</Td>
-                  <Td>{(row.fanout_count as number) ?? 0}</Td>
-                </tr>
-              ))}
+              {hot.data!.map((row) => {
+                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                return (
+                  <tr
+                    key={row.stream_id as string}
+                    className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                  >
+                    <Td>
+                      <Link
+                        to="/console/$project/stream/$id"
+                        params={{ project: projectId, id: streamId }}
+                        className="text-blue-400 hover:underline"
+                      >
+                        {row.stream_id as string}
+                      </Link>
+                    </Td>
+                    <Td>{row.publishes as number}</Td>
+                    <Td>{(row.fanout_count as number) ?? 0}</Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -224,25 +227,28 @@ function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {streams.data!.map((row) => (
-                <tr
-                  key={row.stream_id as string}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>
-                    <Link
-                      to="/console/stream/$id"
-                      params={{ id: row.stream_id as string }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {row.stream_id as string}
-                    </Link>
-                  </Td>
-                  <Td>{row.total_events as number}</Td>
-                  <Td>{relTime(row.first_seen as string)}</Td>
-                  <Td>{relTime(row.last_seen as string)}</Td>
-                </tr>
-              ))}
+              {streams.data!.map((row) => {
+                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                return (
+                  <tr
+                    key={row.stream_id as string}
+                    className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                  >
+                    <Td>
+                      <Link
+                        to="/console/$project/stream/$id"
+                        params={{ project: projectId, id: streamId }}
+                        className="text-blue-400 hover:underline"
+                      >
+                        {row.stream_id as string}
+                      </Link>
+                    </Td>
+                    <Td>{row.total_events as number}</Td>
+                    <Td>{relTime(row.first_seen as string)}</Td>
+                    <Td>{relTime(row.last_seen as string)}</Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

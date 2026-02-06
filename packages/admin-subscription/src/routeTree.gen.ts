@@ -11,9 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ConsoleStreamIdRouteImport } from './routes/console.stream.$id'
-import { Route as ConsoleSessionIdRouteImport } from './routes/console.session.$id'
-import { Route as ApiSseIdRouteImport } from './routes/api/sse.$id'
+import { Route as ConsoleProjectStreamIdRouteImport } from './routes/console.$project.stream.$id'
+import { Route as ConsoleProjectSessionIdRouteImport } from './routes/console.$project.session.$id'
+import { Route as ApiSseProjectIdRouteImport } from './routes/api/sse.$project.$id'
 
 const ConsoleRoute = ConsoleRouteImport.update({
   id: '/console',
@@ -25,72 +25,72 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConsoleStreamIdRoute = ConsoleStreamIdRouteImport.update({
-  id: '/stream/$id',
-  path: '/stream/$id',
+const ConsoleProjectStreamIdRoute = ConsoleProjectStreamIdRouteImport.update({
+  id: '/$project/stream/$id',
+  path: '/$project/stream/$id',
   getParentRoute: () => ConsoleRoute,
 } as any)
-const ConsoleSessionIdRoute = ConsoleSessionIdRouteImport.update({
-  id: '/session/$id',
-  path: '/session/$id',
+const ConsoleProjectSessionIdRoute = ConsoleProjectSessionIdRouteImport.update({
+  id: '/$project/session/$id',
+  path: '/$project/session/$id',
   getParentRoute: () => ConsoleRoute,
 } as any)
-const ApiSseIdRoute = ApiSseIdRouteImport.update({
-  id: '/api/sse/$id',
-  path: '/api/sse/$id',
+const ApiSseProjectIdRoute = ApiSseProjectIdRouteImport.update({
+  id: '/api/sse/$project/$id',
+  path: '/api/sse/$project/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRouteWithChildren
-  '/api/sse/$id': typeof ApiSseIdRoute
-  '/console/session/$id': typeof ConsoleSessionIdRoute
-  '/console/stream/$id': typeof ConsoleStreamIdRoute
+  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
+  '/console/$project/session/$id': typeof ConsoleProjectSessionIdRoute
+  '/console/$project/stream/$id': typeof ConsoleProjectStreamIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRouteWithChildren
-  '/api/sse/$id': typeof ApiSseIdRoute
-  '/console/session/$id': typeof ConsoleSessionIdRoute
-  '/console/stream/$id': typeof ConsoleStreamIdRoute
+  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
+  '/console/$project/session/$id': typeof ConsoleProjectSessionIdRoute
+  '/console/$project/stream/$id': typeof ConsoleProjectStreamIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/console': typeof ConsoleRouteWithChildren
-  '/api/sse/$id': typeof ApiSseIdRoute
-  '/console/session/$id': typeof ConsoleSessionIdRoute
-  '/console/stream/$id': typeof ConsoleStreamIdRoute
+  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
+  '/console/$project/session/$id': typeof ConsoleProjectSessionIdRoute
+  '/console/$project/stream/$id': typeof ConsoleProjectStreamIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/console'
-    | '/api/sse/$id'
-    | '/console/session/$id'
-    | '/console/stream/$id'
+    | '/api/sse/$project/$id'
+    | '/console/$project/session/$id'
+    | '/console/$project/stream/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/console'
-    | '/api/sse/$id'
-    | '/console/session/$id'
-    | '/console/stream/$id'
+    | '/api/sse/$project/$id'
+    | '/console/$project/session/$id'
+    | '/console/$project/stream/$id'
   id:
     | '__root__'
     | '/'
     | '/console'
-    | '/api/sse/$id'
-    | '/console/session/$id'
-    | '/console/stream/$id'
+    | '/api/sse/$project/$id'
+    | '/console/$project/session/$id'
+    | '/console/$project/stream/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRouteWithChildren
-  ApiSseIdRoute: typeof ApiSseIdRoute
+  ApiSseProjectIdRoute: typeof ApiSseProjectIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -109,38 +109,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/console/stream/$id': {
-      id: '/console/stream/$id'
-      path: '/stream/$id'
-      fullPath: '/console/stream/$id'
-      preLoaderRoute: typeof ConsoleStreamIdRouteImport
+    '/console/$project/stream/$id': {
+      id: '/console/$project/stream/$id'
+      path: '/$project/stream/$id'
+      fullPath: '/console/$project/stream/$id'
+      preLoaderRoute: typeof ConsoleProjectStreamIdRouteImport
       parentRoute: typeof ConsoleRoute
     }
-    '/console/session/$id': {
-      id: '/console/session/$id'
-      path: '/session/$id'
-      fullPath: '/console/session/$id'
-      preLoaderRoute: typeof ConsoleSessionIdRouteImport
+    '/console/$project/session/$id': {
+      id: '/console/$project/session/$id'
+      path: '/$project/session/$id'
+      fullPath: '/console/$project/session/$id'
+      preLoaderRoute: typeof ConsoleProjectSessionIdRouteImport
       parentRoute: typeof ConsoleRoute
     }
-    '/api/sse/$id': {
-      id: '/api/sse/$id'
-      path: '/api/sse/$id'
-      fullPath: '/api/sse/$id'
-      preLoaderRoute: typeof ApiSseIdRouteImport
+    '/api/sse/$project/$id': {
+      id: '/api/sse/$project/$id'
+      path: '/api/sse/$project/$id'
+      fullPath: '/api/sse/$project/$id'
+      preLoaderRoute: typeof ApiSseProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
 }
 
 interface ConsoleRouteChildren {
-  ConsoleSessionIdRoute: typeof ConsoleSessionIdRoute
-  ConsoleStreamIdRoute: typeof ConsoleStreamIdRoute
+  ConsoleProjectSessionIdRoute: typeof ConsoleProjectSessionIdRoute
+  ConsoleProjectStreamIdRoute: typeof ConsoleProjectStreamIdRoute
 }
 
 const ConsoleRouteChildren: ConsoleRouteChildren = {
-  ConsoleSessionIdRoute: ConsoleSessionIdRoute,
-  ConsoleStreamIdRoute: ConsoleStreamIdRoute,
+  ConsoleProjectSessionIdRoute: ConsoleProjectSessionIdRoute,
+  ConsoleProjectStreamIdRoute: ConsoleProjectStreamIdRoute,
 }
 
 const ConsoleRouteWithChildren =
@@ -149,7 +149,7 @@ const ConsoleRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRouteWithChildren,
-  ApiSseIdRoute: ApiSseIdRoute,
+  ApiSseProjectIdRoute: ApiSseProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

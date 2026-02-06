@@ -64,11 +64,11 @@ export function useErrors() {
   });
 }
 
-export function useSessionInspect(sessionId: string | undefined) {
+export function useSessionInspect(sessionId: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ["session", sessionId],
-    queryFn: () => inspectSession({ data: sessionId! }),
-    enabled: !!sessionId,
+    queryKey: ["session", projectId, sessionId],
+    queryFn: () => inspectSession({ data: { sessionId: sessionId!, projectId: projectId! } }),
+    enabled: !!sessionId && !!projectId,
     refetchInterval: 2000,
     placeholderData: keepPreviousData,
   });

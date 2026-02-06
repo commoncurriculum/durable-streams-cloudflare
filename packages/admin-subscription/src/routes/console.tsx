@@ -12,11 +12,11 @@ export const Route = createFileRoute("/console")({
 
 function ConsoleLayout() {
   const sessionMatch = useMatch({
-    from: "/console/session/$id",
+    from: "/console/$project/session/$id",
     shouldThrow: false,
   });
   const streamMatch = useMatch({
-    from: "/console/stream/$id",
+    from: "/console/$project/stream/$id",
     shouldThrow: false,
   });
   const hasChild = sessionMatch || streamMatch;
@@ -26,7 +26,7 @@ function ConsoleLayout() {
       <SearchBars />
       {hasChild ? <Outlet /> : (
         <div className="mt-4 py-8 text-center text-zinc-500">
-          Enter a session or stream ID to open
+          Enter a project ID and session or stream ID to open
         </div>
       )}
     </div>
@@ -34,26 +34,44 @@ function ConsoleLayout() {
 }
 
 function SearchBars() {
+  const [projectInput, setProjectInput] = useState("");
   const [sessionInput, setSessionInput] = useState("");
   const [streamInput, setStreamInput] = useState("");
   const navigate = useNavigate();
 
   const handleSessionOpen = () => {
+    const project = projectInput.trim();
     const id = sessionInput.trim();
-    if (id) {
-      navigate({ to: "/console/session/$id", params: { id } });
+    if (project && id) {
+      navigate({ to: "/console/$project/session/$id", params: { project, id } });
     }
   };
 
   const handleStreamOpen = () => {
+    const project = projectInput.trim();
     const id = streamInput.trim();
-    if (id) {
-      navigate({ to: "/console/stream/$id", params: { id } });
+    if (project && id) {
+      navigate({ to: "/console/$project/stream/$id", params: { project, id } });
     }
   };
 
   return (
     <>
+      <div>
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+          Project
+        </h3>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={projectInput}
+            onChange={(e) => setProjectInput(e.target.value)}
+            placeholder="Enter project ID..."
+            className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3.5 py-2.5 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
       <div>
         <h3 className="mb-4 text-sm font-medium text-zinc-400">
           Session
