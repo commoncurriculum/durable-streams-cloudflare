@@ -106,7 +106,9 @@ export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: doKey }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService;
-    return core.inspectStream(doKey);
+    const result = await core.inspectStream(doKey);
+    if (!result) throw new Error("Stream not found");
+    return result;
   });
 
 export const sendTestAction = createServerFn({ method: "POST" })

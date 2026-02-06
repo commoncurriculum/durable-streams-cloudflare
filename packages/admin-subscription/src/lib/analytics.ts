@@ -171,7 +171,9 @@ export const inspectSession = createServerFn({ method: "GET" })
   .inputValidator((data: { sessionId: string; projectId: string }) => data)
   .handler(async ({ data: { sessionId, projectId } }) => {
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
-    return subscription.adminGetSession(projectId, sessionId);
+    const result = await subscription.adminGetSession(projectId, sessionId);
+    if (!result) throw new Error("Session not found");
+    return result;
   });
 
 export const inspectStreamSubscribers = createServerFn({ method: "GET" })
