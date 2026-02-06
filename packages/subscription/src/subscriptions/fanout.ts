@@ -1,4 +1,4 @@
-import type { CoreService } from "../client";
+import type { CoreService, PostStreamResult } from "../client";
 import { FANOUT_BATCH_SIZE } from "../constants";
 import type { FanoutResult } from "./types";
 
@@ -15,28 +15,19 @@ export async function fanoutToSubscribers(
   sessionIds: string[],
   payload: ArrayBuffer,
   contentType: string,
-  producerHeaders?: Record<string, string>,
+  producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
 ): Promise<FanoutResult> {
   let successes = 0;
   let failures = 0;
   const staleSessionIds: string[] = [];
 
-  const results: PromiseSettledResult<Response>[] = [];
+  const results: PromiseSettledResult<PostStreamResult>[] = [];
   for (let i = 0; i < sessionIds.length; i += FANOUT_BATCH_SIZE) {
     const batch = sessionIds.slice(i, i + FANOUT_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((sessionId) => {
-        const headers: Record<string, string> = {
-          "Content-Type": contentType,
-          ...producerHeaders,
-        };
-        return env.CORE.fetch(
-          new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, {
-            method: "POST",
-            headers,
-            body: payload,
-          }),
-        );
+        const doKey = `${projectId}/${sessionId}`;
+        return env.CORE.postStream(doKey, payload, contentType, producerHeaders);
       }),
     );
     results.push(...batchResults);

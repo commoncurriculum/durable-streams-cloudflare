@@ -55,11 +55,8 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
 export async function deleteSession(env: AppEnv, projectId: string, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();
   const doKey = `${projectId}/${sessionId}`;
-  const response = await env.CORE.routeRequest(
-    doKey,
-    new Request("https://internal/v1/stream", { method: "DELETE" }),
-  );
-  if (!response.ok && response.status !== 404) {
+  const result = await env.CORE.deleteStream(doKey);
+  if (!result.ok && result.status !== 404) {
     throw new Error(`Failed to delete session: ${sessionId}`);
   }
   createMetrics(env.METRICS).sessionDelete(sessionId, Date.now() - start);

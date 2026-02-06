@@ -88,36 +88,28 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     const start = Date.now();
     const metrics = createMetrics(this.env.METRICS);
 
-    const headers: Record<string, string> = {
-      "Content-Type": params.contentType,
-    };
-
-    if (params.producerId && params.producerEpoch && params.producerSeq) {
-      headers["Producer-Id"] = params.producerId;
-      headers["Producer-Epoch"] = params.producerEpoch;
-      headers["Producer-Seq"] = params.producerSeq;
-    }
-
     // 1. Write to source stream in core (project-scoped)
-    const writeResponse = await this.env.CORE.fetch(
-      new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(streamId)}`, {
-        method: "POST",
-        headers,
-        body: params.payload,
-      }),
+    const sourceDoKey = `${projectId}/${streamId}`;
+    const producerHeaders = params.producerId && params.producerEpoch && params.producerSeq
+      ? { producerId: params.producerId, producerEpoch: params.producerEpoch, producerSeq: params.producerSeq }
+      : undefined;
+    const writeResult = await this.env.CORE.postStream(
+      sourceDoKey,
+      params.payload,
+      params.contentType,
+      producerHeaders,
     );
 
     // #endregion synced-to-docs:publish-to-source
 
-    if (!writeResponse.ok) {
-      const errorText = await writeResponse.text();
-      metrics.publishError(streamId, `http_${writeResponse.status}`, Date.now() - start);
+    if (!writeResult.ok) {
+      metrics.publishError(streamId, `http_${writeResult.status}`, Date.now() - start);
       return {
-        status: writeResponse.status,
+        status: writeResult.status,
         nextOffset: null,
         upToDate: null,
         streamClosed: null,
-        body: JSON.stringify({ error: "Failed to write to stream", details: errorText }),
+        body: JSON.stringify({ error: "Failed to write to stream", details: writeResult.body }),
         fanoutCount: 0,
         fanoutSuccesses: 0,
         fanoutFailures: 0,
@@ -126,15 +118,15 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
 
     // Get offset for fanout deduplication
-    const sourceOffset = writeResponse.headers.get("X-Stream-Next-Offset");
+    const sourceOffset = writeResult.nextOffset;
 
     // Build producer headers for fanout (using source stream offset)
-    let fanoutProducerHeaders: Record<string, string> | undefined;
+    let fanoutProducerHeaders: { producerId: string; producerEpoch: string; producerSeq: string } | undefined;
     if (sourceOffset) {
       fanoutProducerHeaders = {
-        "Producer-Id": `fanout:${streamId}`,
-        "Producer-Epoch": "1",
-        "Producer-Seq": sourceOffset,
+        producerId: `fanout:${streamId}`,
+        producerEpoch: "1",
+        producerSeq: sourceOffset,
       };
     }
 
@@ -212,7 +204,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     sessionIds: string[],
     payload: ArrayBuffer,
     contentType: string,
-    producerHeaders?: Record<string, string>,
+    producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
   ): Promise<void> {
     const queue = this.env.FANOUT_QUEUE!;
     const payloadBase64 = bufferToBase64(payload);

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import type { AnalyticsRow, CoreService, SubscriptionService } from "../types";
+import type { AnalyticsRow, SubscriptionService } from "../types";
 
 const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
@@ -203,19 +203,8 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
 export const createSession = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; sessionId: string }) => data)
   .handler(async ({ data: { projectId, sessionId } }) => {
-    const core = (env as Record<string, unknown>).CORE as CoreService;
-    const doKey = `${projectId}/${sessionId}`;
-    const response = await core.routeRequest(
-      doKey,
-      new Request("https://internal/v1/stream", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    if (!response.ok && response.status !== 409) {
-      const text = await response.text();
-      throw new Error(`Failed to create session (${response.status}): ${text}`);
-    }
+    const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
+    await subscription.adminTouchSession(projectId, sessionId);
     return { sessionId };
   });
 

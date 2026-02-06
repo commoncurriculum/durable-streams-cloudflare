@@ -43,7 +43,7 @@ export interface FanoutQueueMessage {
   sessionIds: string[];
   payload: string; // base64-encoded
   contentType: string;
-  producerHeaders?: Record<string, string>;
+  producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string };
 }
 
 export interface FanoutResult {

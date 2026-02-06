@@ -84,11 +84,10 @@ async function cleanupSession(
 
   // Delete session stream from core (project-scoped)
   try {
-    const response = await env.CORE.fetch(
-      new Request(`https://internal/v1/${encodeURIComponent(session.project)}/stream/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" }),
-    );
+    const doKey = `${session.project}/${session.sessionId}`;
+    const result = await env.CORE.deleteStream(doKey);
 
-    if (response.ok || response.status === 404) {
+    if (result.ok || result.status === 404) {
       streamDeleteSuccess = true;
       metrics.sessionDelete(session.sessionId, 0);
     }

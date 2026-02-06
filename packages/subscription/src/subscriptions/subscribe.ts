@@ -19,22 +19,14 @@ export async function subscribe(
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   // 1. Create/touch session stream in core (project-scoped)
-  const coreResponse = await env.CORE.fetch(
-    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType,
-        "X-Stream-Expires-At": expiresAt.toString(),
-      },
-    }),
-  );
+  const sessionDoKey = `${projectId}/${sessionId}`;
+  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt });
 
   const isNewSession = coreResponse.ok;
   // #endregion synced-to-docs:create-session-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
-    const errorText = await coreResponse.text();
-    console.error(`Failed to create session stream in core: ${coreResponse.status} - ${errorText}`);
+    console.error(`Failed to create session stream in core: ${coreResponse.status}`);
     throw new Error(`Failed to create session stream: ${coreResponse.status}`);
   }
 
@@ -49,9 +41,7 @@ export async function subscribe(
     // Rollback session if we just created it
     if (isNewSession) {
       try {
-        await env.CORE.fetch(
-          new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
-        );
+        await env.CORE.deleteStream(sessionDoKey);
       } catch (rollbackErr) {
         console.error(`Failed to rollback session stream ${sessionId}:`, rollbackErr);
       }

@@ -29,6 +29,67 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     return stub.routeStreamRequest(doKey, false, request);
   }
+
+  // RPC: check if a stream exists
+  async headStream(doKey: string): Promise<{ ok: boolean; status: number }> {
+    const stub = this.env.STREAMS.getByName(doKey);
+    const response = await stub.routeStreamRequest(
+      doKey, false,
+      new Request("https://internal/v1/stream", { method: "HEAD" }),
+    );
+    return { ok: response.ok, status: response.status };
+  }
+
+  // RPC: create or touch a stream
+  async putStream(doKey: string, options?: { expiresAt?: number }): Promise<{ ok: boolean; status: number }> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (options?.expiresAt) {
+      headers["X-Stream-Expires-At"] = options.expiresAt.toString();
+    }
+    const stub = this.env.STREAMS.getByName(doKey);
+    const response = await stub.routeStreamRequest(
+      doKey, false,
+      new Request("https://internal/v1/stream", { method: "PUT", headers }),
+    );
+    return { ok: response.ok, status: response.status };
+  }
+
+  // RPC: delete a stream
+  async deleteStream(doKey: string): Promise<{ ok: boolean; status: number }> {
+    const stub = this.env.STREAMS.getByName(doKey);
+    const response = await stub.routeStreamRequest(
+      doKey, false,
+      new Request("https://internal/v1/stream", { method: "DELETE" }),
+    );
+    return { ok: response.ok, status: response.status };
+  }
+
+  // RPC: append to a stream (POST)
+  async postStream(
+    doKey: string,
+    payload: ArrayBuffer,
+    contentType: string,
+    producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
+  ): Promise<{ ok: boolean; status: number; nextOffset: string | null; body: string | null }> {
+    const headers: Record<string, string> = { "Content-Type": contentType };
+    if (producerHeaders) {
+      headers["Producer-Id"] = producerHeaders.producerId;
+      headers["Producer-Epoch"] = producerHeaders.producerEpoch;
+      headers["Producer-Seq"] = producerHeaders.producerSeq;
+    }
+    const stub = this.env.STREAMS.getByName(doKey);
+    const response = await stub.routeStreamRequest(
+      doKey, false,
+      new Request("https://internal/v1/stream", { method: "POST", headers, body: payload }),
+    );
+    const body = response.ok ? null : await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      nextOffset: response.headers.get("X-Stream-Next-Offset"),
+      body,
+    };
+  }
 }
 
 export { CoreWorker, StreamDO, createStreamWorker };
