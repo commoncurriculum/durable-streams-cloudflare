@@ -27,7 +27,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: route any stream request without auth (reads, writes, SSE)
   async routeRequest(doKey: string, request: Request): Promise<Response> {
     const stub = this.env.STREAMS.getByName(doKey);
-    return stub.routeStreamRequest(doKey, null, false, request);
+    return stub.routeStreamRequest(doKey, false, request);
   }
 }
 

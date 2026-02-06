@@ -7,7 +7,7 @@ import type { Timing } from "../protocol/timing";
 export type AuthResult = { ok: true } | { ok: false; response: Response };
 
 export type ReadAuthResult =
-  | { ok: true; streamId: string }
+  | { ok: true }
   | { ok: false; response: Response; authFailed?: boolean };
 
 export type AuthorizeMutation<E = unknown> = (
@@ -247,7 +247,7 @@ export function projectJwtAuth(): {
       }
     }
 
-    return { ok: true, streamId: "" };
+    return { ok: true };
   };
 
   return { authorizeMutation, authorizeRead };

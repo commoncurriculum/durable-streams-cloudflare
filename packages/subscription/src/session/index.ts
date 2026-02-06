@@ -6,9 +6,8 @@ import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../su
 
 // #region synced-to-docs:get-session
 export async function getSession(env: AppEnv, projectId: string, sessionId: string): Promise<SessionInfo | null> {
-  const coreResponse = await env.CORE.fetch(
-    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, { method: "HEAD" }),
-  );
+  const doKey = `${projectId}/${sessionId}`;
+  const coreResponse = await env.CORE.headStream(doKey);
   if (!coreResponse.ok) return null;
 
   let subscriptions: Array<{ streamId: string }> = [];
@@ -41,18 +40,11 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  const response = await env.CORE.fetch(
-    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Stream-Expires-At": expiresAt.toString(),
-      },
-    }),
-  );
+  const doKey = `${projectId}/${sessionId}`;
+  const result = await env.CORE.putStream(doKey, { expiresAt });
 
-  if (!response.ok && response.status !== 409) {
-    throw new Error(`Failed to touch session: ${sessionId} (status: ${response.status})`);
+  if (!result.ok && result.status !== 409) {
+    throw new Error(`Failed to touch session: ${sessionId} (status: ${result.status})`);
   }
 
   createMetrics(env.METRICS).sessionTouch(sessionId, Date.now() - start);
@@ -62,8 +54,10 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
 
 export async function deleteSession(env: AppEnv, projectId: string, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();
-  const response = await env.CORE.fetch(
-    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
+  const doKey = `${projectId}/${sessionId}`;
+  const response = await env.CORE.routeRequest(
+    doKey,
+    new Request("https://internal/v1/stream", { method: "DELETE" }),
   );
   if (!response.ok && response.status !== 404) {
     throw new Error(`Failed to delete session: ${sessionId}`);

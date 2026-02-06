@@ -20,10 +20,11 @@ const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 const SESSION_ID_MISSING = "00000000-0000-0000-0000-000000000000";
 
 const mockFetch = vi.fn();
+const mockRouteRequest = vi.fn();
 
 function createEnv() {
   return {
-    CORE: { fetch: mockFetch },
+    CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
     METRICS: undefined,
     ACCOUNT_ID: "test-account",
     API_TOKEN: "test-token",
@@ -34,7 +35,7 @@ function createEnv() {
 describe("getSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockRouteRequest.mockReset();
     mockGetSessionSubscriptions.mockReset();
   });
 
@@ -43,7 +44,7 @@ describe("getSession", () => {
   });
 
   it("returns null when core returns 404", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 404 }));
 
     const { getSession } = await import("../src/session");
     const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID_MISSING);
@@ -52,7 +53,7 @@ describe("getSession", () => {
   });
 
   it("returns session info when core responds ok", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 200 }));
     mockGetSessionSubscriptions.mockResolvedValueOnce({
       data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
     });
@@ -68,7 +69,7 @@ describe("getSession", () => {
   });
 
   it("analytics failure degrades gracefully — returns empty subscriptions", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 200 }));
     mockGetSessionSubscriptions.mockResolvedValueOnce({
       data: [],
       error: "Analytics Engine unavailable",
@@ -88,7 +89,7 @@ describe("getSession", () => {
 describe("touchSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockRouteRequest.mockReset();
   });
 
   afterEach(() => {
@@ -96,7 +97,7 @@ describe("touchSession", () => {
   });
 
   it("succeeds on 200", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     const { touchSession } = await import("../src/session");
     const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
@@ -107,7 +108,7 @@ describe("touchSession", () => {
   });
 
   it("succeeds on 409 (already exists)", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 409 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 409 }));
 
     const { touchSession } = await import("../src/session");
     const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
@@ -117,7 +118,7 @@ describe("touchSession", () => {
   });
 
   it("throws on 500 with correct error message", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 500 }));
 
     const { touchSession } = await import("../src/session");
     await expect(touchSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
@@ -129,7 +130,7 @@ describe("touchSession", () => {
 describe("deleteSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockRouteRequest.mockReset();
   });
 
   afterEach(() => {
@@ -137,7 +138,7 @@ describe("deleteSession", () => {
   });
 
   it("succeeds on 200", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     const { deleteSession } = await import("../src/session");
     const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
@@ -147,7 +148,7 @@ describe("deleteSession", () => {
   });
 
   it("succeeds on 404 (idempotent)", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 404 }));
 
     const { deleteSession } = await import("../src/session");
     const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
@@ -156,7 +157,7 @@ describe("deleteSession", () => {
   });
 
   it("throws on 500", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    mockRouteRequest.mockResolvedValueOnce(new Response(null, { status: 500 }));
 
     const { deleteSession } = await import("../src/session");
     await expect(deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(

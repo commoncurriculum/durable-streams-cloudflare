@@ -9,7 +9,7 @@ function createMockFetch() {
 }
 
 function createEnv(mockFetch: ReturnType<typeof createMockFetch>) {
-  return { CORE: { fetch: mockFetch } as unknown as CoreService };
+  return { CORE: { fetch: mockFetch, routeRequest: vi.fn() } as unknown as CoreService };
 }
 
 describe("fanoutToSubscribers", () => {

@@ -196,7 +196,7 @@ type AuthorizeRead<E> = (
 ) => ReadAuthResult | Promise<ReadAuthResult>;
 
 type AuthResult = { ok: true } | { ok: false; response: Response };
-type ReadAuthResult = { ok: true; streamId: string } | { ok: false; response: Response };
+type ReadAuthResult = { ok: true } | { ok: false; response: Response };
 ```
 
 ## API

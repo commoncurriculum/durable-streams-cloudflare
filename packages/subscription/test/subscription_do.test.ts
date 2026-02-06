@@ -33,6 +33,7 @@ vi.mock("cloudflare:workers", () => ({
 const PROJECT_ID = "test-project";
 
 const mockFetch = vi.fn();
+const mockRouteRequest = vi.fn();
 
 function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStorage>>) {
   return {
@@ -43,7 +44,7 @@ function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStor
 
 function createMockEnv(overrides: Record<string, unknown> = {}) {
   return {
-    CORE: { fetch: mockFetch },
+    CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
     METRICS: undefined,
     ...overrides,
   };

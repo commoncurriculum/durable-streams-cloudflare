@@ -19,6 +19,7 @@ const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 const mockFetch = vi.fn();
+const mockRouteRequest = vi.fn();
 
 function createEnv() {
   return {
@@ -26,7 +27,7 @@ function createEnv() {
       get: vi.fn().mockReturnValue(mockStub),
       idFromName: mockIdFromName,
     } as unknown as AppEnv["SUBSCRIPTION_DO"],
-    CORE: { fetch: mockFetch },
+    CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
     METRICS: undefined,
   };
 }

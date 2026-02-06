@@ -32,7 +32,6 @@ export type StreamContext = {
   state: DurableObjectState;
   env: StreamEnv;
   storage: StreamStorage;
-  streamId: string | null;
   timing?: Timing | null;
   longPoll: LongPollQueue;
   sseState: SseState;

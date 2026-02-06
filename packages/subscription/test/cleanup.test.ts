@@ -19,6 +19,7 @@ const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 const mockFetch = vi.fn();
+const mockRouteRequest = vi.fn();
 const mockProjectKeys = {} as KVNamespace;
 
 describe("cleanup", () => {
@@ -32,7 +33,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         // No ACCOUNT_ID or API_TOKEN
@@ -52,7 +53,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -98,7 +99,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -152,7 +153,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -184,7 +185,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -215,7 +216,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -235,7 +236,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -262,7 +263,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -309,7 +310,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch },
+        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",

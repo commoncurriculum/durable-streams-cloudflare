@@ -41,7 +41,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
   // #region docs-do-rpc
   async routeStreamRequest(
     streamId: string,
-    authStreamId: string | null,
     timingEnabled: boolean,
     request: Request,
   ): Promise<Response> {
@@ -71,7 +70,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
       state: this.ctx,
       env: this.env,
       storage: this.storage,
-      streamId: authStreamId,
       timing,
       longPoll: this.longPoll,
       sseState: this.sseState,

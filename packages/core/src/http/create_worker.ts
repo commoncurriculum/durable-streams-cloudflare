@@ -1,6 +1,6 @@
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
-import type { AuthorizeMutation, AuthorizeRead, ReadAuthResult } from "./auth";
+import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
 
 // ============================================================================
@@ -146,27 +146,21 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       const method = request.method.toUpperCase();
       const isStreamRead = method === "GET" || method === "HEAD";
-      let authStreamId: string | null = null;
 
       // #region docs-authorize-request
       // Auth callbacks receive doKey (projectId/streamId) so they can check project scope
       if (isStreamRead && config?.authorizeRead) {
-        const readAuth: ReadAuthResult = await config.authorizeRead(request, doKey, env, timing);
+        const readAuth = await config.authorizeRead(request, doKey, env, timing);
         if (!readAuth.ok) {
           // On auth failure for reads, check if stream is public
           if ((readAuth as { authFailed?: boolean }).authFailed && env.PROJECT_KEYS) {
             const pub = await isStreamPublic(env.PROJECT_KEYS, doKey);
-            if (pub) {
-              // Stream is public — allow read without auth
-              authStreamId = null;
-            } else {
+            if (!pub) {
               return wrapAuthError(readAuth.response);
             }
           } else {
             return wrapAuthError(readAuth.response);
           }
-        } else {
-          authStreamId = readAuth.streamId;
         }
       } else if (!isStreamRead && config?.authorizeMutation) {
         const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
@@ -195,7 +189,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const doneOrigin = timing?.start("edge.origin");
       const response = await stub.routeStreamRequest(
         doKey,
-        authStreamId,
         timingEnabled,
         request,
       );
