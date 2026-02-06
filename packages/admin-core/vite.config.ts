@@ -9,6 +9,7 @@ export default defineConfig({
     cloudflare({
       viteEnvironment: { name: "ssr" },
       inspectorPort: Number(process.env.CF_INSPECTOR_PORT ?? 9232),
+      persistState: { path: "../../.wrangler/state" },
     }),
     tanstackStart(),
     react(),
