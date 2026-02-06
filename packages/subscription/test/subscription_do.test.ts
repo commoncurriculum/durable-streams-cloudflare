@@ -29,7 +29,7 @@ vi.mock("cloudflare:workers", () => ({
   },
 }));
 
-function createMockState(sqlStorage: ReturnType<typeof createTestSqlStorage>) {
+function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStorage>>) {
   return {
     storage: { sql: sqlStorage },
     blockConcurrencyWhile: vi.fn((fn: () => void) => fn()),
@@ -47,8 +47,8 @@ describe("SubscriptionDO", () => {
   let mockState: ReturnType<typeof createMockState>;
   let mockEnv: ReturnType<typeof createMockEnv>;
 
-  beforeEach(() => {
-    const sqlStorage = createTestSqlStorage();
+  beforeEach(async () => {
+    const sqlStorage = await createTestSqlStorage();
     mockState = createMockState(sqlStorage);
     mockEnv = createMockEnv();
     vi.clearAllMocks();

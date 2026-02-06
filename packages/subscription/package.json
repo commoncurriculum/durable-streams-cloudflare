@@ -22,6 +22,7 @@
     "@types/node": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
+    "sql.js": "^1.13.0",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest",

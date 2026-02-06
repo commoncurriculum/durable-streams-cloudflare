@@ -1,57 +1,30 @@
 /**
- * Minimal in-memory fake for Cloudflare's SqlStorage interface.
+ * In-memory SQLite adapter for unit tests using sql.js (WASM).
  *
- * Handles only the SQL patterns used by SubscriptionDO:
- *   CREATE TABLE, INSERT ... ON CONFLICT DO NOTHING, DELETE WHERE, SELECT
- *
- * The exec() method returns an iterable cursor with named row properties,
- * matching the SqlStorageCursor contract used in production code.
+ * Returns an object matching Cloudflare's SqlStorage.exec() contract:
+ * exec(query, ...bindings) returns an iterable of rows with named properties.
  */
 
-interface Row {
-  [key: string]: string | number;
-}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error — sql.js has no bundled type declarations
+import initSqlJs from "sql.js";
 
-export function createTestSqlStorage() {
-  const rows: Map<string, Row> = new Map(); // keyed by session_id
+export async function createTestSqlStorage() {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
 
   return {
-    exec(query: string, ...bindings: unknown[]): Iterable<Row> {
-      const trimmed = query.replace(/\s+/g, " ").trim();
+    exec(query: string, ...bindings: unknown[]): Iterable<Record<string, unknown>> {
+      const stmt = db.prepare(query);
+      stmt.bind(bindings.length > 0 ? bindings : undefined);
 
-      // CREATE TABLE — no-op
-      if (/^CREATE TABLE/i.test(trimmed)) {
-        return [];
+      const rows: Record<string, unknown>[] = [];
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        rows.push(row);
       }
-
-      // INSERT ... ON CONFLICT DO NOTHING
-      if (/^INSERT INTO subscribers/i.test(trimmed)) {
-        const sessionId = bindings[0] as string;
-        const subscribedAt = bindings[1] as number;
-        if (!rows.has(sessionId)) {
-          rows.set(sessionId, { session_id: sessionId, subscribed_at: subscribedAt });
-        }
-        return [];
-      }
-
-      // DELETE FROM subscribers WHERE session_id = ?
-      if (/^DELETE FROM subscribers/i.test(trimmed)) {
-        const sessionId = bindings[0] as string;
-        rows.delete(sessionId);
-        return [];
-      }
-
-      // SELECT session_id, subscribed_at FROM subscribers
-      if (/^SELECT session_id, subscribed_at/i.test(trimmed)) {
-        return [...rows.values()];
-      }
-
-      // SELECT session_id FROM subscribers
-      if (/^SELECT session_id/i.test(trimmed)) {
-        return [...rows.values()].map((r) => ({ session_id: r.session_id }));
-      }
-
-      throw new Error(`Unhandled SQL in test fake: ${trimmed}`);
+      stmt.free();
+      return rows;
     },
   };
 }
