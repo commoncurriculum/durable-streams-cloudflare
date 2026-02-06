@@ -1,5 +1,5 @@
 {
-  "name": "durable-stream-core",
+  "name": "core",
   "private": true,
   "type": "module",
   "scripts": {

@@ -8,7 +8,7 @@ import net from "node:net";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SUBSCRIPTIONS_CWD = path.resolve(__dirname, "..", "..");
-const CORE_CWD = path.resolve(__dirname, "..", "..", "..", "durable-stream-core");
+const CORE_CWD = path.resolve(__dirname, "..", "..", "..", "core");
 
 export interface WorkerHandle {
   baseUrl: string;

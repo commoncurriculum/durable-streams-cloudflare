@@ -1,14 +1,15 @@
 {
-  "name": "durable-stream-admin",
+  "name": "subscription",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "dev": "wrangler dev --local --port 8789",
+    "dev": "wrangler dev --local --port 8788",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
     "format:check": "oxfmt --check src test",
     "test": "pnpm exec vitest run",
+    "test:integration": "pnpm exec vitest run --config vitest.integration.config.ts",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
+    "@types/node": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript": "latest",
