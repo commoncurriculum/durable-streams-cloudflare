@@ -44,6 +44,24 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 - Admin dashboards are TanStack Start apps: `src/server.ts` entry, file-based routing in `src/routes/`, server functions in `src/lib/analytics.ts`, TanStack Query hooks in `src/lib/queries.ts`.
 - `pnpm dev` at root runs all 4 workers in parallel with unique ports.
 
+## Admin Dashboards (admin-core + admin-subscription)
+
+Both admin packages are **TanStack Start** apps on Cloudflare Workers. They share the same architecture — read one and you understand both. Start from `wrangler.toml` for bindings, `src/routes/` for pages, `src/lib/analytics.ts` for server functions.
+
+### How It Works
+
+- **Server functions** use `createServerFn` and access Cloudflare bindings via `import { env } from "cloudflare:workers"`. They call backend workers through service bindings (see each package's `wrangler.toml` for binding names).
+- **Route loaders** fetch data server-side so it appears in the SSR HTML. Without a loader, `useQuery` only runs client-side and SSR renders a loading skeleton. If a plain `fetch` to the page should return real data, that page needs a loader.
+- **`useQuery` with `refetchInterval`** handles client-side polling for pages where a skeleton on first paint is fine (e.g., overview dashboards).
+- **Parent routes** with child routes must render `<Outlet />` or children won't appear.
+
+### Gotchas
+
+- `router.tsx` must export `getRouter` (not `createRouter`) — TanStack Start's server handler expects this exact name.
+- `cloudflare:workers` is not available in vitest. You cannot import any source file that transitively touches it. Tests that need to check source files read them as strings.
+- Integration tests build with `vite build` then run the built output via `wrangler dev --local --config dist/server/wrangler.json`. Always rebuild before running them.
+- The `@cloudflare/vite-plugin` inspector port is set via `CF_INSPECTOR_PORT` env var in `vite.config.ts` to avoid conflicts when running multiple workers.
+
 ## Testing
 
 - **Gotcha**: Core's `pnpm test` runs implementation tests (live wrangler workers), NOT unit tests. Use `pnpm test:unit` explicitly for pure function tests.

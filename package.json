@@ -8,5 +8,9 @@
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "dev": "pnpm --filter @durable-streams-cloudflare/core --filter @durable-streams-cloudflare/subscription --filter @durable-streams-cloudflare/admin-core --filter @durable-streams-cloudflare/admin-subscription --parallel dev"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/cli": "^2.29.8"
   }
 }

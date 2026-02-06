@@ -1,11 +1,41 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  useMatch,
+} from "@tanstack/react-router";
 import { useState } from "react";
 
 export const Route = createFileRoute("/inspect")({
-  component: InspectIndexPage,
+  component: InspectLayout,
 });
 
-function InspectIndexPage() {
+function InspectLayout() {
+  const sessionMatch = useMatch({
+    from: "/inspect/session/$id",
+    shouldThrow: false,
+  });
+  const streamMatch = useMatch({
+    from: "/inspect/stream/$id",
+    shouldThrow: false,
+  });
+  const hasChild = sessionMatch || streamMatch;
+
+  return (
+    <div className="space-y-8">
+      <SearchBars />
+      {hasChild ? <Outlet /> : (
+        <>
+          <div className="mt-4 py-8 text-center text-zinc-500">
+            Enter a session or stream ID to inspect
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SearchBars() {
   const [sessionInput, setSessionInput] = useState("");
   const [streamInput, setStreamInput] = useState("");
   const navigate = useNavigate();
@@ -25,7 +55,7 @@ function InspectIndexPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <>
       <div>
         <h3 className="mb-4 text-sm font-medium text-zinc-400">
           Session Inspector
@@ -45,9 +75,6 @@ function InspectIndexPage() {
           >
             Inspect
           </button>
-        </div>
-        <div className="mt-4 py-8 text-center text-zinc-500">
-          Enter a session ID to inspect
         </div>
       </div>
 
@@ -71,10 +98,7 @@ function InspectIndexPage() {
             Inspect
           </button>
         </div>
-        <div className="mt-4 py-8 text-center text-zinc-500">
-          Enter a stream ID to inspect subscribers
-        </div>
       </div>
-    </div>
+    </>
   );
 }
