@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: 9232 }),
     tanstackStart(),
     react(),
     tailwindcss(),
