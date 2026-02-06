@@ -2,10 +2,10 @@
 
 This repo contains two independent projects:
 
-| | What | Package |
-|-|------|---------|
-| **Port** | Cloudflare Workers implementation of the existing [Durable Streams](https://github.com/electric-sql/durable-streams) protocol by Electric SQL | [`@durable-streams-cloudflare/core`](packages/core/) |
-| **New** | Pub/sub subscription layer — session streams, fan-out, TTL cleanup, metrics | [`@durable-streams-cloudflare/subscription`](packages/subscription/) |
+|          | What                                                                                                                                          | Package                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Port** | Cloudflare Workers implementation of the existing [Durable Streams](https://github.com/electric-sql/durable-streams) protocol by Electric SQL | [`@durable-streams-cloudflare/core`](packages/core/)                 |
+| **New**  | Pub/sub subscription layer — session streams, fan-out, TTL cleanup, metrics                                                                   | [`@durable-streams-cloudflare/subscription`](packages/subscription/) |
 
 They are separate Workers that deploy independently. The subscription worker depends on core, but core works fine on its own.
 
@@ -13,14 +13,14 @@ They are separate Workers that deploy independently. The subscription worker dep
 
 ## Core — Durable Streams on Cloudflare
 
-A port of the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol to Cloudflare Workers + Durable Objects. One DO per stream acts as the sequencer, SQLite for the hot log, R2 for cold segments. Conformance-tested against the official test suite.
+A port of the [Durable Streams](https://github.com/durable-streams/durable-streams) protocol to Cloudflare Workers + Durable Objects. One DO per stream acts as the sequencer, SQLite for the hot log, R2 for cold segments. Conformance-tested against the official test suite.
 
 If you already know Durable Streams, this is that — running on Cloudflare instead of Caddy/filesystem.
 
-| Package | Description |
-|---------|-------------|
-| [`@durable-streams-cloudflare/core`](https://www.npmjs.com/package/@durable-streams-cloudflare/core) | DO sequencer, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE |
-| [`@durable-streams-cloudflare/admin-core`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-core) | Admin dashboard for core streams |
+| Package                                                                                                          | Description                                                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [`@durable-streams-cloudflare/core`](https://www.npmjs.com/package/@durable-streams-cloudflare/core)             | DO sequencer, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE |
+| [`@durable-streams-cloudflare/admin-core`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-core) | Admin dashboard for core streams                                             |
 
 ### Quick Start
 
@@ -69,10 +69,10 @@ See the [core README](packages/core/README.md) for full details.
 
 A new layer built on top of core. Subscribe sessions to source streams, publish once, fan out to all subscribers. Each subscriber gets their own session stream they can read independently via core.
 
-| Package | Description |
-|---------|-------------|
-| [`@durable-streams-cloudflare/subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/subscription) | Session management, subscribe/publish, fan-out, TTL cleanup, Analytics Engine metrics |
-| [`@durable-streams-cloudflare/admin-subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-subscription) | Admin dashboard for subscriptions |
+| Package                                                                                                                          | Description                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`@durable-streams-cloudflare/subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/subscription)             | Session management, subscribe/publish, fan-out, TTL cleanup, Analytics Engine metrics |
+| [`@durable-streams-cloudflare/admin-subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-subscription) | Admin dashboard for subscriptions                                                     |
 
 ### How It Works
 
@@ -98,7 +98,10 @@ npm install @durable-streams-cloudflare/subscription
 `src/worker.ts`:
 
 ```ts
-import { createSubscriptionWorker, SubscriptionDO } from "@durable-streams-cloudflare/subscription";
+import {
+  createSubscriptionWorker,
+  SubscriptionDO,
+} from "@durable-streams-cloudflare/subscription";
 
 export default createSubscriptionWorker();
 export { SubscriptionDO };
