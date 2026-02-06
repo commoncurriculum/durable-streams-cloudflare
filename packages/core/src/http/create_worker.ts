@@ -103,6 +103,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return new Response(null, { status: 204, headers });
       }
 
+      if (url.pathname === "/health") {
+        const headers = new Headers({ "Cache-Control": "no-store" });
+        applyCorsHeaders(headers);
+        return new Response("ok", { status: 200, headers });
+      }
+
       // #region docs-extract-stream-id
       // Parse project + stream ID from /v1/:project/stream/:id
       const pathMatch = STREAM_PATH_RE.exec(url.pathname);

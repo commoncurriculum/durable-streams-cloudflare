@@ -1,0 +1,27 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # Weekly Monday 6am UTC
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C packages/core bench
+        env:
+          BENCHMARK_URL: ${{ secrets.BENCHMARK_URL }}
+          BENCHMARK_AUTH_TOKEN: ${{ secrets.BENCHMARK_AUTH_TOKEN }}
+          BENCHMARK_PROJECT: ${{ secrets.BENCHMARK_PROJECT }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: packages/core/benchmark-results.json

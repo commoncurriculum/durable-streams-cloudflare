@@ -9,7 +9,9 @@
     "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/core"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/http/worker.d.ts",
@@ -34,12 +36,13 @@
     "test": "pnpm run test:implementation",
     "test:unit": "pnpm exec vitest run --config vitest.unit.config.ts",
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
+    "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "hono": "^4",
     "@hono/zod-validator": "^0.4",
+    "hono": "^4",
     "zod": "^3"
   },
   "peerDependencies": {
@@ -47,6 +50,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
+    "@durable-streams/client": "^0.2.1",
     "@durable-streams/server-conformance-tests": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
