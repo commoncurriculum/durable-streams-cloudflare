@@ -160,6 +160,122 @@ To use durable-streams in your own worker project:
 | `AUTH_TOKEN` | `bearerTokenAuth()` | Bearer token for mutation auth |
 | `READ_JWT_SECRET` | `jwtSessionAuth()` | HS256 secret for JWT read auth |
 
+## Subscription API
+
+The `subscription` package (`packages/subscription/`) adds session management and pub/sub fanout on top of core durable-streams. It provides:
+
+- **Session streams** — ephemeral, per-client streams with TTL-based expiry
+- **Subscribe/Unsubscribe** — link a session to one or more source streams
+- **Publish with fanout** — write to a source stream and automatically replicate to all subscriber session streams
+- **Session lifecycle** — get session info, extend TTL (touch), delete sessions
+- **Cleanup** — cron-driven garbage collection of expired sessions
+
+### API Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/subscribe` | Subscribe a session to a stream (body: `{ sessionId, streamId }`) |
+| `DELETE` | `/v1/unsubscribe` | Unsubscribe a session from a stream (body: `{ sessionId, streamId }`) |
+| `POST` | `/v1/publish/:streamId` | Publish to a stream and fan out to subscribers |
+| `GET` | `/v1/session/:sessionId` | Get session info and active subscriptions |
+| `POST` | `/v1/session/:sessionId/touch` | Extend session TTL |
+| `DELETE` | `/v1/session/:sessionId` | Delete a session and its stream |
+
+### Authentication
+
+The subscription worker mirrors the core package's pluggable auth pattern. Out of the box, the default worker uses `bearerTokenAuth()`. But the library is **auth-agnostic** — use the built-in strategy, write your own, or disable auth entirely.
+
+#### Default: No Auth
+
+`createSubscriptionWorker()` with no config allows all requests:
+
+```typescript
+import { createSubscriptionWorker, SubscriptionDO } from "subscription";
+export default createSubscriptionWorker();
+export { SubscriptionDO };
+```
+
+#### Built-in: Bearer Token
+
+```typescript
+import { createSubscriptionWorker, bearerTokenAuth, SubscriptionDO } from "subscription";
+export default createSubscriptionWorker({ authorize: bearerTokenAuth() });
+export { SubscriptionDO };
+```
+
+`bearerTokenAuth()` checks `env.AUTH_TOKEN` for all requests. If `AUTH_TOKEN` is not set, all requests are allowed. Clients must include `Authorization: Bearer <token>`.
+
+Set the secret via wrangler:
+```bash
+pnpx wrangler secret put AUTH_TOKEN
+```
+
+#### Custom Auth
+
+Write your own `AuthorizeSubscription` callback with full route context:
+
+```typescript
+import { createSubscriptionWorker, SubscriptionDO } from "subscription";
+import type { AuthorizeSubscription } from "subscription";
+
+export default createSubscriptionWorker({
+  authorize: async (request, route, env) => {
+    // Per-session ownership
+    if ("sessionId" in route && route.sessionId !== extractUser(request)) {
+      return { ok: false, response: new Response("forbidden", { status: 403 }) };
+    }
+    // Per-stream publish ACLs
+    if (route.action === "publish") {
+      const allowed = await checkPublishPermission(request, route.streamId, env);
+      if (!allowed) {
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
+      }
+    }
+    return { ok: true };
+  },
+});
+export { SubscriptionDO };
+```
+
+The `route` parameter is a discriminated union (`SubscriptionRoute`) with the parsed action and IDs:
+- `{ action: "publish", streamId }` — publish to a stream
+- `{ action: "subscribe", streamId, sessionId }` — subscribe a session
+- `{ action: "unsubscribe", streamId, sessionId }` — unsubscribe a session
+- `{ action: "getSession", sessionId }` — read session info
+- `{ action: "touchSession", sessionId }` — extend session TTL
+- `{ action: "deleteSession", sessionId }` — delete a session
+
+Auth callbacks return `SubscriptionAuthResult`:
+- `{ ok: true }` — allow the request
+- `{ ok: false, response: Response }` — deny with the given response
+
+Health checks (`/health`) always bypass auth.
+
+### Using as a Library
+
+1. Install the package and add bindings to your `wrangler.toml`:
+   ```toml
+   [[durable_objects.bindings]]
+   name = "SUBSCRIPTION_DO"
+   class_name = "SubscriptionDO"
+   ```
+
+2. Import and compose in your worker entry:
+   ```typescript
+   import { createSubscriptionWorker, SubscriptionDO } from "subscription";
+   export default createSubscriptionWorker({ /* your auth config */ });
+   export { SubscriptionDO };
+   ```
+
+### Subscription Environment Variables
+
+| Variable | Used by | Description |
+|---|---|---|
+| `AUTH_TOKEN` | `bearerTokenAuth()` / `fetchFromCore()` | Bearer token for incoming auth and outgoing core client auth |
+| `CORE_URL` | `fetchFromCore()` | URL of the core durable-streams worker |
+| `CORS_ORIGINS` | CORS middleware | Allowed origins (comma-separated, `*`, or omit for all) |
+| `SESSION_TTL_SECONDS` | Session creation/touch | Session TTL in seconds (default: 1800 = 30 min) |
+
 ## Conformance
 Run the server conformance suite against the local worker:
 ```bash
