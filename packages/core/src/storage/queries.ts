@@ -70,6 +70,13 @@ export class DoSqliteStorage implements StreamStorage {
       );
       CREATE INDEX IF NOT EXISTS segments_start_offset ON segments(start_offset);
     `);
+
+    // Migration: add public column to stream_meta
+    try {
+      this.sql.exec(`ALTER TABLE stream_meta ADD COLUMN public INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      // Column already exists
+    }
   }
 
   async batch(statements: StorageStatement[]): Promise<void> {
@@ -102,9 +109,10 @@ export class DoSqliteStorage implements StreamStorage {
           closed_at,
           closed_by_producer_id,
           closed_by_epoch,
-          closed_by_seq
+          closed_by_seq,
+          public
         )
-        VALUES (?, ?, ?, 0, 0, 0, 0, 0, NULL, ?, ?, ?, NULL, NULL, NULL, NULL)
+        VALUES (?, ?, ?, 0, 0, 0, 0, 0, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
       `,
       input.streamId,
       input.contentType,
@@ -112,6 +120,7 @@ export class DoSqliteStorage implements StreamStorage {
       input.ttlSeconds,
       input.expiresAt,
       input.createdAt,
+      input.isPublic ? 1 : 0,
     );
   }
 

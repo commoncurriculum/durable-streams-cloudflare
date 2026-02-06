@@ -21,9 +21,8 @@ function cancelled(): never {
   process.exit(0);
 }
 
-function generateApiKey(projectName: string): string {
-  const suffix = randomBytes(16).toString("hex");
-  return `sk_${projectName}_${suffix}`;
+function generateSigningSecret(): string {
+  return randomBytes(32).toString("hex");
 }
 
 export async function createProject() {
@@ -41,26 +40,26 @@ export async function createProject() {
   });
   if (p.isCancel(projectName)) cancelled();
 
-  // Step 2: API key
-  const keyChoice = await p.select({
-    message: "API key for this project:",
+  // Step 2: Signing secret
+  const secretChoice = await p.select({
+    message: "Signing secret for JWT auth:",
     options: [
       { value: "generate", label: "Auto-generate (recommended)" },
-      { value: "custom", label: "Enter my own key" },
+      { value: "custom", label: "Enter my own secret" },
     ],
   });
-  if (p.isCancel(keyChoice)) cancelled();
+  if (p.isCancel(secretChoice)) cancelled();
 
-  let apiKey: string;
-  if (keyChoice === "generate") {
-    apiKey = generateApiKey(projectName);
+  let signingSecret: string;
+  if (secretChoice === "generate") {
+    signingSecret = generateSigningSecret();
   } else {
     const input = await p.text({
-      message: "Enter API key:",
-      validate: (v) => v.length < 8 ? "Key must be at least 8 characters" : undefined,
+      message: "Enter signing secret:",
+      validate: (v) => v.length < 16 ? "Secret must be at least 16 characters" : undefined,
     });
     if (p.isCancel(input)) cancelled();
-    apiKey = input;
+    signingSecret = input;
   }
 
   // Step 3: KV namespace ID
@@ -73,11 +72,11 @@ export async function createProject() {
 
   // Step 4: Write to KV
   const spinner = p.spinner();
-  spinner.start("Creating project key in KV");
+  spinner.start("Creating project in KV");
 
-  const value = JSON.stringify({ project: projectName });
+  const value = JSON.stringify({ signingSecret });
   const result = runMayFail(
-    `npx wrangler kv key put --namespace-id="${namespaceId}" "${apiKey}" '${value}'`,
+    `npx wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${value}'`,
   );
 
   if (!result.ok) {
@@ -86,21 +85,30 @@ export async function createProject() {
     process.exit(1);
   }
 
-  spinner.stop("Project key created");
+  spinner.stop("Project created");
 
   const lines = [
-    `Project:  ${projectName}`,
-    `API Key:  ${apiKey}`,
+    `Project:         ${projectName}`,
+    `Signing Secret:  ${signingSecret}`,
     "",
-    "Save this API key — it won't be shown again!",
+    "Save this signing secret — it won't be shown again!",
+    "",
+    "Mint a JWT with these claims:",
+    `  {`,
+    `    "sub": "${projectName}",`,
+    `    "scope": "write",`,
+    `    "exp": <unix-timestamp>`,
+    `  }`,
+    "",
+    "Sign with HMAC-SHA256 using the signing secret above.",
     "",
     "Usage:",
-    `  # Core: create a stream`,
-    `  curl -X PUT -H "Authorization: Bearer ${apiKey}" \\`,
+    `  # Create a stream (replace <JWT> with your signed token)`,
+    `  curl -X PUT -H "Authorization: Bearer <JWT>" \\`,
     `    <CORE_URL>/v1/${projectName}/stream/my-stream`,
     "",
-    `  # Subscription: subscribe`,
-    `  curl -X POST -H "Authorization: Bearer ${apiKey}" \\`,
+    `  # Subscribe (replace <JWT> with a read or write token)`,
+    `  curl -X POST -H "Authorization: Bearer <JWT>" \\`,
     `    -H "Content-Type: application/json" \\`,
     `    -d '{"streamId":"chat","sessionId":"<uuid>"}' \\`,
     `    <SUB_URL>/v1/${projectName}/subscribe`,

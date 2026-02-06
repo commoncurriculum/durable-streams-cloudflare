@@ -60,6 +60,7 @@ export async function executeNewStream(
     streamId,
     contentType,
     requestedClosed,
+    isPublic,
     ttlSeconds,
     effectiveExpiresAt,
     bodyBytes,
@@ -75,6 +76,7 @@ export async function executeNewStream(
     streamId,
     contentType,
     closed: requestedClosed,
+    isPublic,
     ttlSeconds,
     expiresAt: effectiveExpiresAt,
     createdAt: now,
@@ -135,6 +137,7 @@ export async function executeNewStream(
     closed_by_producer_id: closedBy?.id ?? null,
     closed_by_epoch: closedBy?.epoch ?? null,
     closed_by_seq: closedBy?.seq ?? null,
+    public: isPublic ? 1 : 0,
   };
 
   const headers = buildPutHeaders(createdMeta, await ctx.encodeTailOffset(streamId, createdMeta));

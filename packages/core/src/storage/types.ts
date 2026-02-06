@@ -15,6 +15,7 @@ export type StreamMeta = {
   closed_by_producer_id: string | null;
   closed_by_epoch: number | null;
   closed_by_seq: number | null;
+  public: number;
 };
 
 export type ProducerState = {
@@ -41,6 +42,7 @@ export type CreateStreamInput = {
   streamId: string;
   contentType: string;
   closed: boolean;
+  isPublic: boolean;
   ttlSeconds: number | null;
   expiresAt: number | null;
   createdAt: number;

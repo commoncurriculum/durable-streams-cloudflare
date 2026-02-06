@@ -20,6 +20,7 @@ export type StreamEnv = {
   SEGMENT_MAX_MESSAGES?: string;
   SEGMENT_MAX_BYTES?: string;
   METRICS?: AnalyticsEngineDataset;
+  PROJECT_KEYS?: KVNamespace;
 };
 
 export type ResolveOffsetResult = {
@@ -31,7 +32,6 @@ export type StreamContext = {
   state: DurableObjectState;
   env: StreamEnv;
   storage: StreamStorage;
-  cacheMode: CacheMode;
   streamId: string | null;
   timing?: Timing | null;
   longPoll: LongPollQueue;
@@ -55,32 +55,6 @@ export type StreamContext = {
     options?: { force?: boolean; retainOps?: boolean },
   ) => Promise<void>;
 };
-
-// ============================================================================
-// Cache Mode
-// ============================================================================
-
-export type CacheMode = "shared" | "private";
-
-export function normalizeCacheMode(value: string | null | undefined): CacheMode | null {
-  if (!value) return null;
-  const lower = value.toLowerCase();
-  if (lower === "shared" || lower === "private") return lower;
-  return null;
-}
-
-// #region docs-cache-mode
-export function resolveCacheMode(params: {
-  envMode?: string | null;
-  authMode?: CacheMode;
-}): CacheMode {
-  const envMode = normalizeCacheMode(params.envMode ?? null);
-  if (envMode) return envMode;
-  if (params.authMode) return params.authMode;
-  return "private";
-}
-
-// #endregion docs-cache-mode
 
 // ============================================================================
 // Router

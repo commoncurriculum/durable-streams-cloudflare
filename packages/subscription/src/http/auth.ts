@@ -14,6 +14,10 @@ export type AuthorizeSubscription<E = unknown> = (
   env: E,
 ) => SubscriptionAuthResult | Promise<SubscriptionAuthResult>;
 
+export type ProjectJwtEnv = {
+  PROJECT_KEYS: KVNamespace;
+};
+
 // Path-based route patterns with project segment
 const PUBLISH_RE = /^\/v1\/([^/]+)\/publish\/(.+)$/;
 const SESSION_GET_RE = /^\/v1\/([^/]+)\/session\/([^/]+)$/;
@@ -105,51 +109,127 @@ export function extractBearerToken(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-export function bearerTokenAuth(): AuthorizeSubscription<{ AUTH_TOKEN?: string }> {
-  return (request, _route, env) => {
-    if (!env.AUTH_TOKEN) return { ok: true };
-    const token = extractBearerToken(request);
-    if (token !== env.AUTH_TOKEN) {
-      return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
-    }
-    return { ok: true };
-  };
+// ============================================================================
+// JWT Helpers (shared with core)
+// ============================================================================
+
+function base64UrlDecode(input: string): Uint8Array {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
+type ProjectJwtClaims = {
+  sub: string;
+  scope: "write" | "read";
+  exp: number;
+};
+
+async function lookupProjectConfig(
+  kv: KVNamespace,
+  projectId: string,
+): Promise<{ signingSecret: string } | null> {
+  const value = await kv.get(projectId, "json");
+  if (value && typeof value === "object" && "signingSecret" in (value as Record<string, unknown>)) {
+    return value as { signingSecret: string };
+  }
+  return null;
+}
+
+async function verifyProjectJwt(
+  token: string,
+  signingSecret: string,
+): Promise<ProjectJwtClaims | null> {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerPart, payloadPart, signaturePart] = parts;
+  try {
+    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
+    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
+    if (header.alg !== "HS256") return null;
+
+    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+
+    if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
+    if (payload.scope !== "write" && payload.scope !== "read") return null;
+    if (typeof payload.exp !== "number") return null;
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(signingSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      new Uint8Array(base64UrlDecode(signaturePart)),
+      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
+    );
+    if (!ok) return null;
+
+    return {
+      sub: payload.sub as string,
+      scope: payload.scope as "write" | "read",
+      exp: payload.exp as number,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
+// Per-Project JWT Auth for Subscriptions
+// ============================================================================
+
+/** Actions that require write scope */
+const WRITE_ACTIONS = new Set(["publish", "unsubscribe", "deleteSession"]);
+
 /**
- * Project key auth for subscriptions.
- * Priority chain:
- * 1. No auth configured → allow all
- * 2. Bearer matches AUTH_TOKEN → allow (superuser)
- * 3. Bearer found in PROJECT_KEYS KV → allow if project matches URL param, else 403
- * 4. Otherwise → 401
+ * Per-project JWT auth for subscription routes.
+ *
+ * Scope mapping:
+ * - publish → requires "write"
+ * - subscribe, getSession, touchSession → "read" or "write"
+ * - unsubscribe, deleteSession → requires "write"
  */
-export function projectKeyAuth(): AuthorizeSubscription<{ AUTH_TOKEN?: string; PROJECT_KEYS?: KVNamespace }> {
+export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
   return async (request, route, env) => {
-    if (!env.AUTH_TOKEN && !env.PROJECT_KEYS) return { ok: true };
+    if (!env.PROJECT_KEYS) {
+      return { ok: false, response: Response.json({ error: "PROJECT_KEYS not configured" }, { status: 500 }) };
+    }
 
     const token = extractBearerToken(request);
     if (!token) {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
 
-    // Superuser: AUTH_TOKEN bypasses project check
-    if (env.AUTH_TOKEN && token === env.AUTH_TOKEN) {
-      return { ok: true };
-    }
-
-    // Project key lookup
-    if (!env.PROJECT_KEYS) {
+    const config = await lookupProjectConfig(env.PROJECT_KEYS, route.project);
+    if (!config) {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
 
-    const value = await env.PROJECT_KEYS.get(token, "json") as { project: string } | null;
-    if (!value) {
+    const claims = await verifyProjectJwt(token, config.signingSecret);
+    if (!claims) {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
 
-    // Check project matches URL
-    if (value.project !== route.project) {
+    if (claims.sub !== route.project) {
+      return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
+    }
+
+    if (Date.now() >= claims.exp * 1000) {
+      return { ok: false, response: Response.json({ error: "Token expired" }, { status: 401 }) };
+    }
+
+    if (WRITE_ACTIONS.has(route.action) && claims.scope !== "write") {
       return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
     }
 

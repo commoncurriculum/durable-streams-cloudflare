@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import type { AnalyticsRow, SubscriptionService } from "../types";
+import type { AnalyticsRow, CoreService, SubscriptionService } from "../types";
 
 const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
@@ -183,29 +183,43 @@ export const inspectStreamSubscribers = createServerFn({ method: "GET" })
   });
 
 export const createProject = createServerFn({ method: "POST" })
-  .inputValidator((data: { projectId: string; authKey: string }) => data)
+  .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
     const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
     if (!kv) throw new Error("PROJECT_KEYS KV namespace is not configured");
     if (!data.projectId.trim()) throw new Error("Project ID is required");
-    if (!data.authKey.trim()) throw new Error("Auth key is required");
-    await kv.put(data.authKey.trim(), JSON.stringify({ project: data.projectId.trim() }));
-    return { ok: true };
+    const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
+    await kv.put(data.projectId.trim(), JSON.stringify({ signingSecret: secret }));
+    return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
   const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
   if (!kv) return [];
   const list = await kv.list();
-  const projects: string[] = [];
-  for (const key of list.keys) {
-    const val = await kv.get(key.name, "json") as { project: string } | null;
-    if (val?.project) projects.push(val.project);
-  }
-  return [...new Set(projects)].sort((a, b) => a.localeCompare(b));
+  return list.keys.map((k) => k.name).sort();
 });
 
-export const sendTestAction = createServerFn({ method: "POST" })
+export const createSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; sessionId: string }) => data)
+  .handler(async ({ data: { projectId, sessionId } }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService;
+    const doKey = `${projectId}/${sessionId}`;
+    const response = await core.routeRequest(
+      doKey,
+      new Request("https://internal/v1/stream", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    if (!response.ok && response.status !== 409) {
+      const text = await response.text();
+      throw new Error(`Failed to create session (${response.status}): ${text}`);
+    }
+    return { sessionId };
+  });
+
+export const sendSessionAction = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       action: "subscribe" | "unsubscribe" | "publish" | "touch" | "delete";
@@ -225,14 +239,14 @@ export const sendTestAction = createServerFn({ method: "POST" })
           throw new Error("subscribe requires sessionId and streamId");
         }
         const result = await subscription.adminSubscribe(data.projectId, data.streamId, data.sessionId);
-        return { status: 200, statusText: "OK", headers: {}, body: result };
+        return { status: 200, statusText: "OK", body: result };
       }
       case "unsubscribe": {
         if (!data.sessionId || !data.streamId) {
           throw new Error("unsubscribe requires sessionId and streamId");
         }
         const result = await subscription.adminUnsubscribe(data.projectId, data.streamId, data.sessionId);
-        return { status: 200, statusText: "OK", headers: {}, body: result };
+        return { status: 200, statusText: "OK", body: result };
       }
       case "publish": {
         if (!data.streamId) {
@@ -241,21 +255,21 @@ export const sendTestAction = createServerFn({ method: "POST" })
         const contentType = data.contentType ?? "application/json";
         const payload = new TextEncoder().encode(data.body ?? "");
         const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType);
-        return { status: 200, statusText: "OK", headers: {}, body: result };
+        return { status: 200, statusText: "OK", body: result };
       }
       case "touch": {
         if (!data.sessionId) {
           throw new Error("touch requires sessionId");
         }
         const result = await subscription.adminTouchSession(data.projectId, data.sessionId);
-        return { status: 200, statusText: "OK", headers: {}, body: result };
+        return { status: 200, statusText: "OK", body: result };
       }
       case "delete": {
         if (!data.sessionId) {
           throw new Error("delete requires sessionId");
         }
         const result = await subscription.adminDeleteSession(data.projectId, data.sessionId);
-        return { status: 200, statusText: "OK", headers: {}, body: result };
+        return { status: 200, statusText: "OK", body: result };
       }
     }
   });

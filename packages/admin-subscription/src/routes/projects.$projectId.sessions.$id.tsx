@@ -1,14 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { useSessionInspect } from "../lib/queries";
-import { sendTestAction } from "../lib/analytics";
+import { sendSessionAction } from "../lib/analytics";
 import { useSSE, type SseEvent } from "../hooks/use-sse";
 
-type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
+type SessionAction = "subscribe" | "unsubscribe" | "publish" | "touch" | "delete";
 
 const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
   { value: "subscribe", label: "Subscribe" },
   { value: "unsubscribe", label: "Unsub" },
+  { value: "publish", label: "Publish" },
   { value: "touch", label: "Touch" },
   { value: "delete", label: "Delete" },
 ];
@@ -23,6 +24,7 @@ function SessionDetailPage() {
 
   const [action, setAction] = useState<SessionAction>("subscribe");
   const [streamIdInput, setStreamIdInput] = useState("");
+  const [bodyInput, setBodyInput] = useState('{"hello":"world"}');
   const [sending, setSending] = useState(false);
 
   const [sseUrl, setSseUrl] = useState<string | null>(null);
@@ -31,7 +33,7 @@ function SessionDetailPage() {
   const handleSend = useCallback(async () => {
     setSending(true);
     try {
-      let payload: Parameters<typeof sendTestAction>[0]["data"];
+      let payload: Parameters<typeof sendSessionAction>[0]["data"];
 
       switch (action) {
         case "subscribe":
@@ -44,6 +46,16 @@ function SessionDetailPage() {
             streamId: streamIdInput.trim(),
           };
           break;
+        case "publish":
+          if (!streamIdInput.trim()) return;
+          payload = {
+            action,
+            projectId,
+            streamId: streamIdInput.trim(),
+            body: bodyInput,
+            contentType: "application/json",
+          };
+          break;
         case "touch":
           payload = { action, projectId, sessionId: id };
           break;
@@ -52,7 +64,7 @@ function SessionDetailPage() {
           break;
       }
 
-      const result = await sendTestAction({ data: payload });
+      const result = await sendSessionAction({ data: payload });
       addEvent(
         "control",
         `${action.toUpperCase()} => ${result.status} ${result.statusText}`,
@@ -68,7 +80,7 @@ function SessionDetailPage() {
     } finally {
       setSending(false);
     }
-  }, [action, projectId, id, streamIdInput, addEvent]);
+  }, [action, projectId, id, streamIdInput, bodyInput, addEvent]);
 
   if (isLoading) {
     return (
@@ -184,7 +196,7 @@ function SessionDetailPage() {
             ))}
           </div>
 
-          {(action === "subscribe" || action === "unsubscribe") && (
+          {(action === "subscribe" || action === "unsubscribe" || action === "publish") && (
             <>
               <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mt-4 mb-1">
                 Stream ID
@@ -196,6 +208,21 @@ function SessionDetailPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 placeholder="my-stream"
                 className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
+              />
+            </>
+          )}
+
+          {action === "publish" && (
+            <>
+              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mt-4 mb-1">
+                Message Body
+              </label>
+              <textarea
+                value={bodyInput}
+                onChange={(e) => setBodyInput(e.target.value)}
+                rows={4}
+                placeholder='{"hello":"world"}'
+                className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500 resize-y"
               />
             </>
           )}

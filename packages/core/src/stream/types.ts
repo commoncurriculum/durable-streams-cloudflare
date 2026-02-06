@@ -25,6 +25,7 @@ export type RawPutInput = {
   ttlHeader: string | null;
   expiresHeader: string | null;
   streamSeqHeader: string | null;
+  publicHeader: string | null;
   bodyBytes: Uint8Array;
   producer: { value?: ProducerInput; error?: Response } | null;
   requestUrl: string;
@@ -37,6 +38,7 @@ export type ParsedPutInput = {
   streamId: string;
   contentType: string | null;
   requestedClosed: boolean;
+  isPublic: boolean;
   ttlSeconds: number | null;
   effectiveExpiresAt: number | null;
   bodyBytes: Uint8Array;
@@ -60,6 +62,7 @@ export type ValidatedPutInput =
       streamId: string;
       contentType: string;
       requestedClosed: boolean;
+      isPublic: boolean;
       ttlSeconds: number | null;
       effectiveExpiresAt: number | null;
       bodyBytes: Uint8Array;

@@ -83,4 +83,11 @@ describe("admin-subscription smoke", () => {
     const html = await res.text();
     expect(html).not.toContain("Enter a session or stream ID to open");
   });
+
+  it("GET /projects/:id/sessions renders a Create Session button", async () => {
+    const res = await fetch(`${BASE_URL}/projects/test-project/sessions`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Create Session");
+  });
 });

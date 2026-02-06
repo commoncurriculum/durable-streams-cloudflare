@@ -9,7 +9,6 @@ import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../stor
 import { routeRequest } from "./router";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
-import type { CacheMode } from "./router";
 import { ReadPath } from "../stream/read/path";
 import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
@@ -42,7 +41,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
   // #region docs-do-rpc
   async routeStreamRequest(
     streamId: string,
-    cacheMode: CacheMode,
     authStreamId: string | null,
     timingEnabled: boolean,
     request: Request,
@@ -73,7 +71,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
       state: this.ctx,
       env: this.env,
       storage: this.storage,
-      cacheMode,
       streamId: authStreamId,
       timing,
       longPoll: this.longPoll,
@@ -127,6 +124,14 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   private async deleteStreamData(streamId: string): Promise<void> {
     await this.storage.deleteStreamData(streamId);
+    // Clean up public stream flag from KV
+    if (this.env.PROJECT_KEYS) {
+      try {
+        await this.env.PROJECT_KEYS.delete(streamId);
+      } catch {
+        // Best-effort KV cleanup
+      }
+    }
   }
 
   private async rotateSegment(

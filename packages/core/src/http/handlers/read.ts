@@ -82,7 +82,6 @@ export async function handleGet(
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens
-  const cacheMode = ctx.cacheMode;
 
   // #region docs-sse-mode-detection
   const live = url.searchParams.get("live");
@@ -108,7 +107,7 @@ export async function handleGet(
     });
     if (meta.closed === 1) headers.set(HEADER_STREAM_CLOSED, "true");
     applyExpiryHeaders(headers, meta);
-    headers.set("Cache-Control", cacheMode === "private" ? "private, no-store" : "no-store");
+    headers.set("Cache-Control", "no-store");
 
     const body = isJsonContentType(meta.content_type) ? emptyJsonArray() : new ArrayBuffer(0);
     return new Response(body, { status: 200, headers });
@@ -147,9 +146,7 @@ export async function handleGet(
     });
   }
 
-  if (cacheMode === "private") {
-    response.headers.set("Cache-Control", "private, no-store");
-  } else if (read.source === "hot") {
+  if (read.source === "hot") {
     response.headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
   }
 
@@ -171,9 +168,5 @@ export async function handleHead(
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens
-  const response = buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
-  if (ctx.cacheMode === "private") {
-    response.headers.set("Cache-Control", "private, no-store");
-  }
-  return response;
+  return buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
 }

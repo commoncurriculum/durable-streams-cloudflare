@@ -50,6 +50,7 @@ export function validateNewStream(
       streamId: input.streamId,
       contentType,
       requestedClosed: input.requestedClosed,
+      isPublic: input.isPublic,
       ttlSeconds: input.ttlSeconds,
       effectiveExpiresAt: input.effectiveExpiresAt,
       bodyBytes: input.bodyBytes,

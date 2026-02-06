@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import type { StreamDO } from "./durable_object";
-import { extractBearerToken } from "./auth";
 
 // ============================================================================
 // Types
@@ -10,12 +9,10 @@ import { extractBearerToken } from "./auth";
 
 export type EdgeEnv = {
   STREAMS: DurableObjectNamespace<StreamDO>;
-  AUTH_TOKEN?: string;
-  CACHE_MODE?: string;
-  READ_JWT_SECRET?: string;
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
+  PROJECT_KEYS?: KVNamespace;
 };
 
 export type EdgeBindings = {
@@ -42,6 +39,7 @@ const CORS_ALLOW_HEADERS = [
   "Producer-Epoch",
   "Producer-Seq",
   "Authorization",
+  "X-Stream-Public",
 ];
 
 const CORS_EXPOSE_HEADERS = [
@@ -86,25 +84,6 @@ export const corsMiddleware = createMiddleware<EdgeBindings>(async (c, next) => 
 });
 
 // ============================================================================
-// Auth Middleware
-// ============================================================================
-
-export const bearerAuthMiddleware = createMiddleware<EdgeBindings>(async (c, next) => {
-  const authToken = c.env.AUTH_TOKEN;
-
-  if (!authToken) {
-    return await next();
-  }
-
-  const token = extractBearerToken(c.req.raw);
-  if (token !== authToken) {
-    return c.json({ error: "unauthorized" }, 401);
-  }
-
-  return await next();
-});
-
-// ============================================================================
 // Edge App
 // ============================================================================
 
@@ -117,7 +96,6 @@ export function createEdgeApp() {
   });
 
   app.use("*", corsMiddleware);
-  app.use("*", bearerAuthMiddleware);
 
   // Core package only handles streams - no admin/subscription routes
   app.all("*", (c) => {

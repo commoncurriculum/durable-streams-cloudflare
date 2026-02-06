@@ -47,6 +47,7 @@ pnpm deploy       # vite build && wrangler deploy
 | Binding | Type | Description |
 |---------|------|-------------|
 | `CORE` | Service Binding | Service binding to the core worker (required). Uses Worker RPC for stream inspection and routing — no auth tokens needed. |
+| `PROJECT_KEYS` | KV Namespace | Per-project signing secrets (required for project management). Shared with the core worker. |
 
 ## See Also
 

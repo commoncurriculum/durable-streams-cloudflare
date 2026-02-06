@@ -1,7 +1,6 @@
 import { Timing, attachTiming } from "../protocol/timing";
-import { resolveCacheMode } from "./router";
 import { applyCorsHeaders } from "./hono";
-import type { AuthorizeMutation, AuthorizeRead } from "./auth";
+import type { AuthorizeMutation, AuthorizeRead, ReadAuthResult } from "./auth";
 import type { StreamDO } from "./durable_object";
 
 // ============================================================================
@@ -10,13 +9,10 @@ import type { StreamDO } from "./durable_object";
 
 export type BaseEnv = {
   STREAMS: DurableObjectNamespace<StreamDO>;
-  AUTH_TOKEN?: string;
-  CACHE_MODE?: string;
-  READ_JWT_SECRET?: string;
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
-  PROJECT_KEYS?: KVNamespace;
+  PROJECT_KEYS: KVNamespace;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -82,6 +78,19 @@ function wrapAuthError(response: Response): Response {
   });
 }
 
+/**
+ * Check if a stream is marked as public in KV.
+ * KV key: `projectId/streamId`, value: JSON with `{ public: true }`.
+ */
+async function isStreamPublic(kv: KVNamespace | undefined, doKey: string): Promise<boolean> {
+  if (!kv) return false;
+  const value = await kv.get(doKey, "json");
+  if (value && typeof value === "object" && (value as Record<string, unknown>).public === true) {
+    return true;
+  }
+  return false;
+}
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -142,21 +151,30 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // #region docs-authorize-request
       // Auth callbacks receive doKey (projectId/streamId) so they can check project scope
       if (isStreamRead && config?.authorizeRead) {
-        const readAuth = await config.authorizeRead(request, doKey, env, timing);
-        if (!readAuth.ok) return wrapAuthError(readAuth.response);
-        authStreamId = readAuth.streamId;
+        const readAuth: ReadAuthResult = await config.authorizeRead(request, doKey, env, timing);
+        if (!readAuth.ok) {
+          // On auth failure for reads, check if stream is public
+          if ((readAuth as { authFailed?: boolean }).authFailed && env.PROJECT_KEYS) {
+            const pub = await isStreamPublic(env.PROJECT_KEYS, doKey);
+            if (pub) {
+              // Stream is public — allow read without auth
+              authStreamId = null;
+            } else {
+              return wrapAuthError(readAuth.response);
+            }
+          } else {
+            return wrapAuthError(readAuth.response);
+          }
+        } else {
+          authStreamId = readAuth.streamId;
+        }
       } else if (!isStreamRead && config?.authorizeMutation) {
         const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
         if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
       }
       // #endregion docs-authorize-request
 
-      const cacheMode = resolveCacheMode({
-        envMode: env.CACHE_MODE,
-        authMode: undefined,
-      });
-
-      const cacheable = cacheMode === "shared" && shouldUseCache(request, url);
+      const cacheable = shouldUseCache(request, url);
       const cache = caches.default;
       const cacheKey = buildCacheKey(url, method);
 
@@ -177,7 +195,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const doneOrigin = timing?.start("edge.origin");
       const response = await stub.routeStreamRequest(
         doKey,
-        cacheMode,
         authStreamId,
         timingEnabled,
         request,
@@ -194,6 +211,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       if (cacheable && isCacheableResponse(wrapped)) {
         ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
+      }
+
+      // On successful PUT with X-Stream-Public: true, write public flag to KV
+      if (method === "PUT" && wrapped.status === 201 && request.headers.get("X-Stream-Public") === "true" && env.PROJECT_KEYS) {
+        ctx.waitUntil(env.PROJECT_KEYS.put(doKey, JSON.stringify({ public: true })));
       }
 
       return attachTiming(wrapped, timing);

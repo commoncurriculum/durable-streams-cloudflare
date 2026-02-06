@@ -11,7 +11,7 @@ This is a **library** — you import `createSubscriptionWorker()`, pass your aut
 A publisher writes to a source stream via the subscription worker. The SubscriptionDO looks up all sessions subscribed to that stream and fans out the message — writing a copy to each subscriber's session stream via core. Clients read their session stream directly from the core worker (through CDN).
 
 ```
-Publisher ── POST /v1/publish/stream-A ──> Subscription Worker
+Publisher ── POST /v1/myapp/publish/stream-A ──> Subscription Worker
                                              │
                                              ├─> Core: write to source stream
                                              ├─> SubscriptionDO: get subscribers
@@ -70,6 +70,11 @@ dataset = "subscriptions_metrics"
 binding = "CORE"
 service = "durable-streams"
 
+# Required for projectJwtAuth()
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "<your-kv-namespace-id>"
+
 [triggers]
 crons = ["*/5 * * * *"]
 ```
@@ -87,31 +92,56 @@ CORE=https://durable-streams.<your-subdomain>.workers.dev
 SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
 
 # Subscribe a session to a stream
-curl -X POST $SUB/v1/subscribe \
+curl -X POST $SUB/v1/myapp/subscribe \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
   -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
 
 # Publish a message (fans out to all subscribers)
-curl -X POST $SUB/v1/publish/chat-room-1 \
+curl -X POST $SUB/v1/myapp/publish/chat-room-1 \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
   -d '{"text":"hello world"}'
 
 # Read the session stream via core (SSE)
-curl -N "$CORE/v1/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
+curl -N -H "Authorization: Bearer $JWT" \
+  "$CORE/v1/myapp/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
 
 # Check session info
-curl $SUB/v1/session/user-alice
+curl -H "Authorization: Bearer $JWT" $SUB/v1/myapp/session/user-alice
 
 # Extend session TTL
-curl -X POST $SUB/v1/session/user-alice/touch
+curl -X POST -H "Authorization: Bearer $JWT" $SUB/v1/myapp/session/user-alice/touch
 
 # Unsubscribe
-curl -X DELETE $SUB/v1/unsubscribe \
+curl -X DELETE $SUB/v1/myapp/unsubscribe \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
   -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
 ```
 
 ## Authentication
+
+### Per-Project JWT Auth (Default)
+
+The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `PROJECT_KEYS` KV namespace — same model as the core package.
+
+```ts
+import { createSubscriptionWorker, SubscriptionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
+
+export default createSubscriptionWorker({ authorize: projectJwtAuth() });
+export { SubscriptionDO };
+```
+
+**Scope mapping:**
+
+| Action | Required scope |
+|--------|---------------|
+| `publish` | `write` |
+| `unsubscribe`, `deleteSession` | `write` |
+| `subscribe`, `getSession`, `touchSession` | `read` or `write` |
+
+JWT claims are the same as core (`sub`, `scope`, `exp`). The `stream_id` claim is not used by subscription auth.
 
 ### No Auth
 
@@ -122,23 +152,6 @@ import { createSubscriptionWorker, SubscriptionDO } from "@durable-streams-cloud
 
 export default createSubscriptionWorker();
 export { SubscriptionDO };
-```
-
-### Bearer Token
-
-```ts
-import {
-  createSubscriptionWorker, SubscriptionDO, bearerTokenAuth,
-} from "@durable-streams-cloudflare/subscription";
-
-export default createSubscriptionWorker({ authorize: bearerTokenAuth() });
-export { SubscriptionDO };
-```
-
-`bearerTokenAuth()` checks `env.AUTH_TOKEN` for all requests. If `AUTH_TOKEN` is not set, all requests are allowed. Clients send `Authorization: Bearer <token>`.
-
-```bash
-npx wrangler secret put AUTH_TOKEN
 ```
 
 ### Custom Auth
@@ -154,14 +167,6 @@ export default createSubscriptionWorker({
     // Allow session reads without auth
     if (route.action === "getSession") return { ok: true };
 
-    // Require token for publish
-    if (route.action === "publish") {
-      const token = request.headers.get("Authorization");
-      if (token !== `Bearer ${env.AUTH_TOKEN}`) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-    }
-
     // Check session ownership for session operations
     if ("sessionId" in route) {
       const userId = request.headers.get("X-User-Id");
@@ -176,14 +181,14 @@ export default createSubscriptionWorker({
 export { SubscriptionDO };
 ```
 
-The `route` parameter is a discriminated union (`SubscriptionRoute`) with the parsed action and IDs:
+The `route` parameter is a discriminated union (`SubscriptionRoute`) with the parsed action, project, and IDs:
 
-- `{ action: "publish", streamId }` — publish to a stream
-- `{ action: "subscribe", streamId, sessionId }` — subscribe a session
-- `{ action: "unsubscribe", streamId, sessionId }` — unsubscribe a session
-- `{ action: "getSession", sessionId }` — read session info
-- `{ action: "touchSession", sessionId }` — extend session TTL
-- `{ action: "deleteSession", sessionId }` — delete a session
+- `{ action: "publish", project, streamId }` — publish to a stream
+- `{ action: "subscribe", project, streamId, sessionId }` — subscribe a session
+- `{ action: "unsubscribe", project, streamId, sessionId }` — unsubscribe a session
+- `{ action: "getSession", project, sessionId }` — read session info
+- `{ action: "touchSession", project, sessionId }` — extend session TTL
+- `{ action: "deleteSession", project, sessionId }` — delete a session
 
 **Type signatures:**
 
@@ -201,12 +206,12 @@ Health checks (`GET /health`) always bypass auth.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/subscribe` | Subscribe a session to a stream. Body: `{ sessionId, streamId }` |
-| `DELETE` | `/v1/unsubscribe` | Unsubscribe a session from a stream. Body: `{ sessionId, streamId }` |
-| `POST` | `/v1/publish/:streamId` | Publish to a stream and fan out to all subscribers |
-| `GET` | `/v1/session/:sessionId` | Get session info and active subscriptions |
-| `POST` | `/v1/session/:sessionId/touch` | Extend session TTL |
-| `DELETE` | `/v1/session/:sessionId` | Delete a session and its stream |
+| `POST` | `/v1/:project/subscribe` | Subscribe a session to a stream. Body: `{ sessionId, streamId }` |
+| `DELETE` | `/v1/:project/unsubscribe` | Unsubscribe a session from a stream. Body: `{ sessionId, streamId }` |
+| `POST` | `/v1/:project/publish/:streamId` | Publish to a stream and fan out to all subscribers |
+| `GET` | `/v1/:project/session/:sessionId` | Get session info and active subscriptions |
+| `POST` | `/v1/:project/session/:sessionId/touch` | Extend session TTL |
+| `DELETE` | `/v1/:project/session/:sessionId` | Delete a session and its stream |
 | `GET` | `/health` | Health check |
 
 Reading the session stream is done via the **core worker**: `GET /v1/stream/session:<sessionId>`.
@@ -221,7 +226,6 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUTH_TOKEN` | *(none)* | Bearer token for incoming auth (used by `bearerTokenAuth()`) |
 | `SESSION_TTL_SECONDS` | `1800` | Session TTL in seconds (default: 30 minutes) |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated, `*`, or omit for all) |
 | `ACCOUNT_ID` | *(none)* | Cloudflare account ID (required for cron cleanup) |
@@ -233,6 +237,7 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 | Binding | Type | Description |
 |---------|------|-------------|
 | `SUBSCRIPTION_DO` | Durable Object | SubscriptionDO namespace (required) |
+| `PROJECT_KEYS` | KV Namespace | Per-project signing secrets (required when using `projectJwtAuth`) |
 | `METRICS` | Analytics Engine | Subscription and fan-out metrics (optional) |
 | `CORE` | Service Binding | Service binding to core worker (required) |
 

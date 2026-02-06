@@ -19,16 +19,12 @@ bucket_name = "durable-streams"
 binding = "METRICS"
 dataset = "durable_streams_metrics"
 
-# KV namespace for project API keys (multi-project auth)
-# [[kv_namespaces]]
-# binding = "PROJECT_KEYS"
-# id = "<your-kv-namespace-id>"
+# KV namespace for per-project signing secrets and public stream flags
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "<your-kv-namespace-id>"
 
 [vars]
-# Optional: set to require auth
-# AUTH_TOKEN = "replace-with-token"
-# Optional: set cache mode explicitly: "shared" or "private"
-# CACHE_MODE = "shared"
 # SEGMENT_MAX_MESSAGES = "1000"
 # SEGMENT_MAX_BYTES = "4194304"
 

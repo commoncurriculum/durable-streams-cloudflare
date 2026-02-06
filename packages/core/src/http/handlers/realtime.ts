@@ -188,13 +188,11 @@ export async function handleLongPoll(
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
-  const cacheMode = ctx.cacheMode;
-  let cacheControl =
-    cacheMode === "shared" ? `public, max-age=${LONG_POLL_CACHE_SECONDS}` : "private, no-store";
+  let cacheControl = `public, max-age=${LONG_POLL_CACHE_SECONDS}`;
   let offset: number;
   if (offsetParam === "now") {
     offset = meta.tail_offset;
-    cacheControl = cacheMode === "shared" ? "no-store" : "private, no-store";
+    cacheControl = "no-store";
   } else {
     const resolved = await ctx.resolveOffset(
       streamId,
@@ -286,7 +284,6 @@ export async function handleSse(
   meta: StreamMeta,
   url: URL,
 ): Promise<Response> {
-  const cacheMode = ctx.cacheMode;
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
   let offset: number;
@@ -338,7 +335,7 @@ export async function handleSse(
 
   const headers = baseHeaders({
     "Content-Type": "text/event-stream",
-    "Cache-Control": cacheMode === "shared" ? "no-cache" : "private, no-store, no-cache",
+    "Cache-Control": "no-cache",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
     [HEADER_STREAM_NEXT_OFFSET]: await ctx.encodeTailOffset(streamId, meta),

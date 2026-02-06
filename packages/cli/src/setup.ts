@@ -1,7 +1,6 @@
 import * as p from "@clack/prompts";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -35,10 +34,6 @@ function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdo
   }
 }
 
-function generateToken(bytes = 32): string {
-  return randomBytes(bytes).toString("hex");
-}
-
 function cancelled(): never {
   p.cancel("Setup cancelled.");
   process.exit(0);
@@ -62,23 +57,11 @@ function writeFile(path: string, content: string, overwriteAll: boolean): boolea
 // File templates
 // ---------------------------------------------------------------------------
 
-function coreWorkerTs(auth: boolean): string {
-  if (!auth) {
-    return `import { createStreamWorker, StreamDO } from "@durable-streams-cloudflare/core";
+function coreWorkerTs(): string {
+  return `import { createStreamWorker, StreamDO, projectJwtAuth } from "@durable-streams-cloudflare/core";
 
-export default createStreamWorker();
-export { StreamDO };
-`;
-  }
-  return `import {
-  createStreamWorker, StreamDO,
-  bearerTokenAuth, jwtStreamAuth,
-} from "@durable-streams-cloudflare/core";
-
-export default createStreamWorker({
-  authorizeMutation: bearerTokenAuth(),
-  authorizeRead: jwtStreamAuth(),
-});
+const { authorizeMutation, authorizeRead } = projectJwtAuth();
+export default createStreamWorker({ authorizeMutation, authorizeRead });
 export { StreamDO };
 `;
 }
@@ -105,19 +88,10 @@ dataset = "durable_streams_metrics"
 `;
 }
 
-function subscriptionWorkerTs(auth: boolean): string {
-  if (!auth) {
-    return `import { createSubscriptionWorker, SubscriptionDO } from "@durable-streams-cloudflare/subscription";
+function subscriptionWorkerTs(): string {
+  return `import { createSubscriptionWorker, SubscriptionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
 
-export default createSubscriptionWorker();
-export { SubscriptionDO };
-`;
-  }
-  return `import {
-  createSubscriptionWorker, SubscriptionDO, bearerTokenAuth,
-} from "@durable-streams-cloudflare/subscription";
-
-export default createSubscriptionWorker({ authorize: bearerTokenAuth() });
+export default createSubscriptionWorker({ authorize: projectJwtAuth() });
 export { SubscriptionDO };
 `;
 }
@@ -199,14 +173,6 @@ enabled = true
 // ---------------------------------------------------------------------------
 // Secret helper
 // ---------------------------------------------------------------------------
-
-function setSecret(name: string, value: string, configPath: string) {
-  const cmd = `echo "${value}" | npx wrangler secret put ${name} --config ${configPath}`;
-  const result = runMayFail(cmd, { input: value });
-  if (!result.ok) {
-    p.log.warning(`  Failed to set ${name}: ${result.stderr}`);
-  }
-}
 
 function putSecret(name: string, value: string, configPath: string) {
   // wrangler secret put reads from stdin
@@ -302,52 +268,6 @@ export async function setup() {
     includeAdminSubscription = result;
   }
 
-  // Auth
-  const enableAuth = await p.confirm({
-    message: "Enable authentication (bearer token + JWT)?",
-    initialValue: true,
-  });
-  if (p.isCancel(enableAuth)) cancelled();
-
-  let authToken = "";
-  let readJwtSecret = "";
-
-  if (enableAuth) {
-    const authTokenChoice = await p.select({
-      message: "AUTH_TOKEN (bearer token for mutations)",
-      options: [
-        { value: "generate", label: "Auto-generate a secure token" },
-        { value: "custom", label: "Enter my own token" },
-      ],
-    });
-    if (p.isCancel(authTokenChoice)) cancelled();
-
-    if (authTokenChoice === "generate") {
-      authToken = generateToken();
-    } else {
-      const input = await p.text({ message: "Enter AUTH_TOKEN:", validate: (v) => v.length < 8 ? "Token must be at least 8 characters" : undefined });
-      if (p.isCancel(input)) cancelled();
-      authToken = input;
-    }
-
-    const jwtChoice = await p.select({
-      message: "READ_JWT_SECRET (HS256 secret for read JWTs)",
-      options: [
-        { value: "generate", label: "Auto-generate a secure secret" },
-        { value: "custom", label: "Enter my own secret" },
-      ],
-    });
-    if (p.isCancel(jwtChoice)) cancelled();
-
-    if (jwtChoice === "generate") {
-      readJwtSecret = generateToken();
-    } else {
-      const input = await p.text({ message: "Enter READ_JWT_SECRET:", validate: (v) => v.length < 8 ? "Secret must be at least 8 characters" : undefined });
-      if (p.isCancel(input)) cancelled();
-      readJwtSecret = input;
-    }
-  }
-
   // Cloudflare API token (for subscription cron + admin dashboards)
   let cfApiToken = "";
   if (includeSubscription || includeAdminCore || includeAdminSubscription) {
@@ -384,14 +304,14 @@ export async function setup() {
 
   // Core (always)
   filesToWrite.push(
-    { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs(enableAuth) },
+    { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
     { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml() },
   );
 
   // Subscription
   if (includeSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs(enableAuth) },
+      { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs() },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
         content: subscriptionWranglerToml({ accountId }),
@@ -486,12 +406,6 @@ export async function setup() {
 
   const coreConfig = join(workersDir, "streams", "wrangler.toml");
 
-  if (enableAuth && authToken) {
-    putSecret("AUTH_TOKEN", authToken, coreConfig);
-  }
-  if (enableAuth && readJwtSecret) {
-    putSecret("READ_JWT_SECRET", readJwtSecret, coreConfig);
-  }
   const coreDeploy = runMayFail(`npx wrangler deploy --config ${coreConfig}`);
   if (!coreDeploy.ok) {
     coreSpinner.stop("Core deploy failed");
@@ -514,9 +428,6 @@ export async function setup() {
 
     const subConfig = join(workersDir, "subscriptions", "wrangler.toml");
 
-    if (enableAuth && authToken) {
-      putSecret("AUTH_TOKEN", authToken, subConfig);
-    }
     if (cfApiToken) {
       putSecret("API_TOKEN", cfApiToken, subConfig);
     }
@@ -604,12 +515,9 @@ export async function setup() {
     lines.push("  (check your Cloudflare dashboard for URLs)");
   }
 
-  if (enableAuth) {
-    lines.push("");
-    lines.push("Secrets (save these — they won't be shown again!):");
-    if (authToken) lines.push(`  AUTH_TOKEN:         ${authToken}`);
-    if (readJwtSecret) lines.push(`  READ_JWT_SECRET:    ${readJwtSecret}`);
-  }
+  lines.push("");
+  lines.push("Auth: per-project JWT (HMAC-SHA256). Create projects with:");
+  lines.push("  npx durable-streams create-project");
 
   if (deployedUrls.adminCore || deployedUrls.adminSubscription) {
     lines.push("");
@@ -623,13 +531,10 @@ export async function setup() {
   if (deployedUrls.core) {
     lines.push("");
     lines.push("Quick test:");
-    const authHeader = authToken ? ` -H 'Authorization: Bearer ${authToken}'` : "";
-    lines.push(`  # Create a stream`);
-    lines.push(`  curl -X PUT -H 'Content-Type: application/json'${authHeader} ${deployedUrls.core}/v1/stream/test`);
-    lines.push(`  # Append a message`);
-    lines.push(`  curl -X POST -H 'Content-Type: application/json'${authHeader} -d '{"hello":"world"}' ${deployedUrls.core}/v1/stream/test`);
-    lines.push(`  # Read`);
-    lines.push(`  curl "${deployedUrls.core}/v1/stream/test?offset=0000000000000000_0000000000000000"`);
+    lines.push(`  # 1. Create a project: npx durable-streams create-project`);
+    lines.push(`  # 2. Mint a JWT with the signing secret`);
+    lines.push(`  # 3. Create a stream:`);
+    lines.push(`  curl -X PUT -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' ${deployedUrls.core}/v1/<project>/stream/test`);
   }
 
   lines.push("");

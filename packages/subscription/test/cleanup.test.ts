@@ -19,6 +19,7 @@ const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 const mockFetch = vi.fn();
+const mockProjectKeys = {} as KVNamespace;
 
 describe("cleanup", () => {
   beforeEach(() => {
@@ -32,6 +33,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         // No ACCOUNT_ID or API_TOKEN
       };
@@ -51,6 +53,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -96,6 +99,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -149,6 +153,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -180,6 +185,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -210,6 +216,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -229,6 +236,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -255,6 +263,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -301,6 +310,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { fetch: mockFetch },
+        PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",

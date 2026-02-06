@@ -58,7 +58,7 @@ describe("createSubscriptionWorker", () => {
   it("no auth config — API routes accessible without token", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const worker = createSubscriptionWorker();
-    const env = { ...createBaseEnv(), AUTH_TOKEN: "secret" };
+    const env = createBaseEnv();
 
     // GET session should not be blocked (no auth configured)
     const response = await worker.fetch(
@@ -131,12 +131,17 @@ describe("createSubscriptionWorker", () => {
     expect(capturedRoute).toEqual({ action: "publish", project: PROJECT_ID, streamId: "my-stream" });
   });
 
-  it("bearerTokenAuth — rejects without token", async () => {
+  it("projectJwtAuth — rejects without token", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
-    const { bearerTokenAuth } = await import("../src/http/auth");
+    const { projectJwtAuth } = await import("../src/http/auth");
 
-    const worker = createSubscriptionWorker({ authorize: bearerTokenAuth() });
-    const env = { ...createBaseEnv(), AUTH_TOKEN: "secret" };
+    const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
+    const env = {
+      ...createBaseEnv(),
+      PROJECT_KEYS: {
+        get: vi.fn().mockResolvedValue(JSON.stringify({ signingSecret: "test-secret" })),
+      } as unknown as KVNamespace,
+    };
 
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
@@ -163,24 +168,23 @@ describe("createSubscriptionWorker", () => {
     expect(body).toEqual({ error: "Invalid project ID" });
   });
 
-  it("bearerTokenAuth — allows with correct token", async () => {
+  it("projectJwtAuth — rejects with 500 when PROJECT_KEYS missing", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
-    const { bearerTokenAuth } = await import("../src/http/auth");
+    const { projectJwtAuth } = await import("../src/http/auth");
 
-    const worker = createSubscriptionWorker({ authorize: bearerTokenAuth() });
-    const env = { ...createBaseEnv(), AUTH_TOKEN: "secret" };
+    const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
+    const env = createBaseEnv();
 
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "{}",
-        headers: { Authorization: "Bearer secret" },
+        headers: { Authorization: "Bearer some-token" },
       }),
       env,
       {} as ExecutionContext,
     );
 
-    // Should pass auth and hit the publish route (which will fail at DO layer, not auth)
-    expect(response.status).not.toBe(401);
+    expect(response.status).toBe(500);
   });
 });

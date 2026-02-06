@@ -181,24 +181,19 @@ export const getStreamMessages = createServerFn({ method: "GET" })
   });
 
 export const createProject = createServerFn({ method: "POST" })
-  .inputValidator((data: { projectId: string; authKey: string }) => data)
+  .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
     const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
     if (!kv) throw new Error("PROJECT_KEYS KV namespace is not configured");
     if (!data.projectId.trim()) throw new Error("Project ID is required");
-    if (!data.authKey.trim()) throw new Error("Auth key is required");
-    await kv.put(data.authKey.trim(), JSON.stringify({ project: data.projectId.trim() }));
-    return { ok: true };
+    const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
+    await kv.put(data.projectId.trim(), JSON.stringify({ signingSecret: secret }));
+    return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
   const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
   if (!kv) return [];
   const list = await kv.list();
-  const projects: string[] = [];
-  for (const key of list.keys) {
-    const val = await kv.get(key.name, "json") as { project: string } | null;
-    if (val?.project) projects.push(val.project);
-  }
-  return [...new Set(projects)].sort((a, b) => a.localeCompare(b));
+  return list.keys.map((k) => k.name).sort();
 });

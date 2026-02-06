@@ -1,6 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { createSubscriptionWorker } from "./create_worker";
-import { projectKeyAuth } from "./auth";
+import { projectJwtAuth } from "./auth";
 import { SubscriptionDO } from "../subscriptions/do";
 import { getSession, touchSession, deleteSession } from "../session";
 import { subscribe } from "../subscriptions/subscribe";
@@ -18,7 +18,7 @@ import type {
 } from "../subscriptions/types";
 
 export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
-  #worker = createSubscriptionWorker({ authorize: projectKeyAuth() });
+  #worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
 
   async fetch(request: Request): Promise<Response> {
     return this.#worker.fetch(request, this.env, this.ctx);
@@ -77,6 +77,6 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
 }
 
 export { SubscriptionWorker, SubscriptionDO, createSubscriptionWorker };
-export { bearerTokenAuth, projectKeyAuth } from "./auth";
+export { projectJwtAuth } from "./auth";
 export type { SubscriptionAuthResult, SubscriptionRoute, AuthorizeSubscription } from "./auth";
 export type { SubscriptionWorkerConfig } from "./create_worker";

@@ -9,7 +9,7 @@ This is a **library** — you import `createStreamWorker()`, pass your auth conf
 - **Durable Object per stream** — single-threaded sequencer with strong ordering
 - **SQLite hot log** — low-latency writes via DO transactional storage
 - **R2 cold segments** — automatic rotation of historical data to immutable R2 objects
-- **CDN-aware caching** — `shared` and `private` cache modes, edge cache integration
+- **CDN-aware caching** — shared edge cache integration with public stream support
 - **Long-poll + SSE** — real-time delivery with catch-up reads
 - **JSON mode** — array flattening, JSON validation, message-count offsets
 - **TTL / Expires-At** — stream-level time-to-live enforcement
@@ -57,6 +57,11 @@ bucket_name = "durable-streams"
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "durable_streams_metrics"
+
+# Required for projectJwtAuth()
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "<your-kv-namespace-id>"
 ```
 
 ### 3. Deploy
@@ -71,25 +76,80 @@ npx wrangler deploy
 ```bash
 URL=https://durable-streams.<your-subdomain>.workers.dev
 
-# Create a stream
-curl -X PUT -H 'Content-Type: application/json' $URL/v1/stream/my-stream
+# Create a stream (requires a write-scope JWT)
+curl -X PUT -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  $URL/v1/my-project/stream/my-stream
 
 # Append a message
 curl -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
   -d '{"op":"insert","text":"hello"}' \
-  $URL/v1/stream/my-stream
+  $URL/v1/my-project/stream/my-stream
 
-# Catch-up read
-curl "$URL/v1/stream/my-stream?offset=0000000000000000_0000000000000000"
+# Catch-up read (read or write scope)
+curl -H "Authorization: Bearer $JWT" \
+  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000"
 
 # Long-poll (blocks until new data)
-curl "$URL/v1/stream/my-stream?offset=0000000000000000_0000000000000000&live=long-poll"
+curl -H "Authorization: Bearer $JWT" \
+  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000&live=long-poll"
 
 # SSE (streaming)
-curl -N "$URL/v1/stream/my-stream?offset=0000000000000000_0000000000000000&live=sse"
+curl -N -H "Authorization: Bearer $JWT" \
+  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
 ## Authentication
+
+### Per-Project JWT Auth (Default)
+
+The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `PROJECT_KEYS` KV namespace. Each project gets its own signing secret. JWTs are signed with that secret — the secret never goes over the wire.
+
+```ts
+import { createStreamWorker, StreamDO, projectJwtAuth } from "@durable-streams-cloudflare/core";
+
+const { authorizeMutation, authorizeRead } = projectJwtAuth();
+export default createStreamWorker({ authorizeMutation, authorizeRead });
+export { StreamDO };
+```
+
+**JWT claims:**
+
+```json
+{
+  "sub": "my-project",
+  "scope": "write",
+  "exp": 1738900000,
+  "stream_id": "my-stream"
+}
+```
+
+| Claim | Required | Description |
+|-------|----------|-------------|
+| `sub` | Yes | Must match the project ID in the URL path |
+| `scope` | Yes | `"write"` (read+write) or `"read"` (read-only) |
+| `exp` | Yes | Unix timestamp expiry |
+| `stream_id` | No | If present, restricts reads to this specific stream |
+
+Create a project and get its signing secret via the admin dashboard or CLI:
+
+```bash
+npx durable-streams create-project
+```
+
+### Public Streams
+
+Individual streams can be made publicly readable (no auth required) by setting the `X-Stream-Public: true` header on stream creation:
+
+```bash
+curl -X PUT -H 'Content-Type: application/json' \
+  -H 'X-Stream-Public: true' \
+  -H "Authorization: Bearer $JWT" \
+  $URL/v1/my-project/stream/public-feed
+```
+
+Public streams are readable without a token. Writes still require auth.
 
 ### No Auth
 
@@ -102,32 +162,6 @@ export default createStreamWorker();
 export { StreamDO };
 ```
 
-### Built-in Strategies
-
-```ts
-import {
-  createStreamWorker, StreamDO,
-  bearerTokenAuth, jwtStreamAuth,
-} from "@durable-streams-cloudflare/core";
-
-export default createStreamWorker({
-  authorizeMutation: bearerTokenAuth(),
-  authorizeRead: jwtStreamAuth(),
-});
-export { StreamDO };
-```
-
-**`bearerTokenAuth()`** — Checks `env.AUTH_TOKEN` for mutations (PUT/POST/DELETE). If `AUTH_TOKEN` is not set, all mutations are allowed. Clients send `Authorization: Bearer <token>`.
-
-**`jwtStreamAuth()`** — Validates an HS256 JWT for reads (GET/HEAD) using `env.READ_JWT_SECRET`. The JWT payload must contain `stream_id` and `exp` claims. The `stream_id` must match the requested stream ID. If `READ_JWT_SECRET` is not set, all reads are allowed.
-
-Set secrets:
-
-```bash
-npx wrangler secret put AUTH_TOKEN
-npx wrangler secret put READ_JWT_SECRET
-```
-
 ### Custom Auth
 
 Write your own callbacks with the `AuthorizeMutation` and `AuthorizeRead` signatures:
@@ -136,13 +170,13 @@ Write your own callbacks with the `AuthorizeMutation` and `AuthorizeRead` signat
 import { createStreamWorker, StreamDO } from "@durable-streams-cloudflare/core";
 import type { BaseEnv, AuthResult } from "@durable-streams-cloudflare/core";
 
-type MyEnv = BaseEnv & { API_KEYS: KVNamespace };
+type MyEnv = BaseEnv & { MY_KEYS: KVNamespace };
 
 export default createStreamWorker<MyEnv>({
-  authorizeMutation: async (request, streamId, env, timing) => {
+  authorizeMutation: async (request, doKey, env, timing) => {
     const key = request.headers.get("X-API-Key");
     if (!key) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-    const valid = await env.API_KEYS.get(key);
+    const valid = await env.MY_KEYS.get(key);
     if (!valid) return { ok: false, response: new Response("forbidden", { status: 403 }) };
     return { ok: true };
   },
@@ -154,11 +188,11 @@ export { StreamDO };
 
 ```ts
 type AuthorizeMutation<E> = (
-  request: Request, streamId: string, env: E, timing: Timing | null,
+  request: Request, doKey: string, env: E, timing: Timing | null,
 ) => AuthResult | Promise<AuthResult>;
 
 type AuthorizeRead<E> = (
-  request: Request, streamId: string, env: E, timing: Timing | null,
+  request: Request, doKey: string, env: E, timing: Timing | null,
 ) => ReadAuthResult | Promise<ReadAuthResult>;
 
 type AuthResult = { ok: true } | { ok: false; response: Response };
@@ -187,9 +221,6 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUTH_TOKEN` | *(none)* | Bearer token for mutation auth (used by `bearerTokenAuth()`) |
-| `READ_JWT_SECRET` | *(none)* | HS256 secret for JWT read auth (used by `jwtStreamAuth()`) |
-| `CACHE_MODE` | `private` | Cache mode: `shared` (CDN cacheable) or `private` |
 | `DEBUG_TIMING` | `0` | Set to `1` to emit `Server-Timing` headers |
 | `SEGMENT_MAX_MESSAGES` | `1000` | Max messages per R2 segment before rotation |
 | `SEGMENT_MAX_BYTES` | `4194304` | Max bytes per R2 segment before rotation |
@@ -200,13 +231,14 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 |---------|------|-------------|
 | `STREAMS` | Durable Object | StreamDO namespace (required) |
 | `R2` | R2 Bucket | Cold segment storage (required) |
+| `PROJECT_KEYS` | KV Namespace | Per-project signing secrets and public stream flags (required when using `projectJwtAuth`) |
 | `METRICS` | Analytics Engine | Stream operation metrics (optional) |
 
 ## Architecture
 
 ```
 Write Path
-  Client ──POST──> Worker (auth, cache mode)
+  Client ──POST──> Worker (JWT auth)
                      │
                      v
                    StreamDO
@@ -216,7 +248,7 @@ Write Path
                      └──> R2 rotation (when segment full)
 
 Read Path
-  Client ──GET───> Worker (auth, cache mode)
+  Client ──GET───> Worker (JWT auth or public stream check)
                      │
                      ├──> Edge cache hit? → return cached
                      │
@@ -226,7 +258,7 @@ Read Path
                      └── cold segment (R2) → historical messages
                                               │
                                               v
-                                           Edge cache (if shared mode)
+                                           Edge cache
 ```
 
 ## See Also
