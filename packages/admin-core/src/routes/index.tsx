@@ -21,6 +21,12 @@ function OverviewPage() {
   const hot = useHotStreams();
   const timeseries = useTimeseries();
 
+  // Only show skeletons on the very first fetch, not on background refetches
+  const statsLoading = !stats.isFetched && stats.isFetching;
+  const streamsLoading = !streams.isFetched && streams.isFetching;
+  const hotLoading = !hot.isFetched && hot.isFetching;
+  const timeseriesLoading = !timeseries.isFetched && timeseries.isFetching;
+
   const byType: Record<string, AnalyticsRow> = {};
   for (const row of stats.data ?? []) {
     if (row.event_type) byType[row.event_type as string] = row;
@@ -39,22 +45,22 @@ function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Appends / min"
-          value={stats.isLoading ? null : formatRate(appends, 3600)}
+          value={statsLoading ? null : formatRate(appends, 3600)}
           color="text-blue-400"
         />
         <StatCard
           label="Bytes / min"
-          value={stats.isLoading ? null : formatBytes(bytes / 60) + "/m"}
+          value={statsLoading ? null : formatBytes(bytes / 60) + "/m"}
           color="text-purple-400"
         />
         <StatCard
           label="Active Streams (24h)"
-          value={streams.isLoading ? null : String(streamCount)}
+          value={streamsLoading ? null : String(streamCount)}
           color="text-emerald-400"
         />
         <StatCard
           label="SSE Connects (1h)"
-          value={stats.isLoading ? null : String(sseCount)}
+          value={statsLoading ? null : String(sseCount)}
           color="text-cyan-400"
         />
       </div>
@@ -64,7 +70,7 @@ function OverviewPage() {
         <h3 className="mb-3 text-sm font-medium text-zinc-400">
           Throughput (last hour)
         </h3>
-        {timeseries.isLoading ? (
+        {timeseriesLoading ? (
           <div className="h-[180px] animate-pulse rounded bg-zinc-800" />
         ) : chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
@@ -117,7 +123,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           Hot Streams (last 5 min)
         </h3>
-        {hot.isLoading ? (
+        {hotLoading ? (
           <TableSkeleton rows={3} cols={3} />
         ) : (hot.data?.length ?? 0) === 0 ? (
           <EmptyRow colSpan={3} message="No activity" />
@@ -159,7 +165,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           All Streams (last 24h)
         </h3>
-        {streams.isLoading ? (
+        {streamsLoading ? (
           <TableSkeleton rows={5} cols={4} />
         ) : (streams.data?.length ?? 0) === 0 ? (
           <EmptyRow colSpan={4} message="No streams" />

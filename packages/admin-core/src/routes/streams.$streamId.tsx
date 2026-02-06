@@ -4,34 +4,28 @@ import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analyti
 import { formatBytes, relTime } from "../lib/formatters";
 import { useSSE, type SseEvent } from "../hooks/use-sse";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LoaderData = { inspect: any; messages: any };
-
 export const Route = createFileRoute("/streams/$streamId")({
-  loader: async ({ params }): Promise<LoaderData> => {
+  loader: async ({ params }) => {
     try {
-      const [inspect, messages] = await Promise.all([
-        inspectStream({ data: params.streamId }),
-        getStreamMessages({ data: params.streamId }),
-      ]);
-      return { inspect, messages };
+      const inspect = await inspectStream({ data: params.streamId });
+      return { inspect };
     } catch {
       // Stream doesn't exist yet — that's fine, we'll show the create form
-      return { inspect: null, messages: null };
+      return { inspect: null };
     }
   },
   component: StreamDetailPage,
 });
 
 function StreamDetailPage() {
-  const { inspect: data, messages: messagesData } = Route.useLoaderData();
+  const { inspect: data } = Route.useLoaderData();
   const { streamId } = Route.useParams();
 
   if (!data) {
     return <CreateStreamForm streamId={streamId} />;
   }
 
-  return <StreamConsole streamId={streamId} data={data} messagesData={messagesData} />;
+  return <StreamConsole streamId={streamId} data={data} />;
 }
 
 /* ─── State A: Stream not found ─── */
@@ -95,6 +89,12 @@ function CreateStreamForm({ streamId }: { streamId: string }) {
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleCreate();
+                }
+              }}
               placeholder='{"hello":"world"}'
               className="min-h-[120px] w-full resize-y rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
             />
@@ -124,11 +124,9 @@ function CreateStreamForm({ streamId }: { streamId: string }) {
 function StreamConsole({
   streamId,
   data,
-  messagesData,
 }: {
   streamId: string;
   data: unknown;
-  messagesData: unknown;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const d = data as any;
@@ -136,9 +134,6 @@ function StreamConsole({
   const ops = d.ops;
   const segments = d.segments ?? [];
   const producers = d.producers ?? [];
-
-  const messages = (messagesData as any)?.messages ?? [];
-  const nextOffset = (messagesData as any)?.nextOffset ?? null;
 
   const sseUrl = `/api/sse/${encodeURIComponent(streamId)}?live=sse&offset=now`;
   const { status: sseStatus, events, addEvent, clearEvents } = useSSE(sseUrl);
@@ -189,145 +184,122 @@ function StreamConsole({
       </div>
 
       {/* Send Message panel */}
-      <SendMessagePanel streamId={streamId} addEvent={addEvent} />
+      <SendMessagePanel streamId={streamId} contentType={m.content_type} addEvent={addEvent} />
 
-      {/* Live Event Log */}
-      <EventLog events={events} sseStatus={sseStatus} clearEvents={clearEvents} />
-
-      {/* Metadata grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {metaFields.map(([label, val]) => (
-          <div
-            key={label}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3"
-          >
-            <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              {label}
-            </div>
-            <div className="mt-0.5 font-mono text-sm">{val}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Current segment stats */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Messages in Current Segment
-        </div>
-        <div className="mt-1 font-mono text-2xl font-bold text-blue-400">
-          {ops.messageCount}
-        </div>
-        <div className="mt-2 text-xs text-zinc-500">
-          {formatBytes(ops.sizeBytes)}
-        </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-          <div
-            className="h-full rounded-full bg-blue-500 transition-all"
-            style={{ width: `${segmentFill}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Segments table */}
-      {segments.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-          <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
-            Segments ({segments.length})
-          </h3>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <Th>Read Seq</Th>
-                <Th>Offset Range</Th>
-                <Th>Size</Th>
-                <Th>Messages</Th>
-                <Th>Created</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {segments.map((s: any) => (
-                <tr
-                  key={s.read_seq}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>{s.read_seq}</Td>
-                  <Td>
-                    {Number(s.start_offset).toLocaleString()} &ndash;{" "}
-                    {Number(s.end_offset).toLocaleString()}
-                  </Td>
-                  <Td>{formatBytes(s.size_bytes)}</Td>
-                  <Td>{s.message_count}</Td>
-                  <Td>{relTime(s.created_at)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Producers table */}
-      {producers.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-          <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
-            Producers ({producers.length})
-          </h3>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <Th>ID</Th>
-                <Th>Epoch</Th>
-                <Th>Last Seq</Th>
-                <Th>Last Offset</Th>
-                <Th>Last Active</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {producers.map((p: any) => (
-                <tr
-                  key={p.producer_id}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>{p.producer_id}</Td>
-                  <Td>{p.epoch}</Td>
-                  <Td>{p.last_seq}</Td>
-                  <Td>{Number(p.last_offset).toLocaleString()}</Td>
-                  <Td>{p.last_updated ? relTime(p.last_updated) : "\u2014"}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <h3 className="text-sm font-medium text-zinc-400">
-            Messages ({messages.length})
-          </h3>
-          {nextOffset && (
-            <span className="font-mono text-xs text-zinc-600">
-              next: {nextOffset}
-            </span>
-          )}
-        </div>
-        {messages.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-zinc-500">
-            No messages in this stream
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-800">
-            {messages.map((msg: unknown, i: number) => (
-              <div key={i} className="px-4 py-3">
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs text-zinc-300">
-                  {typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}
-                </pre>
+      {/* Two-column layout: info left, event log right */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
+        {/* Left column: metadata + stats + tables */}
+        <div className="space-y-6">
+          {/* Metadata grid */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {metaFields.map(([label, val]) => (
+              <div
+                key={label}
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3"
+              >
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  {label}
+                </div>
+                <div className="mt-0.5 font-mono text-sm">{val}</div>
               </div>
             ))}
           </div>
-        )}
+
+          {/* Current segment stats */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Messages in Current Segment
+            </div>
+            <div className="mt-1 font-mono text-2xl font-bold text-blue-400">
+              {ops.messageCount}
+            </div>
+            <div className="mt-2 text-xs text-zinc-500">
+              {formatBytes(ops.sizeBytes)}
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${segmentFill}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Segments table */}
+          {segments.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+              <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
+                Segments ({segments.length})
+              </h3>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-zinc-800">
+                    <Th>Read Seq</Th>
+                    <Th>Offset Range</Th>
+                    <Th>Size</Th>
+                    <Th>Messages</Th>
+                    <Th>Created</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {segments.map((s: any) => (
+                    <tr
+                      key={s.read_seq}
+                      className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                    >
+                      <Td>{s.read_seq}</Td>
+                      <Td>
+                        {Number(s.start_offset).toLocaleString()} &ndash;{" "}
+                        {Number(s.end_offset).toLocaleString()}
+                      </Td>
+                      <Td>{formatBytes(s.size_bytes)}</Td>
+                      <Td>{s.message_count}</Td>
+                      <Td>{relTime(s.created_at)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Producers table */}
+          {producers.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+              <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
+                Producers ({producers.length})
+              </h3>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-zinc-800">
+                    <Th>ID</Th>
+                    <Th>Epoch</Th>
+                    <Th>Last Seq</Th>
+                    <Th>Last Offset</Th>
+                    <Th>Last Active</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {producers.map((p: any) => (
+                    <tr
+                      key={p.producer_id}
+                      className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                    >
+                      <Td>{p.producer_id}</Td>
+                      <Td>{p.epoch}</Td>
+                      <Td>{p.last_seq}</Td>
+                      <Td>{Number(p.last_offset).toLocaleString()}</Td>
+                      <Td>{p.last_updated ? relTime(p.last_updated) : "\u2014"}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Right column: live event log */}
+        <EventLog streamId={streamId} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
       </div>
     </div>
   );
@@ -337,12 +309,13 @@ function StreamConsole({
 
 function SendMessagePanel({
   streamId,
+  contentType,
   addEvent,
 }: {
   streamId: string;
+  contentType: string;
   addEvent: (type: SseEvent["type"], content: string) => void;
 }) {
-  const [contentType, setContentType] = useState("application/json");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState<{ status: number; statusText: string } | null>(null);
@@ -373,29 +346,22 @@ function SendMessagePanel({
         className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-zinc-400 hover:text-zinc-200"
       >
         <span>Send Message</span>
-        <span className="text-xs">{collapsed ? "\u25B6" : "\u25BC"}</span>
+        <span className="ml-2 font-mono text-xs text-zinc-600">{contentType}</span>
+        <span className="ml-auto text-xs">{collapsed ? "\u25B6" : "\u25BC"}</span>
       </button>
       {!collapsed && (
         <div className="border-t border-zinc-800 px-4 py-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <FormLabel>Content Type</FormLabel>
-              <select
-                value={contentType}
-                onChange={(e) => setContentType(e.target.value)}
-                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
-              >
-                <option value="application/json">application/json</option>
-                <option value="text/plain">text/plain</option>
-                <option value="application/octet-stream">application/octet-stream</option>
-              </select>
-            </div>
-
+          <div className="flex items-end gap-3">
             <div className="flex-1">
-              <FormLabel>Body</FormLabel>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
                 placeholder='{"hello":"world"}'
                 rows={2}
                 className="w-full resize-y rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
@@ -432,27 +398,54 @@ function SendMessagePanel({
 /* ─── Live Event Log ─── */
 
 function EventLog({
+  streamId,
   events,
   sseStatus,
   clearEvents,
+  addEvent,
 }: {
+  streamId: string;
   events: SseEvent[];
   sseStatus: string;
   clearEvents: () => void;
+  addEvent: (type: SseEvent["type"], content: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [fetching, setFetching] = useState(false);
+
+  const fetchEarlier = useCallback(async () => {
+    setFetching(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (await getStreamMessages({ data: streamId })) as any;
+      const msgs: unknown[] = result?.messages ?? [];
+      if (msgs.length === 0) {
+        addEvent("control", "No earlier messages found");
+      } else {
+        for (const msg of msgs) {
+          const display = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+          addEvent("data", display);
+        }
+        addEvent("control", `Loaded ${msgs.length} earlier message(s)`);
+      }
+    } catch (e) {
+      addEvent("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetching(false);
+    }
+  }, [streamId, addEvent]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+    <div className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)]">
       <div className="flex items-center justify-between px-4 py-3">
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-200"
-        >
-          <span className="text-xs">{collapsed ? "\u25B6" : "\u25BC"}</span>
-          Live Event Log
-        </button>
+        <span className="text-sm font-medium text-zinc-400">Live Event Log</span>
         <div className="flex items-center gap-3">
+          <button
+            onClick={fetchEarlier}
+            disabled={fetching}
+            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+          >
+            {fetching ? "Loading..." : "Fetch Earlier Messages"}
+          </button>
           {events.length > 0 && (
             <button
               onClick={clearEvents}
@@ -464,17 +457,15 @@ function EventLog({
           <SseStatusBadge status={sseStatus} />
         </div>
       </div>
-      {!collapsed && (
-        <div className="max-h-64 min-h-0 space-y-1 overflow-y-auto border-t border-zinc-800 p-2">
-          {events.length === 0 ? (
-            <div className="py-6 text-center text-sm text-zinc-500">
-              Waiting for events...
-            </div>
-          ) : (
-            events.map((evt, i) => <LogEntry key={i} event={evt} />)
-          )}
-        </div>
-      )}
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-zinc-800 p-2">
+        {events.length === 0 ? (
+          <div className="py-12 text-center text-sm text-zinc-500">
+            Waiting for events...
+          </div>
+        ) : (
+          events.map((evt, i) => <LogEntry key={i} event={evt} />)
+        )}
+      </div>
     </div>
   );
 }

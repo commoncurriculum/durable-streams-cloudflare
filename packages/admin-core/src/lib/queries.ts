@@ -1,11 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { getStats, getStreams, getHotStreams, getTimeseries, inspectStream } from "./analytics";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { getStats, getStreams, getHotStreams, getTimeseries } from "./analytics";
 
 export function useStats() {
   return useQuery({
     queryKey: ["stats"],
     queryFn: () => getStats(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -14,6 +15,7 @@ export function useStreams() {
     queryKey: ["streams"],
     queryFn: () => getStreams(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -22,6 +24,7 @@ export function useHotStreams() {
     queryKey: ["hotStreams"],
     queryFn: () => getHotStreams(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -30,14 +33,6 @@ export function useTimeseries() {
     queryKey: ["timeseries"],
     queryFn: () => getTimeseries(),
     refetchInterval: 5000,
-  });
-}
-
-export function useStreamInspect(streamId: string | undefined) {
-  return useQuery({
-    queryKey: ["stream", streamId],
-    queryFn: () => inspectStream({ data: streamId! }),
-    enabled: !!streamId,
-    refetchInterval: 2000,
+    placeholderData: keepPreviousData,
   });
 }
