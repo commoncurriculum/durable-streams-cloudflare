@@ -61,14 +61,14 @@ export async function handlePut(
   return ctx.state.blockConcurrencyWhile(async () => {
     const now = Date.now();
 
-    // 1. Extract and parse input
+    // 1. Extract raw input and validate content-length against original body
     const raw = await extractPutInput(streamId, request);
+    const bodyError = validateRequestBody(request, raw.bodyBytes.length);
+    if (bodyError) return bodyError;
+
+    // 2. Parse (normalizes body, e.g. empty JSON arrays become empty bytes)
     const parsed = parsePutInput(raw, now);
     if (parsed.kind === "error") return parsed.response;
-
-    // 2. Validate content-length and body size
-    const bodyError = validateRequestBody(request, parsed.value.bodyBytes.length);
-    if (bodyError) return bodyError;
 
     // 3. Validate against existing stream
     const existing = await ctx.getStream(streamId);
