@@ -106,6 +106,7 @@ export function bearerTokenAuth(): AuthorizeMutation<{ AUTH_TOKEN?: string }> {
  * Validates HS256 JWT from `env.READ_JWT_SECRET`, checks expiry,
  * and verifies `session_id` matches the requested stream path (`session:{id}`).
  */
+// #region docs-authorize-read
 export function jwtSessionAuth(): AuthorizeRead<{ READ_JWT_SECRET?: string }> {
   return async (request, streamId, env, timing) => {
     if (!env.READ_JWT_SECRET) return { ok: true, sessionId: "" };
@@ -128,3 +129,4 @@ export function jwtSessionAuth(): AuthorizeRead<{ READ_JWT_SECRET?: string }> {
     return { ok: true, sessionId: claims.sessionId };
   };
 }
+// #endregion docs-authorize-read

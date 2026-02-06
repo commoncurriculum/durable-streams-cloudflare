@@ -88,6 +88,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   config?: StreamWorkerConfig<E>,
 ): ExportedHandler<E> {
   return {
+    // #region docs-request-arrives
     async fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> {
       const url = new URL(request.url);
       const timingEnabled =
@@ -105,6 +106,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return corsError(404, "not found");
       }
 
+      // #region docs-extract-stream-id
       let streamId: string;
       try {
         streamId = decodeURIComponent(url.pathname.slice(STREAM_PREFIX.length));
@@ -114,11 +116,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       if (!streamId) {
         return corsError(400, "missing stream id");
       }
+      // #endregion docs-extract-stream-id
 
       const method = request.method.toUpperCase();
       const isStreamRead = method === "GET" || method === "HEAD";
       let sessionId: string | null = null;
 
+      // #region docs-authorize-request
       if (isStreamRead && config?.authorizeRead) {
         const readAuth = await config.authorizeRead(request, streamId, env, timing);
         if (!readAuth.ok) return wrapAuthError(readAuth.response);
@@ -127,6 +131,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const mutAuth = await config.authorizeMutation(request, streamId, env, timing);
         if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
       }
+      // #endregion docs-authorize-request
 
       const cacheMode = resolveCacheMode({
         envMode: env.CACHE_MODE,
@@ -148,6 +153,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         timing?.record("edge.cache", 0, "miss");
       }
 
+      // #region docs-route-to-do
       const stub = env.STREAMS.getByName(streamId);
 
       const doneOrigin = timing?.start("edge.origin");
@@ -159,6 +165,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         request,
       );
       doneOrigin?.();
+      // #endregion docs-route-to-do
       const responseHeaders = new Headers(response.headers);
       applyCorsHeaders(responseHeaders);
       const wrapped = new Response(response.body, {
@@ -173,5 +180,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       return attachTiming(wrapped, timing);
     },
+    // #endregion docs-request-arrives
   };
 }

@@ -33,41 +33,41 @@ Follow a PUT request from arrival to storage
 
 A client sends: `PUT /v1/stream/user-123`
 
-<<< @/../core/src/http/worker.ts#docs-request-arrives
+<<< @/../core/src/http/create_worker.ts#docs-request-arrives
 
-The worker parses the URL, determines if it's a stream read, and validates authorization.
+The `createStreamWorker` factory builds a Worker that parses the URL, runs pluggable auth callbacks, and forwards to the DO via typed RPC.
 
 ---
 
 # 2. Authorizing the Request
 
-<<< @/../core/src/http/worker.ts#docs-authorize-request
+<<< @/../core/src/http/create_worker.ts#docs-authorize-request
 
-Bearer token auth is checked if `AUTH_TOKEN` is configured. Returns `{ ok: true }` on success.
+Auth is pluggable: `authorizeMutation` and `authorizeRead` callbacks are provided at worker creation time. Built-in strategies include `bearerTokenAuth()` and `jwtSessionAuth()`.
 
 ---
 
 # 3. Extracting the Stream ID
 
-<<< @/../core/src/http/worker.ts#docs-extract-stream-id
+<<< @/../core/src/http/create_worker.ts#docs-extract-stream-id
 
-The stream ID is extracted from the path and validated.
+The stream ID is extracted from the URL path and validated.
 
 ---
 
 # 4. Routing to the Durable Object
 
-<<< @/../core/src/http/worker.ts#docs-route-to-do
+<<< @/../core/src/http/create_worker.ts#docs-route-to-do
 
-Every stream maps to exactly one Durable Object instance. The stream ID becomes a deterministic DO name via `idFromName()`.
+Every stream maps to exactly one Durable Object instance. The Worker calls `stub.routeStreamRequest()` via typed RPC — stream ID, cache mode, session ID, and timing flag are passed as typed parameters alongside the original `Request`.
 
 ---
 
 # 5. Inside the Durable Object
 
-<<< @/../core/src/http/durable_object.ts#docs-do-fetch
+<<< @/../core/src/http/durable_object.ts#docs-do-rpc
 
-The DO extracts the stream ID from the `X-Stream-Id` header (set by the worker) and builds a context object.
+`StreamDO` extends `DurableObject<StreamEnv>` and exposes `routeStreamRequest()` as an RPC method. It receives typed parameters directly from the Worker — no header extraction needed.
 
 ---
 
@@ -121,9 +121,9 @@ sequenceDiagram
     participant SQL as SQLite
 
     C->>W: PUT /v1/stream/abc
-    W->>W: authorizeRequest()
+    W->>W: authorizeMutation()
     W->>W: Extract stream ID
-    W->>DO: stub.fetch() with X-Stream-Id header
+    W->>DO: stub.routeStreamRequest(streamId, cacheMode, ...)
     DO->>DO: routeRequest() -> handlePut()
     DO->>DO: blockConcurrencyWhile
     DO->>SQL: Insert stream_meta, ops
@@ -145,9 +145,9 @@ Follow a GET request for historical data
 
 For reads, the worker can validate JWT tokens for session-based access:
 
-<<< @/../core/src/http/worker.ts#docs-authorize-read
+<<< @/../core/src/http/auth.ts#docs-authorize-read
 
-JWT claims include `session_id` and `exp` (expiry timestamp).
+JWT claims include `session_id` and `exp` (expiry timestamp). The built-in `jwtSessionAuth` strategy also validates that the session ID matches the requested stream path.
 
 ---
 
@@ -195,7 +195,7 @@ sequenceDiagram
     C->>W: GET /v1/stream/abc?offset=...
     W->>W: authorizeRead() (JWT)
     W->>W: resolveCacheMode()
-    W->>DO: Forward with X-Cache-Mode header
+    W->>DO: stub.routeStreamRequest(streamId, cacheMode, sessionId, ...)
     DO->>DO: handleGet()
     DO->>DO: resolveOffset()
     DO->>SQL: SELECT FROM ops
@@ -219,7 +219,7 @@ Follow a long-poll request from wait to data delivery
 
 <<< @/../core/src/http/handlers/realtime.ts#docs-long-poll-setup
 
-The handler validates the offset, resolves cache mode, and checks for closed streams at tail.
+The handler validates the offset, reads cache mode from context, and checks for closed streams at tail.
 
 ---
 
@@ -342,7 +342,7 @@ sequenceDiagram
     participant DO as StreamDO
 
     C->>W: GET /v1/stream/abc?live=sse
-    W->>DO: Forward request
+    W->>DO: stub.routeStreamRequest(streamId, cacheMode, ...)
     DO->>DO: handleSse()
     DO->>DO: Create TransformStream
     DO->>DO: Register client
