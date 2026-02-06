@@ -143,7 +143,7 @@ Follow a GET request for historical data
 
 # 1. Read Authorization (JWT)
 
-For reads, the worker can validate JWT tokens for session-based access:
+For reads, the worker can validate JWT tokens for stream-scoped access:
 
 <<< @/../core/src/http/auth.ts#docs-authorize-read
 
