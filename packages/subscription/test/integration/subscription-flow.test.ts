@@ -5,6 +5,7 @@ import {
   uniqueSessionId,
   uniqueStreamId,
   waitFor,
+  PROJECT_ID,
   type SubscriptionsClient,
   type CoreClient,
   type SubscribeResponse,
@@ -34,10 +35,10 @@ describe("subscription flow", () => {
 
     const body = (await res.json()) as SubscribeResponse;
     expect(body.isNewSession).toBe(true);
-    expect(body.sessionStreamPath).toBe(`/v1/stream/session:${sessionId}`);
+    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
 
     // Verify session stream exists in core
-    const coreRes = await core.getStreamHead(`session:${sessionId}`);
+    const coreRes = await core.getStreamHead(sessionId);
     expect(coreRes.ok).toBe(true);
   });
 
@@ -53,7 +54,7 @@ describe("subscription flow", () => {
 
     const session = (await sessionRes.json()) as SessionResponse;
     expect(session.sessionId).toBe(sessionId);
-    expect(session.sessionStreamPath).toBe(`/v1/stream/session:${sessionId}`);
+    expect(session.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
   });
 
   it("session stream receives fanout messages", async () => {
@@ -73,15 +74,15 @@ describe("subscription flow", () => {
 
     // Wait for fanout
     await waitFor(async () => {
-      const content = await core.readStreamText(`session:${sessionId}`);
+      const content = await core.readStreamText(sessionId);
       expect(content).toContain("hello world");
     });
   });
 
   it("multiple sessions receive same fanout message", async () => {
-    const session1 = uniqueSessionId("s1");
-    const session2 = uniqueSessionId("s2");
-    const session3 = uniqueSessionId("s3");
+    const session1 = uniqueSessionId();
+    const session2 = uniqueSessionId();
+    const session3 = uniqueSessionId();
     const streamId = uniqueStreamId();
 
     // Create source stream
@@ -99,9 +100,9 @@ describe("subscription flow", () => {
 
     // Wait for fanout to all sessions
     await waitFor(async () => {
-      const content1 = await core.readStreamText(`session:${session1}`);
-      const content2 = await core.readStreamText(`session:${session2}`);
-      const content3 = await core.readStreamText(`session:${session3}`);
+      const content1 = await core.readStreamText(session1);
+      const content2 = await core.readStreamText(session2);
+      const content3 = await core.readStreamText(session3);
 
       expect(content1).toContain("broadcast");
       expect(content2).toContain("broadcast");
@@ -123,7 +124,7 @@ describe("subscription flow", () => {
 
     // Wait for first message to arrive
     await waitFor(async () => {
-      const content = await core.readStreamText(`session:${sessionId}`);
+      const content = await core.readStreamText(sessionId);
       expect(content).toContain('"msg":1');
     });
 
@@ -137,7 +138,7 @@ describe("subscription flow", () => {
 
     // Wait a short time, then verify second message NOT received
     await waitFor(async () => {
-      const content = await core.readStreamText(`session:${sessionId}`);
+      const content = await core.readStreamText(sessionId);
       expect(content).toContain('"msg":1');
       expect(content).not.toContain('"msg":2');
     }, { timeout: 500 });
@@ -162,7 +163,7 @@ describe("publish flow", () => {
   });
 
   it("fans out to all subscribed sessions", async () => {
-    const sessions = Array.from({ length: 5 }, (_, i) => uniqueSessionId(`fan-${i}`));
+    const sessions = Array.from({ length: 5 }, () => uniqueSessionId());
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
@@ -180,7 +181,7 @@ describe("publish flow", () => {
     // Wait for fanout
     await waitFor(async () => {
       for (const session of sessions) {
-        const content = await core.readStreamText(`session:${session}`);
+        const content = await core.readStreamText(session);
         expect(content).toContain("fanout");
       }
     });
@@ -200,7 +201,7 @@ describe("publish flow", () => {
 
     // Wait for all messages
     await waitFor(async () => {
-      const content = await core.readStreamText(`session:${sessionId}`);
+      const content = await core.readStreamText(sessionId);
       expect(content).toContain('"seq":1');
       expect(content).toContain('"seq":2');
       expect(content).toContain('"seq":3');
@@ -230,7 +231,7 @@ describe("publish flow", () => {
     const subsUrl = process.env.INTEGRATION_TEST_SUBSCRIPTIONS_URL ?? "http://localhost:8788";
 
     // First publish
-    const res1 = await fetch(`${subsUrl}/v1/publish/${streamId}`, {
+    const res1 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
@@ -239,7 +240,7 @@ describe("publish flow", () => {
 
     // Wait for fanout
     await waitFor(async () => {
-      const content = await core.readStreamText(`session:${sessionId}`);
+      const content = await core.readStreamText(sessionId);
       expect(content).toContain("unique");
     });
   });
@@ -260,13 +261,13 @@ describe("publish flow", () => {
     };
 
     // Publish twice with same producer headers
-    const res1 = await fetch(`${subsUrl}/v1/publish/${streamId}`, {
+    const res1 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
     });
 
-    const res2 = await fetch(`${subsUrl}/v1/publish/${streamId}`, {
+    const res2 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
@@ -305,7 +306,7 @@ describe("session lifecycle", () => {
     await subs.subscribe(sessionId, streamId);
 
     // Verify exists
-    const beforeCore = await core.getStreamHead(`session:${sessionId}`);
+    const beforeCore = await core.getStreamHead(sessionId);
     expect(beforeCore.ok).toBe(true);
 
     const beforeSession = await subs.getSession(sessionId);
@@ -316,7 +317,7 @@ describe("session lifecycle", () => {
     expect(delRes.status).toBe(200);
 
     // Verify gone from core
-    const afterCore = await core.getStreamHead(`session:${sessionId}`);
+    const afterCore = await core.getStreamHead(sessionId);
     expect(afterCore.status).toBe(404);
 
     // Session endpoint should return 404

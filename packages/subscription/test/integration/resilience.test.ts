@@ -34,7 +34,7 @@ describe("resilience", () => {
       const sessionRes = await subs.getSession(sessionId);
       expect(sessionRes.status).toBe(200);
 
-      const coreRes = await core.getStreamHead(`session:${sessionId}`);
+      const coreRes = await core.getStreamHead(sessionId);
       expect(coreRes.ok).toBe(true);
 
       // Touch session
@@ -44,7 +44,7 @@ describe("resilience", () => {
       const sessionAfter = await subs.getSession(sessionId);
       expect(sessionAfter.status).toBe(200);
 
-      const coreAfter = await core.getStreamHead(`session:${sessionId}`);
+      const coreAfter = await core.getStreamHead(sessionId);
       expect(coreAfter.ok).toBe(true);
 
       // Delete
@@ -54,7 +54,7 @@ describe("resilience", () => {
       const sessionGone = await subs.getSession(sessionId);
       expect(sessionGone.status).toBe(404);
 
-      const coreGone = await core.getStreamHead(`session:${sessionId}`);
+      const coreGone = await core.getStreamHead(sessionId);
       expect(coreGone.status).toBe(404);
     });
   });
@@ -109,7 +109,7 @@ describe("resilience", () => {
 
       // Wait for all messages to arrive
       await waitFor(async () => {
-        const content = await core.readStreamText(`session:${sessionId}`);
+        const content = await core.readStreamText(sessionId);
         for (let i = 0; i < 10; i++) {
           expect(content).toContain(`"concurrent":${i}`);
         }
@@ -136,7 +136,7 @@ describe("resilience", () => {
       // Wait for all sessions to receive
       await waitFor(async () => {
         for (const sessionId of sessions) {
-          const content = await core.readStreamText(`session:${sessionId}`);
+          const content = await core.readStreamText(sessionId);
           expect(content).toContain("multi");
         }
       });
@@ -156,7 +156,7 @@ describe("resilience", () => {
       // Publish and wait for fanout
       await subs.publish(stream1, JSON.stringify({ msg: 1 }));
       await waitFor(async () => {
-        const content = await core.readStreamText(`session:${sessionId}`);
+        const content = await core.readStreamText(sessionId);
         expect(content).toContain('"msg":1');
       });
 
@@ -168,7 +168,7 @@ describe("resilience", () => {
       // Publish to second stream and wait for fanout
       await subs.publish(stream2, JSON.stringify({ msg: 2 }));
       await waitFor(async () => {
-        const content = await core.readStreamText(`session:${sessionId}`);
+        const content = await core.readStreamText(sessionId);
         expect(content).toContain('"msg":2');
       });
 

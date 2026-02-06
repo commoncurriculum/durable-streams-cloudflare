@@ -32,7 +32,7 @@ describe("cleanup integration", () => {
     await subs.subscribe(sessionId, streamId);
 
     // Session stream should exist in core
-    const coreRes = await core.getStreamHead(`session:${sessionId}`);
+    const coreRes = await core.getStreamHead(sessionId);
     expect(coreRes.ok).toBe(true);
   });
 
@@ -44,14 +44,14 @@ describe("cleanup integration", () => {
     await subs.subscribe(sessionId, streamId);
 
     // Verify stream exists
-    const beforeRes = await core.getStreamHead(`session:${sessionId}`);
+    const beforeRes = await core.getStreamHead(sessionId);
     expect(beforeRes.ok).toBe(true);
 
     // Delete session
     await subs.deleteSession(sessionId);
 
     // Verify stream is deleted
-    const afterRes = await core.getStreamHead(`session:${sessionId}`);
+    const afterRes = await core.getStreamHead(sessionId);
     expect(afterRes.status).toBe(404);
   });
 
