@@ -43,7 +43,7 @@ The `createStreamWorker` factory builds a Worker that parses the URL, runs plugg
 
 <<< @/../core/src/http/create_worker.ts#docs-authorize-request
 
-Auth is pluggable: `authorizeMutation` and `authorizeRead` callbacks are provided at worker creation time. Built-in strategies include `bearerTokenAuth()` and `jwtSessionAuth()`.
+Auth is pluggable: `authorizeMutation` and `authorizeRead` callbacks are provided at worker creation time. Built-in strategies include `bearerTokenAuth()` and `jwtStreamAuth()`.
 
 ---
 
@@ -59,7 +59,7 @@ The stream ID is extracted from the URL path and validated.
 
 <<< @/../core/src/http/create_worker.ts#docs-route-to-do
 
-Every stream maps to exactly one Durable Object instance. The Worker calls `stub.routeStreamRequest()` via typed RPC — stream ID, cache mode, session ID, and timing flag are passed as typed parameters alongside the original `Request`.
+Every stream maps to exactly one Durable Object instance. The Worker calls `stub.routeStreamRequest()` via typed RPC — stream ID, cache mode, auth stream ID, and timing flag are passed as typed parameters alongside the original `Request`.
 
 ---
 
@@ -147,7 +147,7 @@ For reads, the worker can validate JWT tokens for session-based access:
 
 <<< @/../core/src/http/auth.ts#docs-authorize-read
 
-JWT claims include `session_id` and `exp` (expiry timestamp). The built-in `jwtSessionAuth` strategy also validates that the session ID matches the requested stream path.
+JWT claims include `stream_id` and `exp` (expiry timestamp). The built-in `jwtStreamAuth` strategy also validates that the stream ID matches the requested stream.
 
 ---
 
@@ -195,7 +195,7 @@ sequenceDiagram
     C->>W: GET /v1/stream/abc?offset=...
     W->>W: authorizeRead() (JWT)
     W->>W: resolveCacheMode()
-    W->>DO: stub.routeStreamRequest(streamId, cacheMode, sessionId, ...)
+    W->>DO: stub.routeStreamRequest(streamId, cacheMode, authStreamId, ...)
     DO->>DO: handleGet()
     DO->>DO: resolveOffset()
     DO->>SQL: SELECT FROM ops

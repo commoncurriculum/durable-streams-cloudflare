@@ -43,7 +43,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
   async routeStreamRequest(
     streamId: string,
     cacheMode: CacheMode,
-    sessionId: string | null,
+    authStreamId: string | null,
     timingEnabled: boolean,
     request: Request,
   ): Promise<Response> {
@@ -74,7 +74,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
       env: this.env,
       storage: this.storage,
       cacheMode,
-      sessionId,
+      streamId: authStreamId,
       timing,
       longPoll: this.longPoll,
       sseState: this.sseState,

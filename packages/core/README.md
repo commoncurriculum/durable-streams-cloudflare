@@ -107,19 +107,19 @@ export { StreamDO };
 ```ts
 import {
   createStreamWorker, StreamDO,
-  bearerTokenAuth, jwtSessionAuth,
+  bearerTokenAuth, jwtStreamAuth,
 } from "@durable-streams-cloudflare/core";
 
 export default createStreamWorker({
   authorizeMutation: bearerTokenAuth(),
-  authorizeRead: jwtSessionAuth(),
+  authorizeRead: jwtStreamAuth(),
 });
 export { StreamDO };
 ```
 
 **`bearerTokenAuth()`** — Checks `env.AUTH_TOKEN` for mutations (PUT/POST/DELETE). If `AUTH_TOKEN` is not set, all mutations are allowed. Clients send `Authorization: Bearer <token>`.
 
-**`jwtSessionAuth()`** — Validates an HS256 JWT for reads (GET/HEAD) using `env.READ_JWT_SECRET`. The JWT payload must contain `session_id` and `exp` claims. The `session_id` is scoped to the stream: requests for `session:{id}` require a JWT with a matching `session_id`. If `READ_JWT_SECRET` is not set, all reads are allowed.
+**`jwtStreamAuth()`** — Validates an HS256 JWT for reads (GET/HEAD) using `env.READ_JWT_SECRET`. The JWT payload must contain `stream_id` and `exp` claims. The `stream_id` must match the requested stream ID. If `READ_JWT_SECRET` is not set, all reads are allowed.
 
 Set secrets:
 
@@ -162,7 +162,7 @@ type AuthorizeRead<E> = (
 ) => ReadAuthResult | Promise<ReadAuthResult>;
 
 type AuthResult = { ok: true } | { ok: false; response: Response };
-type ReadAuthResult = { ok: true; sessionId: string } | { ok: false; response: Response };
+type ReadAuthResult = { ok: true; streamId: string } | { ok: false; response: Response };
 ```
 
 ## API
@@ -188,7 +188,7 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUTH_TOKEN` | *(none)* | Bearer token for mutation auth (used by `bearerTokenAuth()`) |
-| `READ_JWT_SECRET` | *(none)* | HS256 secret for JWT read auth (used by `jwtSessionAuth()`) |
+| `READ_JWT_SECRET` | *(none)* | HS256 secret for JWT read auth (used by `jwtStreamAuth()`) |
 | `ADMIN_TOKEN` | *(none)* | Bearer token for admin introspection endpoint |
 | `CACHE_MODE` | `private` | Cache mode: `shared` (CDN cacheable) or `private` |
 | `DEBUG_TIMING` | `0` | Set to `1` to emit `Server-Timing` headers |
@@ -232,7 +232,7 @@ Read Path
 
 ## See Also
 
-- [`@durable-streams-cloudflare/subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/subscription) — pub/sub fan-out layer
+- [`@durable-streams-cloudflare/subscription`](../subscription/README.md) — pub/sub fan-out layer
 - [Durable Streams protocol](https://github.com/electric-sql/durable-streams) — upstream spec and test suite
 
 ## License

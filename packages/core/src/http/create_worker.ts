@@ -144,13 +144,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       const method = request.method.toUpperCase();
       const isStreamRead = method === "GET" || method === "HEAD";
-      let sessionId: string | null = null;
+      let authStreamId: string | null = null;
 
       // #region docs-authorize-request
       if (isStreamRead && config?.authorizeRead) {
         const readAuth = await config.authorizeRead(request, streamId, env, timing);
         if (!readAuth.ok) return wrapAuthError(readAuth.response);
-        sessionId = readAuth.sessionId;
+        authStreamId = readAuth.streamId;
       } else if (!isStreamRead && config?.authorizeMutation) {
         const mutAuth = await config.authorizeMutation(request, streamId, env, timing);
         if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
@@ -184,7 +184,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const response = await stub.routeStreamRequest(
         streamId,
         cacheMode,
-        sessionId,
+        authStreamId,
         timingEnabled,
         request,
       );

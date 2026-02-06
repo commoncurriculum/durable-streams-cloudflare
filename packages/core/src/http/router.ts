@@ -32,7 +32,7 @@ export type StreamContext = {
   env: StreamEnv;
   storage: StreamStorage;
   cacheMode: CacheMode;
-  sessionId: string | null;
+  streamId: string | null;
   timing?: Timing | null;
   longPoll: LongPollQueue;
   sseState: SseState;

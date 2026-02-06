@@ -6,7 +6,7 @@ import type { Timing } from "../protocol/timing";
 
 export type AuthResult = { ok: true } | { ok: false; response: Response };
 
-export type ReadAuthResult = { ok: true; sessionId: string } | { ok: false; response: Response };
+export type ReadAuthResult = { ok: true; streamId: string } | { ok: false; response: Response };
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -44,10 +44,10 @@ function base64UrlDecode(input: string): Uint8Array {
   return bytes;
 }
 
-async function verifySessionJwt(
+async function verifyStreamJwt(
   token: string,
   secret: string,
-): Promise<{ sessionId: string; exp: number } | null> {
+): Promise<{ streamId: string; exp: number } | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [headerPart, payloadPart, signaturePart] = parts;
@@ -56,8 +56,8 @@ async function verifySessionJwt(
     const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
     if (header.alg !== "HS256") return null;
     const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
-    const payload = JSON.parse(payloadJson) as { session_id?: string; exp?: number };
-    if (typeof payload.session_id !== "string" || payload.session_id.length === 0) return null;
+    const payload = JSON.parse(payloadJson) as { stream_id?: string; exp?: number };
+    if (typeof payload.stream_id !== "string" || payload.stream_id.length === 0) return null;
     if (typeof payload.exp !== "number") return null;
 
     const key = await crypto.subtle.importKey(
@@ -74,7 +74,7 @@ async function verifySessionJwt(
       new TextEncoder().encode(`${headerPart}.${payloadPart}`),
     );
     if (!ok) return null;
-    return { sessionId: payload.session_id, exp: payload.exp };
+    return { streamId: payload.stream_id, exp: payload.exp };
   } catch {
     return null;
   }
@@ -102,31 +102,30 @@ export function bearerTokenAuth(): AuthorizeMutation<{ AUTH_TOKEN?: string }> {
 }
 
 /**
- * JWT session auth for reads.
+ * JWT stream auth for reads.
  * Validates HS256 JWT from `env.READ_JWT_SECRET`, checks expiry,
- * and verifies `session_id` matches the requested stream path (`session:{id}`).
+ * and verifies `stream_id` matches the requested stream ID.
  */
 // #region docs-authorize-read
-export function jwtSessionAuth(): AuthorizeRead<{ READ_JWT_SECRET?: string }> {
+export function jwtStreamAuth(): AuthorizeRead<{ READ_JWT_SECRET?: string }> {
   return async (request, streamId, env, timing) => {
-    if (!env.READ_JWT_SECRET) return { ok: true, sessionId: "" };
+    if (!env.READ_JWT_SECRET) return { ok: true, streamId: "" };
     const doneAuth = timing?.start("edge.read_auth");
     const token = extractBearerToken(request);
     doneAuth?.();
     if (!token) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-    const claims = await verifySessionJwt(token, env.READ_JWT_SECRET);
+    const claims = await verifyStreamJwt(token, env.READ_JWT_SECRET);
     if (!claims) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
     if (Date.now() >= claims.exp * 1000) {
       return { ok: false, response: new Response("token expired", { status: 401 }) };
     }
 
-    // Stream-scoped validation: session_id must match the requested stream
-    const expectedStream = `session:${claims.sessionId}`;
-    if (streamId !== expectedStream) {
+    // Stream-scoped validation: stream_id must match the requested stream
+    if (streamId !== claims.streamId) {
       return { ok: false, response: new Response("forbidden", { status: 403 }) };
     }
 
-    return { ok: true, sessionId: claims.sessionId };
+    return { ok: true, streamId: claims.streamId };
   };
 }
 // #endregion docs-authorize-read
