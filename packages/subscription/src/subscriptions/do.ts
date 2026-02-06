@@ -8,14 +8,15 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { fetchFromCore, type CoreClientEnv } from "../client";
 import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
 import { bufferToBase64 } from "../util/base64";
 import { FANOUT_QUEUE_THRESHOLD, FANOUT_QUEUE_BATCH_SIZE } from "../constants";
+import type { CoreService } from "../client";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
-export interface SubscriptionDOEnv extends CoreClientEnv {
+export interface SubscriptionDOEnv {
+  CORE: CoreService;
   METRICS?: AnalyticsEngineDataset;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
@@ -98,14 +99,12 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
 
     // 1. Write to source stream in core (project-scoped)
-    const writeResponse = await fetchFromCore(
-      this.env,
-      `/v1/${projectId}/stream/${streamId}`,
-      {
+    const writeResponse = await this.env.CORE.fetch(
+      new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(streamId)}`, {
         method: "POST",
         headers,
         body: params.payload,
-      },
+      }),
     );
 
     // #endregion synced-to-docs:publish-to-source

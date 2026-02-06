@@ -1,4 +1,4 @@
-import { fetchFromCore, type CoreClientEnv } from "../client";
+import type { CoreService } from "../client";
 import { FANOUT_BATCH_SIZE } from "../constants";
 import type { FanoutResult } from "./types";
 
@@ -10,7 +10,7 @@ import type { FanoutResult } from "./types";
  * can decide how to handle cleanup.
  */
 export async function fanoutToSubscribers(
-  env: CoreClientEnv,
+  env: { CORE: CoreService },
   projectId: string,
   sessionIds: string[],
   payload: ArrayBuffer,
@@ -26,16 +26,17 @@ export async function fanoutToSubscribers(
     const batch = sessionIds.slice(i, i + FANOUT_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((sessionId) => {
-        const path = `/v1/${projectId}/stream/${sessionId}`;
         const headers: Record<string, string> = {
           "Content-Type": contentType,
           ...producerHeaders,
         };
-        return fetchFromCore(env, path, {
-          method: "POST",
-          headers,
-          body: payload,
-        });
+        return env.CORE.fetch(
+          new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, {
+            method: "POST",
+            headers,
+            body: payload,
+          }),
+        );
       }),
     );
     results.push(...batchResults);

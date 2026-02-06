@@ -1,13 +1,7 @@
-/** Cloudflare service binding with fetch-like interface */
-export interface ServiceBinding {
+export interface CoreService {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  inspectStream(doKey: string): Promise<unknown>;
+  routeRequest(doKey: string, request: Request): Promise<Response>;
 }
-
-export type AdminEnv = {
-  CORE: ServiceBinding;
-  ADMIN_TOKEN?: string;
-  CF_ACCOUNT_ID?: string;
-  CF_API_TOKEN?: string;
-};
 
 export type AnalyticsRow = Record<string, string | number | null>;

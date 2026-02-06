@@ -1,10 +1,82 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { createSubscriptionWorker } from "./create_worker";
 import { projectKeyAuth } from "./auth";
 import { SubscriptionDO } from "../subscriptions/do";
+import { getSession, touchSession, deleteSession } from "../session";
+import { subscribe } from "../subscriptions/subscribe";
+import { unsubscribe } from "../subscriptions/unsubscribe";
+import { publish } from "../subscriptions/publish";
+import type { AppEnv } from "../env";
+import type { FanoutQueueMessage } from "../subscriptions/types";
+import type {
+  SessionInfo,
+  TouchSessionResult,
+  DeleteSessionResult,
+  SubscribeResult,
+  UnsubscribeResult,
+  PublishResult,
+} from "../subscriptions/types";
 
-export default createSubscriptionWorker({ authorize: projectKeyAuth() });
+export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
+  #worker = createSubscriptionWorker({ authorize: projectKeyAuth() });
 
-export { SubscriptionDO, createSubscriptionWorker };
+  async fetch(request: Request): Promise<Response> {
+    return this.#worker.fetch(request, this.env, this.ctx);
+  }
+
+  async queue(batch: MessageBatch<FanoutQueueMessage>): Promise<void> {
+    return this.#worker.queue!(batch, this.env, this.ctx);
+  }
+
+  async scheduled(controller: ScheduledController): Promise<void> {
+    return this.#worker.scheduled!(
+      controller as unknown as ScheduledEvent,
+      this.env,
+      this.ctx,
+    );
+  }
+
+  // RPC methods for admin dashboard
+  async adminGetSession(projectId: string, sessionId: string): Promise<SessionInfo | null> {
+    return getSession(this.env, projectId, sessionId);
+  }
+
+  async adminSubscribe(
+    projectId: string,
+    streamId: string,
+    sessionId: string,
+    contentType?: string,
+  ): Promise<SubscribeResult> {
+    return subscribe(this.env, projectId, streamId, sessionId, contentType);
+  }
+
+  async adminUnsubscribe(
+    projectId: string,
+    streamId: string,
+    sessionId: string,
+  ): Promise<UnsubscribeResult> {
+    return unsubscribe(this.env, projectId, streamId, sessionId);
+  }
+
+  async adminPublish(
+    projectId: string,
+    streamId: string,
+    payload: ArrayBuffer,
+    contentType: string,
+  ): Promise<PublishResult> {
+    return publish(this.env, projectId, streamId, { payload, contentType });
+  }
+
+  async adminTouchSession(projectId: string, sessionId: string): Promise<TouchSessionResult> {
+    return touchSession(this.env, projectId, sessionId);
+  }
+
+  async adminDeleteSession(projectId: string, sessionId: string): Promise<DeleteSessionResult> {
+    return deleteSession(this.env, projectId, sessionId);
+  }
+}
+
+export { SubscriptionWorker, SubscriptionDO, createSubscriptionWorker };
 export { bearerTokenAuth, projectKeyAuth } from "./auth";
 export type { SubscriptionAuthResult, SubscriptionRoute, AuthorizeSubscription } from "./auth";
 export type { SubscriptionWorkerConfig } from "./create_worker";

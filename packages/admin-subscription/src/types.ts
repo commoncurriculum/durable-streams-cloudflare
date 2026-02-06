@@ -1,14 +1,16 @@
-/** Cloudflare service binding with fetch-like interface */
-export interface ServiceBinding {
+export interface CoreService {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  routeRequest(doKey: string, request: Request): Promise<Response>;
 }
 
-export type AdminSubscriptionEnv = {
-  SUBSCRIPTION: ServiceBinding;
-  CORE: ServiceBinding;
-  CF_ACCOUNT_ID?: string;
-  CF_API_TOKEN?: string;
-  ADMIN_TOKEN?: string;
-};
+export interface SubscriptionService {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+  adminGetSession(projectId: string, sessionId: string): Promise<unknown>;
+  adminSubscribe(projectId: string, streamId: string, sessionId: string, contentType?: string): Promise<unknown>;
+  adminUnsubscribe(projectId: string, streamId: string, sessionId: string): Promise<unknown>;
+  adminPublish(projectId: string, streamId: string, payload: ArrayBuffer, contentType: string): Promise<unknown>;
+  adminTouchSession(projectId: string, sessionId: string): Promise<unknown>;
+  adminDeleteSession(projectId: string, sessionId: string): Promise<unknown>;
+}
 
 export type AnalyticsRow = Record<string, string | number | null>;

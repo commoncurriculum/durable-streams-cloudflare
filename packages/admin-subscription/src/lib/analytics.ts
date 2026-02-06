@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import type { AnalyticsRow, ServiceBinding } from "../types";
+import type { AnalyticsRow, SubscriptionService } from "../types";
 
 const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
@@ -168,31 +168,10 @@ export const getErrors = createServerFn({ method: "GET" }).handler(
 );
 
 export const inspectSession = createServerFn({ method: "GET" })
-  .inputValidator((data: string) => data)
-  .handler(async ({ data: sessionId }) => {
-    const subscription = (env as Record<string, unknown>).SUBSCRIPTION as ServiceBinding;
-    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
-      | string
-      | undefined;
-
-    const headers: Record<string, string> = {};
-    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
-
-    const response = await subscription.fetch(
-      new Request(
-        `https://internal/v1/session/${encodeURIComponent(sessionId)}`,
-        { headers },
-      ),
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(
-        `Session inspect failed (${response.status}): ${text}`,
-      );
-    }
-
-    return response.json();
+  .inputValidator((data: { sessionId: string; projectId: string }) => data)
+  .handler(async ({ data: { sessionId, projectId } }) => {
+    const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
+    return subscription.adminGetSession(projectId, sessionId);
   });
 
 export const inspectStreamSubscribers = createServerFn({ method: "GET" })
@@ -205,6 +184,7 @@ export const sendTestAction = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       action: "subscribe" | "unsubscribe" | "publish" | "touch" | "delete";
+      projectId: string;
       sessionId?: string;
       streamId?: string;
       contentType?: string;
@@ -212,92 +192,45 @@ export const sendTestAction = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const subscription = (env as Record<string, unknown>).SUBSCRIPTION as ServiceBinding;
-    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
-      | string
-      | undefined;
-
-    const authHeaders: Record<string, string> = {};
-    if (adminToken) authHeaders["Authorization"] = `Bearer ${adminToken}`;
-
-    let request: Request;
+    const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
 
     switch (data.action) {
       case "subscribe": {
         if (!data.sessionId || !data.streamId) {
           throw new Error("subscribe requires sessionId and streamId");
         }
-        request = new Request("https://internal/v1/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify({
-            sessionId: data.sessionId,
-            streamId: data.streamId,
-          }),
-        });
-        break;
+        const result = await subscription.adminSubscribe(data.projectId, data.streamId, data.sessionId);
+        return { status: 200, statusText: "OK", headers: {}, body: result };
       }
       case "unsubscribe": {
         if (!data.sessionId || !data.streamId) {
           throw new Error("unsubscribe requires sessionId and streamId");
         }
-        request = new Request("https://internal/v1/unsubscribe", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify({
-            sessionId: data.sessionId,
-            streamId: data.streamId,
-          }),
-        });
-        break;
+        const result = await subscription.adminUnsubscribe(data.projectId, data.streamId, data.sessionId);
+        return { status: 200, statusText: "OK", headers: {}, body: result };
       }
       case "publish": {
         if (!data.streamId) {
           throw new Error("publish requires streamId");
         }
         const contentType = data.contentType ?? "application/json";
-        request = new Request(
-          `https://internal/v1/publish/${encodeURIComponent(data.streamId)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": contentType, ...authHeaders },
-            body: data.body ?? "",
-          },
-        );
-        break;
+        const payload = new TextEncoder().encode(data.body ?? "");
+        const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType);
+        return { status: 200, statusText: "OK", headers: {}, body: result };
       }
       case "touch": {
         if (!data.sessionId) {
           throw new Error("touch requires sessionId");
         }
-        request = new Request(
-          `https://internal/v1/session/${encodeURIComponent(data.sessionId)}/touch`,
-          { method: "POST", headers: authHeaders },
-        );
-        break;
+        const result = await subscription.adminTouchSession(data.projectId, data.sessionId);
+        return { status: 200, statusText: "OK", headers: {}, body: result };
       }
       case "delete": {
         if (!data.sessionId) {
           throw new Error("delete requires sessionId");
         }
-        request = new Request(
-          `https://internal/v1/session/${encodeURIComponent(data.sessionId)}`,
-          { method: "DELETE", headers: authHeaders },
-        );
-        break;
+        const result = await subscription.adminDeleteSession(data.projectId, data.sessionId);
+        return { status: 200, statusText: "OK", headers: {}, body: result };
       }
     }
-
-    const response = await subscription.fetch(request);
-
-    const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      responseHeaders[key] = value;
-    });
-
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    };
   });

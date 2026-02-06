@@ -15,12 +15,10 @@ vi.mock("../src/metrics", () => ({
   })),
 }));
 
-// Mock fetch for core requests (fetchFromCore falls back to global fetch)
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
 const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
+const mockFetch = vi.fn();
 
 describe("cleanup", () => {
   beforeEach(() => {
@@ -33,7 +31,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         // No ACCOUNT_ID or API_TOKEN
       };
@@ -52,7 +50,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -91,13 +89,13 @@ describe("cleanup", () => {
         get: vi.fn().mockReturnValue(mockDoStub),
       };
 
-      // Mock core fetch for session deletion
+      // Mock core RPC for session deletion
       mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -114,11 +112,11 @@ describe("cleanup", () => {
       expect(mockRemoveSubscriber).toHaveBeenCalledTimes(2);
       expect(mockRemoveSubscriber).toHaveBeenCalledWith(SESSION_ID);
 
-      // Verify core was called to delete session stream (project-scoped path)
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`),
-        expect.objectContaining({ method: "DELETE" }),
-      );
+      // Verify core was called via fetch to delete session stream
+      expect(mockFetch).toHaveBeenCalledWith(expect.any(Request));
+      const calledRequest = mockFetch.mock.calls[0][0] as Request;
+      expect(calledRequest.url).toContain(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
+      expect(calledRequest.method).toBe("DELETE");
     });
 
     it("should handle DO RPC failures gracefully", async () => {
@@ -144,13 +142,13 @@ describe("cleanup", () => {
         get: vi.fn().mockReturnValue(mockDoStub),
       };
 
-      // Mock core fetch
+      // Mock core RPC
       mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -175,13 +173,13 @@ describe("cleanup", () => {
 
       vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
-      // Mock core fetch to fail
+      // Mock core RPC to fail
       mockFetch.mockResolvedValue(new Response(null, { status: 500 }));
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -205,13 +203,13 @@ describe("cleanup", () => {
 
       vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
-      // Mock core fetch to return 404
+      // Mock core RPC to return 404
       mockFetch.mockResolvedValue(new Response(null, { status: 404 }));
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -230,7 +228,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -256,7 +254,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
@@ -296,13 +294,13 @@ describe("cleanup", () => {
         get: vi.fn().mockReturnValue(mockDoStub),
       };
 
-      // Mock core fetch
+      // Mock core RPC
       mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE_URL: "http://localhost:8787",
+        CORE: { fetch: mockFetch },
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",

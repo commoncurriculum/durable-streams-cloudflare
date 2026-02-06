@@ -11,7 +11,6 @@
  */
 // #endregion synced-to-docs:cleanup-overview
 
-import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
 import {
   getExpiredSessions,
@@ -85,10 +84,8 @@ async function cleanupSession(
 
   // Delete session stream from core (project-scoped)
   try {
-    const response = await fetchFromCore(
-      env,
-      `/v1/${session.project}/stream/${session.sessionId}`,
-      { method: "DELETE" },
+    const response = await env.CORE.fetch(
+      new Request(`https://internal/v1/${encodeURIComponent(session.project)}/stream/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" }),
     );
 
     if (response.ok || response.status === 404) {

@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
@@ -123,24 +123,14 @@ export { SubscriptionDO };
 }
 
 function subscriptionWranglerToml(opts: {
-  coreUrl: string;
   accountId: string;
-  serviceBinding: boolean;
 }): string {
-  const sb = opts.serviceBinding
-    ? `
-[[services]]
-binding = "CORE"
-service = "durable-streams"
-`
-    : "";
-  const coreUrlVar = opts.serviceBinding ? "" : `CORE_URL = "${opts.coreUrl}"\n`;
   return `name = "durable-streams-subscriptions"
 main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
 [vars]
-${coreUrlVar}ACCOUNT_ID = "${opts.accountId}"
+ACCOUNT_ID = "${opts.accountId}"
 SESSION_TTL_SECONDS = "1800"
 ANALYTICS_DATASET = "subscriptions_metrics"
 
@@ -154,7 +144,11 @@ new_sqlite_classes = ["SubscriptionDO"]
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "subscriptions_metrics"
-${sb}
+
+[[services]]
+binding = "CORE"
+service = "durable-streams"
+
 [triggers]
 crons = ["*/5 * * * *"]
 `;
@@ -354,27 +348,6 @@ export async function setup() {
     }
   }
 
-  // ADMIN_TOKEN — for backend worker auth (core/subscription /admin endpoints)
-  let adminToken = "";
-  if (includeAdminCore || includeAdminSubscription) {
-    const adminChoice = await p.select({
-      message: "ADMIN_TOKEN (authenticates admin dashboard → backend worker API calls)",
-      options: [
-        { value: "generate", label: "Auto-generate a secure token" },
-        { value: "custom", label: "Enter my own token" },
-      ],
-    });
-    if (p.isCancel(adminChoice)) cancelled();
-
-    if (adminChoice === "generate") {
-      adminToken = generateToken();
-    } else {
-      const input = await p.text({ message: "Enter ADMIN_TOKEN:", validate: (v) => v.length < 8 ? "Token must be at least 8 characters" : undefined });
-      if (p.isCancel(input)) cancelled();
-      adminToken = input;
-    }
-  }
-
   // Cloudflare API token (for subscription cron + admin dashboards)
   let cfApiToken = "";
   if (includeSubscription || includeAdminCore || includeAdminSubscription) {
@@ -396,17 +369,6 @@ export async function setup() {
     });
     if (p.isCancel(input)) cancelled();
     accountId = input;
-  }
-
-  // Service binding
-  let serviceBinding = false;
-  if (includeSubscription) {
-    const result = await p.confirm({
-      message: "Use service binding from subscription to core (recommended)?",
-      initialValue: true,
-    });
-    if (p.isCancel(result)) cancelled();
-    serviceBinding = result;
   }
 
   // -----------------------------------------------------------------------
@@ -432,11 +394,7 @@ export async function setup() {
       { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs(enableAuth) },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
-        content: subscriptionWranglerToml({
-          coreUrl: "__CORE_URL_PLACEHOLDER__",
-          accountId,
-          serviceBinding,
-        }),
+        content: subscriptionWranglerToml({ accountId }),
       },
     );
   }
@@ -534,10 +492,6 @@ export async function setup() {
   if (enableAuth && readJwtSecret) {
     putSecret("READ_JWT_SECRET", readJwtSecret, coreConfig);
   }
-  if (adminToken) {
-    putSecret("ADMIN_TOKEN", adminToken, coreConfig);
-  }
-
   const coreDeploy = runMayFail(`npx wrangler deploy --config ${coreConfig}`);
   if (!coreDeploy.ok) {
     coreSpinner.stop("Core deploy failed");
@@ -559,13 +513,6 @@ export async function setup() {
     subSpinner.start("Deploying subscription worker");
 
     const subConfig = join(workersDir, "subscriptions", "wrangler.toml");
-
-    // Patch CORE_URL placeholder with real URL (only needed without service binding)
-    if (!serviceBinding && coreUrl) {
-      let toml = readFileSync(subConfig, "utf-8");
-      toml = toml.replace("__CORE_URL_PLACEHOLDER__", coreUrl);
-      writeFileSync(subConfig, toml, "utf-8");
-    }
 
     if (enableAuth && authToken) {
       putSecret("AUTH_TOKEN", authToken, subConfig);
@@ -597,7 +544,6 @@ export async function setup() {
 
     const adminConfig = join(workersDir, "admin-core", "wrangler.toml");
 
-    if (adminToken) putSecret("ADMIN_TOKEN", adminToken, adminConfig);
     if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminConfig);
     if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminConfig);
 
@@ -624,7 +570,6 @@ export async function setup() {
 
     const adminSubConfig = join(workersDir, "admin-subscription", "wrangler.toml");
 
-    if (adminToken) putSecret("ADMIN_TOKEN", adminToken, adminSubConfig);
     if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminSubConfig);
     if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminSubConfig);
 
@@ -659,12 +604,11 @@ export async function setup() {
     lines.push("  (check your Cloudflare dashboard for URLs)");
   }
 
-  if (enableAuth || adminToken) {
+  if (enableAuth) {
     lines.push("");
     lines.push("Secrets (save these — they won't be shown again!):");
     if (authToken) lines.push(`  AUTH_TOKEN:         ${authToken}`);
     if (readJwtSecret) lines.push(`  READ_JWT_SECRET:    ${readJwtSecret}`);
-    if (adminToken) lines.push(`  ADMIN_TOKEN:        ${adminToken}`);
   }
 
   if (deployedUrls.adminCore || deployedUrls.adminSubscription) {

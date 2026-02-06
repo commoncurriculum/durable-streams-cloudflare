@@ -3,7 +3,6 @@ main = "src/http/worker.ts"
 compatibility_date = "2025-02-02"
 
 [vars]
-CORE_URL = "http://localhost:8787"
 SESSION_TTL_SECONDS = "1800"
 # Required for Analytics Engine SQL queries (cleanup)
 # ACCOUNT_ID = "<your-cloudflare-account-id>"
@@ -30,10 +29,10 @@ dataset = "subscriptions_metrics"
 # binding = "PROJECT_KEYS"
 # id = "<your-kv-namespace-id>"
 
-# Service binding to core worker (recommended for production)
-# [[services]]
-# binding = "CORE"
-# service = "durable-streams"
+# Service binding to core worker (required)
+[[services]]
+binding = "CORE"
+service = "durable-streams"
 
 # Queue-based fanout for hot topics (uncomment to enable)
 # Without this, fanout is always inline — safe for local dev.

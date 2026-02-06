@@ -297,11 +297,9 @@ Runs every 5 minutes via cron. Records cleanup metrics including expired session
 
 ---
 
-# 6. Core Client
+# 6. Core Service Binding
 
-<<< @/../src/client.ts#synced-to-docs:fetch-from-core ts
-
-`fetchFromCore` prefers the `CORE` service binding (no network hop, no auth needed). Falls back to HTTP with bearer auth if the binding isn't available.
+The subscription worker communicates with core via a Cloudflare service binding (`env.CORE`). All calls go through `env.CORE.fetch()` — an internal RPC call with no network hop and no auth overhead.
 
 ---
 

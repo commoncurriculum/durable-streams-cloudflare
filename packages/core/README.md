@@ -189,7 +189,6 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 |----------|---------|-------------|
 | `AUTH_TOKEN` | *(none)* | Bearer token for mutation auth (used by `bearerTokenAuth()`) |
 | `READ_JWT_SECRET` | *(none)* | HS256 secret for JWT read auth (used by `jwtStreamAuth()`) |
-| `ADMIN_TOKEN` | *(none)* | Bearer token for admin introspection endpoint |
 | `CACHE_MODE` | `private` | Cache mode: `shared` (CDN cacheable) or `private` |
 | `DEBUG_TIMING` | `0` | Set to `1` to emit `Server-Timing` headers |
 | `SEGMENT_MAX_MESSAGES` | `1000` | Max messages per R2 segment before rotation |

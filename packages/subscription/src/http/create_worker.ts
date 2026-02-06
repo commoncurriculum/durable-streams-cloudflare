@@ -7,6 +7,7 @@ import { cleanupExpiredSessions } from "../cleanup";
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
 import { parseRoute } from "./auth";
+import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
 import type { AuthorizeSubscription } from "./auth";
 import type { FanoutQueueMessage } from "../subscriptions/types";
@@ -113,6 +114,15 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   // Health check
   app.get("/health", (c) => {
     return c.json({ status: "ok" });
+  });
+
+  // Validate project ID before hitting routes
+  app.use("/v1/:project/*", async (c, next) => {
+    const project = c.req.param("project");
+    if (!project || !isValidProjectId(project)) {
+      return c.json({ error: "Invalid project ID" }, 400);
+    }
+    return next();
   });
 
   // Mount routes under /v1/:project

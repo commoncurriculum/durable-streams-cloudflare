@@ -115,7 +115,6 @@ main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
 [vars]
-CORE_URL = "https://durable-streams.<your-subdomain>.workers.dev"
 SESSION_TTL_SECONDS = "1800"
 
 [durable_objects]
@@ -125,10 +124,9 @@ bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
 tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
 
-# Optional: service binding to core (recommended for production)
-# [[services]]
-# binding = "CORE"
-# service = "durable-streams"
+[[services]]
+binding = "CORE"
+service = "durable-streams"
 
 [triggers]
 crons = ["*/5 * * * *"]

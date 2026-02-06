@@ -22,7 +22,9 @@ function createMockEnv() {
   const mockRemoveSubscribers = vi.fn();
   return {
     env: {
-      CORE_URL: "http://localhost:8787",
+      CORE: {
+        fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+      },
       SUBSCRIPTION_DO: {
         idFromName: vi.fn().mockReturnValue("do-id"),
         get: vi.fn().mockReturnValue({ removeSubscribers: mockRemoveSubscribers }),

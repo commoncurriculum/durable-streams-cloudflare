@@ -1,6 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import type { AnalyticsRow, ServiceBinding } from "../types";
+import type { AnalyticsRow, CoreService } from "../types";
+
+export function parseDoKey(doKey: string): { projectId: string; streamId: string } {
+  const i = doKey.indexOf("/");
+  if (i === -1) return { projectId: "default", streamId: doKey };
+  return { projectId: doKey.slice(0, i), streamId: doKey.slice(i + 1) };
+}
 
 async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
   const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
@@ -98,28 +104,9 @@ export const getTimeseries = createServerFn({ method: "GET" }).handler(
 
 export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
-  .handler(async ({ data: streamId }) => {
-    const core = (env as Record<string, unknown>).CORE as ServiceBinding;
-    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
-      | string
-      | undefined;
-
-    const headers: Record<string, string> = {};
-    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
-
-    const response = await core.fetch(
-      new Request(
-        `https://internal/v1/stream/${encodeURIComponent(streamId)}/admin`,
-        { headers },
-      ),
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Stream inspect failed (${response.status}): ${text}`);
-    }
-
-    return response.json();
+  .handler(async ({ data: doKey }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService;
+    return core.inspectStream(doKey);
   });
 
 export const sendTestAction = createServerFn({ method: "POST" })
@@ -132,28 +119,18 @@ export const sendTestAction = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const core = (env as Record<string, unknown>).CORE as ServiceBinding;
-    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
-      | string
-      | undefined;
+    const core = (env as Record<string, unknown>).CORE as CoreService;
 
     const contentType = data.contentType ?? "application/json";
     const method = data.action === "create" ? "PUT" : "POST";
 
-    const reqHeaders: Record<string, string> = {
-      "Content-Type": contentType,
-    };
-    if (adminToken) reqHeaders["Authorization"] = `Bearer ${adminToken}`;
-
-    const response = await core.fetch(
-      new Request(
-        `https://internal/v1/stream/${encodeURIComponent(data.streamId)}`,
-        {
-          method,
-          headers: reqHeaders,
-          body: data.body,
-        },
-      ),
+    const response = await core.routeRequest(
+      data.streamId,
+      new Request("https://internal/v1/stream", {
+        method,
+        headers: { "Content-Type": contentType },
+        body: data.body,
+      }),
     );
 
     const responseHeaders: Record<string, string> = {};
@@ -170,20 +147,12 @@ export const sendTestAction = createServerFn({ method: "POST" })
 
 export const getStreamMessages = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
-  .handler(async ({ data: streamId }) => {
-    const core = (env as Record<string, unknown>).CORE as ServiceBinding;
-    const adminToken = (env as Record<string, unknown>).ADMIN_TOKEN as
-      | string
-      | undefined;
+  .handler(async ({ data: doKey }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService;
 
-    const headers: Record<string, string> = {};
-    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
-
-    const response = await core.fetch(
-      new Request(
-        `https://internal/v1/stream/${encodeURIComponent(streamId)}?offset=0000000000000000_0000000000000000`,
-        { headers },
-      ),
+    const response = await core.routeRequest(
+      doKey,
+      new Request("https://internal/v1/stream?offset=0000000000000000_0000000000000000"),
     );
 
     if (!response.ok) {

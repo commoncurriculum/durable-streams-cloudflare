@@ -52,7 +52,6 @@ main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
 [vars]
-CORE_URL = "https://durable-streams.<your-subdomain>.workers.dev"
 SESSION_TTL_SECONDS = "1800"
 ANALYTICS_DATASET = "subscriptions_metrics"
 
@@ -67,10 +66,9 @@ new_sqlite_classes = ["SubscriptionDO"]
 binding = "METRICS"
 dataset = "subscriptions_metrics"
 
-# Service binding to core (recommended for production)
-# [[services]]
-# binding = "CORE"
-# service = "durable-streams"
+[[services]]
+binding = "CORE"
+service = "durable-streams"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -223,8 +221,7 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CORE_URL` | *(required)* | URL of the deployed core worker |
-| `AUTH_TOKEN` | *(none)* | Bearer token for incoming auth and outgoing core client auth |
+| `AUTH_TOKEN` | *(none)* | Bearer token for incoming auth (used by `bearerTokenAuth()`) |
 | `SESSION_TTL_SECONDS` | `1800` | Session TTL in seconds (default: 30 minutes) |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated, `*`, or omit for all) |
 | `ACCOUNT_ID` | *(none)* | Cloudflare account ID (required for cron cleanup) |
@@ -237,7 +234,7 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 |---------|------|-------------|
 | `SUBSCRIPTION_DO` | Durable Object | SubscriptionDO namespace (required) |
 | `METRICS` | Analytics Engine | Subscription and fan-out metrics (optional) |
-| `CORE` | Service Binding | Service binding to core worker (optional, recommended) |
+| `CORE` | Service Binding | Service binding to core worker (required) |
 
 ### Cron
 
@@ -250,7 +247,7 @@ Runs session cleanup every 5 minutes.
 
 ## Service Binding
 
-For production, use a service binding instead of HTTP to communicate with core — no network hop, no auth overhead. When the `CORE` binding is present, it's used automatically; when absent, the worker falls back to `CORE_URL` + `AUTH_TOKEN`.
+The subscription worker communicates with core via a Cloudflare service binding — no network hop, no auth overhead. The `CORE` binding is required.
 
 ```toml
 [[services]]

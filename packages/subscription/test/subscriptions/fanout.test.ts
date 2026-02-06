@@ -1,27 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const mockFetchFromCore = vi.fn();
-vi.mock("../../src/client", () => ({
-  fetchFromCore: (...args: unknown[]) => mockFetchFromCore(...args),
-}));
-
 import { fanoutToSubscribers } from "../../src/subscriptions/fanout";
-import type { CoreClientEnv } from "../../src/client";
+import type { CoreService } from "../../src/client";
 
 const PROJECT_ID = "test-project";
 
-function createEnv(): CoreClientEnv {
-  return { CORE_URL: "http://localhost:8787" };
+function createMockFetch() {
+  return vi.fn<CoreService["fetch"]>();
+}
+
+function createEnv(mockFetch: ReturnType<typeof createMockFetch>) {
+  return { CORE: { fetch: mockFetch } as unknown as CoreService };
 }
 
 describe("fanoutToSubscribers", () => {
+  let mockFetch: ReturnType<typeof createMockFetch>;
+
   beforeEach(() => {
-    mockFetchFromCore.mockReset();
+    mockFetch = createMockFetch();
   });
 
   it("writes to all session streams", async () => {
-    mockFetchFromCore.mockResolvedValue(new Response(null, { status: 200 }));
-    const env = createEnv();
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    const env = createEnv(mockFetch);
 
     const result = await fanoutToSubscribers(
       env,
@@ -34,18 +34,13 @@ describe("fanoutToSubscribers", () => {
     expect(result.successes).toBe(3);
     expect(result.failures).toBe(0);
     expect(result.staleSessionIds).toEqual([]);
-    expect(mockFetchFromCore).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
 
-    expect(mockFetchFromCore).toHaveBeenCalledWith(
-      env,
-      `/v1/${PROJECT_ID}/stream/s1`,
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(mockFetchFromCore).toHaveBeenCalledWith(
-      env,
-      `/v1/${PROJECT_ID}/stream/s2`,
-      expect.objectContaining({ method: "POST" }),
-    );
+    // Verify fetch was called with Request objects containing project-scoped URLs
+    const call0 = mockFetch.mock.calls[0][0] as Request;
+    expect(call0.url).toContain(`/v1/${PROJECT_ID}/stream/s1`);
+    const call1 = mockFetch.mock.calls[1][0] as Request;
+    expect(call1.url).toContain(`/v1/${PROJECT_ID}/stream/s2`);
   });
 
   it("batches writes in groups of 50", async () => {
@@ -53,7 +48,7 @@ describe("fanoutToSubscribers", () => {
     const callOrder: number[] = [];
     let callCount = 0;
 
-    mockFetchFromCore.mockImplementation(() => {
+    mockFetch.mockImplementation(() => {
       callOrder.push(++callCount);
       return Promise.resolve(new Response(null, { status: 200 }));
     });
@@ -61,7 +56,7 @@ describe("fanoutToSubscribers", () => {
     const sessionIds = Array.from({ length: 120 }, (_, i) => `session-${i}`);
 
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       sessionIds,
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -69,19 +64,20 @@ describe("fanoutToSubscribers", () => {
     );
 
     expect(result.successes).toBe(120);
-    expect(mockFetchFromCore).toHaveBeenCalledTimes(120);
+    expect(mockFetch).toHaveBeenCalledTimes(120);
   });
 
   it("reports 404s as stale sessions", async () => {
-    mockFetchFromCore.mockImplementation((_env: unknown, path: string) => {
-      if (path.includes("stale")) {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = (input as Request).url;
+      if (url.includes("stale")) {
         return Promise.resolve(new Response("Not found", { status: 404 }));
       }
       return Promise.resolve(new Response(null, { status: 200 }));
     });
 
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       ["active-1", "stale-1", "active-2", "stale-2"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -94,10 +90,10 @@ describe("fanoutToSubscribers", () => {
   });
 
   it("handles 5xx errors as failures (not stale)", async () => {
-    mockFetchFromCore.mockResolvedValue(new Response("Internal error", { status: 500 }));
+    mockFetch.mockResolvedValue(new Response("Internal error", { status: 500 }));
 
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       ["s1", "s2"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -110,10 +106,10 @@ describe("fanoutToSubscribers", () => {
   });
 
   it("handles rejected promises as failures", async () => {
-    mockFetchFromCore.mockRejectedValue(new Error("Network error"));
+    mockFetch.mockRejectedValue(new Error("Network error"));
 
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       ["s1"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -126,8 +122,8 @@ describe("fanoutToSubscribers", () => {
   });
 
   it("passes producer headers to fetch", async () => {
-    mockFetchFromCore.mockResolvedValue(new Response(null, { status: 200 }));
-    const env = createEnv();
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    const env = createEnv(mockFetch);
 
     await fanoutToSubscribers(
       env,
@@ -138,29 +134,26 @@ describe("fanoutToSubscribers", () => {
       { "Producer-Id": "fanout:stream-1", "Producer-Epoch": "1", "Producer-Seq": "42" },
     );
 
-    expect(mockFetchFromCore).toHaveBeenCalledWith(
-      env,
-      `/v1/${PROJECT_ID}/stream/s1`,
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          "Producer-Id": "fanout:stream-1",
-          "Producer-Epoch": "1",
-          "Producer-Seq": "42",
-        }),
-      }),
-    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Verify the Request has the correct URL and headers
+    const calledRequest = mockFetch.mock.calls[0][0] as Request;
+    expect(calledRequest.url).toContain(`/v1/${PROJECT_ID}/stream/s1`);
+    expect(calledRequest.headers.get("Content-Type")).toBe("application/json");
+    expect(calledRequest.headers.get("Producer-Id")).toBe("fanout:stream-1");
+    expect(calledRequest.headers.get("Producer-Epoch")).toBe("1");
+    expect(calledRequest.headers.get("Producer-Seq")).toBe("42");
   });
 
   it("returns correct counts for mixed results", async () => {
-    mockFetchFromCore
+    mockFetch
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
       .mockResolvedValueOnce(new Response("Not found", { status: 404 }))
       .mockResolvedValueOnce(new Response("Error", { status: 500 }))
       .mockRejectedValueOnce(new Error("Network error"));
 
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       ["ok", "stale", "error", "network-fail"],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -174,7 +167,7 @@ describe("fanoutToSubscribers", () => {
 
   it("handles empty session list", async () => {
     const result = await fanoutToSubscribers(
-      createEnv(),
+      createEnv(mockFetch),
       PROJECT_ID,
       [],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -184,6 +177,6 @@ describe("fanoutToSubscribers", () => {
     expect(result.successes).toBe(0);
     expect(result.failures).toBe(0);
     expect(result.staleSessionIds).toEqual([]);
-    expect(mockFetchFromCore).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

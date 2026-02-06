@@ -1,4 +1,3 @@
-import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
 import { getSessionSubscriptions } from "../analytics";
 import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
@@ -7,7 +6,9 @@ import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../su
 
 // #region synced-to-docs:get-session
 export async function getSession(env: AppEnv, projectId: string, sessionId: string): Promise<SessionInfo | null> {
-  const coreResponse = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, { method: "HEAD" });
+  const coreResponse = await env.CORE.fetch(
+    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, { method: "HEAD" }),
+  );
   if (!coreResponse.ok) return null;
 
   let subscriptions: Array<{ streamId: string }> = [];
@@ -40,13 +41,15 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  const response = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Stream-Expires-At": expiresAt.toString(),
-    },
-  });
+  const response = await env.CORE.fetch(
+    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Stream-Expires-At": expiresAt.toString(),
+      },
+    }),
+  );
 
   if (!response.ok && response.status !== 409) {
     throw new Error(`Failed to touch session: ${sessionId} (status: ${response.status})`);
@@ -59,7 +62,9 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
 
 export async function deleteSession(env: AppEnv, projectId: string, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();
-  const response = await fetchFromCore(env, `/v1/${projectId}/stream/${sessionId}`, { method: "DELETE" });
+  const response = await env.CORE.fetch(
+    new Request(`https://internal/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(sessionId)}`, { method: "DELETE" }),
+  );
   if (!response.ok && response.status !== 404) {
     throw new Error(`Failed to delete session: ${sessionId}`);
   }

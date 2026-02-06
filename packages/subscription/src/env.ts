@@ -1,11 +1,13 @@
 import type { SubscriptionDO } from "./subscriptions/do";
-import type { CoreClientEnv } from "./client";
+import type { CoreService } from "./client";
 import type { AnalyticsQueryEnv } from "./analytics";
 import type { FanoutQueueMessage } from "./subscriptions/types";
 
-export interface AppEnv extends CoreClientEnv, Partial<AnalyticsQueryEnv> {
+export interface AppEnv extends Partial<AnalyticsQueryEnv> {
+  CORE: CoreService;
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
   METRICS?: AnalyticsEngineDataset;
+  AUTH_TOKEN?: string;
   SESSION_TTL_SECONDS?: string;
   ANALYTICS_DATASET?: string;
   CORS_ORIGINS?: string;

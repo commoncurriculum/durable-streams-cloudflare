@@ -33,7 +33,9 @@ function createTestApp() {
 
 function createMockEnv() {
   return {
-    CORE_URL: "http://localhost:8787",
+    CORE: {
+      fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    },
     SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
     METRICS: {} as AnalyticsEngineDataset,
     SESSION_TTL_SECONDS: "1800",

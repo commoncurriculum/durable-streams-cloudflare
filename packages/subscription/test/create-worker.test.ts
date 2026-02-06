@@ -27,13 +27,15 @@ const PROJECT_ID = "test-project";
 
 function createBaseEnv(): AppEnv {
   return {
-    CORE_URL: "http://localhost:8787",
+    CORE: {
+      fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    },
     SUBSCRIPTION_DO: {
       idFromName: vi.fn().mockReturnValue("do-id"),
       get: vi.fn().mockReturnValue({ fetch: vi.fn() }),
     } as unknown as AppEnv["SUBSCRIPTION_DO"],
     METRICS: {} as AnalyticsEngineDataset,
-  };
+  } as unknown as AppEnv;
 }
 
 describe("createSubscriptionWorker", () => {
@@ -143,6 +145,22 @@ describe("createSubscriptionWorker", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("rejects invalid project IDs with 400", async () => {
+    const { createSubscriptionWorker } = await import("../src/http/create_worker");
+    const worker = createSubscriptionWorker();
+    const env = createBaseEnv();
+
+    const response = await worker.fetch(
+      new Request("http://localhost/v1/bad%20project!/publish/my-stream", { method: "POST", body: "{}" }),
+      env,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toEqual({ error: "Invalid project ID" });
   });
 
   it("bearerTokenAuth — allows with correct token", async () => {

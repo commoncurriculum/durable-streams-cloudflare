@@ -32,7 +32,6 @@ pnpm typecheck    # tsc --noEmit
 ## Deploy
 
 ```bash
-npx wrangler secret put ADMIN_TOKEN
 npx wrangler secret put CF_ACCOUNT_ID
 npx wrangler secret put CF_API_TOKEN
 pnpm deploy       # vite build && wrangler deploy
@@ -42,13 +41,12 @@ pnpm deploy       # vite build && wrangler deploy
 
 | Variable | Description |
 |----------|-------------|
-| `ADMIN_TOKEN` | Shared admin token (must match core worker's `ADMIN_TOKEN`) |
 | `CF_ACCOUNT_ID` | Cloudflare account ID for Analytics Engine queries |
 | `CF_API_TOKEN` | Cloudflare API token with Analytics Engine read permission |
 
 | Binding | Type | Description |
 |---------|------|-------------|
-| `CORE` | Service Binding | Service binding to the core worker (required) |
+| `CORE` | Service Binding | Service binding to the core worker (required). Uses Worker RPC for stream inspection and routing — no auth tokens needed. |
 
 ## See Also
 
