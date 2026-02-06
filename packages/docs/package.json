@@ -1,11 +1,10 @@
 {
-  "name": "durable-stream-core-docs",
+  "name": "docs",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "slidev --open",
-    "build": "slidev build",
-    "export": "slidev export"
+    "dev:core": "slidev core.md --open",
+    "build:core": "slidev build core.md"
   },
   "dependencies": {
     "@slidev/cli": "^0.50.0",

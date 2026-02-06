@@ -67,7 +67,7 @@ Every stream maps to exactly one Durable Object instance. The Worker calls `stub
 
 <<< @/../core/src/http/durable_object.ts#docs-do-rpc
 
-`StreamDO` extends `DurableObject<StreamEnv>` and exposes `routeStreamRequest()` as an RPC method. It receives typed parameters directly from the Worker — no header extraction needed.
+`StreamDO` extends <code>DurableObject&lt;StreamEnv&gt;</code> and exposes `routeStreamRequest()` as an RPC method. It receives typed parameters directly from the Worker — no header extraction needed.
 
 ---
 

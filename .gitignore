@@ -9,7 +9,7 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 node_modules/
-poc/cloudflare/.wrangler/tmp/
+.wrangler/
 .trekker/
 upstream/
 upstream-server/
