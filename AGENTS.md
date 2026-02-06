@@ -31,7 +31,8 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 ## Tech Stack
 
 - **Runtime**: Cloudflare Workers + Durable Objects (SQLite) + R2 + Analytics Engine
-- **HTTP**: Hono v4 + Zod v3 + `@hono/zod-validator`
+- **HTTP**: Hono v4 + Zod v3 + `@hono/zod-validator` (core + subscription workers)
+- **Admin dashboards**: TanStack Start + TanStack Query + Recharts + Tailwind CSS v4, deployed via @cloudflare/vite-plugin
 - **Build**: TypeScript strict via `tsc` (shared `tsconfig.build.json` at root)
 - **Test**: Vitest. Core has 4 vitest configs (unit, implementation, conformance, performance). Subscription has 2 (unit, integration). Integration tests use wrangler `unstable_dev`.
 - **Lint/Format**: oxlint + oxfmt (NOT ESLint/Prettier)
@@ -39,8 +40,8 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 
 ## Key Conventions
 
-- All workers follow the same pattern: `createXWorker()` factory + exported DO class. Entry point is always `src/http/worker.ts`.
-- Admin dashboards are simple: one worker, one analytics module, one types file.
+- Core and subscription workers follow the same pattern: `createXWorker()` factory + exported DO class. Entry point is always `src/http/worker.ts`.
+- Admin dashboards are TanStack Start apps: `src/server.ts` entry, file-based routing in `src/routes/`, server functions in `src/lib/analytics.ts`, TanStack Query hooks in `src/lib/queries.ts`.
 - `pnpm dev` at root runs all 4 workers in parallel with unique ports.
 
 ## Testing

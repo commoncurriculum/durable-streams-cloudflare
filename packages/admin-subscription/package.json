@@ -1,7 +1,8 @@
 {
   "name": "@durable-streams-cloudflare/admin-subscription",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "private": true,
   "license": "MIT",
   "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
   "repository": {
@@ -9,33 +10,37 @@
     "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/admin-subscription"
   },
-  "files": ["dist"],
-  "exports": {
-    ".": {
-      "types": "./dist/worker.d.ts",
-      "import": "./dist/worker.js"
-    }
-  },
-  "main": "./dist/worker.js",
-  "types": "./dist/worker.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build",
-    "dev": "wrangler dev --port 8789 --inspector-port 9231",
-    "deploy": "wrangler deploy",
+    "dev": "vite dev --port 8789",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "pnpm build && wrangler deploy",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "test": "pnpm exec vitest run"
+    "test": "pnpm exec vitest run",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "hono": "^4"
-  },
-  "peerDependencies": {
-    "@cloudflare/workers-types": ">=4"
+    "@tanstack/react-query": "^5",
+    "@tanstack/react-router": "^1",
+    "@tanstack/react-start": "^1",
+    "react": "^19",
+    "react-dom": "^19",
+    "recharts": "^2",
+    "tailwind-merge": "^2",
+    "tailwind-variants": "^0.3",
+    "react-aria-components": "^1",
+    "tailwindcss-react-aria-components": "^1"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1",
     "@cloudflare/workers-types": "latest",
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "tailwindcss": "^4",
     "typescript": "latest",
+    "vite": "^7",
     "vitest": "latest",
     "wrangler": "^4.63.0"
   }

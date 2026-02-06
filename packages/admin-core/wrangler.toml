@@ -1,6 +1,7 @@
 name = "durable-streams-admin-core"
-main = "src/worker.ts"
+main = "src/server.ts"
 compatibility_date = "2026-02-02"
+compatibility_flags = ["nodejs_compat"]
 
 [[services]]
 binding = "CORE"
@@ -10,7 +11,6 @@ service = "durable-streams"
 # ADMIN_TOKEN = "shared-admin-token"
 # CF_ACCOUNT_ID = "your-account-id"
 # CF_API_TOKEN = "your-api-token-with-analytics-read"
-# CORE_PUBLIC_URL = "https://durable-streams.your-domain.workers.dev"
 
 [observability]
 enabled = true
