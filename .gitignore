@@ -21,3 +21,6 @@ dist/
 
 # Machine-specific Claude settings
 .claude/settings.local.json
+
+# Wrangler local dev secrets
+.dev.vars
