@@ -13,13 +13,13 @@ const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
   { value: "delete", label: "Delete" },
 ];
 
-export const Route = createFileRoute("/console/$project/session/$id")({
-  component: SessionConsolePage,
+export const Route = createFileRoute("/projects/$projectId/sessions/$id")({
+  component: SessionDetailPage,
 });
 
-function SessionConsolePage() {
-  const { project, id } = Route.useParams();
-  const { data, isLoading, error } = useSessionInspect(id, project);
+function SessionDetailPage() {
+  const { projectId, id } = Route.useParams();
+  const { data, isLoading, error } = useSessionInspect(id, projectId);
 
   const [action, setAction] = useState<SessionAction>("subscribe");
   const [streamIdInput, setStreamIdInput] = useState("");
@@ -39,16 +39,16 @@ function SessionConsolePage() {
           if (!streamIdInput.trim()) return;
           payload = {
             action,
-            projectId: project,
+            projectId,
             sessionId: id,
             streamId: streamIdInput.trim(),
           };
           break;
         case "touch":
-          payload = { action, projectId: project, sessionId: id };
+          payload = { action, projectId, sessionId: id };
           break;
         case "delete":
-          payload = { action, projectId: project, sessionId: id };
+          payload = { action, projectId, sessionId: id };
           break;
       }
 
@@ -60,7 +60,7 @@ function SessionConsolePage() {
 
       if (action === "subscribe") {
         setSseUrl(
-          `/api/sse/${encodeURIComponent(project)}/${encodeURIComponent(id)}?live=sse&offset=now`,
+          `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}?live=sse&offset=now`,
         );
       }
     } catch (e) {
@@ -68,7 +68,7 @@ function SessionConsolePage() {
     } finally {
       setSending(false);
     }
-  }, [action, project, id, streamIdInput, addEvent]);
+  }, [action, projectId, id, streamIdInput, addEvent]);
 
   if (isLoading) {
     return (
@@ -107,7 +107,8 @@ function SessionConsolePage() {
       {/* Left column — session info */}
       <div className="space-y-6">
         <Link
-          to="/console"
+          to="/projects/$projectId/sessions"
+          params={{ projectId }}
           className="text-sm text-zinc-400 hover:text-zinc-200"
         >
           &larr; Back to search
@@ -144,14 +145,8 @@ function SessionConsolePage() {
                       key={i}
                       className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
                     >
-                      <td className="px-4 py-2 font-mono text-sm">
-                        <Link
-                          to="/console/$project/stream/$id"
-                          params={{ project, id: sid }}
-                          className="text-blue-400 hover:underline"
-                        >
-                          {sid}
-                        </Link>
+                      <td className="px-4 py-2 font-mono text-sm text-zinc-400">
+                        {sid}
                       </td>
                     </tr>
                   );

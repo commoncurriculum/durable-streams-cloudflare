@@ -1,14 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
-import { parseDoKey } from "../../lib/analytics";
 import type { CoreService } from "../../types";
 
-export const Route = createFileRoute("/api/sse/$id")({
+export const Route = createFileRoute("/api/sse/$projectId/$id")({
   server: {
     handlers: ({ createHandlers }) =>
       createHandlers({
         GET: async ({ params, request }) => {
-          const doKey = params.id;
+          const { projectId, id } = params;
+          const doKey = `${projectId}/${id}`;
           const core = (env as Record<string, unknown>).CORE as CoreService;
 
           const url = new URL(request.url);

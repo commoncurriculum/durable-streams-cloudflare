@@ -4,13 +4,15 @@ import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analyti
 import { formatBytes, relTime } from "../lib/formatters";
 import { useSSE, type SseEvent } from "../hooks/use-sse";
 
-export const Route = createFileRoute("/streams/$streamId")({
+export const Route = createFileRoute(
+  "/projects/$projectId/streams/$streamId",
+)({
   loader: async ({ params }) => {
+    const doKey = `${params.projectId}/${params.streamId}`;
     try {
-      const inspect = await inspectStream({ data: params.streamId });
+      const inspect = await inspectStream({ data: doKey });
       return { inspect };
     } catch {
-      // Stream doesn't exist yet — that's fine, we'll show the create form
       return { inspect: null };
     }
   },
@@ -19,18 +21,27 @@ export const Route = createFileRoute("/streams/$streamId")({
 
 function StreamDetailPage() {
   const { inspect: data } = Route.useLoaderData();
-  const { streamId } = Route.useParams();
+  const { projectId, streamId } = Route.useParams();
+  const doKey = `${projectId}/${streamId}`;
 
   if (!data) {
-    return <CreateStreamForm streamId={streamId} />;
+    return <CreateStreamForm projectId={projectId} streamId={streamId} doKey={doKey} />;
   }
 
-  return <StreamConsole streamId={streamId} data={data} />;
+  return <StreamConsole projectId={projectId} streamId={streamId} doKey={doKey} data={data} />;
 }
 
 /* ─── State A: Stream not found ─── */
 
-function CreateStreamForm({ streamId }: { streamId: string }) {
+function CreateStreamForm({
+  projectId,
+  streamId,
+  doKey,
+}: {
+  projectId: string;
+  streamId: string;
+  doKey: string;
+}) {
   const router = useRouter();
   const [contentType, setContentType] = useState("application/json");
   const [body, setBody] = useState("");
@@ -42,7 +53,7 @@ function CreateStreamForm({ streamId }: { streamId: string }) {
     setError(null);
     try {
       const result = await sendTestAction({
-        data: { streamId, action: "create", contentType, body },
+        data: { streamId: doKey, action: "create", contentType, body },
       });
       if (result.status >= 200 && result.status < 300) {
         await router.invalidate();
@@ -54,11 +65,15 @@ function CreateStreamForm({ streamId }: { streamId: string }) {
     } finally {
       setSending(false);
     }
-  }, [streamId, contentType, body, router]);
+  }, [doKey, contentType, body, router]);
 
   return (
     <div className="space-y-6">
-      <Link to="/streams" className="text-sm text-zinc-400 hover:text-zinc-200">
+      <Link
+        to="/projects/$projectId/streams"
+        params={{ projectId }}
+        className="text-sm text-zinc-400 hover:text-zinc-200"
+      >
         &larr; Back to search
       </Link>
 
@@ -122,10 +137,14 @@ function CreateStreamForm({ streamId }: { streamId: string }) {
 /* ─── State B: Stream exists ─── */
 
 function StreamConsole({
+  projectId,
   streamId,
+  doKey,
   data,
 }: {
+  projectId: string;
   streamId: string;
+  doKey: string;
   data: unknown;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,7 +154,7 @@ function StreamConsole({
   const segments = d.segments ?? [];
   const producers = d.producers ?? [];
 
-  const sseUrl = `/api/sse/${encodeURIComponent(streamId)}?live=sse&offset=now`;
+  const sseUrl = `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(streamId)}?live=sse&offset=now`;
   const { status: sseStatus, events, addEvent, clearEvents } = useSSE(sseUrl);
 
   const metaFields: [string, string][] = [
@@ -171,7 +190,11 @@ function StreamConsole({
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <Link to="/streams" className="text-sm text-zinc-400 hover:text-zinc-200">
+      <Link
+        to="/projects/$projectId/streams"
+        params={{ projectId }}
+        className="text-sm text-zinc-400 hover:text-zinc-200"
+      >
         &larr; Back to search
       </Link>
 
@@ -184,7 +207,7 @@ function StreamConsole({
       </div>
 
       {/* Send Message panel */}
-      <SendMessagePanel streamId={streamId} contentType={m.content_type} addEvent={addEvent} />
+      <SendMessagePanel doKey={doKey} contentType={m.content_type} addEvent={addEvent} />
 
       {/* Two-column layout: info left, event log right */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
@@ -299,7 +322,7 @@ function StreamConsole({
         </div>
 
         {/* Right column: live event log */}
-        <EventLog streamId={streamId} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
+        <EventLog doKey={doKey} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
       </div>
     </div>
   );
@@ -308,11 +331,11 @@ function StreamConsole({
 /* ─── Send Message Panel ─── */
 
 function SendMessagePanel({
-  streamId,
+  doKey,
   contentType,
   addEvent,
 }: {
-  streamId: string;
+  doKey: string;
   contentType: string;
   addEvent: (type: SseEvent["type"], content: string) => void;
 }) {
@@ -326,7 +349,7 @@ function SendMessagePanel({
     setLastResult(null);
     try {
       const result = await sendTestAction({
-        data: { streamId, action: "append", contentType, body },
+        data: { streamId: doKey, action: "append", contentType, body },
       });
       setLastResult(result);
       addEvent("control", `APPEND => ${result.status} ${result.statusText}`);
@@ -337,7 +360,7 @@ function SendMessagePanel({
     } finally {
       setSending(false);
     }
-  }, [streamId, contentType, body, addEvent]);
+  }, [doKey, contentType, body, addEvent]);
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900">
@@ -398,13 +421,13 @@ function SendMessagePanel({
 /* ─── Live Event Log ─── */
 
 function EventLog({
-  streamId,
+  doKey,
   events,
   sseStatus,
   clearEvents,
   addEvent,
 }: {
-  streamId: string;
+  doKey: string;
   events: SseEvent[];
   sseStatus: string;
   clearEvents: () => void;
@@ -416,7 +439,7 @@ function EventLog({
     setFetching(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = (await getStreamMessages({ data: streamId })) as any;
+      const result = (await getStreamMessages({ data: doKey })) as any;
       const msgs: unknown[] = result?.messages ?? [];
       if (msgs.length === 0) {
         addEvent("control", "No earlier messages found");
@@ -432,7 +455,7 @@ function EventLog({
     } finally {
       setFetching(false);
     }
-  }, [streamId, addEvent]);
+  }, [doKey, addEvent]);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)]">

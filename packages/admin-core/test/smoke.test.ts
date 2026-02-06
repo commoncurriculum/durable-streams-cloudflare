@@ -72,8 +72,8 @@ describe("admin-core smoke", () => {
     expect(html).toContain("Durable Streams");
   });
 
-  it("GET /streams/$streamId renders the child route, not just the search form", async () => {
-    const res = await fetch(`${BASE_URL}/streams/test-stream-abc`);
+  it("GET /projects/$projectId/streams/$streamId renders the child route, not just the search form", async () => {
+    const res = await fetch(`${BASE_URL}/projects/test-project/streams/test-stream-abc`);
     expect(res.status).toBe(200);
     const html = await res.text();
     // The child route should render. If only the parent renders,

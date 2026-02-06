@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useStats, useStreams, useHotStreams, useTimeseries } from "../lib/queries";
 import { formatRate, formatBytes, relTime } from "../lib/formatters";
+import { parseDoKey } from "../lib/analytics";
 import type { AnalyticsRow } from "../types";
 import {
   AreaChart,
@@ -137,24 +138,27 @@ function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {hot.data!.map((row) => (
-                <tr
-                  key={row.stream_id as string}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>
-                    <Link
-                      to="/streams/$streamId"
-                      params={{ streamId: row.stream_id as string }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {row.stream_id as string}
-                    </Link>
-                  </Td>
-                  <Td>{row.events as number}</Td>
-                  <Td>{formatBytes(row.bytes as number)}</Td>
-                </tr>
-              ))}
+              {hot.data!.map((row) => {
+                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                return (
+                  <tr
+                    key={row.stream_id as string}
+                    className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                  >
+                    <Td>
+                      <Link
+                        to="/projects/$projectId/streams/$streamId"
+                        params={{ projectId, streamId }}
+                        className="text-blue-400 hover:underline"
+                      >
+                        {row.stream_id as string}
+                      </Link>
+                    </Td>
+                    <Td>{row.events as number}</Td>
+                    <Td>{formatBytes(row.bytes as number)}</Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -180,25 +184,28 @@ function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {streams.data!.map((row) => (
-                <tr
-                  key={row.stream_id as string}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <Td>
-                    <Link
-                      to="/streams/$streamId"
-                      params={{ streamId: row.stream_id as string }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {row.stream_id as string}
-                    </Link>
-                  </Td>
-                  <Td>{row.total_events as number}</Td>
-                  <Td>{relTime(row.first_seen as string)}</Td>
-                  <Td>{relTime(row.last_seen as string)}</Td>
-                </tr>
-              ))}
+              {streams.data!.map((row) => {
+                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                return (
+                  <tr
+                    key={row.stream_id as string}
+                    className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                  >
+                    <Td>
+                      <Link
+                        to="/projects/$projectId/streams/$streamId"
+                        params={{ projectId, streamId }}
+                        className="text-blue-400 hover:underline"
+                      >
+                        {row.stream_id as string}
+                      </Link>
+                    </Td>
+                    <Td>{row.total_events as number}</Td>
+                    <Td>{relTime(row.first_seen as string)}</Td>
+                    <Td>{relTime(row.last_seen as string)}</Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

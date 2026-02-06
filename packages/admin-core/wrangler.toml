@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "CORE"
 service = "durable-streams"
 
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "PROJECT_KEYS_ID"
+
 [vars]
 # CF_ACCOUNT_ID = "your-account-id"
 # CF_API_TOKEN = "your-api-token-with-analytics-read"

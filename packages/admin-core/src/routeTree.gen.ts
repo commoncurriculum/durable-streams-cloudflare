@@ -9,14 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as StreamsRouteImport } from './routes/streams'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as StreamsStreamIdRouteImport } from './routes/streams.$streamId'
-import { Route as ApiSseIdRouteImport } from './routes/api/sse.$id'
+import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
+import { Route as ProjectsProjectIdStreamsRouteImport } from './routes/projects.$projectId.streams'
+import { Route as ProjectsProjectIdStreamsStreamIdRouteImport } from './routes/projects.$projectId.streams.$streamId'
+import { Route as ApiSseProjectIdIdRouteImport } from './routes/api/sse.$projectId.$id'
 
-const StreamsRoute = StreamsRouteImport.update({
-  id: '/streams',
-  path: '/streams',
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -24,57 +27,103 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StreamsStreamIdRoute = StreamsStreamIdRouteImport.update({
-  id: '/$streamId',
-  path: '/$streamId',
-  getParentRoute: () => StreamsRoute,
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsRoute,
 } as any)
-const ApiSseIdRoute = ApiSseIdRouteImport.update({
-  id: '/api/sse/$id',
-  path: '/api/sse/$id',
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/$projectId',
+  path: '/$projectId',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsProjectIdStreamsRoute =
+  ProjectsProjectIdStreamsRouteImport.update({
+    id: '/streams',
+    path: '/streams',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
+const ProjectsProjectIdStreamsStreamIdRoute =
+  ProjectsProjectIdStreamsStreamIdRouteImport.update({
+    id: '/$streamId',
+    path: '/$streamId',
+    getParentRoute: () => ProjectsProjectIdStreamsRoute,
+  } as any)
+const ApiSseProjectIdIdRoute = ApiSseProjectIdIdRouteImport.update({
+  id: '/api/sse/$projectId/$id',
+  path: '/api/sse/$projectId/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/streams': typeof StreamsRouteWithChildren
-  '/streams/$streamId': typeof StreamsStreamIdRoute
-  '/api/sse/$id': typeof ApiSseIdRoute
+  '/projects': typeof ProjectsRouteWithChildren
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
+  '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
+  '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/streams': typeof StreamsRouteWithChildren
-  '/streams/$streamId': typeof StreamsStreamIdRoute
-  '/api/sse/$id': typeof ApiSseIdRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects': typeof ProjectsIndexRoute
+  '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
+  '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
+  '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/streams': typeof StreamsRouteWithChildren
-  '/streams/$streamId': typeof StreamsStreamIdRoute
-  '/api/sse/$id': typeof ApiSseIdRoute
+  '/projects': typeof ProjectsRouteWithChildren
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
+  '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
+  '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
+  fullPaths:
+    | '/'
+    | '/projects'
+    | '/projects/$projectId'
+    | '/projects/'
+    | '/projects/$projectId/streams'
+    | '/api/sse/$projectId/$id'
+    | '/projects/$projectId/streams/$streamId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
-  id: '__root__' | '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
+  to:
+    | '/'
+    | '/projects/$projectId'
+    | '/projects'
+    | '/projects/$projectId/streams'
+    | '/api/sse/$projectId/$id'
+    | '/projects/$projectId/streams/$streamId'
+  id:
+    | '__root__'
+    | '/'
+    | '/projects'
+    | '/projects/$projectId'
+    | '/projects/'
+    | '/projects/$projectId/streams'
+    | '/api/sse/$projectId/$id'
+    | '/projects/$projectId/streams/$streamId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  StreamsRoute: typeof StreamsRouteWithChildren
-  ApiSseIdRoute: typeof ApiSseIdRoute
+  ProjectsRoute: typeof ProjectsRouteWithChildren
+  ApiSseProjectIdIdRoute: typeof ApiSseProjectIdIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/streams': {
-      id: '/streams'
-      path: '/streams'
-      fullPath: '/streams'
-      preLoaderRoute: typeof StreamsRouteImport
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -84,38 +133,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/streams/$streamId': {
-      id: '/streams/$streamId'
-      path: '/$streamId'
-      fullPath: '/streams/$streamId'
-      preLoaderRoute: typeof StreamsStreamIdRouteImport
-      parentRoute: typeof StreamsRoute
+    '/projects/': {
+      id: '/projects/'
+      path: '/'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof ProjectsRoute
     }
-    '/api/sse/$id': {
-      id: '/api/sse/$id'
-      path: '/api/sse/$id'
-      fullPath: '/api/sse/$id'
-      preLoaderRoute: typeof ApiSseIdRouteImport
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/$projectId/streams': {
+      id: '/projects/$projectId/streams'
+      path: '/streams'
+      fullPath: '/projects/$projectId/streams'
+      preLoaderRoute: typeof ProjectsProjectIdStreamsRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/streams/$streamId': {
+      id: '/projects/$projectId/streams/$streamId'
+      path: '/$streamId'
+      fullPath: '/projects/$projectId/streams/$streamId'
+      preLoaderRoute: typeof ProjectsProjectIdStreamsStreamIdRouteImport
+      parentRoute: typeof ProjectsProjectIdStreamsRoute
+    }
+    '/api/sse/$projectId/$id': {
+      id: '/api/sse/$projectId/$id'
+      path: '/api/sse/$projectId/$id'
+      fullPath: '/api/sse/$projectId/$id'
+      preLoaderRoute: typeof ApiSseProjectIdIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface StreamsRouteChildren {
-  StreamsStreamIdRoute: typeof StreamsStreamIdRoute
+interface ProjectsProjectIdStreamsRouteChildren {
+  ProjectsProjectIdStreamsStreamIdRoute: typeof ProjectsProjectIdStreamsStreamIdRoute
 }
 
-const StreamsRouteChildren: StreamsRouteChildren = {
-  StreamsStreamIdRoute: StreamsStreamIdRoute,
+const ProjectsProjectIdStreamsRouteChildren: ProjectsProjectIdStreamsRouteChildren =
+  {
+    ProjectsProjectIdStreamsStreamIdRoute:
+      ProjectsProjectIdStreamsStreamIdRoute,
+  }
+
+const ProjectsProjectIdStreamsRouteWithChildren =
+  ProjectsProjectIdStreamsRoute._addFileChildren(
+    ProjectsProjectIdStreamsRouteChildren,
+  )
+
+interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdStreamsRoute: typeof ProjectsProjectIdStreamsRouteWithChildren
 }
 
-const StreamsRouteWithChildren =
-  StreamsRoute._addFileChildren(StreamsRouteChildren)
+const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdStreamsRoute: ProjectsProjectIdStreamsRouteWithChildren,
+}
+
+const ProjectsProjectIdRouteWithChildren =
+  ProjectsProjectIdRoute._addFileChildren(ProjectsProjectIdRouteChildren)
+
+interface ProjectsRouteChildren {
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
+  ProjectsIndexRoute: ProjectsIndexRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  StreamsRoute: StreamsRouteWithChildren,
-  ApiSseIdRoute: ApiSseIdRoute,
+  ProjectsRoute: ProjectsRouteWithChildren,
+  ApiSseProjectIdIdRoute: ApiSseProjectIdIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

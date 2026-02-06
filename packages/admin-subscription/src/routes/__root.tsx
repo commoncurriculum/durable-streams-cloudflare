@@ -67,7 +67,7 @@ function Nav() {
 
   const links = [
     { to: "/", label: "Overview" },
-    { to: "/console", label: "Console" },
+    { to: "/projects", label: "Projects" },
   ] as const;
 
   return (

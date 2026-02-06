@@ -8,6 +8,7 @@ import {
   getErrors,
   inspectSession,
   inspectStreamSubscribers,
+  getProjects,
 } from "./analytics";
 
 export function useStats() {
@@ -81,5 +82,12 @@ export function useStreamSubscribers(streamId: string | undefined) {
     enabled: !!streamId,
     refetchInterval: 5000,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: () => getProjects(),
   });
 }

@@ -101,17 +101,14 @@ describe("admin-core integration", () => {
     const html = await res.text();
     expect(html).toContain("Durable Streams");
     expect(html).toContain("Overview");
-    expect(html).toContain("Inspect");
-    expect(html).toContain("Test");
+    expect(html).toContain("Projects");
   });
 
-  // ── Create stream via admin test page ──
+  // ── Create stream via core API ──
 
-  it("can create a stream through the admin server function", async () => {
+  it("can create a stream through the core API", async () => {
     const streamId = `integration-test-${Date.now()}`;
 
-    // Call the sendTestAction server function directly via core binding
-    // The admin proxies PUT to core via env.CORE.fetch()
     const res = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -119,14 +116,14 @@ describe("admin-core integration", () => {
     });
     expect(res.status).toBe(201);
 
-    // Now verify the stream is inspectable through the admin
-    const inspectRes = await fetch(
-      `${adminUrl}/inspect/${encodeURIComponent(streamId)}`,
+    // Now verify the stream detail page renders via admin
+    const detailRes = await fetch(
+      `${adminUrl}/projects/${PROJECT_ID}/streams/${encodeURIComponent(streamId)}`,
     );
-    expect(inspectRes.status).toBe(200);
-    const html = await inspectRes.text();
+    expect(detailRes.status).toBe(200);
+    const html = await detailRes.text();
     // The child route should render (not just the search box)
-    expect(html).not.toContain("Enter a stream ID to inspect");
+    expect(html).not.toContain("Enter a stream ID to open or create");
   });
 
   // ── Append to stream ──
@@ -154,7 +151,7 @@ describe("admin-core integration", () => {
 
     // Read back via core and verify messages
     const readRes = await fetch(
-      `${coreUrl}/v1/stream/${streamId}?offset=0000000000000000_0000000000000000`,
+      `${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}?offset=0000000000000000_0000000000000000`,
     );
     expect(readRes.status).toBe(200);
     const body = await readRes.text();
@@ -163,9 +160,9 @@ describe("admin-core integration", () => {
     expect(body).toContain("message-2");
   });
 
-  // ── Inspect page shows stream detail ──
+  // ── Stream detail page shows metadata ──
 
-  it("inspect page shows metadata for a real stream", async () => {
+  it("stream detail page shows metadata for a real stream", async () => {
     const streamId = `integration-inspect-${Date.now()}`;
 
     // Create with specific content type
@@ -182,54 +179,14 @@ describe("admin-core integration", () => {
       body: JSON.stringify({ value: 42 }),
     });
 
-    // Load the inspect page via admin
+    // Load the stream detail page via admin
     const res = await fetch(
-      `${adminUrl}/inspect/${encodeURIComponent(streamId)}`,
+      `${adminUrl}/projects/${PROJECT_ID}/streams/${encodeURIComponent(streamId)}`,
     );
     expect(res.status).toBe(200);
     const html = await res.text();
     // Should render the child route with stream details
-    expect(html).not.toContain("Enter a stream ID to inspect");
-  });
-
-  // ── Inspect page shows messages ──
-
-  it("inspect page shows the stream's messages", async () => {
-    const streamId = `integration-messages-${Date.now()}`;
-
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ init: true }),
-    });
-    for (let i = 0; i < 3; i++) {
-      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ msg: i }),
-      });
-    }
-
-    const res = await fetch(
-      `${adminUrl}/inspect/${encodeURIComponent(streamId)}`,
-    );
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    // The inspect page should include the stream's messages
-    expect(html).toContain("Messages");
-    expect(html).toContain("msg");
-  });
-
-  // ── Test page renders the form ──
-
-  it("GET /test renders the test form", async () => {
-    const res = await fetch(`${adminUrl}/test`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("Stream ID");
-    expect(html).toContain("Action");
-    expect(html).toContain("Send");
-    expect(html).toContain("Live Event Log");
+    expect(html).not.toContain("Enter a stream ID to open or create");
   });
 
   // ── SSE proxy ──
@@ -244,10 +201,10 @@ describe("admin-core integration", () => {
       body: JSON.stringify({ init: true }),
     });
 
-    // Connect SSE through the admin proxy
+    // Connect SSE through the admin proxy (now project-scoped)
     const controller = new AbortController();
     const sseRes = await fetch(
-      `${adminUrl}/api/sse/${encodeURIComponent(streamId)}?live=sse&offset=now`,
+      `${adminUrl}/api/sse/${encodeURIComponent(PROJECT_ID)}/${encodeURIComponent(streamId)}?live=sse&offset=now`,
       { signal: controller.signal },
     );
     expect(sseRes.status).toBe(200);
@@ -304,7 +261,7 @@ describe("admin-core integration", () => {
 
     // Read back from core (catch-up mode)
     const readRes = await fetch(
-      `${coreUrl}/v1/stream/${streamId}?offset=0000000000000000_0000000000000000`,
+      `${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}?offset=0000000000000000_0000000000000000`,
     );
     expect(readRes.status).toBe(200);
     const body = await readRes.text();
@@ -312,12 +269,12 @@ describe("admin-core integration", () => {
     expect(body).toContain('"msg":1');
     expect(body).toContain('"msg":2');
 
-    // Verify the inspect page also works for this stream
-    const inspectRes = await fetch(
-      `${adminUrl}/inspect/${encodeURIComponent(streamId)}`,
+    // Verify the stream detail page also works for this stream
+    const detailRes = await fetch(
+      `${adminUrl}/projects/${PROJECT_ID}/streams/${encodeURIComponent(streamId)}`,
     );
-    expect(inspectRes.status).toBe(200);
-    const html = await inspectRes.text();
-    expect(html).not.toContain("Enter a stream ID to inspect");
+    expect(detailRes.status).toBe(200);
+    const html = await detailRes.text();
+    expect(html).not.toContain("Enter a stream ID to open or create");
   });
 });

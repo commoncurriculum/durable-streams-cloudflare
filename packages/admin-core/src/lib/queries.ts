@@ -1,5 +1,5 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { getStats, getStreams, getHotStreams, getTimeseries } from "./analytics";
+import { getStats, getStreams, getHotStreams, getTimeseries, getProjects } from "./analytics";
 
 export function useStats() {
   return useQuery({
@@ -34,5 +34,12 @@ export function useTimeseries() {
     queryFn: () => getTimeseries(),
     refetchInterval: 5000,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: () => getProjects(),
   });
 }

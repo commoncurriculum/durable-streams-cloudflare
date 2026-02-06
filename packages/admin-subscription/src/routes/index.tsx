@@ -182,7 +182,7 @@ function OverviewPage() {
             </thead>
             <tbody>
               {hot.data!.map((row) => {
-                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                const { projectId } = parseDoKey(row.stream_id as string);
                 return (
                   <tr
                     key={row.stream_id as string}
@@ -190,8 +190,8 @@ function OverviewPage() {
                   >
                     <Td>
                       <Link
-                        to="/console/$project/stream/$id"
-                        params={{ project: projectId, id: streamId }}
+                        to="/projects/$projectId/sessions"
+                        params={{ projectId }}
                         className="text-blue-400 hover:underline"
                       >
                         {row.stream_id as string}
@@ -228,7 +228,7 @@ function OverviewPage() {
             </thead>
             <tbody>
               {streams.data!.map((row) => {
-                const { projectId, streamId } = parseDoKey(row.stream_id as string);
+                const { projectId } = parseDoKey(row.stream_id as string);
                 return (
                   <tr
                     key={row.stream_id as string}
@@ -236,8 +236,8 @@ function OverviewPage() {
                   >
                     <Td>
                       <Link
-                        to="/console/$project/stream/$id"
-                        params={{ project: projectId, id: streamId }}
+                        to="/projects/$projectId/sessions"
+                        params={{ projectId }}
                         className="text-blue-400 hover:underline"
                       >
                         {row.stream_id as string}
