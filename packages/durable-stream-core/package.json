@@ -31,9 +31,9 @@
     "wrangler": "latest"
   },
   "exports": {
-    ".": "./src/worker.ts",
-    "./hono": "./src/hono/index.ts",
-    "./hono/app": "./src/hono/app.ts",
-    "./hono/types": "./src/hono/types.ts"
+    ".": "./src/http/worker.ts",
+    "./hono": "./src/http/hono.ts",
+    "./hono/app": "./src/http/hono.ts",
+    "./hono/types": "./src/http/hono.ts"
   }
 }

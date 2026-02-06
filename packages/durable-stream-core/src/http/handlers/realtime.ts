@@ -1,11 +1,15 @@
 import {
   HEADER_SSE_DATA_ENCODING,
+  HEADER_STREAM_CLOSED,
   HEADER_STREAM_NEXT_OFFSET,
+  HEADER_STREAM_UP_TO_DATE,
+  HEADER_STREAM_CURSOR,
   baseHeaders,
   isTextual,
 } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
 import { generateResponseCursor } from "../../protocol/cursor";
+import { base64Encode } from "../../protocol/encoding";
 import {
   LONG_POLL_CACHE_SECONDS,
   LONG_POLL_TIMEOUT_MS,
@@ -13,12 +17,156 @@ import {
   SSE_RECONNECT_MS,
 } from "../../protocol/limits";
 import { ZERO_OFFSET } from "../../protocol/offsets";
-import { buildSseControlEvent, buildSseDataEvent } from "../../live/sse";
-import { buildLongPollHeaders } from "../../engine/stream";
-import type { StreamMeta } from "../../storage/storage";
-import type { StreamContext } from "../context";
-import type { SseClient } from "../../live/types";
-import { getCacheMode } from "../cache_mode";
+import { applyExpiryHeaders } from "../../protocol/expiry";
+import type { StreamMeta } from "../../storage/types";
+import type { StreamContext } from "../router";
+import { getCacheMode } from "../router";
+
+// ============================================================================
+// SSE Types (from live/types.ts)
+// ============================================================================
+
+export type SseClient = {
+  id: number;
+  writer: WritableStreamDefaultWriter<Uint8Array>;
+  offset: number;
+  contentType: string;
+  useBase64: boolean;
+  closed: boolean;
+  cursor: string;
+  closeTimer?: number;
+};
+
+export type SseState = {
+  clients: Map<number, SseClient>;
+  nextId: number;
+};
+
+// ============================================================================
+// LongPollQueue (from live/long_poll.ts)
+// ============================================================================
+
+export type Waiter = {
+  offset: number;
+  resolve: (result: { timedOut: boolean }) => void;
+  timer: number;
+};
+
+export class LongPollQueue {
+  private waiters: Waiter[] = [];
+
+  async waitForData(offset: number, timeoutMs: number): Promise<boolean> {
+    return await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waiters = this.waiters.filter((w) => w.timer !== timer);
+        resolve(true);
+      }, timeoutMs);
+
+      const waiter: Waiter = {
+        offset,
+        timer: timer as unknown as number,
+        resolve: (result) => resolve(result.timedOut),
+      };
+
+      this.waiters.push(waiter);
+    });
+  }
+
+  notify(newTail: number): void {
+    const ready = this.waiters.filter((w) => newTail > w.offset);
+    this.waiters = this.waiters.filter((w) => newTail <= w.offset);
+
+    for (const waiter of ready) {
+      clearTimeout(waiter.timer);
+      waiter.resolve({ timedOut: false });
+    }
+  }
+
+  notifyAll(): void {
+    const current = this.waiters;
+    this.waiters = [];
+    for (const waiter of current) {
+      clearTimeout(waiter.timer);
+      waiter.resolve({ timedOut: false });
+    }
+  }
+}
+
+// ============================================================================
+// SSE Event Builders (from live/sse.ts)
+// ============================================================================
+
+export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): string {
+  let output = "event: data\n";
+
+  if (useBase64) {
+    const encoded = base64Encode(new Uint8Array(payload));
+    output += `data:${encoded}\n\n`;
+    return output;
+  }
+
+  const text = new TextDecoder().decode(payload);
+  const lines = text.split(/\r\n|\n|\r/);
+  for (const line of lines) {
+    output += `data:${line}\n`;
+  }
+  output += "\n";
+  return output;
+}
+
+export function buildSseControlEvent(params: {
+  nextOffset: string;
+  upToDate: boolean;
+  streamClosed: boolean;
+  cursor: string;
+}): { payload: string; nextCursor: string | null } {
+  const control: Record<string, unknown> = {
+    streamNextOffset: params.nextOffset,
+  };
+
+  if (params.streamClosed) {
+    control.streamClosed = true;
+    return {
+      payload: `event: control\n` + `data:${JSON.stringify(control)}\n\n`,
+      nextCursor: null,
+    };
+  }
+
+  const nextCursor = generateResponseCursor(params.cursor);
+  control.streamCursor = nextCursor;
+  if (params.upToDate) control.upToDate = true;
+
+  return {
+    payload: `event: control\n` + `data:${JSON.stringify(control)}\n\n`,
+    nextCursor,
+  };
+}
+
+// ============================================================================
+// Long-Poll Headers (from engine/stream.ts)
+// ============================================================================
+
+export function buildLongPollHeaders(params: {
+  meta: StreamMeta;
+  nextOffsetHeader: string;
+  upToDate: boolean;
+  closedAtTail: boolean;
+  cursor: string | null;
+}): Headers {
+  const headers = baseHeaders({
+    "Content-Type": params.meta.content_type,
+    [HEADER_STREAM_NEXT_OFFSET]: params.nextOffsetHeader,
+  });
+  if (params.cursor) headers.set(HEADER_STREAM_CURSOR, params.cursor);
+  if (params.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
+  if (params.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
+  applyExpiryHeaders(headers, params.meta);
+  return headers;
+}
+
+// ============================================================================
+// Long-Poll Handler
+// ============================================================================
 
 export async function handleLongPoll(
   ctx: StreamContext,
@@ -111,6 +259,10 @@ export async function handleLongPoll(
   return new Response(read.body, { status: 200, headers });
 }
 
+// ============================================================================
+// SSE Handler
+// ============================================================================
+
 export async function handleSse(
   ctx: StreamContext,
   streamId: string,
@@ -177,6 +329,10 @@ export async function handleSse(
   return new Response(readable, { status: 200, headers });
 }
 
+// ============================================================================
+// SSE Broadcast
+// ============================================================================
+
 export async function broadcastSse(
   ctx: StreamContext,
   streamId: string,
@@ -225,6 +381,10 @@ export async function closeAllSseClients(ctx: StreamContext): Promise<void> {
     await closeSseClient(ctx, client);
   }
 }
+
+// ============================================================================
+// SSE Session
+// ============================================================================
 
 async function runSseSession(
   ctx: StreamContext,

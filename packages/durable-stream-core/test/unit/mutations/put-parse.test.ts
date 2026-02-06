@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parsePutInput } from "../../../src/mutations/put/parse";
-import type { RawPutInput } from "../../../src/mutations/types";
+import { parsePutInput } from "../../../src/stream/create/parse";
+import type { RawPutInput } from "../../../src/stream/types";
 import { errorResponse } from "../../../src/protocol/errors";
 
 // Helper to create a base RawPutInput

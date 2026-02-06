@@ -293,11 +293,25 @@ The worker exposes these response headers for browser clients:
 ## Files
 - `wrangler.toml`
 - `migrations/0001_segments_admin.sql`
-- `src/worker.ts`
-- `src/stream_do.ts`
-- `src/engine/*`
-- `src/live/*`
-- `src/protocol/*`
-- `src/storage/*`
+- `src/http/worker.ts` — Edge worker (auth, cache, routing to DO)
+- `src/http/durable_object.ts` — StreamDO class (concurrency, context, debug actions)
+- `src/http/router.ts` — Method dispatch + StreamContext/CacheMode types
+- `src/http/hono.ts` — Hono app factory for internal DO routes
+- `src/http/handlers/read.ts` — GET/HEAD handlers (catch-up reads)
+- `src/http/handlers/write.ts` — PUT/POST/DELETE handlers (mutations)
+- `src/http/handlers/realtime.ts` — Long-poll + SSE (LongPollQueue, SseState, broadcast)
+- `src/stream/create/*` — PUT parse/validate/execute pipeline
+- `src/stream/append/*` — POST parse/validate/execute pipeline
+- `src/stream/read/*` — ReadPath, offset resolution, segment reads
+- `src/stream/producer.ts` — Producer epoch/seq deduplication
+- `src/stream/rotate.ts` — Segment rotation to R2
+- `src/stream/offsets.ts` — Stream offset encoding/resolution
+- `src/stream/content_strategy.ts` — JSON vs binary serialization
+- `src/stream/shared.ts` — Shared validation (Content-Length, body size)
+- `src/stream/close.ts` — Close-only semantics
+- `src/storage/queries.ts` — DoSqliteStorage implementation
+- `src/storage/types.ts` — StreamStorage interface + types
+- `src/storage/segments.ts` — R2 segment encoding/decoding
+- `src/protocol/*` — Headers, offsets, cursor, encoding, errors, timing, limits
 - `test/implementation/*`
 - `test/performance/*`

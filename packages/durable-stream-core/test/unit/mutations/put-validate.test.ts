@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { validatePutInput } from "../../../src/mutations/put/validate";
-import type { ParsedPutInput } from "../../../src/mutations/types";
-import type { StreamMeta } from "../../../src/storage/storage";
+import { validatePutInput } from "../../../src/stream/create/validate";
+import type { ParsedPutInput } from "../../../src/stream/types";
+import type { StreamMeta } from "../../../src/storage/types";
 
 // Helper to create a base ParsedPutInput
 function baseParsedInput(overrides: Partial<ParsedPutInput> = {}): ParsedPutInput {

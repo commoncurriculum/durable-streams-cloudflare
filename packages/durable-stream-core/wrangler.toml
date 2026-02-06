@@ -1,5 +1,5 @@
 name = "durable-streams"
-main = "src/worker.ts"
+main = "src/http/worker.ts"
 compatibility_date = "2026-02-02"
 
 [durable_objects]

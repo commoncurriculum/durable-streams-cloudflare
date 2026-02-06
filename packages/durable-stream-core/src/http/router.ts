@@ -1,8 +1,100 @@
 import { errorResponse } from "../protocol/errors";
-import type { StreamContext } from "./context";
-import { handleDelete, handlePost, handlePut } from "./handlers/mutation";
-import { handleGet, handleHead } from "./handlers/catchup";
-import { createDoApp } from "../hono/do-app";
+import type { LongPollQueue } from "./handlers/realtime";
+import type { SseState } from "./handlers/realtime";
+import type { ReadResult } from "../stream/read/result";
+import type { StreamMeta, StreamStorage } from "../storage/types";
+import type { Timing } from "../protocol/timing";
+import { createDoApp } from "./hono";
+import { handleDelete, handlePost, handlePut } from "./handlers/write";
+import { handleGet, handleHead } from "./handlers/read";
+
+// ============================================================================
+// StreamEnv + StreamContext (from context.ts)
+// ============================================================================
+
+export type StreamEnv = {
+  STREAMS?: DurableObjectNamespace;
+  R2?: R2Bucket;
+  ADMIN_DB?: D1Database;
+  DEBUG_COALESCE?: string;
+  DEBUG_TESTING?: string;
+  DEBUG_TIMING?: string;
+  R2_DELETE_OPS?: string;
+  SEGMENT_MAX_MESSAGES?: string;
+  SEGMENT_MAX_BYTES?: string;
+  METRICS?: AnalyticsEngineDataset;
+};
+
+export type ResolveOffsetResult = {
+  offset: number;
+  error?: Response;
+};
+
+export type StreamContext = {
+  state: DurableObjectState;
+  env: StreamEnv;
+  storage: StreamStorage;
+  timing?: Timing | null;
+  longPoll: LongPollQueue;
+  sseState: SseState;
+  getStream: (streamId: string) => Promise<StreamMeta | null>;
+  resolveOffset: (
+    streamId: string,
+    meta: StreamMeta,
+    offsetParam: string | null,
+  ) => Promise<ResolveOffsetResult>;
+  encodeOffset: (streamId: string, meta: StreamMeta, offset: number) => Promise<string>;
+  encodeTailOffset: (streamId: string, meta: StreamMeta) => Promise<string>;
+  readFromOffset: (
+    streamId: string,
+    meta: StreamMeta,
+    offset: number,
+    maxChunkBytes: number,
+  ) => Promise<ReadResult>;
+  rotateSegment: (
+    streamId: string,
+    options?: { force?: boolean; retainOps?: boolean },
+  ) => Promise<void>;
+};
+
+// ============================================================================
+// Cache Mode (from cache_mode.ts)
+// ============================================================================
+
+export type CacheMode = "shared" | "private";
+
+export const CACHE_MODE_HEADER = "X-Cache-Mode";
+
+export function normalizeCacheMode(value: string | null | undefined): CacheMode | null {
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (lower === "shared" || lower === "private") return lower;
+  return null;
+}
+
+export function resolveCacheMode(params: {
+  envMode?: string | null;
+  authMode?: CacheMode;
+}): CacheMode {
+  const envMode = normalizeCacheMode(params.envMode ?? null);
+  if (envMode) return envMode;
+  if (params.authMode) return params.authMode;
+  return "private";
+}
+
+export function getCacheMode(request: Request): CacheMode {
+  return normalizeCacheMode(request.headers.get(CACHE_MODE_HEADER)) ?? "private";
+}
+
+// ============================================================================
+// Read Auth (from read_auth.ts)
+// ============================================================================
+
+export const SESSION_ID_HEADER = "X-Session-Id";
+
+// ============================================================================
+// Router
+// ============================================================================
 
 export async function routeRequest(
   ctx: StreamContext,

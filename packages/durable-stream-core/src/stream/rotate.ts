@@ -1,0 +1,124 @@
+import { toUint8Array } from "../protocol/encoding";
+import { buildSegmentKey, encodeSegmentMessages } from "../storage/segments";
+import type { StreamStorage } from "../storage/types";
+import type { StreamEnv } from "../http/router";
+
+export type SegmentRotationResult = {
+  rotated: boolean;
+  segment?: {
+    readSeq: number;
+    startOffset: number;
+    endOffset: number;
+    r2Key: string;
+    contentType: string;
+    createdAt: number;
+    expiresAt: number | null;
+    sizeBytes: number;
+    messageCount: number;
+  };
+};
+
+export async function rotateSegment(params: {
+  env: StreamEnv;
+  storage: StreamStorage;
+  streamId: string;
+  segmentMaxMessages: number;
+  segmentMaxBytes: number;
+  force?: boolean;
+  retainOps?: boolean;
+  recordAdminSegment?: (segment: NonNullable<SegmentRotationResult["segment"]>) => void;
+}): Promise<SegmentRotationResult> {
+  const {
+    env,
+    storage,
+    streamId,
+    segmentMaxMessages,
+    segmentMaxBytes,
+    force,
+    retainOps,
+    recordAdminSegment,
+  } = params;
+
+  if (!env.R2) return { rotated: false };
+
+  const meta = await storage.getStream(streamId);
+  if (!meta) return { rotated: false };
+
+  const shouldRotate =
+    force || meta.segment_messages >= segmentMaxMessages || meta.segment_bytes >= segmentMaxBytes;
+  if (!shouldRotate) return { rotated: false };
+
+  const deleteOps = env.R2_DELETE_OPS !== "0" && !retainOps;
+
+  const segmentStart = meta.segment_start;
+  const segmentEnd = meta.tail_offset;
+
+  if (segmentEnd <= segmentStart) return { rotated: false };
+
+  const ops = await storage.selectOpsRange(streamId, segmentStart, segmentEnd);
+  if (ops.length === 0) return { rotated: false };
+  if (ops[0].start_offset !== segmentStart) return { rotated: false };
+
+  for (let i = 1; i < ops.length; i += 1) {
+    if (ops[i].start_offset !== ops[i - 1].end_offset) {
+      return { rotated: false };
+    }
+  }
+
+  const resolvedEnd = ops[ops.length - 1].end_offset;
+  if (resolvedEnd !== segmentEnd) return { rotated: false };
+
+  const now = Date.now();
+  const messages = ops.map((chunk) => toUint8Array(chunk.body));
+  const body = encodeSegmentMessages(messages);
+  const sizeBytes = messages.reduce((sum, message) => sum + message.byteLength, 0);
+  const messageCount = messages.length;
+
+  const key = buildSegmentKey(streamId, meta.read_seq);
+  await env.R2.put(key, body, {
+    httpMetadata: { contentType: meta.content_type },
+  });
+
+  const expiresAt = meta.expires_at ?? null;
+  await storage.insertSegment({
+    streamId,
+    r2Key: key,
+    startOffset: segmentStart,
+    endOffset: segmentEnd,
+    readSeq: meta.read_seq,
+    contentType: meta.content_type,
+    createdAt: now,
+    expiresAt,
+    sizeBytes,
+    messageCount,
+  });
+
+  const remainingStats = await storage.getOpsStatsFrom(streamId, segmentEnd);
+  await storage.batch([
+    storage.updateStreamStatement(
+      streamId,
+      ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
+      [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
+    ),
+  ]);
+
+  const segment = {
+    readSeq: meta.read_seq,
+    startOffset: segmentStart,
+    endOffset: segmentEnd,
+    r2Key: key,
+    contentType: meta.content_type,
+    createdAt: now,
+    expiresAt,
+    sizeBytes,
+    messageCount,
+  };
+
+  recordAdminSegment?.(segment);
+
+  if (deleteOps) {
+    await storage.deleteOpsThrough(streamId, segmentEnd);
+  }
+
+  return { rotated: true, segment };
+}

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   validateContentLength,
   validateBodySize,
-} from "../../../src/mutations/shared";
+} from "../../../src/stream/shared";
 
 describe("validateContentLength", () => {
   it("returns null when no Content-Length header", () => {

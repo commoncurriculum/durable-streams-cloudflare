@@ -6,9 +6,9 @@ import {
   validateContentTypeMatch,
   validateStreamNotClosed,
   validateNonEmptyBody,
-} from "../../../src/mutations/post/validate";
-import type { ParsedPostInput } from "../../../src/mutations/types";
-import type { StreamMeta } from "../../../src/storage/storage";
+} from "../../../src/stream/append/validate";
+import type { ParsedPostInput } from "../../../src/stream/types";
+import type { StreamMeta } from "../../../src/storage/types";
 
 // Helper to create a base ParsedPostInput
 function baseParsedInput(overrides: Partial<ParsedPostInput> = {}): ParsedPostInput {
