@@ -6,7 +6,7 @@
   "description": "Subscription service for durable-streams on Cloudflare Workers + Durable Objects",
   "repository": {
     "type": "git",
-    "url": "https://github.com/commoncurriculum/durable-streams",
+    "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/subscription"
   },
   "files": ["dist"],

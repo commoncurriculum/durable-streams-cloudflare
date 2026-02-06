@@ -18,3 +18,6 @@ dist/
 # tsc sourcemap artifacts
 *.js.map
 *.d.ts.map
+
+# Machine-specific Claude settings
+.claude/settings.local.json

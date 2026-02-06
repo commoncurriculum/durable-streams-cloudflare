@@ -6,7 +6,7 @@
   "description": "Admin dashboard for durable-streams core on Cloudflare Workers",
   "repository": {
     "type": "git",
-    "url": "https://github.com/commoncurriculum/durable-streams",
+    "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/admin-core"
   },
   "files": ["dist"],
