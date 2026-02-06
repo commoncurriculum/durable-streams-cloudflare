@@ -9,20 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TestRouteImport } from './routes/test'
-import { Route as InspectRouteImport } from './routes/inspect'
+import { Route as StreamsRouteImport } from './routes/streams'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as InspectStreamIdRouteImport } from './routes/inspect.$streamId'
+import { Route as StreamsStreamIdRouteImport } from './routes/streams.$streamId'
 import { Route as ApiSseIdRouteImport } from './routes/api/sse.$id'
 
-const TestRoute = TestRouteImport.update({
-  id: '/test',
-  path: '/test',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InspectRoute = InspectRouteImport.update({
-  id: '/inspect',
-  path: '/inspect',
+const StreamsRoute = StreamsRouteImport.update({
+  id: '/streams',
+  path: '/streams',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -30,10 +24,10 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InspectStreamIdRoute = InspectStreamIdRouteImport.update({
+const StreamsStreamIdRoute = StreamsStreamIdRouteImport.update({
   id: '/$streamId',
   path: '/$streamId',
-  getParentRoute: () => InspectRoute,
+  getParentRoute: () => StreamsRoute,
 } as any)
 const ApiSseIdRoute = ApiSseIdRouteImport.update({
   id: '/api/sse/$id',
@@ -43,61 +37,44 @@ const ApiSseIdRoute = ApiSseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
-  '/inspect/$streamId': typeof InspectStreamIdRoute
+  '/streams': typeof StreamsRouteWithChildren
+  '/streams/$streamId': typeof StreamsStreamIdRoute
   '/api/sse/$id': typeof ApiSseIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
-  '/inspect/$streamId': typeof InspectStreamIdRoute
+  '/streams': typeof StreamsRouteWithChildren
+  '/streams/$streamId': typeof StreamsStreamIdRoute
   '/api/sse/$id': typeof ApiSseIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
-  '/inspect/$streamId': typeof InspectStreamIdRoute
+  '/streams': typeof StreamsRouteWithChildren
+  '/streams/$streamId': typeof StreamsStreamIdRoute
   '/api/sse/$id': typeof ApiSseIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inspect' | '/test' | '/inspect/$streamId' | '/api/sse/$id'
+  fullPaths: '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inspect' | '/test' | '/inspect/$streamId' | '/api/sse/$id'
-  id:
-    | '__root__'
-    | '/'
-    | '/inspect'
-    | '/test'
-    | '/inspect/$streamId'
-    | '/api/sse/$id'
+  to: '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
+  id: '__root__' | '/' | '/streams' | '/streams/$streamId' | '/api/sse/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  InspectRoute: typeof InspectRouteWithChildren
-  TestRoute: typeof TestRoute
+  StreamsRoute: typeof StreamsRouteWithChildren
   ApiSseIdRoute: typeof ApiSseIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/test': {
-      id: '/test'
-      path: '/test'
-      fullPath: '/test'
-      preLoaderRoute: typeof TestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inspect': {
-      id: '/inspect'
-      path: '/inspect'
-      fullPath: '/inspect'
-      preLoaderRoute: typeof InspectRouteImport
+    '/streams': {
+      id: '/streams'
+      path: '/streams'
+      fullPath: '/streams'
+      preLoaderRoute: typeof StreamsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -107,12 +84,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/inspect/$streamId': {
-      id: '/inspect/$streamId'
+    '/streams/$streamId': {
+      id: '/streams/$streamId'
       path: '/$streamId'
-      fullPath: '/inspect/$streamId'
-      preLoaderRoute: typeof InspectStreamIdRouteImport
-      parentRoute: typeof InspectRoute
+      fullPath: '/streams/$streamId'
+      preLoaderRoute: typeof StreamsStreamIdRouteImport
+      parentRoute: typeof StreamsRoute
     }
     '/api/sse/$id': {
       id: '/api/sse/$id'
@@ -124,21 +101,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface InspectRouteChildren {
-  InspectStreamIdRoute: typeof InspectStreamIdRoute
+interface StreamsRouteChildren {
+  StreamsStreamIdRoute: typeof StreamsStreamIdRoute
 }
 
-const InspectRouteChildren: InspectRouteChildren = {
-  InspectStreamIdRoute: InspectStreamIdRoute,
+const StreamsRouteChildren: StreamsRouteChildren = {
+  StreamsStreamIdRoute: StreamsStreamIdRoute,
 }
 
-const InspectRouteWithChildren =
-  InspectRoute._addFileChildren(InspectRouteChildren)
+const StreamsRouteWithChildren =
+  StreamsRoute._addFileChildren(StreamsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  InspectRoute: InspectRouteWithChildren,
-  TestRoute: TestRoute,
+  StreamsRoute: StreamsRouteWithChildren,
   ApiSseIdRoute: ApiSseIdRoute,
 }
 export const routeTree = rootRouteImport

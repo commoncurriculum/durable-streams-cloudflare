@@ -138,7 +138,7 @@ function OverviewPage() {
                 >
                   <Td>
                     <Link
-                      to="/inspect/$streamId"
+                      to="/streams/$streamId"
                       params={{ streamId: row.stream_id as string }}
                       className="text-blue-400 hover:underline"
                     >
@@ -181,7 +181,7 @@ function OverviewPage() {
                 >
                   <Td>
                     <Link
-                      to="/inspect/$streamId"
+                      to="/streams/$streamId"
                       params={{ streamId: row.stream_id as string }}
                       className="text-blue-400 hover:underline"
                     >
