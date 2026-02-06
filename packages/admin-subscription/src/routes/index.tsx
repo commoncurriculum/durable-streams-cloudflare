@@ -51,7 +51,7 @@ function OverviewPage() {
       : 0;
 
   const chartData = buildChartData(timeseries.data ?? []);
-  const loading = stats.isLoading;
+  const statsLoading = !stats.isFetched && stats.isFetching;
 
   return (
     <div className="space-y-6">
@@ -59,13 +59,13 @@ function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Publishes / min"
-          value={loading ? null : formatRate(publishCount, 3600)}
+          value={statsLoading ? null : formatRate(publishCount, 3600)}
           color="text-blue-400"
         />
         <StatCard
           label="Fanout Latency avg (ms)"
           value={
-            loading
+            statsLoading
               ? null
               : typeof avgLatency === "number"
                 ? avgLatency.toFixed(1)
@@ -75,12 +75,12 @@ function OverviewPage() {
         />
         <StatCard
           label="Active Sessions (24h)"
-          value={sessions.isLoading ? null : String(sessions.data?.length ?? 0)}
+          value={(!sessions.isFetched && sessions.isFetching) ? null : String(sessions.data?.length ?? 0)}
           color="text-emerald-400"
         />
         <StatCard
           label="Active Streams (24h)"
-          value={streams.isLoading ? null : String(streams.data?.length ?? 0)}
+          value={(!streams.isFetched && streams.isFetching) ? null : String(streams.data?.length ?? 0)}
           color="text-cyan-400"
         />
       </div>
@@ -89,22 +89,22 @@ function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Fanout Success Rate"
-          value={loading ? null : successRate > 0 ? successRate.toFixed(1) + "%" : "\u2014"}
+          value={statsLoading ? null : successRate > 0 ? successRate.toFixed(1) + "%" : "\u2014"}
           color="text-emerald-400"
         />
         <StatCard
           label="Subscribes (1h)"
-          value={loading ? null : String(subscribeCount)}
+          value={statsLoading ? null : String(subscribeCount)}
           color="text-blue-400"
         />
         <StatCard
           label="Unsubscribes (1h)"
-          value={loading ? null : String(unsubscribeCount)}
+          value={statsLoading ? null : String(unsubscribeCount)}
           color="text-purple-400"
         />
         <StatCard
           label="Expired Sessions (24h)"
-          value={loading ? null : String(expiredCount)}
+          value={statsLoading ? null : String(expiredCount)}
           color="text-amber-400"
         />
       </div>
@@ -114,7 +114,7 @@ function OverviewPage() {
         <h3 className="mb-3 text-sm font-medium text-zinc-400">
           Throughput (last hour)
         </h3>
-        {timeseries.isLoading ? (
+        {(!timeseries.isFetched && timeseries.isFetching) ? (
           <div className="h-[180px] animate-pulse rounded bg-zinc-800" />
         ) : chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
@@ -167,7 +167,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           Hot Streams (last 5 min)
         </h3>
-        {hot.isLoading ? (
+        {(!hot.isFetched && hot.isFetching) ? (
           <TableSkeleton rows={3} cols={3} />
         ) : (hot.data?.length ?? 0) === 0 ? (
           <EmptyRow message="No activity" />
@@ -188,7 +188,7 @@ function OverviewPage() {
                 >
                   <Td>
                     <Link
-                      to="/inspect/stream/$id"
+                      to="/console/stream/$id"
                       params={{ id: row.stream_id as string }}
                       className="text-blue-400 hover:underline"
                     >
@@ -209,7 +209,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           All Streams (24h)
         </h3>
-        {streams.isLoading ? (
+        {(!streams.isFetched && streams.isFetching) ? (
           <TableSkeleton rows={5} cols={4} />
         ) : (streams.data?.length ?? 0) === 0 ? (
           <EmptyRow message="No streams" />
@@ -231,7 +231,7 @@ function OverviewPage() {
                 >
                   <Td>
                     <Link
-                      to="/inspect/stream/$id"
+                      to="/console/stream/$id"
                       params={{ id: row.stream_id as string }}
                       className="text-blue-400 hover:underline"
                     >

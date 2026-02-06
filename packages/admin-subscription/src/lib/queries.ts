@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   getStats,
   getSessions,
@@ -15,6 +15,7 @@ export function useStats() {
     queryKey: ["stats"],
     queryFn: () => getStats(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -23,6 +24,7 @@ export function useSessions() {
     queryKey: ["sessions"],
     queryFn: () => getSessions(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -31,6 +33,7 @@ export function useStreams() {
     queryKey: ["streams"],
     queryFn: () => getStreams(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -39,6 +42,7 @@ export function useHotStreams() {
     queryKey: ["hotStreams"],
     queryFn: () => getHotStreams(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -47,6 +51,7 @@ export function useTimeseries() {
     queryKey: ["timeseries"],
     queryFn: () => getTimeseries(),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -55,6 +60,7 @@ export function useErrors() {
     queryKey: ["errors"],
     queryFn: () => getErrors(),
     refetchInterval: 10000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -64,6 +70,7 @@ export function useSessionInspect(sessionId: string | undefined) {
     queryFn: () => inspectSession({ data: sessionId! }),
     enabled: !!sessionId,
     refetchInterval: 2000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -73,5 +80,6 @@ export function useStreamSubscribers(streamId: string | undefined) {
     queryFn: () => inspectStreamSubscribers({ data: streamId! }),
     enabled: !!streamId,
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }

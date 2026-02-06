@@ -9,21 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TestRouteImport } from './routes/test'
-import { Route as InspectRouteImport } from './routes/inspect'
+import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as InspectStreamIdRouteImport } from './routes/inspect.stream.$id'
-import { Route as InspectSessionIdRouteImport } from './routes/inspect.session.$id'
+import { Route as ConsoleStreamIdRouteImport } from './routes/console.stream.$id'
+import { Route as ConsoleSessionIdRouteImport } from './routes/console.session.$id'
 import { Route as ApiSseIdRouteImport } from './routes/api/sse.$id'
 
-const TestRoute = TestRouteImport.update({
-  id: '/test',
-  path: '/test',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InspectRoute = InspectRouteImport.update({
-  id: '/inspect',
-  path: '/inspect',
+const ConsoleRoute = ConsoleRouteImport.update({
+  id: '/console',
+  path: '/console',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -31,15 +25,15 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InspectStreamIdRoute = InspectStreamIdRouteImport.update({
+const ConsoleStreamIdRoute = ConsoleStreamIdRouteImport.update({
   id: '/stream/$id',
   path: '/stream/$id',
-  getParentRoute: () => InspectRoute,
+  getParentRoute: () => ConsoleRoute,
 } as any)
-const InspectSessionIdRoute = InspectSessionIdRouteImport.update({
+const ConsoleSessionIdRoute = ConsoleSessionIdRouteImport.update({
   id: '/session/$id',
   path: '/session/$id',
-  getParentRoute: () => InspectRoute,
+  getParentRoute: () => ConsoleRoute,
 } as any)
 const ApiSseIdRoute = ApiSseIdRouteImport.update({
   id: '/api/sse/$id',
@@ -49,77 +43,63 @@ const ApiSseIdRoute = ApiSseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
+  '/console': typeof ConsoleRouteWithChildren
   '/api/sse/$id': typeof ApiSseIdRoute
-  '/inspect/session/$id': typeof InspectSessionIdRoute
-  '/inspect/stream/$id': typeof InspectStreamIdRoute
+  '/console/session/$id': typeof ConsoleSessionIdRoute
+  '/console/stream/$id': typeof ConsoleStreamIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
+  '/console': typeof ConsoleRouteWithChildren
   '/api/sse/$id': typeof ApiSseIdRoute
-  '/inspect/session/$id': typeof InspectSessionIdRoute
-  '/inspect/stream/$id': typeof InspectStreamIdRoute
+  '/console/session/$id': typeof ConsoleSessionIdRoute
+  '/console/stream/$id': typeof ConsoleStreamIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/inspect': typeof InspectRouteWithChildren
-  '/test': typeof TestRoute
+  '/console': typeof ConsoleRouteWithChildren
   '/api/sse/$id': typeof ApiSseIdRoute
-  '/inspect/session/$id': typeof InspectSessionIdRoute
-  '/inspect/stream/$id': typeof InspectStreamIdRoute
+  '/console/session/$id': typeof ConsoleSessionIdRoute
+  '/console/stream/$id': typeof ConsoleStreamIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/inspect'
-    | '/test'
+    | '/console'
     | '/api/sse/$id'
-    | '/inspect/session/$id'
-    | '/inspect/stream/$id'
+    | '/console/session/$id'
+    | '/console/stream/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/inspect'
-    | '/test'
+    | '/console'
     | '/api/sse/$id'
-    | '/inspect/session/$id'
-    | '/inspect/stream/$id'
+    | '/console/session/$id'
+    | '/console/stream/$id'
   id:
     | '__root__'
     | '/'
-    | '/inspect'
-    | '/test'
+    | '/console'
     | '/api/sse/$id'
-    | '/inspect/session/$id'
-    | '/inspect/stream/$id'
+    | '/console/session/$id'
+    | '/console/stream/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  InspectRoute: typeof InspectRouteWithChildren
-  TestRoute: typeof TestRoute
+  ConsoleRoute: typeof ConsoleRouteWithChildren
   ApiSseIdRoute: typeof ApiSseIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/test': {
-      id: '/test'
-      path: '/test'
-      fullPath: '/test'
-      preLoaderRoute: typeof TestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inspect': {
-      id: '/inspect'
-      path: '/inspect'
-      fullPath: '/inspect'
-      preLoaderRoute: typeof InspectRouteImport
+    '/console': {
+      id: '/console'
+      path: '/console'
+      fullPath: '/console'
+      preLoaderRoute: typeof ConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -129,19 +109,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/inspect/stream/$id': {
-      id: '/inspect/stream/$id'
+    '/console/stream/$id': {
+      id: '/console/stream/$id'
       path: '/stream/$id'
-      fullPath: '/inspect/stream/$id'
-      preLoaderRoute: typeof InspectStreamIdRouteImport
-      parentRoute: typeof InspectRoute
+      fullPath: '/console/stream/$id'
+      preLoaderRoute: typeof ConsoleStreamIdRouteImport
+      parentRoute: typeof ConsoleRoute
     }
-    '/inspect/session/$id': {
-      id: '/inspect/session/$id'
+    '/console/session/$id': {
+      id: '/console/session/$id'
       path: '/session/$id'
-      fullPath: '/inspect/session/$id'
-      preLoaderRoute: typeof InspectSessionIdRouteImport
-      parentRoute: typeof InspectRoute
+      fullPath: '/console/session/$id'
+      preLoaderRoute: typeof ConsoleSessionIdRouteImport
+      parentRoute: typeof ConsoleRoute
     }
     '/api/sse/$id': {
       id: '/api/sse/$id'
@@ -153,23 +133,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface InspectRouteChildren {
-  InspectSessionIdRoute: typeof InspectSessionIdRoute
-  InspectStreamIdRoute: typeof InspectStreamIdRoute
+interface ConsoleRouteChildren {
+  ConsoleSessionIdRoute: typeof ConsoleSessionIdRoute
+  ConsoleStreamIdRoute: typeof ConsoleStreamIdRoute
 }
 
-const InspectRouteChildren: InspectRouteChildren = {
-  InspectSessionIdRoute: InspectSessionIdRoute,
-  InspectStreamIdRoute: InspectStreamIdRoute,
+const ConsoleRouteChildren: ConsoleRouteChildren = {
+  ConsoleSessionIdRoute: ConsoleSessionIdRoute,
+  ConsoleStreamIdRoute: ConsoleStreamIdRoute,
 }
 
-const InspectRouteWithChildren =
-  InspectRoute._addFileChildren(InspectRouteChildren)
+const ConsoleRouteWithChildren =
+  ConsoleRoute._addFileChildren(ConsoleRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  InspectRoute: InspectRouteWithChildren,
-  TestRoute: TestRoute,
+  ConsoleRoute: ConsoleRouteWithChildren,
   ApiSseIdRoute: ApiSseIdRoute,
 }
 export const routeTree = rootRouteImport
