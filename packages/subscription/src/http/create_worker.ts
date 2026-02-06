@@ -20,12 +20,17 @@ export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
  * - "https://example.com": single origin
  * - "https://a.com,https://b.com": multiple origins
  */
-function parseCorsOrigins(corsOrigins: string | undefined): string | string[] | ((origin: string) => string | undefined | null) {
+function parseCorsOrigins(
+  corsOrigins: string | undefined,
+): string | string[] | ((origin: string) => string | undefined | null) {
   if (!corsOrigins || corsOrigins === "*") {
     return "*";
   }
 
-  const origins = corsOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+  const origins = corsOrigins
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
 
   if (origins.length === 1) {
     return origins[0];
