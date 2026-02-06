@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
-    "dev": "wrangler dev --local --port 8788",
+    "dev": "wrangler dev --local --port 8788 --inspector-port 9230",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
     "format:check": "oxfmt --check src test",

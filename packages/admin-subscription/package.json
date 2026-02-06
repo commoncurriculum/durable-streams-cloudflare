@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
-    "dev": "wrangler dev --port 8789",
+    "dev": "wrangler dev --port 8789 --inspector-port 9231",
     "deploy": "wrangler deploy",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run"
