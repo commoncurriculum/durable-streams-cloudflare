@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { errorResponse } from "../protocol/errors";
 import { isExpired } from "../protocol/expiry";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../protocol/limits";
@@ -8,35 +9,35 @@ import type { StreamMeta } from "../storage/types";
 import { routeRequest } from "./router";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
+import type { CacheMode } from "./router";
 import { ReadPath } from "../stream/read/path";
 import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
 
-export type Env = StreamEnv;
-
-export class StreamDO {
-  private state: DurableObjectState;
-  private env: Env;
+export class StreamDO extends DurableObject<StreamEnv> {
   private storage: DoSqliteStorage;
   private longPoll = new LongPollQueue();
   private sseState: SseState = { clients: new Map(), nextId: 0 };
   private readPath: ReadPath;
   private rotating = false;
 
-  constructor(state: DurableObjectState, env: Env) {
-    this.state = state;
-    this.env = env;
-    this.storage = new DoSqliteStorage(state.storage.sql);
+  constructor(ctx: DurableObjectState, env: StreamEnv) {
+    super(ctx, env);
+    this.storage = new DoSqliteStorage(ctx.storage.sql);
     this.readPath = new ReadPath(env, this.storage);
-    this.state.blockConcurrencyWhile(async () => {
+    ctx.blockConcurrencyWhile(async () => {
       this.storage.initSchema();
     });
   }
 
-  // #region docs-do-fetch
-  async fetch(request: Request): Promise<Response> {
-    const timingEnabled =
-      this.env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
+  // #region docs-do-rpc
+  async routeStreamRequest(
+    streamId: string,
+    cacheMode: CacheMode,
+    sessionId: string | null,
+    timingEnabled: boolean,
+    request: Request,
+  ): Promise<Response> {
     const timing = timingEnabled ? new Timing() : null;
     const doneTotal = timing?.start("do.total");
 
@@ -50,24 +51,21 @@ export class StreamDO {
       });
     }
 
-    const streamId = request.headers.get("X-Stream-Id");
-    if (!streamId) {
-      return errorResponse(400, "missing stream id");
-    }
-    // #endregion docs-do-fetch
-
     if (this.env.DEBUG_TESTING === "1") {
       const debugAction = request.headers.get("X-Debug-Action");
       if (debugAction) {
         return await this.handleDebugAction(debugAction, streamId, request);
       }
     }
+    // #endregion docs-do-rpc
 
     // #region docs-build-context
     const ctx: StreamContext = {
-      state: this.state,
+      state: this.ctx,
       env: this.env,
       storage: this.storage,
+      cacheMode,
+      sessionId,
       timing,
       longPoll: this.longPoll,
       sseState: this.sseState,

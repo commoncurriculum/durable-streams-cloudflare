@@ -32,6 +32,7 @@ type StorageTier =
 // ReadPath class
 // ============================================================================
 
+// #region docs-read-path-class
 export class ReadPath {
   private inFlightReads = new Map<string, Promise<ReadResult>>();
   private recentReads = new Map<string, { result: ReadResult; expiresAt: number }>();
@@ -45,6 +46,7 @@ export class ReadPath {
   getStats(): ReadStats {
     return this.readStats;
   }
+  // #endregion docs-read-path-class
 
   async readFromOffset(
     streamId: string,
@@ -120,6 +122,7 @@ export class ReadPath {
   // Storage tier resolution
   // ============================================================================
 
+  // #region docs-resolve-storage-tier
   private async resolveStorageTier(
     streamId: string,
     meta: StreamMeta,
@@ -153,6 +156,7 @@ export class ReadPath {
 
     return { tier: "r2", segment };
   }
+  // #endregion docs-resolve-storage-tier
 
   private async handleMissingSegment(
     streamId: string,
@@ -190,6 +194,7 @@ export class ReadPath {
     return { ...result, source: "hot" };
   }
 
+  // #region docs-read-r2-segment
   private async readFromR2Segment(
     segment: SegmentRecord,
     meta: StreamMeta,
@@ -243,4 +248,5 @@ export class ReadPath {
 
     return { ...result, source: "r2" };
   }
+  // #endregion docs-read-r2-segment
 }

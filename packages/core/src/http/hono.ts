@@ -1,14 +1,15 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
-import type { StreamContext } from "./router";
+import type { StreamDO } from "./durable_object";
+import { extractBearerToken } from "./auth";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type EdgeEnv = {
-  STREAMS: DurableObjectNamespace;
+  STREAMS: DurableObjectNamespace<StreamDO>;
   AUTH_TOKEN?: string;
   CACHE_MODE?: string;
   READ_JWT_SECRET?: string;
@@ -24,16 +25,7 @@ export type EdgeBindings = {
   };
 };
 
-export type DoBindings = {
-  Bindings: Record<string, never>;
-  Variables: {
-    ctx: StreamContext;
-    streamId: string;
-  };
-};
-
 export type EdgeContext = Context<EdgeBindings>;
-export type DoContext = Context<DoBindings>;
 
 // ============================================================================
 // CORS Middleware
@@ -104,25 +96,13 @@ export const bearerAuthMiddleware = createMiddleware<EdgeBindings>(async (c, nex
     return await next();
   }
 
-  const auth = c.req.header("Authorization");
-  if (auth !== `Bearer ${authToken}`) {
+  const token = extractBearerToken(c.req.raw);
+  if (token !== authToken) {
     return c.json({ error: "unauthorized" }, 401);
   }
 
   return await next();
 });
-
-// ============================================================================
-// DO Context Middleware
-// ============================================================================
-
-export function createDoContextMiddleware(ctx: StreamContext, streamId: string) {
-  return createMiddleware<DoBindings>(async (c, next) => {
-    c.set("ctx", ctx);
-    c.set("streamId", streamId);
-    return next();
-  });
-}
 
 // ============================================================================
 // Edge App
@@ -148,37 +128,3 @@ export function createEdgeApp() {
 }
 
 export type EdgeAppType = ReturnType<typeof createEdgeApp>;
-
-// ============================================================================
-// DO App
-// ============================================================================
-
-export function createDoApp(ctx: StreamContext, streamId: string) {
-  const app = new Hono<DoBindings>();
-
-  app.use("*", createDoContextMiddleware(ctx, streamId));
-
-  // Admin config endpoint - returns stream metadata for admin queries
-  app.get("/internal/admin/config", async (c) => {
-    const streamCtx = c.get("ctx");
-    const id = c.get("streamId");
-
-    const meta = await streamCtx.getStream(id);
-    if (!meta) {
-      return c.json({ error: "stream not found" }, 404);
-    }
-
-    return c.json({
-      streamId: id,
-      contentType: meta.content_type,
-      closed: meta.closed === 1,
-      tailOffset: meta.tail_offset,
-      createdAt: meta.created_at,
-      expiresAt: meta.expires_at,
-    });
-  });
-
-  return app;
-}
-
-export type DoAppType = ReturnType<typeof createDoApp>;

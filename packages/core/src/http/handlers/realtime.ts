@@ -20,7 +20,6 @@ import { ZERO_OFFSET } from "../../protocol/offsets";
 import { applyExpiryHeaders } from "../../protocol/expiry";
 import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
-import { getCacheMode } from "../router";
 
 // ============================================================================
 // SSE Types
@@ -52,6 +51,7 @@ export type Waiter = {
   timer: number;
 };
 
+// #region docs-long-poll-queue
 export class LongPollQueue {
   private waiters: Waiter[] = [];
 
@@ -91,6 +91,7 @@ export class LongPollQueue {
     }
   }
 }
+// #endregion docs-long-poll-queue
 
 const textEncoder = new TextEncoder();
 
@@ -98,6 +99,7 @@ const textEncoder = new TextEncoder();
 // SSE Event Builders
 // ============================================================================
 
+// #region docs-sse-data-event
 export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): string {
   let output = "event: data\n";
 
@@ -115,7 +117,9 @@ export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): str
   output += "\n";
   return output;
 }
+// #endregion docs-sse-data-event
 
+// #region docs-sse-control-event
 export function buildSseControlEvent(params: {
   nextOffset: string;
   upToDate: boolean;
@@ -143,6 +147,7 @@ export function buildSseControlEvent(params: {
     nextCursor,
   };
 }
+// #endregion docs-sse-control-event
 
 // ============================================================================
 // Long-Poll Headers
@@ -170,16 +175,16 @@ export function buildLongPollHeaders(params: {
 // Long-Poll Handler
 // ============================================================================
 
+// #region docs-long-poll-setup
 export async function handleLongPoll(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
-  request: Request,
   url: URL,
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
-  const cacheMode = getCacheMode(request);
+  const cacheMode = ctx.cacheMode;
   let cacheControl =
     cacheMode === "shared" ? `public, max-age=${LONG_POLL_CACHE_SECONDS}` : "private, no-store";
   let offset: number;
@@ -207,7 +212,9 @@ export async function handleLongPoll(
     headers.set("Cache-Control", cacheControl);
     return new Response(null, { status: 204, headers });
   }
+  // #endregion docs-long-poll-setup
 
+  // #region docs-long-poll-immediate
   const initialRead = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (initialRead.error) return initialRead.error;
 
@@ -222,7 +229,9 @@ export async function handleLongPoll(
     headers.set("Cache-Control", cacheControl);
     return new Response(initialRead.body, { status: 200, headers });
   }
+  // #endregion docs-long-poll-immediate
 
+  // #region docs-long-poll-wait
   const doneWait = ctx.timing?.start("longpoll.wait");
   const timedOut = await ctx.longPoll.waitForData(offset, LONG_POLL_TIMEOUT_MS);
   doneWait?.();
@@ -260,19 +269,20 @@ export async function handleLongPoll(
   headers.set("Cache-Control", cacheControl);
   return new Response(read.body, { status: 200, headers });
 }
+// #endregion docs-long-poll-wait
 
 // ============================================================================
 // SSE Handler
 // ============================================================================
 
+// #region docs-sse-setup
 export async function handleSse(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
-  request: Request,
   url: URL,
 ): Promise<Response> {
-  const cacheMode = getCacheMode(request);
+  const cacheMode = ctx.cacheMode;
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
   let offset: number;
@@ -305,7 +315,9 @@ export async function handleSse(
   };
 
   ctx.sseState.clients.set(clientId, client);
+  // #endregion docs-sse-setup
 
+  // #region docs-sse-lifecycle
   client.closeTimer = setTimeout(async () => {
     if (client.closed) return;
     await closeSseClient(ctx, client);
@@ -330,11 +342,13 @@ export async function handleSse(
 
   return new Response(readable, { status: 200, headers });
 }
+// #endregion docs-sse-lifecycle
 
 // ============================================================================
 // SSE Broadcast
 // ============================================================================
 
+// #region docs-broadcast-sse
 export async function broadcastSse(
   ctx: StreamContext,
   streamId: string,
@@ -357,6 +371,7 @@ export async function broadcastSse(
     }
   }
 }
+// #endregion docs-broadcast-sse
 
 export async function broadcastSseControl(
   ctx: StreamContext,

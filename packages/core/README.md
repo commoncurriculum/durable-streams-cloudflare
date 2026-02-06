@@ -69,26 +69,96 @@ The Analytics Engine dataset is created automatically on first deploy.
 pnpx wrangler deploy
 ```
 
-### 4. (Optional) Enable API Authentication
+## Authentication
 
-The `AUTH_TOKEN` secret enables bearer token authentication for **all stream API endpoints** (`/v1/stream/*`). When set, clients must include `Authorization: Bearer <token>` header.
+Out of the box, the default worker ships with bearer token auth for mutations and JWT session auth for reads. But the core library is **auth-agnostic** — you can use the built-in strategies, write your own, or disable auth entirely.
 
-**Important**: If `AUTH_TOKEN` is set, the admin UI's stream creation/deletion features will not work because the browser requests won't include the token. Use Cloudflare Access (see below) to protect the admin UI instead.
+### Default: No Auth
 
-```bash
-# Set a bearer token for API authentication
-pnpx wrangler secret put AUTH_TOKEN
+`createStreamWorker()` with no config allows all requests (spec-compliant):
 
-# List current secrets
-pnpx wrangler secret list
+```typescript
+import { createStreamWorker, StreamDO } from "durable-streams-core";
 
-# Remove AUTH_TOKEN if not needed
-pnpx wrangler secret delete AUTH_TOKEN
+export default createStreamWorker();
+export { StreamDO };
 ```
 
-**When to use AUTH_TOKEN:**
-- You have server-to-server clients that can include the bearer token
-- You want to prevent unauthorized access to stream endpoints
+### Built-in Strategies
+
+The package ships two opt-in auth strategies:
+
+```typescript
+import { createStreamWorker, bearerTokenAuth, jwtSessionAuth, StreamDO } from "durable-streams-core";
+
+export default createStreamWorker({
+  authorizeMutation: bearerTokenAuth(),
+  authorizeRead: jwtSessionAuth(),
+});
+export { StreamDO };
+```
+
+- **`bearerTokenAuth()`** — Checks `env.AUTH_TOKEN` for mutations (PUT/POST/DELETE). If `AUTH_TOKEN` is not set, all mutations are allowed. Clients must include `Authorization: Bearer <token>`.
+- **`jwtSessionAuth()`** — Validates an HS256 JWT for reads (GET/HEAD) using `env.READ_JWT_SECRET`. The JWT payload must contain `session_id` and `exp` claims. The session ID is scoped to the stream: requests for `session:{id}` require a JWT with matching `session_id`. If `READ_JWT_SECRET` is not set, all reads are allowed.
+
+Set secrets via wrangler:
+```bash
+pnpx wrangler secret put AUTH_TOKEN
+pnpx wrangler secret put READ_JWT_SECRET
+```
+
+### Custom Auth
+
+Write your own auth callbacks with the `AuthorizeMutation` and `AuthorizeRead` signatures:
+
+```typescript
+import { createStreamWorker, StreamDO } from "durable-streams-core";
+import type { BaseEnv, AuthResult } from "durable-streams-core";
+
+type MyEnv = BaseEnv & { API_KEYS: KVNamespace };
+
+export default createStreamWorker<MyEnv>({
+  authorizeMutation: async (request, streamId, env, timing) => {
+    const key = request.headers.get("X-API-Key");
+    if (!key) return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+    const valid = await env.API_KEYS.get(key);
+    if (!valid) return { ok: false, response: new Response("forbidden", { status: 403 }) };
+    return { ok: true };
+  },
+});
+export { StreamDO };
+```
+
+Both callbacks receive `(request, streamId, env, timing)` and return `AuthResult | Promise<AuthResult>`:
+- `{ ok: true }` — allow the request
+- `{ ok: false, response: Response }` — deny with the given response (CORS headers added automatically)
+
+`AuthorizeRead` returns `{ ok: true, sessionId: string }` on success (the session ID is forwarded to the DO via `X-Session-Id` header).
+
+### Using as a Library
+
+To use durable-streams in your own worker project:
+
+1. Install the package and add it to your `wrangler.toml`:
+   ```toml
+   [[durable_objects.bindings]]
+   name = "STREAMS"
+   class_name = "StreamDO"
+   ```
+
+2. Import and compose in your worker entry:
+   ```typescript
+   import { createStreamWorker, StreamDO } from "durable-streams-core";
+   export default createStreamWorker({ /* your auth config */ });
+   export { StreamDO };
+   ```
+
+### Environment Variables
+
+| Variable | Used by | Description |
+|---|---|---|
+| `AUTH_TOKEN` | `bearerTokenAuth()` | Bearer token for mutation auth |
+| `READ_JWT_SECRET` | `jwtSessionAuth()` | HS256 secret for JWT read auth |
 
 ## Conformance
 Run the server conformance suite against the local worker:
@@ -208,7 +278,9 @@ The worker exposes these response headers for browser clients:
 
 ## Files
 - `wrangler.toml`
-- `src/http/worker.ts` — Edge worker (auth, cache, routing to DO)
+- `src/http/worker.ts` — Default worker composition (bearerTokenAuth + jwtSessionAuth)
+- `src/http/create_worker.ts` — `createStreamWorker()` factory (CORS, caching, DO routing)
+- `src/http/auth.ts` — Auth types, JWT helpers, built-in strategies
 - `src/http/durable_object.ts` — StreamDO class (concurrency, context, debug actions)
 - `src/http/router.ts` — Method dispatch + StreamContext/CacheMode types
 - `src/http/hono.ts` — Hono app factory for internal DO routes
@@ -221,7 +293,6 @@ The worker exposes these response headers for browser clients:
 - `src/stream/producer.ts` — Producer epoch/seq deduplication
 - `src/stream/rotate.ts` — Segment rotation to R2
 - `src/stream/offsets.ts` — Stream offset encoding/resolution
-- `src/stream/content_strategy.ts` — JSON vs binary serialization
 - `src/stream/shared.ts` — Shared validation (Content-Length, body size)
 - `src/stream/close.ts` — Close-only semantics
 - `src/storage/queries.ts` — DoSqliteStorage implementation

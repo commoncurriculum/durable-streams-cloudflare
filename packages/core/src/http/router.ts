@@ -4,7 +4,6 @@ import type { SseState } from "./handlers/realtime";
 import type { ReadResult } from "../stream/read/result";
 import type { StreamMeta, StreamStorage } from "../storage/types";
 import type { Timing } from "../protocol/timing";
-import { createDoApp } from "./hono";
 import { handleDelete, handlePost, handlePut } from "./handlers/write";
 import { handleGet, handleHead } from "./handlers/read";
 
@@ -13,7 +12,6 @@ import { handleGet, handleHead } from "./handlers/read";
 // ============================================================================
 
 export type StreamEnv = {
-  STREAMS?: DurableObjectNamespace;
   R2?: R2Bucket;
   DEBUG_COALESCE?: string;
   DEBUG_TESTING?: string;
@@ -33,6 +31,8 @@ export type StreamContext = {
   state: DurableObjectState;
   env: StreamEnv;
   storage: StreamStorage;
+  cacheMode: CacheMode;
+  sessionId: string | null;
   timing?: Timing | null;
   longPoll: LongPollQueue;
   sseState: SseState;
@@ -62,8 +62,6 @@ export type StreamContext = {
 
 export type CacheMode = "shared" | "private";
 
-export const CACHE_MODE_HEADER = "X-Cache-Mode";
-
 export function normalizeCacheMode(value: string | null | undefined): CacheMode | null {
   if (!value) return null;
   const lower = value.toLowerCase();
@@ -82,16 +80,7 @@ export function resolveCacheMode(params: {
   return "private";
 }
 
-export function getCacheMode(request: Request): CacheMode {
-  return normalizeCacheMode(request.headers.get(CACHE_MODE_HEADER)) ?? "private";
-}
 // #endregion docs-cache-mode
-
-// ============================================================================
-// Read Auth
-// ============================================================================
-
-export const SESSION_ID_HEADER = "X-Session-Id";
 
 // ============================================================================
 // Router
@@ -107,15 +96,10 @@ export async function routeRequest(
   const method = request.method.toUpperCase();
 
   try {
-    if (url.pathname.startsWith("/internal/")) {
-      const doApp = createDoApp(ctx, streamId);
-      return await doApp.fetch(request);
-    }
-
     if (method === "PUT") return await handlePut(ctx, streamId, request);
     if (method === "POST") return await handlePost(ctx, streamId, request);
     if (method === "GET") return await handleGet(ctx, streamId, request, url);
-    if (method === "HEAD") return await handleHead(ctx, streamId, request);
+    if (method === "HEAD") return await handleHead(ctx, streamId);
     if (method === "DELETE") return await handleDelete(ctx, streamId);
     return errorResponse(405, "method not allowed");
   } catch (e) {

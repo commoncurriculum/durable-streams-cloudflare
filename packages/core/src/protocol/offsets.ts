@@ -1,3 +1,4 @@
+// #region docs-encode
 import { OFFSET_WIDTH } from "./limits";
 
 export const ZERO_OFFSET = `${"0".repeat(OFFSET_WIDTH)}_${"0".repeat(OFFSET_WIDTH)}`;
@@ -10,7 +11,9 @@ export function encodeOffset(offset: number, readSeq = 0): string {
     "0",
   )}`;
 }
+// #endregion docs-encode
 
+// #region docs-decode
 export function decodeOffset(token: string): number | null {
   const parsed = decodeOffsetParts(token);
   return parsed ? parsed.byteOffset : null;
@@ -26,3 +29,4 @@ export function decodeOffsetParts(token: string): { readSeq: number; byteOffset:
   if (readSeq < 0 || byteOffset < 0) return null;
   return { readSeq, byteOffset };
 }
+// #endregion docs-decode

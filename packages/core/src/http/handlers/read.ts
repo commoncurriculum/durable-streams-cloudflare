@@ -14,7 +14,6 @@ import { cacheControlFor, applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
-import { getCacheMode } from "../router";
 import { handleLongPoll, handleSse } from "./realtime";
 
 // ============================================================================
@@ -72,6 +71,7 @@ export function buildReadResponse(params: {
 // Handlers
 // ============================================================================
 
+// #region docs-handle-get
 export async function handleGet(
   ctx: StreamContext,
   streamId: string,
@@ -82,17 +82,21 @@ export async function handleGet(
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens
-  const cacheMode = getCacheMode(request);
+  const cacheMode = ctx.cacheMode;
 
+  // #region docs-sse-mode-detection
   const live = url.searchParams.get("live");
   if (live === "long-poll") {
-    return handleLongPoll(ctx, streamId, meta, request, url);
+    return handleLongPoll(ctx, streamId, meta, url);
   }
 
   if (live === "sse") {
-    return handleSse(ctx, streamId, meta, request, url);
+    return handleSse(ctx, streamId, meta, url);
   }
+  // #endregion docs-sse-mode-detection
+  // #endregion docs-handle-get
 
+  // #region docs-resolve-offset
   const offsetParam = url.searchParams.get("offset") ?? "-1";
 
   if (offsetParam === "now") {
@@ -120,7 +124,9 @@ export async function handleGet(
   const { offset } = resolved;
   const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (read.error) return read.error;
+  // #endregion docs-resolve-offset
 
+  // #region docs-build-response
   const response = buildReadResponse({
     streamId,
     meta,
@@ -146,18 +152,18 @@ export async function handleGet(
 
   return response;
 }
+// #endregion docs-build-response
 
 export async function handleHead(
   ctx: StreamContext,
   streamId: string,
-  request: Request,
 ): Promise<Response> {
   const meta = await ctx.getStream(streamId);
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens
   const response = buildHeadResponse(meta, await ctx.encodeTailOffset(streamId, meta));
-  if (getCacheMode(request) === "private") {
+  if (ctx.cacheMode === "private") {
     response.headers.set("Cache-Control", "private, no-store");
   }
   return response;

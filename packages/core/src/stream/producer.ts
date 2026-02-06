@@ -12,6 +12,7 @@ import { errorResponse } from "../protocol/errors";
 import { isInteger } from "../protocol/validation";
 import type { ProducerState, StreamStorage } from "../storage/types";
 
+// #region docs-producer-types
 export type ProducerInput = {
   id: string;
   epoch: number;
@@ -23,6 +24,7 @@ export type ProducerEval =
   | { kind: "ok"; state: ProducerState | null }
   | { kind: "duplicate"; state: ProducerState }
   | { kind: "error"; response: Response };
+// #endregion docs-producer-types
 
 const PRODUCER_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -51,6 +53,7 @@ export function parseProducerHeaders(
   return { value: { id, epoch: parseInt(epochStr, 10), seq: parseInt(seqStr, 10) } };
 }
 
+// #region docs-producer-evaluate
 export async function evaluateProducer(
   storage: StreamStorage,
   streamId: string,
@@ -100,6 +103,7 @@ export async function evaluateProducer(
 
   return { kind: "ok", state: existing };
 }
+// #endregion docs-producer-evaluate
 
 export function producerDuplicateResponse(
   state: ProducerState,
