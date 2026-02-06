@@ -37,6 +37,8 @@ async function waitForReady(url: string, timeoutMs = 30_000) {
   throw new Error(`Server at ${url} did not start within ${timeoutMs}ms`);
 }
 
+const PROJECT_ID = "test-project";
+
 describe("admin-core integration", () => {
   let coreProc: ChildProcess;
   let adminProc: ChildProcess;
@@ -110,7 +112,7 @@ describe("admin-core integration", () => {
 
     // Call the sendTestAction server function directly via core binding
     // The admin proxies PUT to core via env.CORE.fetch()
-    const res = await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    const res = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hello: "world" }),
@@ -133,7 +135,7 @@ describe("admin-core integration", () => {
     const streamId = `integration-append-${Date.now()}`;
 
     // Create stream
-    const createRes = await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    const createRes = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ init: true }),
@@ -142,7 +144,7 @@ describe("admin-core integration", () => {
 
     // Append messages
     for (let i = 0; i < 3; i++) {
-      const appendRes = await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+      const appendRes = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seq: i, data: `message-${i}` }),
@@ -167,14 +169,14 @@ describe("admin-core integration", () => {
     const streamId = `integration-inspect-${Date.now()}`;
 
     // Create with specific content type
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ test: true }),
     });
 
     // Append a message so there's data
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: 42 }),
@@ -195,13 +197,13 @@ describe("admin-core integration", () => {
   it("inspect page shows the stream's messages", async () => {
     const streamId = `integration-messages-${Date.now()}`;
 
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ init: true }),
     });
     for (let i = 0; i < 3; i++) {
-      await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ msg: i }),
@@ -236,7 +238,7 @@ describe("admin-core integration", () => {
     const streamId = `integration-sse-${Date.now()}`;
 
     // Create the stream first
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ init: true }),
@@ -252,7 +254,7 @@ describe("admin-core integration", () => {
     expect(sseRes.headers.get("content-type")).toContain("text/event-stream");
 
     // Append a message while SSE is connected
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ live: "event" }),
@@ -286,14 +288,14 @@ describe("admin-core integration", () => {
     const streamId = `integration-read-${Date.now()}`;
 
     // Create and append
-    await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ first: true }),
     });
 
     for (let i = 0; i < 3; i++) {
-      await fetch(`${coreUrl}/v1/stream/${streamId}`, {
+      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ msg: i }),
