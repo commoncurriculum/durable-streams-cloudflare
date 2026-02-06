@@ -83,6 +83,15 @@ export async function handlePut(
     // 5. Side effects (segment rotation)
     scheduleSegmentRotation(ctx, streamId, result.value);
 
+    // Record metrics for stream creation
+    if (ctx.env.METRICS && result.value.status === 201) {
+      ctx.env.METRICS.writeDataPoint({
+        indexes: [streamId],
+        blobs: [streamId, "create", parsed.value.producer?.id ?? "anonymous"],
+        doubles: [1, parsed.value.bodyBytes.length],
+      });
+    }
+
     return new Response(null, { status: result.value.status, headers: result.value.headers });
   });
 }
@@ -169,8 +178,17 @@ export async function handlePost(
     if (ctx.env.METRICS && validated.value.kind === "append") {
       ctx.env.METRICS.writeDataPoint({
         indexes: [streamId],
-        blobs: [streamId, parsed.value.producer?.id ?? "anonymous"],
+        blobs: [streamId, "append", parsed.value.producer?.id ?? "anonymous"],
         doubles: [1, parsed.value.bodyBytes.length],
+      });
+    }
+
+    // Record metrics for stream close
+    if (ctx.env.METRICS && validated.value.closeStream) {
+      ctx.env.METRICS.writeDataPoint({
+        indexes: [streamId],
+        blobs: [streamId, "close", parsed.value.producer?.id ?? "anonymous"],
+        doubles: [1, 0],
       });
     }
     // #endregion docs-side-effects
@@ -198,6 +216,15 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
           () => undefined,
         ),
       );
+    }
+
+    // Record metrics for stream deletion
+    if (ctx.env.METRICS) {
+      ctx.env.METRICS.writeDataPoint({
+        indexes: [streamId],
+        blobs: [streamId, "delete", "anonymous"],
+        doubles: [1, 0],
+      });
     }
 
     return new Response(null, { status: 204, headers: baseHeaders() });

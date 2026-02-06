@@ -5,7 +5,7 @@ import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../prot
 import { LongPollQueue } from "./handlers/realtime";
 import type { SseState } from "./handlers/realtime";
 import { DoSqliteStorage } from "../storage/queries";
-import type { StreamMeta } from "../storage/types";
+import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../storage/types";
 import { routeRequest } from "./router";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
@@ -13,6 +13,15 @@ import type { CacheMode } from "./router";
 import { ReadPath } from "../stream/read/path";
 import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
+
+export type StreamIntrospection = {
+  meta: StreamMeta;
+  ops: OpsStats;
+  segments: SegmentRecord[];
+  producers: ProducerState[];
+  sseClientCount: number;
+  longPollWaiterCount: number;
+};
 
 export class StreamDO extends DurableObject<StreamEnv> {
   private storage: DoSqliteStorage;
@@ -84,6 +93,24 @@ export class StreamDO extends DurableObject<StreamEnv> {
     doneTotal?.();
     return attachTiming(response, timing);
     // #endregion docs-build-context
+  }
+
+  async getIntrospection(streamId: string): Promise<StreamIntrospection | null> {
+    const meta = await this.storage.getStream(streamId);
+    if (!meta) return null;
+
+    const ops = await this.storage.getOpsStatsFrom(streamId, 0);
+    const segments = await this.storage.listSegments(streamId);
+    const producers = await this.storage.listProducers(streamId);
+
+    return {
+      meta,
+      ops,
+      segments,
+      producers,
+      sseClientCount: this.sseState.clients.size,
+      longPollWaiterCount: this.longPoll.getWaiterCount(),
+    };
   }
 
   private async getStream(streamId: string): Promise<StreamMeta | null> {

@@ -439,4 +439,11 @@ export class DoSqliteStorage implements StreamStorage {
     );
     return result.rowsWritten > 0;
   }
+
+  async listProducers(_streamId: string): Promise<ProducerState[]> {
+    const result = this.sql.exec<ProducerState>(
+      "SELECT * FROM producers ORDER BY last_updated DESC",
+    );
+    return result.toArray();
+  }
 }

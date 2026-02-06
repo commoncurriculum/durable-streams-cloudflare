@@ -142,4 +142,6 @@ export interface StreamStorage {
     producerId: string,
     lastUpdated: number,
   ): Promise<boolean>;
+
+  listProducers(streamId: string): Promise<ProducerState[]>;
 }

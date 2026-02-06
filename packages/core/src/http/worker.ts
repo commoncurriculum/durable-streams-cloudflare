@@ -8,6 +8,7 @@ export default createStreamWorker({
 });
 
 export { StreamDO, createStreamWorker, bearerTokenAuth, jwtSessionAuth };
+export type { StreamIntrospection } from "./durable_object";
 export type {
   AuthResult,
   ReadAuthResult,

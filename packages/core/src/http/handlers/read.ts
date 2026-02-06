@@ -138,6 +138,15 @@ export async function handleGet(
     offset,
   });
 
+  // Record metrics for read
+  if (ctx.env.METRICS) {
+    ctx.env.METRICS.writeDataPoint({
+      indexes: [streamId],
+      blobs: [streamId, "read", "anonymous"],
+      doubles: [1, read.body.byteLength],
+    });
+  }
+
   if (cacheMode === "private") {
     response.headers.set("Cache-Control", "private, no-store");
   } else if (read.source === "hot") {

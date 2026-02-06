@@ -13,6 +13,44 @@ importers:
 
   .: {}
 
+  packages/admin:
+    dependencies:
+      hono:
+        specifier: ^4
+        version: 4.11.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: latest
+        version: 4.20260205.0
+      typescript:
+        specifier: latest
+        version: 5.9.3
+      vitest:
+        specifier: latest
+        version: 4.0.18(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
+      wrangler:
+        specifier: latest
+        version: 4.63.0(@cloudflare/workers-types@4.20260205.0)
+
+  packages/admin-core:
+    dependencies:
+      hono:
+        specifier: ^4
+        version: 4.11.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: latest
+        version: 4.20260205.0
+      typescript:
+        specifier: latest
+        version: 5.9.3
+      vitest:
+        specifier: latest
+        version: 4.0.18(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
+      wrangler:
+        specifier: latest
+        version: 4.63.0(@cloudflare/workers-types@4.20260205.0)
+
   packages/admin-ui:
     dependencies:
       '@hono/zod-validator':

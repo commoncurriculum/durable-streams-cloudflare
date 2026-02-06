@@ -90,6 +90,10 @@ export class LongPollQueue {
       waiter.resolve({ timedOut: false });
     }
   }
+
+  getWaiterCount(): number {
+    return this.waiters.length;
+  }
 }
 // #endregion docs-long-poll-queue
 
@@ -315,6 +319,15 @@ export async function handleSse(
   };
 
   ctx.sseState.clients.set(clientId, client);
+
+  // Record metrics for SSE connection
+  if (ctx.env.METRICS) {
+    ctx.env.METRICS.writeDataPoint({
+      indexes: [streamId],
+      blobs: [streamId, "sse_connect", "anonymous"],
+      doubles: [1, 0],
+    });
+  }
   // #endregion docs-sse-setup
 
   // #region docs-sse-lifecycle

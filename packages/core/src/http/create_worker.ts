@@ -11,6 +11,7 @@ import type { StreamDO } from "./durable_object";
 export type BaseEnv = {
   STREAMS: DurableObjectNamespace<StreamDO>;
   AUTH_TOKEN?: string;
+  ADMIN_TOKEN?: string;
   CACHE_MODE?: string;
   READ_JWT_SECRET?: string;
   R2?: R2Bucket;
@@ -117,6 +118,29 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return corsError(400, "missing stream id");
       }
       // #endregion docs-extract-stream-id
+
+      // Admin introspection: GET /v1/stream/:id/admin
+      if (streamId.endsWith("/admin") && request.method.toUpperCase() === "GET") {
+        const actualStreamId = streamId.slice(0, -"/admin".length);
+        if (!actualStreamId) return corsError(400, "missing stream id");
+
+        if (!env.ADMIN_TOKEN) return corsError(403, "admin not configured");
+        const authHeader = request.headers.get("Authorization");
+        if (!authHeader || authHeader !== `Bearer ${env.ADMIN_TOKEN}`) {
+          return corsError(401, "unauthorized");
+        }
+
+        const stub = env.STREAMS.getByName(actualStreamId);
+        const introspection = await stub.getIntrospection(actualStreamId);
+        if (!introspection) return corsError(404, "stream not found");
+
+        const headers = new Headers({
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        });
+        applyCorsHeaders(headers);
+        return new Response(JSON.stringify(introspection), { status: 200, headers });
+      }
 
       const method = request.method.toUpperCase();
       const isStreamRead = method === "GET" || method === "HEAD";
