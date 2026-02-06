@@ -1,178 +1,200 @@
-# durable-streams
+# durable-streams-cloudflare
 
-Cloudflare-first **Durable Streams** server: a production‑ready implementation
-of the Durable Streams HTTP protocol with **low‑latency writes**, **consistent
-ordering**, and **CDN‑compatible catch‑up reads**. It uses a **Durable Object
-per stream** as the sequencer, **SQLite in DO storage** as the hot log, and **R2
-segments** for immutable cold storage.
+Cloudflare Workers implementation of the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol — low-latency writes via Durable Objects, CDN-compatible reads, and pub/sub fan-out.
 
-If you need **real‑time streams with strong ordering guarantees** and **fast
-catch‑up**, this is the drop‑in server.
+A Durable Object per stream acts as the sequencer, with SQLite as the hot log and R2 for immutable cold segments. The subscription layer adds session management and fan-out on top.
 
-## What You Can Deploy Today
-- **Worker + DO** for consistent ordering, append idempotency, and fan‑out.
-- **HTTP protocol**: PUT/POST/GET/HEAD/DELETE, long‑poll, SSE.
-- **CDN‑aware caching** with cache mode controls.
-- **TTL/Expires‑At** enforcement for streams.
-- **Conformance‑tested** against the public test suite.
+## How It Works
 
-## How It Works (ASCII Diagrams)
+These are **libraries**, not pre-built services. You create a Cloudflare Worker project, import the factory function, wire up your auth, and deploy with `wrangler deploy`.
 
-### Write Path
 ```
-Client
-  |
-  |  POST /v1/stream/<id>
-  v
-Worker (auth + cache mode)
-  |
-  v
-Stream DO (SQLite hot log)
-  |
-  +--> Optional rotation --> R2 (cold segment, immutable)
-  |
-  +--> SSE/long‑poll wakeups
+my-streams-project/
+  src/worker.ts      ← import createStreamWorker(), configure auth
+  wrangler.toml      ← DO bindings, R2 bucket, env vars
+  package.json       ← depends on @durable-streams-cloudflare/*
 ```
 
-### Read Path (Catch‑up)
+Your worker file is ~5 lines. The libraries handle protocol compliance, storage, caching, and real-time delivery.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| [`@durable-streams-cloudflare/core`](https://www.npmjs.com/package/@durable-streams-cloudflare/core) | Durable Streams HTTP protocol — DO sequencer, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE |
+| [`@durable-streams-cloudflare/subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/subscription) | Pub/sub fan-out — session streams, subscribe/publish, TTL cleanup, Analytics Engine metrics |
+| [`@durable-streams-cloudflare/admin-core`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-core) | Admin dashboard for core streams |
+| [`@durable-streams-cloudflare/admin-subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-subscription) | Admin dashboard for subscriptions |
+
+## Architecture
+
 ```
-Client GET offset=...
-  |
-  v
-Worker (auth + cache mode)
-  |
-  v
-Stream DO
-  | \
-  |  \-- hot log (SQLite) if offset in tail
-  |
-  \---- cold segment (R2) if offset in rotated segment
+                        ┌──────────────────────────┐
+  Client (read)         │      Core Worker          │
+  GET /v1/stream/:id ──>│  auth → cache → StreamDO  │
+  (via CDN)             │         │                  │
+                        │    SQLite hot log          │
+                        │    R2 cold segments        │
+                        └──────────────────────────┘
+                                   ^
+                                   │ service binding
+                                   │ (or CORE_URL)
+                        ┌──────────┴───────────────┐
+  Client (pub/sub)      │   Subscription Worker     │
+  POST /v1/subscribe    │  auth → route             │
+  POST /v1/publish/:id  │    │                      │
+  GET  /v1/session/:id  │    ├─> Core: write source  │
+                        │    ├─> SubscriptionDO:     │
+                        │    │   get subscribers     │
+                        │    └─> Fan-out: write to   │
+                        │        each session stream │
+                        └──────────────────────────┘
 ```
 
-### Cache Mode (Auth‑Agnostic)
-```
-Client (Authorization)
-  |
-  v
-Worker verifies auth
-  |
-  +--> X-Cache-Mode: shared  -> CDN cacheable
-  |
-  \--> X-Cache-Mode: private -> Cache-Control: private, no-store
-```
+The core worker owns stream storage and the HTTP protocol. The subscription worker manages sessions and fan-out, delegating all stream I/O to core via service binding (recommended) or HTTP.
 
-## Quick Start (Local)
+## Quick Start
+
+### 1. Set Up the Core Worker
+
 ```bash
-cd packages/durable-stream-server
-pnpm install
-pnpm run dev
+npm install @durable-streams-cloudflare/core
 ```
 
-Run conformance (requires `pnpm run dev` in another shell):
-```bash
-cd packages/durable-stream-server
-pnpm run conformance
+Create `src/worker.ts`:
+
+```ts
+import { createStreamWorker, StreamDO } from "@durable-streams-cloudflare/core";
+
+export default createStreamWorker();
+export { StreamDO };
 ```
 
-## Deploy (Cloudflare)
-1. Create an **R2 bucket** (required).
-2. Update `packages/durable-stream-server/wrangler.toml` with ids.
-3. Deploy:
-   ```bash
-   pnpm -C packages/durable-stream-server exec wrangler deploy
-   ```
+Create `wrangler.toml`:
 
-## Example Usage
+```toml
+name = "durable-streams"
+main = "src/worker.ts"
+compatibility_date = "2025-02-02"
+
+[durable_objects]
+bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+```
+
+Deploy:
+
 ```bash
+npx wrangler r2 bucket create durable-streams
+npx wrangler deploy
+```
+
+### 2. Set Up the Subscription Worker
+
+```bash
+npm install @durable-streams-cloudflare/subscription
+```
+
+Create `src/worker.ts`:
+
+```ts
+import { createSubscriptionWorker, SubscriptionDO } from "@durable-streams-cloudflare/subscription";
+
+export default createSubscriptionWorker();
+export { SubscriptionDO };
+```
+
+Create `wrangler.toml`:
+
+```toml
+name = "durable-streams-subscriptions"
+main = "src/worker.ts"
+compatibility_date = "2025-02-02"
+
+[vars]
+CORE_URL = "https://durable-streams.<your-subdomain>.workers.dev"
+SESSION_TTL_SECONDS = "1800"
+
+[durable_objects]
+bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SubscriptionDO"]
+
+# Optional: service binding to core (recommended for production)
+# [[services]]
+# binding = "CORE"
+# service = "durable-streams"
+
+[triggers]
+crons = ["*/5 * * * *"]
+```
+
+Deploy:
+
+```bash
+npx wrangler deploy
+```
+
+### 3. Try It
+
+```bash
+CORE=https://durable-streams.<your-subdomain>.workers.dev
+SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
+
 # Create a stream
-curl -X PUT -H 'Content-Type: application/json' \
-  http://localhost:8787/v1/stream/doc-123
+curl -X PUT $CORE/v1/stream/chat-room-1
 
-# Append JSON
-curl -X POST -H 'Content-Type: application/json' \
-  --data '{"op":"insert","text":"hello"}' \
-  http://localhost:8787/v1/stream/doc-123
+# Subscribe a session
+curl -X POST $SUB/v1/subscribe \
+  -H 'Content-Type: application/json' \
+  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
 
-# Catch-up read
-curl "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000"
+# Publish a message (fans out to all subscribers)
+curl -X POST $SUB/v1/publish/chat-room-1 \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"hello world"}'
 
-# Long-poll
-curl "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000&live=long-poll"
+# Read the session stream via core (SSE)
+curl -N "$CORE/v1/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
 
-# SSE
-curl -N "http://localhost:8787/v1/stream/doc-123?offset=0000000000000000_0000000000000000&live=sse"
+# Check session info
+curl $SUB/v1/session/user-alice
+
+# Extend session TTL
+curl -X POST $SUB/v1/session/user-alice/touch
+
+# Unsubscribe
+curl -X DELETE $SUB/v1/unsubscribe \
+  -H 'Content-Type: application/json' \
+  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
 ```
 
-## Why This Isn’t “Just a DO”
-Durable Objects provide **single‑threaded state + storage**, but they do **not**
-implement:
-- The Durable Streams HTTP protocol (offsets, cursors, headers, TTL/expiry).
-- Producer idempotency and sequencing (epoch/seq enforcement).
-- Catch‑up semantics + long‑poll + SSE.
-- CDN‑aware caching behavior for live polling.
-- Cold‑segment rotation and R2 read‑seq encoding.
-- Conformance guarantees.
+## Why Not Just a Durable Object?
 
-This server layers the **Durable Streams protocol + storage model** on top of
-Cloudflare’s DOs.
+Durable Objects provide single-threaded state + storage, but they don't implement:
 
-## Repo Layout
-- `packages/durable-stream-server/` — Cloudflare Worker + Durable Object + R2 implementation.
-- `docs/cloudflare-refactor-plan.md` — Refactor plan and progress notes for the Cloudflare server.
-- `docs/cloudflare-architecture.md` — Module and data-flow overview for the Cloudflare server.
+- The Durable Streams HTTP protocol (offsets, cursors, TTL/expiry, headers)
+- Producer idempotency and sequencing (epoch/seq enforcement)
+- Catch-up semantics + long-poll + SSE
+- CDN-aware caching behavior
+- Cold-segment rotation and R2 read-seq encoding
+- Conformance guarantees against the official test suite
 
-## Code Walkthroughs
+These libraries layer the full Durable Streams protocol and storage model on top of Cloudflare's DOs.
 
-Each package includes a Slidev presentation that tells the story of how data flows through the system:
+## Credits
 
-| Package | Run Command | Stories |
-|---------|-------------|---------|
-| Core | `cd packages/durable-stream-core/docs && pnpm install && pnpm dev` | Write, Read, Real-time |
-| Subscriptions | `cd packages/durable-stream-subscriptions/docs && pnpm install && pnpm dev` | Session, Subscribe, Fanout |
+Implements the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol by Electric SQL. Conformance-tested against the official test suite.
 
-Opens at http://localhost:3030. Arrow keys to navigate.
+## License
 
-### When to Update
-
-Update the walkthroughs when:
-- **Adding a new HTTP endpoint** — Add slides showing the route handler and any service functions
-- **Adding a new feature** (e.g., new storage layer, auth method) — Create a new story or expand supporting topics
-- **Changing data flow** — Update sequence diagrams to match
-- **Refactoring that moves code** — Update line number references in `<<< @/../src/...` imports
-
-You don't need to update for:
-- Bug fixes that don't change the API or data flow
-- Internal refactors that keep the same file structure
-- Test changes
-
-### How to Update
-
-Presentations use [Slidev](https://sli.dev) and import code directly from source files:
-
-```markdown
-<<< @/../src/routes/streams.ts#L21-L38 ts
-```
-
-This imports lines 21-38 from the source file. When source code changes:
-1. **Line numbers shift** — Update the `#L21-L38` ranges to match new locations
-2. **Code is renamed/moved** — Update the file path
-3. **New feature added** — Add new slides with appropriate imports
-
-To preview changes:
-```bash
-cd packages/durable-stream-core/docs
-pnpm install
-pnpm dev
-```
-
-**Tips:**
-- Keep slides focused — one concept per slide
-- Use sequence diagrams for multi-step flows
-- Link related packages in the final slide
-- Run `pnpm dev` to verify imports resolve before committing
-
-See https://sli.dev/guide/syntax for full Slidev syntax.
-
-## More Details
-See `packages/durable-stream-server/README.md` for implementation specifics,
-limitations, and additional operational notes.
+MIT
