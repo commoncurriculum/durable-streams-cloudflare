@@ -10,42 +10,11 @@ export class Metrics {
   constructor(private ae: AnalyticsEngineDataset | undefined) {}
 
   // Fanout events
-  fanout(
-    streamId: string,
-    subscribers: number,
-    success: number,
-    failures: number,
-    latencyMs: number,
-  ) {
+  fanout(p: { streamId: string; subscribers: number; success: number; failures: number; latencyMs: number }) {
     this.ae?.writeDataPoint({
-      blobs: [streamId, "", "fanout", ""],
-      doubles: [subscribers, success, failures, latencyMs],
+      blobs: [p.streamId, "", "fanout", ""],
+      doubles: [p.subscribers, p.success, p.failures, p.latencyMs],
       indexes: ["fanout"],
-    });
-  }
-
-  fanoutFailure(streamId: string, sessionId: string, errorType: string, latencyMs: number) {
-    this.ae?.writeDataPoint({
-      blobs: [streamId, sessionId, "fanout_failure", errorType],
-      doubles: [1, latencyMs, 0, 0],
-      indexes: ["fanout_error"],
-    });
-  }
-
-  // Queue events
-  queueBatch(size: number, success: number, retries: number, latencyMs: number) {
-    this.ae?.writeDataPoint({
-      blobs: ["", "", "queue_batch", ""],
-      doubles: [size, success, retries, latencyMs],
-      indexes: ["queue"],
-    });
-  }
-
-  queueRetry(streamId: string, sessionId: string, attempt: number, errorType: string) {
-    this.ae?.writeDataPoint({
-      blobs: [streamId, sessionId, "queue_retry", errorType],
-      doubles: [attempt, 0, 0, 0],
-      indexes: ["queue_error"],
     });
   }
 
@@ -100,16 +69,10 @@ export class Metrics {
   }
 
   // Cleanup events
-  cleanupBatch(
-    expiredSessions: number,
-    streamsDeleted: number,
-    subscriptionsRemoved: number,
-    subscriptionsFailed: number,
-    latencyMs: number,
-  ) {
+  cleanupBatch(p: { expiredSessions: number; streamsDeleted: number; subscriptionsRemoved: number; subscriptionsFailed: number; latencyMs: number }) {
     this.ae?.writeDataPoint({
       blobs: ["", "", "cleanup_batch", ""],
-      doubles: [expiredSessions, streamsDeleted, subscriptionsRemoved, subscriptionsFailed, latencyMs],
+      doubles: [p.expiredSessions, p.streamsDeleted, p.subscriptionsRemoved, p.subscriptionsFailed, p.latencyMs],
       indexes: ["cleanup"],
     });
   }
@@ -140,21 +103,6 @@ export class Metrics {
     });
   }
 
-  // Reconciliation events
-  reconcile(
-    total: number,
-    valid: number,
-    orphaned: number,
-    cleaned: number,
-    errors: number,
-    latencyMs: number,
-  ) {
-    this.ae?.writeDataPoint({
-      blobs: ["", "", "reconcile", ""],
-      doubles: [total, valid, orphaned, cleaned, errors, latencyMs],
-      indexes: ["reconcile"],
-    });
-  }
 }
 
 // Factory function to create a metrics instance

@@ -22,6 +22,11 @@ export const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 export const DEFAULT_SESSION_TTL_SECONDS = 1800;
 
 /**
+ * Maximum number of concurrent fanout writes per batch.
+ */
+export const FANOUT_BATCH_SIZE = 50;
+
+/**
  * Default Analytics Engine dataset name.
  */
 export const DEFAULT_ANALYTICS_DATASET = "subscriptions_metrics";

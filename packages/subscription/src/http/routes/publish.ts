@@ -4,17 +4,9 @@ import { z } from "zod";
 import { publish } from "../../subscriptions/publish";
 import { createMetrics } from "../../metrics";
 import { STREAM_ID_PATTERN } from "../../constants";
-import type { SubscriptionDO } from "../../subscriptions/do";
-import type { CoreClientEnv } from "../../client";
+import type { AppEnv } from "../../env";
 
-export interface PublishEnv {
-  Bindings: CoreClientEnv & {
-    SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-    METRICS?: AnalyticsEngineDataset;
-  };
-}
-
-export const publishRoutes = new Hono<PublishEnv>();
+export const publishRoutes = new Hono<{ Bindings: AppEnv }>();
 
 const streamIdParamSchema = z.object({
   streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),

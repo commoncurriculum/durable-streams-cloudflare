@@ -4,7 +4,7 @@ import {
   createCoreClient,
   uniqueSessionId,
   uniqueStreamId,
-  delay,
+  waitFor,
   type SubscriptionsClient,
   type CoreClient,
   type SubscribeResponse,
@@ -71,12 +71,11 @@ describe("subscription flow", () => {
     const pubRes = await subs.publish(streamId, payload);
     expect(pubRes.status).toBe(204);
 
-    // Give a moment for fanout
-    await delay(100);
-
-    // Read from session stream
-    const content = await core.readStreamText(`session:${sessionId}`);
-    expect(content).toContain("hello world");
+    // Wait for fanout
+    await waitFor(async () => {
+      const content = await core.readStreamText(`session:${sessionId}`);
+      expect(content).toContain("hello world");
+    });
   });
 
   it("multiple sessions receive same fanout message", async () => {
@@ -98,17 +97,16 @@ describe("subscription flow", () => {
     const pubRes = await subs.publish(streamId, payload);
     expect(pubRes.status).toBe(204);
 
-    // Allow fanout
-    await delay(200);
+    // Wait for fanout to all sessions
+    await waitFor(async () => {
+      const content1 = await core.readStreamText(`session:${session1}`);
+      const content2 = await core.readStreamText(`session:${session2}`);
+      const content3 = await core.readStreamText(`session:${session3}`);
 
-    // All sessions should have received the message
-    const content1 = await core.readStreamText(`session:${session1}`);
-    const content2 = await core.readStreamText(`session:${session2}`);
-    const content3 = await core.readStreamText(`session:${session3}`);
-
-    expect(content1).toContain("broadcast");
-    expect(content2).toContain("broadcast");
-    expect(content3).toContain("broadcast");
+      expect(content1).toContain("broadcast");
+      expect(content2).toContain("broadcast");
+      expect(content3).toContain("broadcast");
+    });
   });
 
   it("unsubscribe stops receiving fanout messages", async () => {
@@ -122,7 +120,12 @@ describe("subscription flow", () => {
     // Publish first message
     const pub1Res = await subs.publish(streamId, JSON.stringify({ msg: 1 }));
     expect(pub1Res.status).toBe(204);
-    await delay(100);
+
+    // Wait for first message to arrive
+    await waitFor(async () => {
+      const content = await core.readStreamText(`session:${sessionId}`);
+      expect(content).toContain('"msg":1');
+    });
 
     // Unsubscribe
     const unsubRes = await subs.unsubscribe(sessionId, streamId);
@@ -131,12 +134,13 @@ describe("subscription flow", () => {
     // Publish second message
     const pub2Res = await subs.publish(streamId, JSON.stringify({ msg: 2 }));
     expect(pub2Res.status).toBe(204);
-    await delay(100);
 
-    // Session stream should only have the first message
-    const content = await core.readStreamText(`session:${sessionId}`);
-    expect(content).toContain('"msg":1');
-    expect(content).not.toContain('"msg":2');
+    // Wait a short time, then verify second message NOT received
+    await waitFor(async () => {
+      const content = await core.readStreamText(`session:${sessionId}`);
+      expect(content).toContain('"msg":1');
+      expect(content).not.toContain('"msg":2');
+    }, { timeout: 500 });
   });
 });
 
@@ -173,13 +177,13 @@ describe("publish flow", () => {
     expect(res.status).toBe(204);
     expect(res.headers.get("X-Fanout-Count")).toBe("5");
 
-    await delay(200);
-
-    // Verify all sessions received
-    for (const session of sessions) {
-      const content = await core.readStreamText(`session:${session}`);
-      expect(content).toContain("fanout");
-    }
+    // Wait for fanout
+    await waitFor(async () => {
+      for (const session of sessions) {
+        const content = await core.readStreamText(`session:${session}`);
+        expect(content).toContain("fanout");
+      }
+    });
   });
 
   it("session streams contain correct message content", async () => {
@@ -194,15 +198,16 @@ describe("publish flow", () => {
     await subs.publish(streamId, JSON.stringify({ seq: 2, data: "second" }));
     await subs.publish(streamId, JSON.stringify({ seq: 3, data: "third" }));
 
-    await delay(200);
-
-    const content = await core.readStreamText(`session:${sessionId}`);
-    expect(content).toContain('"seq":1');
-    expect(content).toContain('"seq":2');
-    expect(content).toContain('"seq":3');
-    expect(content).toContain("first");
-    expect(content).toContain("second");
-    expect(content).toContain("third");
+    // Wait for all messages
+    await waitFor(async () => {
+      const content = await core.readStreamText(`session:${sessionId}`);
+      expect(content).toContain('"seq":1');
+      expect(content).toContain('"seq":2');
+      expect(content).toContain('"seq":3');
+      expect(content).toContain("first");
+      expect(content).toContain("second");
+      expect(content).toContain("third");
+    });
   });
 
   it("producer headers provide idempotency", async () => {
@@ -232,10 +237,11 @@ describe("publish flow", () => {
     });
     expect(res1.ok).toBe(true);
 
-    await delay(100);
-
-    const content = await core.readStreamText(`session:${sessionId}`);
-    expect(content).toContain("unique");
+    // Wait for fanout
+    await waitFor(async () => {
+      const content = await core.readStreamText(`session:${sessionId}`);
+      expect(content).toContain("unique");
+    });
   });
 
   it("duplicate publish with same producer headers is idempotent", async () => {

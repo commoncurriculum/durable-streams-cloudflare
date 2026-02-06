@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
+import type { AppEnv } from "../../src/env";
 
 // Mock session service functions
 const mockGetSession = vi.fn();
@@ -8,13 +9,6 @@ const mockTouchSession = vi.fn();
 vi.mock("../../src/session", () => ({
   getSession: (...args: unknown[]) => mockGetSession(...args),
   touchSession: (...args: unknown[]) => mockTouchSession(...args),
-}));
-
-// Mock metrics
-vi.mock("../../src/metrics", () => ({
-  createMetrics: vi.fn(() => ({
-    reconcile: vi.fn(),
-  })),
 }));
 
 function createTestApp() {
@@ -28,7 +22,7 @@ function createTestApp() {
 function createMockEnv() {
   return {
     CORE_URL: "http://localhost:8787",
-    SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+    SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
     METRICS: {} as AnalyticsEngineDataset,
     ACCOUNT_ID: "test-account",
     API_TOKEN: "test-token",
@@ -166,56 +160,3 @@ describe("POST /session/:sessionId/touch", () => {
   });
 });
 
-describe("GET /internal/reconcile", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns message explaining new architecture", async () => {
-    const app = await createTestApp();
-    const res = await app.request("/v1/internal/reconcile", {}, createMockEnv());
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { message: string };
-    expect(body.message).toContain("handled automatically");
-    expect(body.message).toContain("source of truth");
-  });
-
-  it("returns zero counts in new architecture", async () => {
-    const app = await createTestApp();
-    const res = await app.request("/v1/internal/reconcile", {}, createMockEnv());
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      totalSessions: number;
-      validSessions: number;
-      orphanedInD1: number;
-      cleaned: number;
-    };
-    expect(body.totalSessions).toBe(0);
-    expect(body.validSessions).toBe(0);
-    expect(body.orphanedInD1).toBe(0);
-    expect(body.cleaned).toBe(0);
-  });
-
-  it("records reconcile metric", async () => {
-    const { createMetrics } = await import("../../src/metrics");
-
-    const mockMetrics = {
-      reconcile: vi.fn(),
-    };
-    vi.mocked(createMetrics).mockReturnValue(mockMetrics as unknown as ReturnType<typeof createMetrics>);
-
-    const app = await createTestApp();
-    await app.request("/v1/internal/reconcile", {}, createMockEnv());
-
-    expect(mockMetrics.reconcile).toHaveBeenCalledWith(
-      0, // total
-      0, // valid
-      0, // orphaned
-      0, // cleaned
-      0, // errors
-      expect.any(Number), // latency
-    );
-  });
-});

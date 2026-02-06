@@ -1,14 +1,9 @@
 import { createMetrics } from "../metrics";
-import type { SubscriptionDO } from "./do";
+import type { AppEnv } from "../env";
 import type { UnsubscribeResult } from "./types";
 
-interface Env {
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  METRICS?: AnalyticsEngineDataset;
-}
-
 export async function unsubscribe(
-  env: Env,
+  env: AppEnv,
   streamId: string,
   sessionId: string,
 ): Promise<UnsubscribeResult> {

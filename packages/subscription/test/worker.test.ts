@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { AppEnv } from "../src/env";
 
 // Mock cloudflare:workers (worker re-exports SubscriptionDO which extends DurableObject)
 vi.mock("cloudflare:workers", () => ({
@@ -29,7 +30,7 @@ function createBaseEnv() {
     SUBSCRIPTION_DO: {
       idFromName: vi.fn().mockReturnValue("do-id"),
       get: vi.fn().mockReturnValue({ fetch: vi.fn() }),
-    } as unknown as DurableObjectNamespace,
+    } as unknown as AppEnv["SUBSCRIPTION_DO"],
     METRICS: {} as AnalyticsEngineDataset,
   };
 }

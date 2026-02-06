@@ -7,7 +7,7 @@
  * @see https://developers.cloudflare.com/analytics/analytics-engine/worker-querying/
  */
 
-import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../constants";
+import { SESSION_ID_PATTERN } from "../constants";
 
 export interface AnalyticsQueryEnv {
   ACCOUNT_ID: string;
@@ -33,7 +33,7 @@ export interface QueryResult<T> {
  * Pattern for valid dataset names.
  * Allows alphanumeric characters, hyphens, and underscores.
  */
-const DATASET_NAME_PATTERN = /^[a-zA-Z0-9_\-]+$/;
+const DATASET_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * Validates a dataset name against the allowed pattern.

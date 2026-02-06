@@ -37,13 +37,3 @@ export function fetchFromCore(
     headers,
   });
 }
-
-/**
- * Get auth headers for core requests (only needed when not using service binding).
- */
-export function getAuthHeaders(env: CoreClientEnv): Record<string, string> {
-  if (env.AUTH_TOKEN) {
-    return { Authorization: `Bearer ${env.AUTH_TOKEN}` };
-  }
-  return {};
-}

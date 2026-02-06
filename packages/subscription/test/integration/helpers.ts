@@ -12,6 +12,20 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export async function waitFor(
+  fn: () => Promise<void>,
+  { timeout = 5000, interval = 50 } = {},
+): Promise<void> {
+  const deadline = Date.now() + timeout;
+  let lastError: Error | undefined;
+  while (Date.now() < deadline) {
+    try { await fn(); return; }
+    catch (err) { lastError = err instanceof Error ? err : new Error(String(err)); }
+    await delay(interval);
+  }
+  throw lastError ?? new Error("waitFor timed out");
+}
+
 export interface SubscriptionsClient {
   subscribe(sessionId: string, streamId: string, contentType?: string): Promise<Response>;
   unsubscribe(sessionId: string, streamId: string): Promise<Response>;
@@ -19,7 +33,6 @@ export interface SubscriptionsClient {
   getSession(sessionId: string): Promise<Response>;
   touchSession(sessionId: string): Promise<Response>;
   deleteSession(sessionId: string): Promise<Response>;
-  reconcile(cleanup?: boolean): Promise<Response>;
 }
 
 export function createSubscriptionsClient(baseUrl: string): SubscriptionsClient {
@@ -64,12 +77,6 @@ export function createSubscriptionsClient(baseUrl: string): SubscriptionsClient 
       });
     },
 
-    async reconcile(cleanup = false) {
-      const url = cleanup
-        ? `${baseUrl}/v1/internal/reconcile?cleanup=true`
-        : `${baseUrl}/v1/internal/reconcile`;
-      return fetch(url);
-    },
   };
 }
 
@@ -152,10 +159,3 @@ export interface TouchResponse {
   expiresAt: number;
 }
 
-export interface ReconcileResponse {
-  message: string;
-  totalSessions: number;
-  validSessions: number;
-  orphanedInD1: number;
-  cleaned: number;
-}

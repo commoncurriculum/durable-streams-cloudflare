@@ -10,6 +10,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { fetchFromCore, type CoreClientEnv } from "../client";
 import { createMetrics } from "../metrics";
+import { FANOUT_BATCH_SIZE } from "../constants";
 import type { PublishParams, PublishResult, GetSubscribersResult } from "./types";
 
 export interface SubscriptionDOEnv extends CoreClientEnv {
@@ -126,11 +127,16 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     let failureCount = 0;
 
     if (subscribers.length > 0) {
-      const results = await Promise.allSettled(
-        subscribers.map((sessionId) =>
-          this.writeToSessionStream(sessionId, params.payload, params.contentType, fanoutProducerHeaders),
-        ),
-      );
+      const results: PromiseSettledResult<Response>[] = [];
+      for (let i = 0; i < subscribers.length; i += FANOUT_BATCH_SIZE) {
+        const batch = subscribers.slice(i, i + FANOUT_BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map((sessionId) =>
+            this.writeToSessionStream(sessionId, params.payload, params.contentType, fanoutProducerHeaders),
+          ),
+        );
+        results.push(...batchResults);
+      }
 
       const staleSessionIds: string[] = [];
       for (let i = 0; i < results.length; i++) {
@@ -156,7 +162,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
       // Record fanout metrics
       const latencyMs = Date.now() - start;
-      metrics.fanout(streamId, subscribers.length, successCount, failureCount, latencyMs);
+      metrics.fanout({ streamId, subscribers: subscribers.length, success: successCount, failures: failureCount, latencyMs });
     }
 
     // Record publish metric

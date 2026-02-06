@@ -9,20 +9,14 @@
  *    c. Delete the session stream from core
  */
 
-import { fetchFromCore, type CoreClientEnv } from "../client";
+import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
 import {
   getExpiredSessions,
   getSessionSubscriptions,
   type AnalyticsQueryEnv,
 } from "../analytics";
-import type { SubscriptionDO } from "../subscriptions/do";
-
-export interface CleanupEnv extends CoreClientEnv, Partial<AnalyticsQueryEnv> {
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  METRICS?: AnalyticsEngineDataset;
-  ANALYTICS_DATASET?: string;
-}
+import type { AppEnv } from "../env";
 
 export interface CleanupResult {
   deleted: number;
@@ -45,7 +39,7 @@ interface ExpiredSession {
 }
 
 async function cleanupSession(
-  env: CleanupEnv,
+  env: AppEnv,
   analyticsEnv: AnalyticsQueryEnv,
   datasetName: string,
   session: ExpiredSession,
@@ -107,7 +101,7 @@ async function cleanupSession(
   };
 }
 
-export async function cleanupExpiredSessions(env: CleanupEnv): Promise<CleanupResult> {
+export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult> {
   const metrics = createMetrics(env.METRICS);
 
   if (!env.ACCOUNT_ID || !env.API_TOKEN) {

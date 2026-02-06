@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { PublishResult } from "../../src/subscriptions/types";
+import type { AppEnv } from "../../src/env";
 
 // Mock service function
 const mockPublish = vi.fn();
@@ -27,7 +28,7 @@ function createTestApp() {
 function createMockEnv() {
   return {
     CORE_URL: "http://localhost:8787",
-    SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+    SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
     METRICS: {} as AnalyticsEngineDataset,
   };
 }

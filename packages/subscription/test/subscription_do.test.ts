@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createTestSqlStorage } from "./helpers/sql-storage";
 
 // Mock fetchFromCore
 const mockFetchFromCore = vi.fn();
@@ -28,67 +29,13 @@ vi.mock("cloudflare:workers", () => ({
   },
 }));
 
-// Mock SQL storage for SubscriptionDO
-function createMockSqlStorage() {
-  const data: Map<string, { session_id: string; subscribed_at: number }> = new Map();
-
+function createMockState(sqlStorage: ReturnType<typeof createTestSqlStorage>) {
   return {
-    exec: vi.fn((query: string, ...args: unknown[]) => {
-      if (query.includes("CREATE TABLE")) {
-        return { toArray: () => [] };
-      }
-
-      if (query.includes("INSERT INTO subscribers")) {
-        const [sessionId, subscribedAt] = args as [string, number];
-        if (!data.has(sessionId)) {
-          data.set(sessionId, { session_id: sessionId, subscribed_at: subscribedAt });
-        }
-        return { toArray: () => [] };
-      }
-
-      if (query.includes("DELETE FROM subscribers")) {
-        const [sessionId] = args as [string];
-        data.delete(sessionId);
-        return { toArray: () => [] };
-      }
-
-      if (query.includes("SELECT session_id FROM subscribers")) {
-        return {
-          [Symbol.iterator]: function* () {
-            for (const row of data.values()) {
-              yield row;
-            }
-          },
-        };
-      }
-
-      if (query.includes("SELECT session_id, subscribed_at FROM subscribers")) {
-        return {
-          [Symbol.iterator]: function* () {
-            for (const row of data.values()) {
-              yield row;
-            }
-          },
-        };
-      }
-
-      return { toArray: () => [] };
-    }),
-    _data: data,
-  };
-}
-
-// Mock DurableObjectState
-function createMockState(sqlStorage: ReturnType<typeof createMockSqlStorage>) {
-  return {
-    storage: {
-      sql: sqlStorage,
-    },
+    storage: { sql: sqlStorage },
     blockConcurrencyWhile: vi.fn((fn: () => void) => fn()),
   };
 }
 
-// Mock environment
 function createMockEnv() {
   return {
     CORE_URL: "http://localhost:8787",
@@ -97,19 +44,15 @@ function createMockEnv() {
 }
 
 describe("SubscriptionDO", () => {
-  let mockSql: ReturnType<typeof createMockSqlStorage>;
   let mockState: ReturnType<typeof createMockState>;
   let mockEnv: ReturnType<typeof createMockEnv>;
 
   beforeEach(() => {
-    mockSql = createMockSqlStorage();
-    mockState = createMockState(mockSql);
+    const sqlStorage = createTestSqlStorage();
+    mockState = createMockState(sqlStorage);
     mockEnv = createMockEnv();
     vi.clearAllMocks();
     mockFetchFromCore.mockReset();
-    mockMetrics.publish.mockClear();
-    mockMetrics.publishError.mockClear();
-    mockMetrics.fanout.mockClear();
   });
 
   afterEach(() => {
@@ -122,7 +65,6 @@ describe("SubscriptionDO", () => {
       new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       expect(mockState.blockConcurrencyWhile).toHaveBeenCalled();
-      expect(mockSql.exec).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE"));
     });
   });
 
@@ -133,7 +75,20 @@ describe("SubscriptionDO", () => {
 
       await dobj.addSubscriber("session-123");
 
-      expect(mockSql._data.has("session-123")).toBe(true);
+      const result = await dobj.getSubscribers("test-stream");
+      expect(result.count).toBe(1);
+      expect(result.subscribers[0].sessionId).toBe("session-123");
+    });
+
+    it("should not duplicate on re-add", async () => {
+      const { SubscriptionDO } = await import("../src/subscriptions/do");
+      const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
+
+      await dobj.addSubscriber("session-123");
+      await dobj.addSubscriber("session-123");
+
+      const result = await dobj.getSubscribers("test-stream");
+      expect(result.count).toBe(1);
     });
   });
 
@@ -142,15 +97,11 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // First add a subscriber
-      mockSql._data.set("session-123", {
-        session_id: "session-123",
-        subscribed_at: Date.now(),
-      });
-
+      await dobj.addSubscriber("session-123");
       await dobj.removeSubscriber("session-123");
 
-      expect(mockSql._data.has("session-123")).toBe(false);
+      const result = await dobj.getSubscribers("test-stream");
+      expect(result.count).toBe(0);
     });
   });
 
@@ -159,15 +110,8 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add some subscribers
-      mockSql._data.set("session-1", {
-        session_id: "session-1",
-        subscribed_at: 1000,
-      });
-      mockSql._data.set("session-2", {
-        session_id: "session-2",
-        subscribed_at: 2000,
-      });
+      await dobj.addSubscriber("session-1");
+      await dobj.addSubscriber("session-2");
 
       const result = await dobj.getSubscribers("test-stream");
 
@@ -182,9 +126,8 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add subscribers
-      mockSql._data.set("session-1", { session_id: "session-1", subscribed_at: 1000 });
-      mockSql._data.set("session-2", { session_id: "session-2", subscribed_at: 2000 });
+      await dobj.addSubscriber("session-1");
+      await dobj.addSubscriber("session-2");
 
       // Mock core write success
       mockFetchFromCore.mockResolvedValueOnce(
@@ -224,8 +167,7 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add a subscriber
-      mockSql._data.set("session-1", { session_id: "session-1", subscribed_at: 1000 });
+      await dobj.addSubscriber("session-1");
 
       // Mock core write failure
       mockFetchFromCore.mockResolvedValueOnce(
@@ -281,8 +223,7 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add subscriber
-      mockSql._data.set("session-1", { session_id: "session-1", subscribed_at: 1000 });
+      await dobj.addSubscriber("session-1");
 
       // Mock core write success with offset
       mockFetchFromCore.mockResolvedValueOnce(
@@ -319,11 +260,11 @@ describe("SubscriptionDO", () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add subscribers - one valid, one stale
-      mockSql._data.set("active-session", { session_id: "active-session", subscribed_at: 1000 });
-      mockSql._data.set("stale-session", { session_id: "stale-session", subscribed_at: 2000 });
+      await dobj.addSubscriber("active-session");
+      await dobj.addSubscriber("stale-session");
 
-      expect(mockSql._data.size).toBe(2);
+      const before = await dobj.getSubscribers("test-stream");
+      expect(before.count).toBe(2);
 
       // Mock core write success
       mockFetchFromCore.mockResolvedValueOnce(
@@ -350,18 +291,17 @@ describe("SubscriptionDO", () => {
       expect(result.fanoutSuccesses).toBe(1);
       expect(result.fanoutFailures).toBe(1);
 
-      // Verify stale subscriber was removed from SQLite
-      expect(mockSql._data.has("stale-session")).toBe(false);
-      expect(mockSql._data.has("active-session")).toBe(true);
-      expect(mockSql._data.size).toBe(1);
+      // Verify stale subscriber was removed via getSubscribers
+      const after = await dobj.getSubscribers("test-stream");
+      expect(after.count).toBe(1);
+      expect(after.subscribers[0].sessionId).toBe("active-session");
     });
 
     it("should record metrics correctly", async () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
-      // Add subscriber
-      mockSql._data.set("session-1", { session_id: "session-1", subscribed_at: 1000 });
+      await dobj.addSubscriber("session-1");
 
       // Mock core write success
       mockFetchFromCore.mockResolvedValueOnce(
@@ -385,13 +325,13 @@ describe("SubscriptionDO", () => {
         expect.any(Number), // latency
       );
 
-      expect(mockMetrics.fanout).toHaveBeenCalledWith(
-        "test-stream",
-        1, // subscriber count
-        1, // successes
-        0, // failures
-        expect.any(Number), // latency
-      );
+      expect(mockMetrics.fanout).toHaveBeenCalledWith({
+        streamId: "test-stream",
+        subscribers: 1,
+        success: 1,
+        failures: 0,
+        latencyMs: expect.any(Number),
+      });
     });
 
     it("should record error metrics when core write fails", async () => {
@@ -418,8 +358,6 @@ describe("SubscriptionDO", () => {
     it("should handle publish with no subscribers", async () => {
       const { SubscriptionDO } = await import("../src/subscriptions/do");
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
-
-      // No subscribers added
 
       // Mock core write success
       mockFetchFromCore.mockResolvedValueOnce(

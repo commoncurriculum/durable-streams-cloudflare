@@ -1,15 +1,8 @@
-import type { SubscriptionDO } from "./do";
 import type { PublishParams, PublishResult } from "./types";
-
-interface Env {
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  CORE?: Fetcher;
-  CORE_URL: string;
-  AUTH_TOKEN?: string;
-}
+import type { AppEnv } from "../env";
 
 export async function publish(
-  env: Env,
+  env: AppEnv,
   streamId: string,
   params: PublishParams,
 ): Promise<PublishResult> {

@@ -4,7 +4,7 @@ import {
   createCoreClient,
   uniqueSessionId,
   uniqueStreamId,
-  delay,
+  waitFor,
   type SubscriptionsClient,
   type CoreClient,
   type SessionResponse,
@@ -107,13 +107,13 @@ describe("resilience", () => {
         expect(res.ok).toBe(true);
       }
 
-      await delay(500);
-
-      // Session stream should have all messages
-      const content = await core.readStreamText(`session:${sessionId}`);
-      for (let i = 0; i < 10; i++) {
-        expect(content).toContain(`"concurrent":${i}`);
-      }
+      // Wait for all messages to arrive
+      await waitFor(async () => {
+        const content = await core.readStreamText(`session:${sessionId}`);
+        for (let i = 0; i < 10; i++) {
+          expect(content).toContain(`"concurrent":${i}`);
+        }
+      });
     });
 
     it("handles multiple sessions subscribing to same stream", async () => {
@@ -133,13 +133,13 @@ describe("resilience", () => {
       expect(pubRes.ok).toBe(true);
       expect(pubRes.headers.get("X-Fanout-Count")).toBe("20");
 
-      await delay(500);
-
-      // All sessions should have received the message
-      for (const sessionId of sessions) {
-        const content = await core.readStreamText(`session:${sessionId}`);
-        expect(content).toContain("multi");
-      }
+      // Wait for all sessions to receive
+      await waitFor(async () => {
+        for (const sessionId of sessions) {
+          const content = await core.readStreamText(`session:${sessionId}`);
+          expect(content).toContain("multi");
+        }
+      });
     });
 
     it("subscriptions persist across operations", async () => {
@@ -153,18 +153,24 @@ describe("resilience", () => {
       // Subscribe to first stream
       await subs.subscribe(sessionId, stream1);
 
-      // Do some operations
+      // Publish and wait for fanout
       await subs.publish(stream1, JSON.stringify({ msg: 1 }));
-      await delay(50);
+      await waitFor(async () => {
+        const content = await core.readStreamText(`session:${sessionId}`);
+        expect(content).toContain('"msg":1');
+      });
+
       await subs.touchSession(sessionId);
-      await delay(50);
 
       // Subscribe to second stream
       await subs.subscribe(sessionId, stream2);
 
-      // Do more operations
+      // Publish to second stream and wait for fanout
       await subs.publish(stream2, JSON.stringify({ msg: 2 }));
-      await delay(50);
+      await waitFor(async () => {
+        const content = await core.readStreamText(`session:${sessionId}`);
+        expect(content).toContain('"msg":2');
+      });
 
       // Session should still exist
       const sessionRes = await subs.getSession(sessionId);
@@ -183,13 +189,8 @@ describe("resilience", () => {
       expect(initialRes.status).toBe(200);
 
       // Do various operations
-      await delay(100);
       await subs.touchSession(sessionId);
-
-      await delay(100);
       await subs.unsubscribe(sessionId, streamId);
-
-      await delay(100);
       await subs.subscribe(sessionId, streamId);
 
       // Session should still exist

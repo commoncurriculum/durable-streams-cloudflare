@@ -6,25 +6,11 @@ import { sessionRoutes } from "./routes/session";
 import { cleanupExpiredSessions } from "../cleanup";
 import { createMetrics } from "../metrics";
 import { SubscriptionDO } from "../subscriptions/do";
+import type { AppEnv } from "../env";
 
 export { SubscriptionDO };
 
-export interface Env {
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  CORE?: Fetcher;
-  CORE_URL: string;
-  AUTH_TOKEN?: string;
-  SESSION_TTL_SECONDS?: string;
-  METRICS?: AnalyticsEngineDataset;
-  // Required for Analytics Engine SQL queries (cleanup)
-  ACCOUNT_ID?: string;
-  API_TOKEN?: string;
-  ANALYTICS_DATASET?: string;
-  // CORS configuration: comma-separated origins or "*" for all
-  CORS_ORIGINS?: string;
-}
-
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: AppEnv }>();
 
 /**
  * Parse CORS_ORIGINS env var into origin configuration.
@@ -129,7 +115,7 @@ export default {
   fetch: app.fetch,
 
   // Scheduled handler for session cleanup
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: AppEnv, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       (async () => {
         const start = Date.now();
@@ -139,13 +125,13 @@ export default {
         // Record cleanup metrics
         // Note: cleanupBatch params are (expiredCount, streamsDeleted, subscriptionsRemoved, subscriptionsFailed, latencyMs)
         const metrics = createMetrics(env.METRICS);
-        metrics.cleanupBatch(
-          result.deleted,
-          result.streamDeleteSuccesses,
-          result.subscriptionRemoveSuccesses,
-          result.subscriptionRemoveFailures,
+        metrics.cleanupBatch({
+          expiredSessions: result.deleted,
+          streamsDeleted: result.streamDeleteSuccesses,
+          subscriptionsRemoved: result.subscriptionRemoveSuccesses,
+          subscriptionsFailed: result.subscriptionRemoveFailures,
           latencyMs,
-        );
+        });
 
         if (result.deleted > 0) {
           console.log(

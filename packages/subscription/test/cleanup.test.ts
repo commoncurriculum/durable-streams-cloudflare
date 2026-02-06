@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { AppEnv } from "../src/env";
 
 // Mock the analytics queries module
 vi.mock("../src/analytics", () => ({
@@ -30,7 +31,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         // No ACCOUNT_ID or API_TOKEN
       };
 
@@ -49,7 +50,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         ANALYTICS_DATASET: "test_metrics",
@@ -94,7 +95,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         ANALYTICS_DATASET: "test_metrics",
@@ -147,7 +148,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -178,7 +179,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -208,7 +209,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -227,7 +228,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         // No ANALYTICS_DATASET - should use default
@@ -253,7 +254,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: {} as DurableObjectNamespace,
+        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -299,7 +300,7 @@ describe("cleanup", () => {
 
       const env = {
         CORE_URL: "http://localhost:8787",
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as DurableObjectNamespace,
+        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };

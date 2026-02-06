@@ -6,8 +6,6 @@ import {
   uniqueStreamId,
   type SubscriptionsClient,
   type CoreClient,
-  type SessionResponse,
-  type ReconcileResponse,
 } from "./helpers";
 
 let subs: SubscriptionsClient;
@@ -36,17 +34,6 @@ describe("cleanup integration", () => {
     // Session stream should exist in core
     const coreRes = await core.getStreamHead(`session:${sessionId}`);
     expect(coreRes.ok).toBe(true);
-  });
-
-  it("reconcile endpoint returns informational message", async () => {
-    // In the new architecture, reconcile doesn't do D1 cleanup
-    // It returns a message explaining the new approach
-    const reconcileRes = await subs.reconcile(false);
-    expect(reconcileRes.status).toBe(200);
-
-    const reconcile = (await reconcileRes.json()) as ReconcileResponse;
-    expect(reconcile.message).toContain("handled automatically");
-    expect(reconcile.message).toContain("source of truth");
   });
 
   it("delete session removes session streams from core", async () => {

@@ -1,19 +1,11 @@
 import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
-import type { SubscriptionDO } from "./do";
+import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
+import type { AppEnv } from "../env";
 import type { SubscribeResult } from "./types";
 
-interface Env {
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  METRICS?: AnalyticsEngineDataset;
-  SESSION_TTL_SECONDS?: string;
-  CORE?: Fetcher;
-  CORE_URL: string;
-  AUTH_TOKEN?: string;
-}
-
 export async function subscribe(
-  env: Env,
+  env: AppEnv,
   streamId: string,
   sessionId: string,
   contentType = "application/json",
@@ -22,7 +14,7 @@ export async function subscribe(
   const metrics = createMetrics(env.METRICS);
   const ttlSeconds = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
-    : 1800;
+    : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   // 1. Create/touch session stream in core

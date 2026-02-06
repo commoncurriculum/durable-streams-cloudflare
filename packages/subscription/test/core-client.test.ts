@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchFromCore, getAuthHeaders, type CoreClientEnv } from "../src/client";
+import { fetchFromCore, type CoreClientEnv } from "../src/client";
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -22,7 +22,7 @@ describe("core-client", () => {
         AUTH_TOKEN: "secret",
       };
 
-      const response = await fetchFromCore(env, "/v1/stream/test");
+      await fetchFromCore(env, "/v1/stream/test");
 
       expect(mockServiceBinding.fetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).not.toHaveBeenCalled();
@@ -116,26 +116,4 @@ describe("core-client", () => {
     });
   });
 
-  describe("getAuthHeaders", () => {
-    it("returns auth header when AUTH_TOKEN is set", () => {
-      const env: CoreClientEnv = {
-        CORE_URL: "http://localhost:8787",
-        AUTH_TOKEN: "my-token",
-      };
-
-      const headers = getAuthHeaders(env);
-
-      expect(headers).toEqual({ Authorization: "Bearer my-token" });
-    });
-
-    it("returns empty object when AUTH_TOKEN is not set", () => {
-      const env: CoreClientEnv = {
-        CORE_URL: "http://localhost:8787",
-      };
-
-      const headers = getAuthHeaders(env);
-
-      expect(headers).toEqual({});
-    });
-  });
 });

@@ -5,16 +5,7 @@ import { subscribe } from "../../subscriptions/subscribe";
 import { unsubscribe } from "../../subscriptions/unsubscribe";
 import { deleteSession } from "../../session";
 import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../../constants";
-import type { SubscriptionDO } from "../../subscriptions/do";
-import type { CoreClientEnv } from "../../client";
-
-export interface SubscribeEnv {
-  Bindings: CoreClientEnv & {
-    SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-    SESSION_TTL_SECONDS?: string;
-    METRICS?: AnalyticsEngineDataset;
-  };
-}
+import type { AppEnv } from "../../env";
 
 const subscribeSchema = z.object({
   sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
@@ -27,7 +18,7 @@ const unsubscribeSchema = z.object({
   streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
 });
 
-export const subscribeRoutes = new Hono<SubscribeEnv>();
+export const subscribeRoutes = new Hono<{ Bindings: AppEnv }>();
 
 subscribeRoutes.post("/subscribe", zValidator("json", subscribeSchema), async (c) => {
   const { sessionId, streamId, contentType } = c.req.valid("json");

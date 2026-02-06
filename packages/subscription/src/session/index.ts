@@ -1,20 +1,11 @@
 import { fetchFromCore } from "../client";
 import { createMetrics } from "../metrics";
 import { getSessionSubscriptions } from "../analytics";
+import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
+import type { AppEnv } from "../env";
 import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../subscriptions/types";
 
-interface Env {
-  CORE?: Fetcher;
-  CORE_URL: string;
-  AUTH_TOKEN?: string;
-  METRICS?: AnalyticsEngineDataset;
-  SESSION_TTL_SECONDS?: string;
-  ACCOUNT_ID?: string;
-  API_TOKEN?: string;
-  ANALYTICS_DATASET?: string;
-}
-
-export async function getSession(env: Env, sessionId: string): Promise<SessionInfo | null> {
+export async function getSession(env: AppEnv, sessionId: string): Promise<SessionInfo | null> {
   const coreResponse = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "HEAD" });
   if (!coreResponse.ok) return null;
 
@@ -39,11 +30,11 @@ export async function getSession(env: Env, sessionId: string): Promise<SessionIn
   };
 }
 
-export async function touchSession(env: Env, sessionId: string): Promise<TouchSessionResult> {
+export async function touchSession(env: AppEnv, sessionId: string): Promise<TouchSessionResult> {
   const start = Date.now();
   const ttlSeconds = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
-    : 1800;
+    : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   const response = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, {
@@ -55,14 +46,14 @@ export async function touchSession(env: Env, sessionId: string): Promise<TouchSe
   });
 
   if (!response.ok && response.status !== 409) {
-    throw new Error(`Session not found: ${sessionId}`);
+    throw new Error(`Failed to touch session: ${sessionId} (status: ${response.status})`);
   }
 
   createMetrics(env.METRICS).sessionTouch(sessionId, Date.now() - start);
   return { sessionId, expiresAt };
 }
 
-export async function deleteSession(env: Env, sessionId: string): Promise<DeleteSessionResult> {
+export async function deleteSession(env: AppEnv, sessionId: string): Promise<DeleteSessionResult> {
   const start = Date.now();
   const response = await fetchFromCore(env, `/v1/stream/session:${sessionId}`, { method: "DELETE" });
   if (!response.ok && response.status !== 404) {
