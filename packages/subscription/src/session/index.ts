@@ -1,5 +1,4 @@
 import { createMetrics } from "../metrics";
-import { getSessionSubscriptions } from "../analytics";
 import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
 import type { AppEnv } from "../env";
 import type { SessionInfo, TouchSessionResult, DeleteSessionResult } from "../subscriptions/types";
@@ -10,19 +9,9 @@ export async function getSession(env: AppEnv, projectId: string, sessionId: stri
   const coreResponse = await env.CORE.headStream(doKey);
   if (!coreResponse.ok) return null;
 
-  let subscriptions: Array<{ streamId: string }> = [];
-  if (env.ACCOUNT_ID && env.API_TOKEN) {
-    const result = await getSessionSubscriptions(
-      { ACCOUNT_ID: env.ACCOUNT_ID, API_TOKEN: env.API_TOKEN },
-      env.ANALYTICS_DATASET ?? "subscriptions_metrics",
-      sessionId,
-    );
-    if (result.error) {
-      console.error("Failed to query subscriptions from Analytics Engine:", result.error);
-    } else {
-      subscriptions = result.data.map((s) => ({ streamId: s.streamId }));
-    }
-  }
+  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(doKey));
+  const streamIds = await sessionStub.getSubscriptions();
+  const subscriptions = streamIds.map((streamId) => ({ streamId }));
 
   return {
     sessionId,

@@ -25,6 +25,38 @@ describe("getSession", () => {
     // No ACCOUNT_ID/API_TOKEN in test env, so subscriptions will be empty
     expect(result!.subscriptions).toEqual([]);
   });
+
+  it("includes subscriptions after subscribing", async () => {
+    const sessionId = crypto.randomUUID();
+    const streamId = `stream-${crypto.randomUUID()}`;
+
+    const { subscribe } = await import("../src/subscriptions/subscribe");
+    await subscribe(env as never, PROJECT_ID, streamId, sessionId);
+
+    const { getSession } = await import("../src/session");
+    const result = await getSession(env as never, PROJECT_ID, sessionId);
+
+    expect(result).not.toBeNull();
+    expect(result!.subscriptions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ streamId })]),
+    );
+  });
+
+  it("removes subscription from getSession after unsubscribing", async () => {
+    const sessionId = crypto.randomUUID();
+    const streamId = `stream-${crypto.randomUUID()}`;
+
+    const { subscribe } = await import("../src/subscriptions/subscribe");
+    const { unsubscribe } = await import("../src/subscriptions/unsubscribe");
+    const { getSession } = await import("../src/session");
+
+    await subscribe(env as never, PROJECT_ID, streamId, sessionId);
+    await unsubscribe(env as never, PROJECT_ID, streamId, sessionId);
+
+    const result = await getSession(env as never, PROJECT_ID, sessionId);
+    expect(result).not.toBeNull();
+    expect(result!.subscriptions).toEqual([]);
+  });
 });
 
 describe("touchSession", () => {

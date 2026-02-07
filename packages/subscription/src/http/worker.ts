@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { createSubscriptionWorker } from "./create_worker";
 import { projectJwtAuth } from "./auth";
 import { SubscriptionDO } from "../subscriptions/do";
+import { SessionDO } from "../session/do";
 import { getSession, touchSession, deleteSession } from "../session";
 import { subscribe } from "../subscriptions/subscribe";
 import { unsubscribe } from "../subscriptions/unsubscribe";
@@ -76,7 +77,7 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
   }
 }
 
-export { SubscriptionWorker, SubscriptionDO, createSubscriptionWorker };
+export { SubscriptionWorker, SubscriptionDO, SessionDO, createSubscriptionWorker };
 export { projectJwtAuth } from "./auth";
 export type { SubscriptionAuthResult, SubscriptionRoute, AuthorizeSubscription } from "./auth";
 export type { SubscriptionWorkerConfig } from "./create_worker";

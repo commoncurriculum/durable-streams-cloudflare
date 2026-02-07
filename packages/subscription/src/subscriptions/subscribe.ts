@@ -50,7 +50,12 @@ export async function subscribe(
   }
   // #endregion synced-to-docs:add-subscription-to-do
 
-  // 3. Metrics
+  // 3. Track subscription on the session DO
+  const sessionDoStubKey = `${projectId}/${sessionId}`;
+  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoStubKey));
+  await sessionStub.addSubscription(streamId);
+
+  // 4. Metrics
   const latencyMs = Date.now() - start;
   metrics.subscribe(streamId, sessionId, isNewSession, latencyMs);
   if (isNewSession) {
