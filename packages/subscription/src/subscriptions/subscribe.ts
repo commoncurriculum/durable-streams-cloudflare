@@ -26,8 +26,8 @@ export async function subscribe(
   // #endregion synced-to-docs:create-session-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
-    console.error(`Failed to create session stream in core: ${coreResponse.status}`);
-    throw new Error(`Failed to create session stream: ${coreResponse.status}`);
+    console.error(`Failed to create session stream in core: ${coreResponse.body} (status: ${coreResponse.status})`);
+    throw new Error(`Failed to create session stream: ${coreResponse.body} (status: ${coreResponse.status})`);
   }
 
   // #region synced-to-docs:add-subscription-to-do

@@ -31,7 +31,7 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 ## Tech Stack
 
 - **Runtime**: Cloudflare Workers + Durable Objects (SQLite) + R2 + Analytics Engine
-- **HTTP**: Hono v4 + Zod v3 + `@hono/zod-validator` (core + subscription workers)
+- **HTTP**: Hono v4 + ArkType v2 + `@hono/arktype-validator` (core + subscription workers)
 - **Admin dashboards**: TanStack Start + TanStack Query + Recharts + Tailwind CSS v4, deployed via @cloudflare/vite-plugin
 - **Build**: TypeScript strict via `tsc` (shared `tsconfig.build.json` at root)
 - **Test**: Vitest. Core has 4 vitest configs (unit, implementation, conformance, performance). Subscription has 2 (unit, integration). Integration tests use wrangler `unstable_dev`.
@@ -66,6 +66,29 @@ Both admin packages are **TanStack Start** apps on Cloudflare Workers. They shar
 
 - **Gotcha**: Core's `pnpm test` runs implementation tests (live wrangler workers), NOT unit tests. Use `pnpm test:unit` explicitly for pure function tests.
 - Integration tests (core implementation + subscription integration) start real wrangler workers via `global-setup.ts` files in the test directories.
+- **Cloudflare Vitest integration**: Use `@cloudflare/vitest-pool-workers` for tests that need Cloudflare runtime APIs (DurableObject, WorkerEntrypoint, bindings, etc.) without mocking. Docs: https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/
+- **Miniflare**: Local simulator for Workers runtime, used under the hood by `wrangler dev` and `@cloudflare/vitest-pool-workers`. Docs: https://developers.cloudflare.com/workers/testing/miniflare/
+
+### Common Test Pitfalls
+
+- **Content-type mismatch (409)**: Core validates that append content-type matches the stream's content-type. When creating streams in tests with `env.CORE.putStream(key)`, the default content-type is `application/json`. If the test then publishes with `text/plain`, core returns 409. Fix: pass `{ contentType: "text/plain" }` to `putStream` to match whatever the test sends.
+- **Mocks — use sparingly, only for failure paths**: `@cloudflare/vitest-pool-workers` provides real Cloudflare bindings — prefer them over mocks. Mocks are acceptable only when the real binding cannot produce the needed condition:
+  - `CORE.postStream`/`CORE.deleteStream` mocked to return `{ ok: false, status: 500 }` — simulates core server errors that can't be triggered from a test.
+  - `CORE.headStream` mocked to return `{ ok: false, status: 404 }` — simulates a session whose backing stream was deleted externally.
+  - `PROJECT_KEYS.get` mocked to return specific JSON — controls JWT signing secrets for auth tests.
+  - `PROJECT_KEYS` removed from env entirely — tests the "misconfigured deployment" 500 path.
+  - `env.METRICS.writeDataPoint` mocked — Analytics Engine is unavailable in vitest pool workers.
+  - If a condition can be triggered naturally (e.g., 404 from a nonexistent stream, 409 from content-type mismatch), do NOT mock — use the real binding.
+- **`Promise.allSettled` swallows rejections**: Fanout uses `Promise.allSettled`, so mocking an RPC to reject won't trigger catch blocks. To test error-handling paths inside `allSettled`, cause the error before the settled call (e.g., invalid base64 payload that throws during decode).
+
+## Validation (ArkType)
+
+Both core and subscription use [ArkType v2](https://arktype.io/) for schema validation at boundaries, with [`arkregex`](https://github.com/arktypeio/arktype/tree/main/ark/arkregex) for type-safe regex patterns.
+
+- **JIT compilation**: ArkType uses `new Function()` for compiled validators. Both workers have `allow_eval_during_startup` in `wrangler.toml`. Define all schemas at **module top-level** so compilation happens during Worker startup.
+- **Pipe error pattern**: Use `(value, ctx) => ctx.error("message")` in pipe callbacks. Do NOT use `type.errors("message")` — `ArkErrors` is a class and cannot be called without `new`.
+- **Checking for errors**: Use `result instanceof type.errors` (not `=== undefined` or truthiness checks).
+- **arkregex**: Use `regex("pattern", "flags")` from `arkregex` instead of raw `RegExp` literals for patterns used in validation. Provides typed capture groups.
 
 ## Documentation Regions (subscription only)
 

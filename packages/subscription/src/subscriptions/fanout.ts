@@ -27,7 +27,9 @@ export async function fanoutToSubscribers(
     const batchResults = await Promise.allSettled(
       batch.map((sessionId) => {
         const doKey = `${projectId}/${sessionId}`;
-        return env.CORE.postStream(doKey, payload, contentType, producerHeaders);
+        // Clone payload — ArrayBuffers are transferred across RPC boundaries,
+        // so each postStream call needs its own copy.
+        return env.CORE.postStream(doKey, payload.slice(0), contentType, producerHeaders);
       }),
     );
     results.push(...batchResults);

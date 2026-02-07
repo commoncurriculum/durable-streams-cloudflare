@@ -10,6 +10,7 @@ erl_crash.dump
 .elixir_ls/
 node_modules/
 .wrangler/
+.core-build/
 .trekker/
 upstream/
 upstream-server/

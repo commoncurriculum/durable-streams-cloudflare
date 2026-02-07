@@ -44,7 +44,7 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
   const result = await env.CORE.putStream(doKey, { expiresAt });
 
   if (!result.ok && result.status !== 409) {
-    throw new Error(`Failed to touch session: ${sessionId} (status: ${result.status})`);
+    throw new Error(`Failed to touch session: ${result.body} (status: ${result.status})`);
   }
 
   createMetrics(env.METRICS).sessionTouch(sessionId, Date.now() - start);
@@ -57,7 +57,7 @@ export async function deleteSession(env: AppEnv, projectId: string, sessionId: s
   const doKey = `${projectId}/${sessionId}`;
   const result = await env.CORE.deleteStream(doKey);
   if (!result.ok && result.status !== 404) {
-    throw new Error(`Failed to delete session: ${sessionId}`);
+    throw new Error(`Failed to delete session: ${result.body} (status: ${result.status})`);
   }
   createMetrics(env.METRICS).sessionDelete(sessionId, Date.now() - start);
   return { sessionId, deleted: true };

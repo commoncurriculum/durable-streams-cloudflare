@@ -30,6 +30,7 @@ interface Subscriber {
 // #region synced-to-docs:do-overview
 export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private sql: SqlStorage;
+  private nextFanoutSeq = 0;
 
   constructor(ctx: DurableObjectState, env: SubscriptionDOEnv) {
     super(ctx, env);
@@ -93,6 +94,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     const producerHeaders = params.producerId && params.producerEpoch && params.producerSeq
       ? { producerId: params.producerId, producerEpoch: params.producerEpoch, producerSeq: params.producerSeq }
       : undefined;
+    // Clone payload — ArrayBuffers are transferred across RPC boundaries,
+    // so the source write would detach the buffer before fanout can use it.
+    const fanoutPayload = params.payload.slice(0);
     const writeResult = await this.env.CORE.postStream(
       sourceDoKey,
       params.payload,
@@ -117,18 +121,16 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       };
     }
 
-    // Get offset for fanout deduplication
-    const sourceOffset = writeResult.nextOffset;
-
-    // Build producer headers for fanout (using source stream offset)
-    let fanoutProducerHeaders: { producerId: string; producerEpoch: string; producerSeq: string } | undefined;
-    if (sourceOffset) {
-      fanoutProducerHeaders = {
-        producerId: `fanout:${streamId}`,
-        producerEpoch: "1",
-        producerSeq: sourceOffset,
-      };
-    }
+    // Track fanout sequence for producer-based deduplication.
+    // Each subscriber session stream gets writes from producer "fanout:<streamId>".
+    // The sequence number must be a monotonically increasing integer (0, 1, 2, ...),
+    // NOT the hex-encoded source offset.
+    const fanoutSeq = this.nextFanoutSeq++;
+    const fanoutProducerHeaders = {
+      producerId: `fanout:${streamId}`,
+      producerEpoch: "1",
+      producerSeq: fanoutSeq.toString(),
+    };
 
     // #region synced-to-docs:fanout
     // 2. Get subscribers (local DO SQLite query)
@@ -147,20 +149,20 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       if (this.env.FANOUT_QUEUE && subscribers.length > threshold) {
         // Queued fanout — enqueue and return immediately
         try {
-          await this.enqueueFanout(projectId, streamId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          await this.enqueueFanout(projectId, streamId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
           fanoutMode = "queued";
           metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
         } catch (err) {
           // Fallback to inline on queue failure
           console.error("Queue enqueue failed, falling back to inline fanout:", err);
-          const result = await fanoutToSubscribers(this.env, projectId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+          const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
           successCount = result.successes;
           failureCount = result.failures;
           this.removeStaleSubscribers(result.staleSessionIds);
         }
       } else {
         // Inline fanout
-        const result = await fanoutToSubscribers(this.env, projectId, subscribers, params.payload, params.contentType, fanoutProducerHeaders);
+        const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
         successCount = result.successes;
         failureCount = result.failures;
         // #endregion synced-to-docs:fanout

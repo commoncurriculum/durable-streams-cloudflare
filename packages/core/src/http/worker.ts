@@ -1,4 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { type } from "arktype";
 import { createStreamWorker } from "./create_worker";
 import { projectJwtAuth } from "./auth";
 import { StreamDO } from "./durable_object";
@@ -6,6 +7,12 @@ import type { StreamIntrospection } from "./durable_object";
 import type { BaseEnv } from "./create_worker";
 
 const { authorizeMutation, authorizeRead } = projectJwtAuth();
+
+const putStreamOptions = type({
+  "expiresAt?": "number",
+  "body?": "ArrayBuffer",
+  "contentType?": "string",
+});
 
 export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   #handler = createStreamWorker({
@@ -52,25 +59,32 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   }
 
   // RPC: check if a stream exists
-  async headStream(doKey: string): Promise<{ ok: boolean; status: number }> {
+  async headStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
       new Request("https://internal/v1/stream", { method: "HEAD" }),
     );
-    return { ok: response.ok, status: response.status };
+    const body = response.ok ? null : await response.text();
+    return { ok: response.ok, status: response.status, body };
   }
 
   // RPC: create or touch a stream
   async putStream(
     doKey: string,
     options?: { expiresAt?: number; body?: ArrayBuffer; contentType?: string },
-  ): Promise<{ ok: boolean; status: number }> {
+  ): Promise<{ ok: boolean; status: number; body: string | null }> {
+    if (options) {
+      const validated = putStreamOptions(options);
+      if (validated instanceof type.errors) {
+        return { ok: false, status: 400, body: validated.summary };
+      }
+    }
     const headers: Record<string, string> = {
       "Content-Type": options?.contentType ?? "application/json",
     };
     if (options?.expiresAt) {
-      headers["Stream-Expires-At"] = options.expiresAt.toString();
+      headers["Stream-Expires-At"] = new Date(options.expiresAt).toISOString();
     }
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
@@ -81,17 +95,19 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
         body: options?.body,
       }),
     );
-    return { ok: response.ok, status: response.status };
+    const body = response.ok ? null : await response.text();
+    return { ok: response.ok, status: response.status, body };
   }
 
   // RPC: delete a stream
-  async deleteStream(doKey: string): Promise<{ ok: boolean; status: number }> {
+  async deleteStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
       new Request("https://internal/v1/stream", { method: "DELETE" }),
     );
-    return { ok: response.ok, status: response.status };
+    const body = response.ok ? null : await response.text();
+    return { ok: response.ok, status: response.status, body };
   }
 
   // RPC: append to a stream (POST)

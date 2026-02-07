@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { arktypeValidator } from "@hono/arktype-validator";
+import { type } from "arktype";
 import { publish } from "../../subscriptions/publish";
 import { createMetrics } from "../../metrics";
 import { STREAM_ID_PATTERN } from "../../constants";
@@ -8,12 +8,15 @@ import type { AppEnv } from "../../env";
 
 export const publishRoutes = new Hono<{ Bindings: AppEnv }>();
 
-const streamIdParamSchema = z.object({
-  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
+const streamIdParamSchema = type({
+  streamId: type("string > 0").pipe((s, ctx) => {
+    if (!STREAM_ID_PATTERN.test(s)) return ctx.error("Invalid streamId format");
+    return s;
+  }),
 });
 
 // #region synced-to-docs:publish-route
-publishRoutes.post("/publish/:streamId", zValidator("param", streamIdParamSchema), async (c) => {
+publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParamSchema), async (c) => {
   const start = Date.now();
   const projectId = c.req.param("project")!;
   const streamId = c.req.param("streamId");

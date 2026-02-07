@@ -90,6 +90,8 @@ async function cleanupSession(
     if (result.ok || result.status === 404) {
       streamDeleteSuccess = true;
       metrics.sessionDelete(session.sessionId, 0);
+    } else {
+      console.error(`Failed to delete session stream ${session.sessionId}: ${result.body} (status: ${result.status})`);
     }
   } catch (err) {
     console.error(`Failed to delete session stream ${session.sessionId}:`, err);

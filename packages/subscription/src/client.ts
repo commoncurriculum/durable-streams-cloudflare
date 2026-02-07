@@ -1,4 +1,4 @@
-export type StreamRpcResult = { ok: boolean; status: number };
+export type StreamRpcResult = { ok: boolean; status: number; body: string | null };
 export type PostStreamResult = { ok: boolean; status: number; nextOffset: string | null; upToDate: string | null; streamClosed: string | null; body: string | null };
 
 export interface CoreService {

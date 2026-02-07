@@ -9,7 +9,9 @@
     "url": "https://github.com/commoncurriculum/durable-streams-cloudflare",
     "directory": "packages/subscription"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/http/worker.d.ts",
@@ -31,22 +33,23 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.4",
-    "hono": "^4",
-    "zod": "^3"
+    "@hono/arktype-validator": "^2.0.1",
+    "arkregex": "^0.0.5",
+    "arktype": "^2.1.29",
+    "hono": "^4"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632",
     "@cloudflare/workers-types": "latest",
     "@types/node": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
-    "sql.js": "^1.13.0",
     "typescript": "latest",
     "vite": "latest",
-    "vitest": "latest",
+    "vitest": "4.1.0-beta.1",
     "wrangler": "^4.63.0"
   }
 }

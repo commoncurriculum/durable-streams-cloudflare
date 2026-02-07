@@ -2,12 +2,14 @@
  * Shared constants for durable-streams-subscriptions
  */
 
+import { regex } from "arkregex";
+
 // #region synced-to-docs:id-patterns
 /**
  * Pattern for valid session IDs.
  * Must be a UUID (8-4-4-4-12 hex format).
  */
-export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SESSION_ID_PATTERN = regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "i");
 
 /**
  * Pattern for valid stream IDs.
@@ -15,13 +17,13 @@ export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  * Does not allow quotes, semicolons, spaces, or other special characters
  * that could be used in SQL injection attacks.
  */
-export const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
+export const STREAM_ID_PATTERN = regex("^[a-zA-Z0-9_\\-:.]+$");
 
 /**
  * Pattern for valid project IDs.
  * Allows alphanumeric characters, hyphens, and underscores.
  */
-export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PROJECT_ID_PATTERN = regex("^[a-zA-Z0-9_-]+$");
 // #endregion synced-to-docs:id-patterns
 
 /**

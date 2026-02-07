@@ -14,19 +14,29 @@ export function encodeOffset(offset: number, readSeq = 0): string {
 // #endregion docs-encode
 
 // #region docs-decode
+import { type } from "arktype";
+import { regex } from "arkregex";
+
+const OFFSET_PATTERN = regex("^(\\d+)_(\\d+)$");
+
+const offsetToken = type("string").pipe((s, ctx) => {
+  const match = OFFSET_PATTERN.exec(s);
+  if (!match) return ctx.error("invalid offset format");
+  const readSeq = Number(match[1]);
+  const byteOffset = Number(match[2]);
+  if (!Number.isSafeInteger(readSeq) || !Number.isSafeInteger(byteOffset)) return ctx.error("offset out of safe integer range");
+  if (readSeq < 0 || byteOffset < 0) return ctx.error("offset must be non-negative");
+  return { readSeq, byteOffset };
+});
+
 export function decodeOffset(token: string): number | null {
   const parsed = decodeOffsetParts(token);
   return parsed ? parsed.byteOffset : null;
 }
 
 export function decodeOffsetParts(token: string): { readSeq: number; byteOffset: number } | null {
-  const match = /^(\d+)_([0-9]+)$/.exec(token);
-  if (!match) return null;
-  const readSeq = Number(match[1]);
-  const byteOffset = Number(match[2]);
-  if (!Number.isFinite(readSeq) || !Number.isFinite(byteOffset)) return null;
-  if (!Number.isSafeInteger(readSeq) || !Number.isSafeInteger(byteOffset)) return null;
-  if (readSeq < 0 || byteOffset < 0) return null;
-  return { readSeq, byteOffset };
+  const result = offsetToken(token);
+  if (result instanceof type.errors) return null;
+  return result;
 }
 // #endregion docs-decode

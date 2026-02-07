@@ -1,3 +1,4 @@
+import { type } from "arktype";
 import { HEADER_STREAM_EXPIRES_AT, HEADER_STREAM_TTL } from "./headers";
 
 export type ExpiryMeta = {
@@ -5,21 +6,29 @@ export type ExpiryMeta = {
   expires_at: number | null;
 };
 
+const ttlSeconds = type("string").pipe((s, ctx) => {
+  if (!/^(0|[1-9]\d*)$/.test(s)) return ctx.error("invalid Stream-TTL");
+  return parseInt(s, 10);
+});
+
+const expiresAtIso = type("string").pipe((s, ctx) => {
+  const parsed = Date.parse(s);
+  if (Number.isNaN(parsed)) return ctx.error("invalid Stream-Expires-At");
+  return parsed;
+});
+
 export function parseTtlSeconds(value: string | null): { value: number | null; error?: string } {
   if (!value) return { value: null };
-  if (!/^(0|[1-9]\d*)$/.test(value)) {
-    return { value: null, error: "invalid Stream-TTL" };
-  }
-  return { value: parseInt(value, 10) };
+  const result = ttlSeconds(value);
+  if (result instanceof type.errors) return { value: null, error: result.summary };
+  return { value: result };
 }
 
 export function parseExpiresAt(value: string | null): { value: number | null; error?: string } {
   if (!value) return { value: null };
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return { value: null, error: "invalid Stream-Expires-At" };
-  }
-  return { value: parsed };
+  const result = expiresAtIso(value);
+  if (result instanceof type.errors) return { value: null, error: result.summary };
+  return { value: result };
 }
 
 export function ttlMatches(

@@ -1,6 +1,7 @@
 name = "durable-streams-subscriptions"
 main = "src/http/worker.ts"
 compatibility_date = "2025-02-02"
+compatibility_flags = ["allow_eval_during_startup", "brotli_content_encoding"]
 
 [vars]
 SESSION_TTL_SECONDS = "1800"

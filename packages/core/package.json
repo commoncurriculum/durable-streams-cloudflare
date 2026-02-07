@@ -41,9 +41,9 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.4",
-    "hono": "^4",
-    "zod": "^3"
+    "arkregex": "^0.0.5",
+    "arktype": "^2.1.29",
+    "hono": "^4"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4"

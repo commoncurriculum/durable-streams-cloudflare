@@ -1,11 +1,10 @@
 name = "durable-streams"
 main = "src/http/worker.ts"
 compatibility_date = "2026-02-02"
+compatibility_flags = ["allow_eval_during_startup", "brotli_content_encoding"]
 
 [durable_objects]
-bindings = [
-  { name = "STREAMS", class_name = "StreamDO" }
-]
+bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
 
 [[migrations]]
 tag = "v1"
@@ -22,7 +21,7 @@ dataset = "durable_streams_metrics"
 # KV namespace for per-project signing secrets and public stream flags
 [[kv_namespaces]]
 binding = "PROJECT_KEYS"
-id = "<your-kv-namespace-id>"
+id = "project-keys"
 
 [vars]
 # SEGMENT_MAX_MESSAGES = "1000"

@@ -1,3 +1,7 @@
+import { type } from "arktype";
+
+export const integerString = type(/^(0|[1-9]\d*)$/);
+
 export function isInteger(value: string): boolean {
-  return /^(0|[1-9]\d*)$/.test(value);
+  return !(integerString(value) instanceof type.errors);
 }

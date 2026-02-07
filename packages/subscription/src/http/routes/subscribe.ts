@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { arktypeValidator } from "@hono/arktype-validator";
+import { type } from "arktype";
 import { subscribe } from "../../subscriptions/subscribe";
 import { unsubscribe } from "../../subscriptions/unsubscribe";
 import { deleteSession } from "../../session";
@@ -8,31 +8,43 @@ import { SESSION_ID_PATTERN, STREAM_ID_PATTERN } from "../../constants";
 import type { AppEnv } from "../../env";
 
 // #region synced-to-docs:subscribe-schema
-const subscribeSchema = z.object({
-  sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
-  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
-  contentType: z.string().optional().default("application/json"),
+const subscribeSchema = type({
+  sessionId: type("string > 0").pipe((s, ctx) => {
+    if (!SESSION_ID_PATTERN.test(s)) return ctx.error("Invalid sessionId format");
+    return s;
+  }),
+  streamId: type("string > 0").pipe((s, ctx) => {
+    if (!STREAM_ID_PATTERN.test(s)) return ctx.error("Invalid streamId format");
+    return s;
+  }),
+  "contentType?": "string",
 });
 
-const unsubscribeSchema = z.object({
-  sessionId: z.string().min(1).regex(SESSION_ID_PATTERN, "Invalid sessionId format"),
-  streamId: z.string().min(1).regex(STREAM_ID_PATTERN, "Invalid streamId format"),
+const unsubscribeSchema = type({
+  sessionId: type("string > 0").pipe((s, ctx) => {
+    if (!SESSION_ID_PATTERN.test(s)) return ctx.error("Invalid sessionId format");
+    return s;
+  }),
+  streamId: type("string > 0").pipe((s, ctx) => {
+    if (!STREAM_ID_PATTERN.test(s)) return ctx.error("Invalid streamId format");
+    return s;
+  }),
 });
 // #endregion synced-to-docs:subscribe-schema
 
 export const subscribeRoutes = new Hono<{ Bindings: AppEnv }>();
 
-subscribeRoutes.post("/subscribe", zValidator("json", subscribeSchema), async (c) => {
+subscribeRoutes.post("/subscribe", arktypeValidator("json", subscribeSchema), async (c) => {
   const projectId = c.req.param("project")!;
   const { sessionId, streamId, contentType } = c.req.valid("json");
   try {
-    return c.json(await subscribe(c.env, projectId, streamId, sessionId, contentType));
+    return c.json(await subscribe(c.env, projectId, streamId, sessionId, contentType ?? "application/json"));
   } catch {
     return c.json({ error: "Failed to subscribe" }, 500);
   }
 });
 
-subscribeRoutes.delete("/unsubscribe", zValidator("json", unsubscribeSchema), async (c) => {
+subscribeRoutes.delete("/unsubscribe", arktypeValidator("json", unsubscribeSchema), async (c) => {
   const projectId = c.req.param("project")!;
   const { sessionId, streamId } = c.req.valid("json");
   try {

@@ -1,52 +1,21 @@
 import { describe, it, expect, vi } from "vitest";
+import { env } from "cloudflare:test";
 import type { AppEnv } from "../src/env";
-
-// Mock cloudflare:workers (SubscriptionDO extends DurableObject)
-vi.mock("cloudflare:workers", () => ({
-  DurableObject: class {},
-}));
-
-vi.mock("../src/metrics", () => ({
-  createMetrics: vi.fn(() => ({
-    http: vi.fn(),
-    cleanupBatch: vi.fn(),
-  })),
-}));
-
-vi.mock("../src/cleanup", () => ({
-  cleanupExpiredSessions: vi.fn().mockResolvedValue({
-    deleted: 0,
-    streamDeleteSuccesses: 0,
-    streamDeleteFailures: 0,
-    subscriptionRemoveSuccesses: 0,
-    subscriptionRemoveFailures: 0,
-  }),
-}));
 
 const PROJECT_ID = "test-project";
 
 function createBaseEnv(): AppEnv {
-  return {
-    CORE: {
-      fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
-    },
-    SUBSCRIPTION_DO: {
-      idFromName: vi.fn().mockReturnValue("do-id"),
-      get: vi.fn().mockReturnValue({ fetch: vi.fn() }),
-    } as unknown as AppEnv["SUBSCRIPTION_DO"],
-    METRICS: {} as AnalyticsEngineDataset,
-  } as unknown as AppEnv;
+  return { ...env } as unknown as AppEnv;
 }
 
 describe("createSubscriptionWorker", () => {
   it("no auth config — all requests allowed", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const worker = createSubscriptionWorker();
-    const env = createBaseEnv();
 
     const response = await worker.fetch(
       new Request("http://localhost/health"),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -58,12 +27,11 @@ describe("createSubscriptionWorker", () => {
   it("no auth config — API routes accessible without token", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const worker = createSubscriptionWorker();
-    const env = createBaseEnv();
 
     // GET session should not be blocked (no auth configured)
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -78,11 +46,10 @@ describe("createSubscriptionWorker", () => {
         return { ok: false, response: new Response("forbidden", { status: 403 }) };
       },
     });
-    const env = createBaseEnv();
 
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -97,11 +64,10 @@ describe("createSubscriptionWorker", () => {
         response: new Response("forbidden", { status: 403 }),
       }),
     });
-    const env = createBaseEnv();
 
     const response = await worker.fetch(
       new Request("http://localhost/health"),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -120,11 +86,10 @@ describe("createSubscriptionWorker", () => {
         return { ok: true };
       },
     });
-    const env = createBaseEnv();
 
     await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -136,7 +101,7 @@ describe("createSubscriptionWorker", () => {
     const { projectJwtAuth } = await import("../src/http/auth");
 
     const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
-    const env = {
+    const testEnv = {
       ...createBaseEnv(),
       PROJECT_KEYS: {
         get: vi.fn().mockResolvedValue(JSON.stringify({ signingSecret: "test-secret" })),
@@ -145,7 +110,7 @@ describe("createSubscriptionWorker", () => {
 
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
-      env,
+      testEnv,
       {} as ExecutionContext,
     );
 
@@ -155,11 +120,10 @@ describe("createSubscriptionWorker", () => {
   it("rejects invalid project IDs with 400", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const worker = createSubscriptionWorker();
-    const env = createBaseEnv();
 
     const response = await worker.fetch(
       new Request("http://localhost/v1/bad%20project!/publish/my-stream", { method: "POST", body: "{}" }),
-      env,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 
@@ -173,15 +137,16 @@ describe("createSubscriptionWorker", () => {
     const { projectJwtAuth } = await import("../src/http/auth");
 
     const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
-    const env = createBaseEnv();
 
+    // Construct env without PROJECT_KEYS to trigger the 500 path
+    const { PROJECT_KEYS: _, ...envWithoutKeys } = createBaseEnv();
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",
         body: "{}",
         headers: { Authorization: "Bearer some-token" },
       }),
-      env,
+      envWithoutKeys as AppEnv,
       {} as ExecutionContext,
     );
 

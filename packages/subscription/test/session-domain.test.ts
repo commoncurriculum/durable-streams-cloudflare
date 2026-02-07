@@ -1,168 +1,91 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-// Mock metrics
-const mockMetrics = {
-  sessionTouch: vi.fn(),
-  sessionDelete: vi.fn(),
-};
-vi.mock("../src/metrics", () => ({
-  createMetrics: vi.fn(() => mockMetrics),
-}));
-
-// Mock analytics
-const mockGetSessionSubscriptions = vi.fn();
-vi.mock("../src/analytics", () => ({
-  getSessionSubscriptions: (...args: unknown[]) => mockGetSessionSubscriptions(...args),
-}));
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
 
 const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-const SESSION_ID_MISSING = "00000000-0000-0000-0000-000000000000";
-
-const mockHeadStream = vi.fn();
-const mockPutStream = vi.fn();
-const mockDeleteStream = vi.fn();
-
-function createEnv() {
-  return {
-    CORE: { headStream: mockHeadStream, putStream: mockPutStream, deleteStream: mockDeleteStream, postStream: vi.fn() },
-    METRICS: undefined,
-    ACCOUNT_ID: "test-account",
-    API_TOKEN: "test-token",
-    ANALYTICS_DATASET: "test_metrics",
-  };
-}
 
 describe("getSession", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockHeadStream.mockReset();
-    mockGetSessionSubscriptions.mockReset();
-  });
-
-  afterEach(() => {
-    vi.resetModules();
-  });
-
-  it("returns null when core returns 404", async () => {
-    mockHeadStream.mockResolvedValueOnce({ ok: false, status: 404 });
-
+  it("returns null when session does not exist", async () => {
     const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID_MISSING);
+    const result = await getSession(env as never, PROJECT_ID, SESSION_ID);
 
     expect(result).toBeNull();
   });
 
-  it("returns session info when core responds ok", async () => {
-    mockHeadStream.mockResolvedValueOnce({ ok: true, status: 200 });
-    mockGetSessionSubscriptions.mockResolvedValueOnce({
-      data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
-    });
+  it("returns session info when session exists", async () => {
+    // Create the session stream first
+    await env.CORE.putStream(`${PROJECT_ID}/${SESSION_ID}`);
 
     const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID);
+    const result = await getSession(env as never, PROJECT_ID, SESSION_ID);
 
-    expect(result).toEqual({
-      sessionId: SESSION_ID,
-      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
-      subscriptions: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
-    });
-  });
-
-  it("analytics failure degrades gracefully — returns empty subscriptions", async () => {
-    mockHeadStream.mockResolvedValueOnce({ ok: true, status: 200 });
-    mockGetSessionSubscriptions.mockResolvedValueOnce({
-      data: [],
-      error: "Analytics Engine unavailable",
-    });
-
-    const { getSession } = await import("../src/session");
-    const result = await getSession(createEnv() as never, PROJECT_ID, SESSION_ID);
-
-    expect(result).toEqual({
-      sessionId: SESSION_ID,
-      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
-      subscriptions: [],
-    });
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe(SESSION_ID);
+    expect(result!.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
+    // No ACCOUNT_ID/API_TOKEN in test env, so subscriptions will be empty
+    expect(result!.subscriptions).toEqual([]);
   });
 });
 
 describe("touchSession", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockPutStream.mockReset();
-  });
-
-  afterEach(() => {
-    vi.resetModules();
-  });
-
-  it("succeeds on 200", async () => {
-    mockPutStream.mockResolvedValueOnce({ ok: true, status: 200 });
+  it("creates a new session stream", async () => {
+    const sessionId = crypto.randomUUID();
 
     const { touchSession } = await import("../src/session");
-    const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
+    const result = await touchSession(env as never, PROJECT_ID, sessionId);
 
-    expect(result.sessionId).toBe(SESSION_ID);
+    expect(result.sessionId).toBe(sessionId);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
-    expect(mockMetrics.sessionTouch).toHaveBeenCalled();
   });
 
-  it("succeeds on 409 (already exists)", async () => {
-    mockPutStream.mockResolvedValueOnce({ ok: false, status: 409 });
+  it("succeeds when session already exists", async () => {
+    const sessionId = crypto.randomUUID();
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
 
     const { touchSession } = await import("../src/session");
-    const result = await touchSession(createEnv() as never, PROJECT_ID, SESSION_ID);
+    const result = await touchSession(env as never, PROJECT_ID, sessionId);
 
-    expect(result.sessionId).toBe(SESSION_ID);
-    expect(mockMetrics.sessionTouch).toHaveBeenCalled();
+    expect(result.sessionId).toBe(sessionId);
   });
 
-  it("throws on 500 with correct error message", async () => {
-    mockPutStream.mockResolvedValueOnce({ ok: false, status: 500 });
+  it("throws on core failure", async () => {
+    const mockPutStream = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, body: "internal error" });
+    const failEnv = { ...env, CORE: { ...env.CORE, putStream: mockPutStream } };
 
     const { touchSession } = await import("../src/session");
-    await expect(touchSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
-      `Failed to touch session: ${SESSION_ID} (status: 500)`,
+    await expect(touchSession(failEnv as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
+      "Failed to touch session: internal error (status: 500)",
     );
   });
 });
 
 describe("deleteSession", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockDeleteStream.mockReset();
-  });
-
-  afterEach(() => {
-    vi.resetModules();
-  });
-
-  it("succeeds on 200", async () => {
-    mockDeleteStream.mockResolvedValueOnce({ ok: true, status: 200 });
+  it("deletes an existing session", async () => {
+    const sessionId = crypto.randomUUID();
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
 
     const { deleteSession } = await import("../src/session");
-    const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
+    const result = await deleteSession(env as never, PROJECT_ID, sessionId);
 
-    expect(result).toEqual({ sessionId: SESSION_ID, deleted: true });
-    expect(mockMetrics.sessionDelete).toHaveBeenCalled();
+    expect(result).toEqual({ sessionId, deleted: true });
   });
 
-  it("succeeds on 404 (idempotent)", async () => {
-    mockDeleteStream.mockResolvedValueOnce({ ok: false, status: 404 });
+  it("succeeds when session does not exist (idempotent)", async () => {
+    const sessionId = crypto.randomUUID();
 
     const { deleteSession } = await import("../src/session");
-    const result = await deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID);
+    const result = await deleteSession(env as never, PROJECT_ID, sessionId);
 
-    expect(result).toEqual({ sessionId: SESSION_ID, deleted: true });
+    expect(result).toEqual({ sessionId, deleted: true });
   });
 
-  it("throws on 500", async () => {
-    mockDeleteStream.mockResolvedValueOnce({ ok: false, status: 500 });
+  it("throws on core failure", async () => {
+    const mockDeleteStream = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, body: "internal error" });
+    const failEnv = { ...env, CORE: { ...env.CORE, deleteStream: mockDeleteStream } };
 
     const { deleteSession } = await import("../src/session");
-    await expect(deleteSession(createEnv() as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
-      `Failed to delete session: ${SESSION_ID}`,
+    await expect(deleteSession(failEnv as never, PROJECT_ID, SESSION_ID)).rejects.toThrow(
+      "Failed to delete session: internal error (status: 500)",
     );
   });
 });

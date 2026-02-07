@@ -1,64 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
 import type { AppEnv } from "../src/env";
 
-// Mock cloudflare:workers (worker uses WorkerEntrypoint + re-exports SubscriptionDO which extends DurableObject)
-vi.mock("cloudflare:workers", () => ({
-  DurableObject: class {},
-  WorkerEntrypoint: class {
-    protected env: unknown;
-    protected ctx: unknown;
-    constructor(ctx?: unknown, env?: unknown) {
-      this.ctx = ctx;
-      this.env = env;
-    }
-  },
-}));
-
-// Mock dependencies
-vi.mock("../src/metrics", () => ({
-  createMetrics: vi.fn(() => ({
-    http: vi.fn(),
-    cleanupBatch: vi.fn(),
-  })),
-}));
-
-vi.mock("../src/cleanup", () => ({
-  cleanupExpiredSessions: vi.fn().mockResolvedValue({
-    deleted: 0,
-    streamDeleteSuccesses: 0,
-    streamDeleteFailures: 0,
-    subscriptionRemoveSuccesses: 0,
-    subscriptionRemoveFailures: 0,
-  }),
-}));
-
-function createBaseEnv(overrides: Record<string, unknown> = {}) {
-  return {
-    CORE: {
-      fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
-    },
-    SUBSCRIPTION_DO: {
-      idFromName: vi.fn().mockReturnValue("do-id"),
-      get: vi.fn().mockReturnValue({ fetch: vi.fn() }),
-    } as unknown as AppEnv["SUBSCRIPTION_DO"],
-    METRICS: {} as AnalyticsEngineDataset,
-    ...overrides,
-  };
+function createTestEnv(overrides: Record<string, unknown> = {}): AppEnv {
+  return { ...env, ...overrides } as unknown as AppEnv;
 }
 
-async function createTestWorker(env: Record<string, unknown>) {
+async function createTestWorker(testEnv: AppEnv) {
   const { default: WorkerClass } = await import("../src/http/worker");
-  return new WorkerClass({} as unknown as ExecutionContext, env as unknown as AppEnv);
+  return new WorkerClass({} as unknown as ExecutionContext, testEnv);
 }
 
 describe("CORS configuration", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("allows all origins by default (no CORS_ORIGINS set)", async () => {
-    const env = createBaseEnv();
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv());
     const request = new Request("http://localhost/health", {
       headers: { Origin: "https://any-origin.com" },
     });
@@ -69,8 +24,7 @@ describe("CORS configuration", () => {
   });
 
   it("uses CORS_ORIGINS from env when set to specific domain", async () => {
-    const env = createBaseEnv({ CORS_ORIGINS: "https://example.com" });
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
     const request = new Request("http://localhost/health", {
       headers: { Origin: "https://example.com" },
     });
@@ -81,8 +35,7 @@ describe("CORS configuration", () => {
   });
 
   it("supports comma-separated CORS_ORIGINS", async () => {
-    const env = createBaseEnv({ CORS_ORIGINS: "https://example.com,https://test.com" });
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com,https://test.com" }));
     const request = new Request("http://localhost/health", {
       headers: { Origin: "https://test.com" },
     });
@@ -93,21 +46,18 @@ describe("CORS configuration", () => {
   });
 
   it("rejects origins not in CORS_ORIGINS list", async () => {
-    const env = createBaseEnv({ CORS_ORIGINS: "https://example.com" });
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
     const request = new Request("http://localhost/health", {
       headers: { Origin: "https://evil.com" },
     });
 
     const response = await worker.fetch(request);
 
-    // When origin is not allowed, CORS header is not set
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it("allows all origins when CORS_ORIGINS is '*'", async () => {
-    const env = createBaseEnv({ CORS_ORIGINS: "*" });
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "*" }));
     const request = new Request("http://localhost/health", {
       headers: { Origin: "https://any-origin.com" },
     });
@@ -118,8 +68,7 @@ describe("CORS configuration", () => {
   });
 
   it("handles OPTIONS preflight request", async () => {
-    const env = createBaseEnv({ CORS_ORIGINS: "https://example.com" });
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
     const request = new Request("http://localhost/health", {
       method: "OPTIONS",
       headers: {
@@ -137,13 +86,8 @@ describe("CORS configuration", () => {
 });
 
 describe("health check", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("returns ok status", async () => {
-    const env = createBaseEnv();
-    const worker = await createTestWorker(env);
+    const worker = await createTestWorker(createTestEnv());
     const request = new Request("http://localhost/health");
 
     const response = await worker.fetch(request);

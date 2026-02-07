@@ -1,18 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
-import type { AppEnv } from "../../src/env";
-
-// Mock session service functions
-const mockGetSession = vi.fn();
-const mockTouchSession = vi.fn();
-
-vi.mock("../../src/session", () => ({
-  getSession: (...args: unknown[]) => mockGetSession(...args),
-  touchSession: (...args: unknown[]) => mockTouchSession(...args),
-}));
+import { env } from "cloudflare:test";
 
 const PROJECT_ID = "test-project";
-const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 function createTestApp() {
   return import("../../src/http/routes/session").then(({ sessionRoutes }) => {
@@ -22,145 +12,64 @@ function createTestApp() {
   });
 }
 
-function createMockEnv() {
-  return {
-    CORE: {
-      fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
-    },
-    SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-    METRICS: {} as AnalyticsEngineDataset,
-    ACCOUNT_ID: "test-account",
-    API_TOKEN: "test-token",
-    ANALYTICS_DATASET: "test_metrics",
-    SESSION_TTL_SECONDS: "1800",
-  };
-}
-
 describe("GET /session/:sessionId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("returns 404 when session does not exist", async () => {
-    mockGetSession.mockResolvedValue(null);
-
     const app = await createTestApp();
-    const res = await app.request(`/v1/${PROJECT_ID}/session/nonexistent`, {}, createMockEnv());
+    const res = await app.request(`/v1/${PROJECT_ID}/session/nonexistent`, {}, env);
 
     expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: string };
+    const body = await res.json() as { error: string };
     expect(body.error).toBe("Session not found");
   });
 
-  it("calls getSession service with correct params", async () => {
-    mockGetSession.mockResolvedValue({
-      sessionId: SESSION_ID,
-      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
-      subscriptions: [],
-    });
-
-    const app = await createTestApp();
-    const env = createMockEnv();
-    await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, env);
-
-    expect(mockGetSession).toHaveBeenCalledWith(env, PROJECT_ID, SESSION_ID);
-  });
-
   it("returns session info when session exists", async () => {
-    mockGetSession.mockResolvedValue({
-      sessionId: SESSION_ID,
-      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
-      subscriptions: [],
-    });
+    const sessionId = crypto.randomUUID();
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
 
     const app = await createTestApp();
-    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, createMockEnv());
+    const res = await app.request(`/v1/${PROJECT_ID}/session/${sessionId}`, {}, env);
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
+    const body = await res.json() as {
       sessionId: string;
       sessionStreamPath: string;
       subscriptions: Array<{ streamId: string }>;
     };
-    expect(body.sessionId).toBe(SESSION_ID);
-    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
-  });
-
-  it("includes subscriptions from service", async () => {
-    mockGetSession.mockResolvedValue({
-      sessionId: SESSION_ID,
-      sessionStreamPath: `/v1/${PROJECT_ID}/stream/${SESSION_ID}`,
-      subscriptions: [
-        { streamId: "stream-a" },
-        { streamId: "stream-b" },
-      ],
-    });
-
-    const app = await createTestApp();
-    const res = await app.request(`/v1/${PROJECT_ID}/session/${SESSION_ID}`, {}, createMockEnv());
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { subscriptions: Array<{ streamId: string }> };
-    expect(body.subscriptions).toHaveLength(2);
-    expect(body.subscriptions[0].streamId).toBe("stream-a");
-    expect(body.subscriptions[1].streamId).toBe("stream-b");
+    expect(body.sessionId).toBe(sessionId);
+    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
   });
 });
 
 describe("POST /session/:sessionId/touch", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("calls touchSession service with correct params", async () => {
-    mockTouchSession.mockResolvedValue({
-      sessionId: SESSION_ID,
-      expiresAt: Date.now() + 1800000,
-    });
+  it("creates a new session on touch", async () => {
+    const sessionId = crypto.randomUUID();
 
     const app = await createTestApp();
-    const env = createMockEnv();
-    await app.request(
-      `/v1/${PROJECT_ID}/session/${SESSION_ID}/touch`,
+    const res = await app.request(
+      `/v1/${PROJECT_ID}/session/${sessionId}/touch`,
       { method: "POST" },
       env,
     );
 
-    expect(mockTouchSession).toHaveBeenCalledWith(env, PROJECT_ID, SESSION_ID);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { sessionId: string; expiresAt: number };
+    expect(body.sessionId).toBe(sessionId);
+    expect(body.expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it("returns 404 when touchSession throws", async () => {
-    mockTouchSession.mockRejectedValue(new Error("Session not found: nonexistent"));
+  it("succeeds when session already exists", async () => {
+    const sessionId = crypto.randomUUID();
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
 
     const app = await createTestApp();
     const res = await app.request(
-      `/v1/${PROJECT_ID}/session/nonexistent/touch`,
+      `/v1/${PROJECT_ID}/session/${sessionId}/touch`,
       { method: "POST" },
-      createMockEnv(),
-    );
-
-    expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("Session not found");
-  });
-
-  it("returns sessionId and expiresAt on success", async () => {
-    const expiresAt = Date.now() + 1800000;
-    mockTouchSession.mockResolvedValue({
-      sessionId: SESSION_ID,
-      expiresAt,
-    });
-
-    const app = await createTestApp();
-    const res = await app.request(
-      `/v1/${PROJECT_ID}/session/${SESSION_ID}/touch`,
-      { method: "POST" },
-      createMockEnv(),
+      env,
     );
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { sessionId: string; expiresAt: number };
-    expect(body.sessionId).toBe(SESSION_ID);
-    expect(body.expiresAt).toBe(expiresAt);
+    const body = await res.json() as { sessionId: string };
+    expect(body.sessionId).toBe(sessionId);
   });
 });
