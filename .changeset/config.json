@@ -3,7 +3,7 @@
   "changelog": ["@changesets/changelog-github", { "repo": "commoncurriculum/durable-streams-cloudflare" }],
   "commit": false,
   "fixed": [
-    ["@durable-streams-cloudflare/core", "@durable-streams-cloudflare/subscription", "@durable-streams-cloudflare/cli"]
+    ["@durable-streams-cloudflare/core", "@durable-streams-cloudflare/subscription", "@durable-streams-cloudflare/cli", "@durable-streams-cloudflare/admin-core", "@durable-streams-cloudflare/admin-subscription"]
   ],
   "linked": [],
   "access": "public",

@@ -1,6 +1,6 @@
 {
   "name": "@durable-streams-cloudflare/admin-subscription",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "type": "module",
   "license": "MIT",
   "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
