@@ -90,6 +90,86 @@ Both core and subscription use [ArkType v2](https://arktype.io/) for schema vali
 - **Checking for errors**: Use `result instanceof type.errors` (not `=== undefined` or truthiness checks).
 - **arkregex**: Use `regex("pattern", "flags")` from `arkregex` instead of raw `RegExp` literals for patterns used in validation. Provides typed capture groups.
 
+## Pre-Push Checklist (CI Parity)
+
+**Before declaring work complete, you MUST run every command below and confirm they all pass.** These are the exact checks GitHub Actions runs on every push and PR. A failure in any of them will block the PR.
+
+### 1. Typecheck (all packages)
+
+```sh
+pnpm -r run typecheck
+```
+
+Runs `tsc --noEmit` in every package that has a `typecheck` script (core, subscription, admin-core, admin-subscription, cli).
+
+### 2. Lint (core + subscription)
+
+```sh
+pnpm -C packages/core run lint
+pnpm -C packages/subscription run lint
+```
+
+Runs `oxlint src test` in each package. Fix all errors **and** warnings — CI treats warnings as informational today but errors are fatal.
+
+### 3. Tests (all packages)
+
+```sh
+pnpm -r run test
+```
+
+This runs each package's default `test` script:
+- **core**: runs implementation tests (live wrangler workers via `vitest.implementation.config.ts`)
+- **subscription**: runs unit tests via `@cloudflare/vitest-pool-workers` (excludes `test/integration/`)
+- **admin-core**: runs integration tests (builds with vite, starts core + admin workers)
+- **admin-subscription**: runs smoke/integration tests
+
+### 4. Core unit tests
+
+```sh
+pnpm -C packages/core run test:unit
+```
+
+Pure function tests (`test/unit/**/*.test.ts`). Fast, no wrangler needed.
+
+### 5. Conformance tests
+
+```sh
+pnpm -C packages/core run conformance
+```
+
+Runs the `@durable-streams/server-conformance-tests` suite against a live core worker. The worker is started automatically via `test/conformance/global-setup.ts`.
+
+### 6. Subscription integration tests
+
+```sh
+pnpm -C packages/subscription run test:integration
+```
+
+Starts both core and subscription workers, then runs `test/integration/**/*.test.ts`. Workers are started automatically via `test/integration/global-setup.ts`.
+
+### Quick Copy-Paste
+
+Run all 6 CI checks sequentially (stop on first failure):
+
+```sh
+pnpm -r run typecheck && \
+pnpm -C packages/core run lint && \
+pnpm -C packages/subscription run lint && \
+pnpm -r run test && \
+pnpm -C packages/core run test:unit && \
+pnpm -C packages/core run conformance && \
+pnpm -C packages/subscription run test:integration
+```
+
+### What Each Package's `test` Script Actually Runs
+
+| Package | `pnpm test` runs | Config |
+|---------|-------------------|--------|
+| `packages/core` | Implementation tests (live workers) | `vitest.implementation.config.ts` |
+| `packages/subscription` | Unit tests (miniflare pool) | `vitest.config.ts` (excludes `test/integration/`) |
+| `packages/admin-core` | Integration tests (vite build + wrangler) | `vitest.config.ts` |
+| `packages/admin-subscription` | Smoke tests | `vitest.config.ts` |
+
 ## Documentation Regions (subscription only)
 
 Subscription source files have `// #region synced-to-docs:<name>` markers referenced by `packages/subscription/docs/walkthrough.md` (Slidev). When refactoring:

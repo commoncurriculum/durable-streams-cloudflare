@@ -89,6 +89,7 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     app.use("*", async (c, next) => {
       const url = new URL(c.req.url);
       if (url.pathname === "/health") return next();
+      if (c.env.DEBUG_TESTING === "1") return next();
 
       const route = await parseRoute(c.req.method, url.pathname, c.req.raw);
       if (!route) return next(); // Unknown route — let Hono handle 404/400

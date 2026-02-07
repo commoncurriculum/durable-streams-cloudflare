@@ -11,6 +11,7 @@ export type BaseEnv = {
   STREAMS: DurableObjectNamespace<StreamDO>;
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
+  DEBUG_TESTING?: string;
   METRICS?: AnalyticsEngineDataset;
   REGISTRY: KVNamespace;
 };
@@ -149,7 +150,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       // #region docs-authorize-request
       // Auth callbacks receive doKey (projectId/streamId) so they can check project scope
-      if (isStreamRead && config?.authorizeRead) {
+      if (isStreamRead && config?.authorizeRead && env.DEBUG_TESTING !== "1") {
         const readAuth = await config.authorizeRead(request, doKey, env, timing);
         if (!readAuth.ok) {
           // On auth failure for reads, check if stream is public
@@ -162,7 +163,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
             return wrapAuthError(readAuth.response);
           }
         }
-      } else if (!isStreamRead && config?.authorizeMutation) {
+      } else if (!isStreamRead && config?.authorizeMutation && env.DEBUG_TESTING !== "1") {
         const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
         if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
       }

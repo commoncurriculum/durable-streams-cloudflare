@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import { execSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -270,35 +271,59 @@ export async function setup() {
   // Step 2: Configuration prompts
   // -----------------------------------------------------------------------
 
-  // Which packages?
-  const includeSubscription = await p.confirm({
-    message: "Deploy the subscription (pub/sub) layer?",
-    initialValue: true,
+  // Project directory
+  const dirChoice = await p.select({
+    message: "Where should we set up?",
+    options: [
+      { value: "cwd", label: `Current directory (${process.cwd()})` },
+      { value: "new", label: "Create a new directory" },
+    ],
   });
-  if (p.isCancel(includeSubscription)) cancelled();
+  if (p.isCancel(dirChoice)) cancelled();
 
-  const includeAdminCore = await p.confirm({
-    message: "Deploy the admin dashboard for core?",
-    initialValue: true,
-  });
-  if (p.isCancel(includeAdminCore)) cancelled();
-
-  let includeAdminSubscription = false;
-  if (includeSubscription) {
-    const result = await p.confirm({
-      message: "Deploy the admin dashboard for subscription?",
-      initialValue: true,
+  let projectDir = process.cwd();
+  if (dirChoice === "new") {
+    const dirName = await p.text({
+      message: "Directory name:",
+      placeholder: "my-streams-project",
+      validate: (v) => v.length === 0 ? "Directory name is required" : undefined,
     });
-    if (p.isCancel(result)) cancelled();
-    includeAdminSubscription = result;
+    if (p.isCancel(dirName)) cancelled();
+    projectDir = join(process.cwd(), dirName);
   }
+
+  // Which packages?
+  const components = await p.multiselect({
+    message: "Which components do you want to deploy? (space to toggle, enter to confirm)",
+    options: [
+      { value: "core", label: "Core streams worker", hint: "required if not already deployed" },
+      { value: "subscription", label: "Subscription (pub/sub) layer" },
+      { value: "admin-core", label: "Admin dashboard for core" },
+      { value: "admin-subscription", label: "Admin dashboard for subscription" },
+    ],
+    initialValues: ["core", "subscription", "admin-core", "admin-subscription"],
+    required: true,
+  });
+  if (p.isCancel(components)) cancelled();
+
+  const includeCore = components.includes("core");
+  const includeSubscription = components.includes("subscription");
+  const includeAdminCore = components.includes("admin-core");
+  const includeAdminSubscription = components.includes("admin-subscription");
 
   // Cloudflare API token (for subscription cron + admin dashboards)
   let cfApiToken = "";
   if (includeSubscription || includeAdminCore || includeAdminSubscription) {
+    p.log.info(
+      "An API token is needed for Analytics Engine access.\n" +
+      "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
+      "  2. Click \"Create Token\"\n" +
+      "  3. Use the \"Custom token\" template\n" +
+      '  4. Add permission: Account > Analytics Engine > Read\n' +
+      "  5. Copy the token"
+    );
     const input = await p.text({
-      message: "Cloudflare API token (Analytics Engine read permission):",
-      placeholder: "Needed for cron cleanup + admin dashboards",
+      message: "Paste your API token:",
       validate: (v) => v.length === 0 ? "API token is required" : undefined,
     });
     if (p.isCancel(input)) cancelled();
@@ -315,6 +340,30 @@ export async function setup() {
     if (p.isCancel(input)) cancelled();
     accountId = input;
   }
+
+  // Confirm before proceeding
+  const workerNames: string[] = [];
+  if (includeCore) workerNames.push("  durable-streams                      (core)");
+  if (includeSubscription) workerNames.push("  durable-streams-subscriptions        (subscription)");
+  if (includeAdminCore) workerNames.push("  durable-streams-admin-core           (admin)");
+  if (includeAdminSubscription) workerNames.push("  durable-streams-admin-subscription   (admin)");
+
+  p.note(
+    `Directory: ${projectDir}\n\n` +
+    "Workers to deploy:\n" +
+    workerNames.join("\n") + "\n\n" +
+    "This will:\n" +
+    "  - Create an R2 bucket and KV namespace on Cloudflare\n" +
+    "  - Scaffold worker files into workers/\n" +
+    "  - Install npm packages\n" +
+    "  - Deploy all workers above",
+    "Ready to go"
+  );
+  const confirmed = await p.confirm({
+    message: "Proceed?",
+    initialValue: true,
+  });
+  if (p.isCancel(confirmed) || !confirmed) cancelled();
 
   // -----------------------------------------------------------------------
   // Step 3: Create Cloudflare resources (needed before scaffolding)
@@ -368,17 +417,23 @@ export async function setup() {
   // -----------------------------------------------------------------------
   p.log.step("Scaffolding worker files into workers/");
 
-  const cwd = process.cwd();
-  const workersDir = join(cwd, "workers");
+  // Create project directory if needed
+  if (dirChoice === "new") {
+    ensureDir(projectDir);
+  }
+
+  const workersDir = join(projectDir, "workers");
 
   // Check for existing files
   const filesToWrite: Array<{ path: string; content: string }> = [];
 
-  // Core (always)
-  filesToWrite.push(
-    { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
-    { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
-  );
+  // Core
+  if (includeCore) {
+    filesToWrite.push(
+      { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
+      { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
+    );
+  }
 
   // Subscription
   if (includeSubscription) {
@@ -409,7 +464,7 @@ export async function setup() {
   const existing = filesToWrite.filter((f) => existsSync(f.path));
   let overwriteAll = false;
   if (existing.length > 0) {
-    const paths = existing.map((f) => f.path.replace(cwd + "/", "")).join("\n  ");
+    const paths = existing.map((f) => f.path.replace(projectDir + "/", "")).join("\n  ");
     const result = await p.confirm({
       message: `These files already exist:\n  ${paths}\n\nOverwrite them?`,
       initialValue: false,
@@ -425,7 +480,7 @@ export async function setup() {
   if (existing.length === 0 || overwriteAll) {
     for (const f of filesToWrite) {
       writeFile(f.path, f.content, true);
-      p.log.info(`  ${f.path.replace(cwd + "/", "")}`);
+      p.log.info(`  ${f.path.replace(projectDir + "/", "")}`);
     }
   }
 
@@ -435,12 +490,13 @@ export async function setup() {
   const installSpinner = p.spinner();
   installSpinner.start("Installing npm dependencies");
 
-  const packages = ["@durable-streams-cloudflare/core"];
+  const packages: string[] = [];
+  if (includeCore) packages.push("@durable-streams-cloudflare/core");
   if (includeSubscription) packages.push("@durable-streams-cloudflare/subscription");
   if (includeAdminCore) packages.push("@durable-streams-cloudflare/admin-core");
   if (includeAdminSubscription) packages.push("@durable-streams-cloudflare/admin-subscription");
 
-  const installResult = runMayFail(`pnpm add ${packages.join(" ")}`);
+  const installResult = runMayFail(`cd ${projectDir} && pnpm add ${packages.join(" ")}`);
   if (!installResult.ok) {
     installSpinner.stop("Install failed");
     p.log.error(`Failed to install packages:\n${installResult.stderr}`);
@@ -454,24 +510,26 @@ export async function setup() {
   const deployedUrls: Record<string, string> = {};
 
   // --- Core ---
-  const coreSpinner = p.spinner();
-  coreSpinner.start("Deploying core worker");
+  if (includeCore) {
+    const coreSpinner = p.spinner();
+    coreSpinner.start("Deploying core worker");
 
-  const coreConfig = join(workersDir, "streams", "wrangler.toml");
+    const coreConfig = join(workersDir, "streams", "wrangler.toml");
 
-  const coreDeploy = runMayFail(`${wranglerCmd} deploy --config ${coreConfig}`);
-  if (!coreDeploy.ok) {
-    coreSpinner.stop("Core deploy failed");
-    p.log.error(coreDeploy.stderr);
-    process.exit(1);
-  }
+    const coreDeploy = runMayFail(`${wranglerCmd} deploy --config ${coreConfig}`);
+    if (!coreDeploy.ok) {
+      coreSpinner.stop("Core deploy failed");
+      p.log.error(coreDeploy.stderr);
+      process.exit(1);
+    }
 
-  const coreUrl = parseDeployedUrl(coreDeploy.stdout) ?? parseDeployedUrl(coreDeploy.stderr) ?? "";
-  if (coreUrl) {
-    deployedUrls.core = coreUrl;
-    coreSpinner.stop(`Core deployed: ${coreUrl}`);
-  } else {
-    coreSpinner.stop("Core deployed (URL not detected — check Cloudflare dashboard)");
+    const coreUrl = parseDeployedUrl(coreDeploy.stdout) ?? parseDeployedUrl(coreDeploy.stderr) ?? "";
+    if (coreUrl) {
+      deployedUrls.core = coreUrl;
+      coreSpinner.stop(`Core deployed: ${coreUrl}`);
+    } else {
+      coreSpinner.stop("Core deployed (URL not detected — check Cloudflare dashboard)");
+    }
   }
 
   // --- Subscription ---
@@ -555,44 +613,241 @@ export async function setup() {
   }
 
   // -----------------------------------------------------------------------
-  // Step 7: Summary
+  // Step 7: Create first project
   // -----------------------------------------------------------------------
-  const lines: string[] = [];
+  let projectName = "";
+  let signingSecret = "";
 
-  lines.push("Deployed Workers:");
-  if (deployedUrls.core) lines.push(`  Core:               ${deployedUrls.core}`);
-  if (deployedUrls.subscription) lines.push(`  Subscription:       ${deployedUrls.subscription}`);
-  if (deployedUrls.adminCore) lines.push(`  Admin (core):       ${deployedUrls.adminCore}`);
-  if (deployedUrls.adminSubscription) lines.push(`  Admin (sub):        ${deployedUrls.adminSubscription}`);
-  if (Object.keys(deployedUrls).length === 0) {
-    lines.push("  (check your Cloudflare dashboard for URLs)");
+  if (includeCore) {
+    const createNow = await p.confirm({
+      message: "Create your first project now? (generates a JWT signing key)",
+      initialValue: true,
+    });
+    if (p.isCancel(createNow)) cancelled();
+
+    if (createNow) {
+      const name = await p.text({
+        message: "Project name (alphanumeric, hyphens, underscores):",
+        placeholder: "my-app",
+        validate: (v) => {
+          if (v.length === 0) return "Project name is required";
+          if (!/^[a-zA-Z0-9_-]+$/.test(v)) return "Only alphanumeric, hyphens, and underscores allowed";
+          return undefined;
+        },
+      });
+      if (p.isCancel(name)) cancelled();
+      projectName = name;
+
+      signingSecret = randomBytes(32).toString("hex");
+
+      const kvSpinner2 = p.spinner();
+      kvSpinner2.start("Creating project in KV");
+
+      const value = JSON.stringify({ signingSecret });
+      const escapedValue = value.replace(/'/g, "'\\''");
+      const kvWriteResult = runMayFail(
+        `${wranglerCmd} kv key put --namespace-id="${kvNamespaceId}" "${projectName}" '${escapedValue}'`,
+      );
+
+      if (!kvWriteResult.ok) {
+        kvSpinner2.stop("Failed to write project key");
+        p.log.error(kvWriteResult.stderr);
+      } else {
+        kvSpinner2.stop("Project created");
+        p.note(
+          `Project:        ${projectName}\n` +
+          `Signing Secret: ${signingSecret}\n\n` +
+          "Save this signing secret — it won't be shown again!\n\n" +
+          "Mint a JWT with these claims:\n" +
+          `  { "sub": "${projectName}", "scope": "write", "exp": <unix-timestamp> }\n\n` +
+          "Sign with HMAC-SHA256 using the signing secret above.",
+          `Project: ${projectName}`
+        );
+      }
+    }
   }
 
-  lines.push("");
-  lines.push("Auth: per-project JWT (HMAC-SHA256). Create projects with:");
-  lines.push("  npx -y durable-streams create-project");
-
+  // -----------------------------------------------------------------------
+  // Step 8: Zero Trust walkthrough (if admin dashboards deployed)
+  // -----------------------------------------------------------------------
   if (deployedUrls.adminCore || deployedUrls.adminSubscription) {
-    lines.push("");
-    lines.push("Admin dashboards have no built-in auth.");
-    lines.push("Protect them with Cloudflare Zero Trust Access:");
-    lines.push("https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/");
-    lines.push("");
-    lines.push("Optional: set CF_ACCESS_TEAM_DOMAIN secret for defense-in-depth JWT validation.");
+    const adminDomains: string[] = [];
+    if (deployedUrls.adminCore) {
+      adminDomains.push(deployedUrls.adminCore.replace("https://", ""));
+    }
+    if (deployedUrls.adminSubscription) {
+      adminDomains.push(deployedUrls.adminSubscription.replace("https://", ""));
+    }
+
+    p.note(
+      "Your admin dashboards have no built-in auth.\n" +
+      "Set up Cloudflare Zero Trust to protect them:\n\n" +
+      "  1. Go to https://one.dash.cloudflare.com\n" +
+      "  2. Access > Applications > Add an application\n" +
+      "  3. Choose \"Self-hosted\"\n" +
+      "  4. Application domain: " + adminDomains[0] + "\n" +
+      "  5. Add a policy (e.g., allow your email domain)\n" +
+      (adminDomains.length > 1
+        ? `  6. Repeat for: ${adminDomains[1]}\n`
+        : "") +
+      "\n" +
+      "Docs: https://developers.cloudflare.com/cloudflare-one/\n" +
+      "      applications/configure-apps/self-hosted-apps/",
+      "Protect admin dashboards"
+    );
+
+    const ztDone = await p.confirm({
+      message: "Continue (you can set this up later)",
+      initialValue: true,
+    });
+    if (p.isCancel(ztDone)) cancelled();
   }
 
-  if (deployedUrls.core) {
-    lines.push("");
-    lines.push("Quick test:");
-    lines.push(`  # 1. Create a project: npx -y durable-streams create-project`);
-    lines.push(`  # 2. Mint a JWT with the signing secret`);
-    lines.push(`  # 3. Create a stream:`);
-    lines.push(`  curl -X PUT -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' ${deployedUrls.core}/v1/<project>/stream/test`);
+  // -----------------------------------------------------------------------
+  // Step 9: Git + GitHub
+  // -----------------------------------------------------------------------
+  const setupGit = await p.confirm({
+    message: "Set up Git and push to GitHub?",
+    initialValue: true,
+  });
+  if (p.isCancel(setupGit)) cancelled();
+
+  let repoUrl = "";
+
+  if (setupGit) {
+    // Initialize git if needed
+    const isGitRepo = runMayFail(`git -C ${projectDir} rev-parse --git-dir`);
+    if (!isGitRepo.ok) {
+      const gitInitSpinner = p.spinner();
+      gitInitSpinner.start("Initializing git repo");
+      runMayFail(`git -C ${projectDir} init`);
+      gitInitSpinner.stop("Git repo initialized");
+    }
+
+    // Create .gitignore
+    const gitignorePath = join(projectDir, ".gitignore");
+    if (!existsSync(gitignorePath)) {
+      writeFile(gitignorePath, "node_modules/\ndist/\n.wrangler/\n", true);
+      p.log.info("  Created .gitignore");
+    }
+
+    // Initial commit
+    runMayFail(`git -C ${projectDir} add -A`);
+    const needsCommit = runMayFail(`git -C ${projectDir} diff --cached --quiet`);
+    if (!needsCommit.ok) {
+      runMayFail(`git -C ${projectDir} commit -m "Initial setup via durable-streams CLI"`);
+      p.log.info("  Created initial commit");
+    }
+
+    // Check for gh CLI
+    const hasGh = runMayFail("gh --version");
+    if (hasGh.ok) {
+      const createRepo = await p.confirm({
+        message: "Create a GitHub repo? (requires gh CLI)",
+        initialValue: true,
+      });
+      if (p.isCancel(createRepo)) cancelled();
+
+      if (createRepo) {
+        const repoName = await p.text({
+          message: "GitHub repo name:",
+          placeholder: projectDir.split("/").pop() ?? "durable-streams",
+          defaultValue: projectDir.split("/").pop() ?? "durable-streams",
+          validate: (v) => v.length === 0 ? "Repo name is required" : undefined,
+        });
+        if (p.isCancel(repoName)) cancelled();
+
+        const visibility = await p.select({
+          message: "Repo visibility:",
+          options: [
+            { value: "private", label: "Private" },
+            { value: "public", label: "Public" },
+          ],
+        });
+        if (p.isCancel(visibility)) cancelled();
+
+        const repoSpinner = p.spinner();
+        repoSpinner.start("Creating GitHub repo");
+
+        const ghResult = runMayFail(
+          `cd ${projectDir} && gh repo create ${repoName} --${visibility} --source=. --push`,
+        );
+
+        if (ghResult.ok) {
+          // Try to extract repo URL
+          const urlMatch = ghResult.stdout.match(/https:\/\/github\.com\/[^\s]+/);
+          repoUrl = urlMatch ? urlMatch[0] : "";
+          repoSpinner.stop(repoUrl ? `Repo created: ${repoUrl}` : "Repo created and pushed");
+        } else {
+          repoSpinner.stop("Repo creation failed");
+          p.log.warning(ghResult.stderr);
+          p.log.info("You can create the repo manually and push later.");
+        }
+      }
+    } else {
+      p.log.info(
+        "Install the GitHub CLI (gh) to create a repo from here,\n" +
+        "or push manually: git remote add origin <url> && git push -u origin main"
+      );
+    }
   }
 
-  lines.push("");
-  lines.push("Next: connect this repo to Cloudflare's GitHub integration for automatic deploys.");
+  // -----------------------------------------------------------------------
+  // Step 10: Connect to GitHub for auto-deploys
+  // -----------------------------------------------------------------------
+  if (setupGit) {
+    const deployedWorkerNames: string[] = [];
+    if (includeCore) deployedWorkerNames.push("durable-streams");
+    if (includeSubscription) deployedWorkerNames.push("durable-streams-subscriptions");
+    if (includeAdminCore) deployedWorkerNames.push("durable-streams-admin-core");
+    if (includeAdminSubscription) deployedWorkerNames.push("durable-streams-admin-subscription");
 
-  p.note(lines.join("\n"), "Setup complete");
+    p.note(
+      "Connect your repo to Cloudflare for automatic deploys on push:\n\n" +
+      deployedWorkerNames.map((name, i) =>
+        `  ${i === 0 ? "For" : "Repeat for"} "${name}":\n` +
+        "    1. Go to https://dash.cloudflare.com > Workers & Pages\n" +
+        `    2. Select "${name}"\n` +
+        "    3. Settings > Builds > Connect to Git\n" +
+        "    4. Select your repo and configure"
+      ).join("\n\n"),
+      "Automatic deploys"
+    );
+
+    const cfDone = await p.confirm({
+      message: "Continue (you can set this up later)",
+      initialValue: true,
+    });
+    if (p.isCancel(cfDone)) cancelled();
+  }
+
+  // -----------------------------------------------------------------------
+  // Step 11: Summary
+  // -----------------------------------------------------------------------
+  const summaryLines: string[] = [];
+
+  summaryLines.push("Workers:");
+  if (deployedUrls.core) summaryLines.push(`  Core:         ${deployedUrls.core}`);
+  if (deployedUrls.subscription) summaryLines.push(`  Subscription: ${deployedUrls.subscription}`);
+  if (deployedUrls.adminCore) summaryLines.push(`  Admin (core): ${deployedUrls.adminCore}`);
+  if (deployedUrls.adminSubscription) summaryLines.push(`  Admin (sub):  ${deployedUrls.adminSubscription}`);
+  if (Object.keys(deployedUrls).length === 0) {
+    summaryLines.push("  (check your Cloudflare dashboard for URLs)");
+  }
+
+  if (repoUrl) {
+    summaryLines.push("");
+    summaryLines.push(`GitHub: ${repoUrl}`);
+  }
+
+  if (projectName && deployedUrls.core) {
+    summaryLines.push("");
+    summaryLines.push("Quick test:");
+    summaryLines.push(`  curl -X PUT -H 'Authorization: Bearer <JWT>' \\`);
+    summaryLines.push(`    -H 'Content-Type: application/json' \\`);
+    summaryLines.push(`    ${deployedUrls.core}/v1/${projectName}/stream/test`);
+  }
+
+  p.note(summaryLines.join("\n"), "Setup complete");
   p.outro("Happy streaming!");
 }

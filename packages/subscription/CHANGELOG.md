@@ -1,5 +1,7 @@
 # @durable-streams-cloudflare/subscription
 
+## 0.3.0
+
 ## 0.2.3
 
 ## 0.2.2

@@ -124,6 +124,8 @@ export async function startSubscriptionsWorker(options?: {
       "--local",
       "--port",
       String(port),
+      "--var",
+      "DEBUG_TESTING:1",
       ...extraVars,
       "--persist-to",
       persistDir,

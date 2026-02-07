@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { handleFanoutQueue } from "../../src/queue/fanout-consumer";
 import type { AppEnv } from "../../src/env";

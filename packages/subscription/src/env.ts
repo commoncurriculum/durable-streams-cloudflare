@@ -15,4 +15,5 @@ export interface AppEnv extends Partial<AnalyticsQueryEnv> {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
   REGISTRY: KVNamespace;
+  DEBUG_TESTING?: string;
 }

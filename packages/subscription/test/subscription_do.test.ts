@@ -86,8 +86,9 @@ describe("SubscriptionDO", () => {
       producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
     ) {
       return runInDurableObject(doStub, async (instance) => {
+        const do_ = instance as unknown as import("../src/subscriptions/do").SubscriptionDO;
         const buf = new TextEncoder().encode(payload).buffer as ArrayBuffer;
-        return instance.publish(projectId, sid, {
+        return do_.publish(projectId, sid, {
           payload: buf,
           contentType,
           ...producerHeaders,
@@ -210,8 +211,8 @@ describe("SubscriptionDO", () => {
     it("should have subscribers table", async () => {
       await stub.addSubscriber("session-1");
 
-      await runInDurableObject(stub, (instance) => {
-        const rows = [...instance.ctx.storage.sql.exec("SELECT session_id FROM subscribers")];
+      await runInDurableObject(stub, (_instance, state) => {
+        const rows = [...state.storage.sql.exec("SELECT session_id FROM subscribers")];
         expect(rows).toHaveLength(1);
         expect(rows[0].session_id).toBe("session-1");
       });

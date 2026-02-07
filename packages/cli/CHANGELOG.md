@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- Revamp setup wizard: add project directory choice, confirmation screen with worker names, inline project creation, Zero Trust walkthrough, Git/GitHub setup, and Cloudflare Connect to Git guidance
+
 ## 0.2.3
 
 ### Patch Changes

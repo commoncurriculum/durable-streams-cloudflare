@@ -44,6 +44,7 @@
     "@cloudflare/vite-plugin": "^1",
     "@cloudflare/workers-types": "latest",
     "@tailwindcss/vite": "^4",
+    "@types/node": "^25.2.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",

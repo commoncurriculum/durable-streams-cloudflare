@@ -9,7 +9,7 @@ export async function subscribe(
   projectId: string,
   streamId: string,
   sessionId: string,
-  contentType = "application/json",
+  _contentType = "application/json",
 ): Promise<SubscribeResult> {
   const start = Date.now();
   const metrics = createMetrics(env.METRICS);
