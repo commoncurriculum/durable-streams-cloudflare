@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/core
 
+## 0.7.0
+
+### Minor Changes
+
+- Include source files in published npm packages for build-from-source deployments. Add created_at timestamp to read chunks.
+
 ## 0.6.0
 
 ### Minor Changes
