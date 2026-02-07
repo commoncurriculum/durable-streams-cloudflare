@@ -1,6 +1,6 @@
 {
   "name": "@durable-streams-cloudflare/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "CLI for scaffolding, deploying, and managing Durable Streams on Cloudflare",
   "type": "module",
   "bin": {

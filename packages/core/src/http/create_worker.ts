@@ -26,7 +26,9 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 // ============================================================================
 
 const STREAM_PATH_RE = /^\/v1\/([^/]+)\/stream\/(.+)$/;
+const LEGACY_STREAM_PATH_RE = /^\/v1\/stream\/(.+)$/;
 const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const DEFAULT_PROJECT_ID = "_default";
 
 function corsError(status: number, message: string): Response {
   const headers = new Headers({ "Cache-Control": "no-store" });
@@ -121,16 +123,23 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       // #region docs-extract-stream-id
       // Parse project + stream ID from /v1/:project/stream/:id
+      // Also supports legacy /v1/stream/:id format (maps to _default project)
       const pathMatch = STREAM_PATH_RE.exec(url.pathname);
-      if (!pathMatch) {
+      const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(url.pathname) : null;
+      if (!pathMatch && !legacyMatch) {
         return corsError(404, "not found");
       }
 
       let projectId: string;
       let streamId: string;
       try {
-        projectId = decodeURIComponent(pathMatch[1]);
-        streamId = decodeURIComponent(pathMatch[2]);
+        if (pathMatch) {
+          projectId = decodeURIComponent(pathMatch[1]);
+          streamId = decodeURIComponent(pathMatch[2]);
+        } else {
+          projectId = DEFAULT_PROJECT_ID;
+          streamId = decodeURIComponent(legacyMatch![1]);
+        }
       } catch {
         return corsError(400, "malformed stream id");
       }

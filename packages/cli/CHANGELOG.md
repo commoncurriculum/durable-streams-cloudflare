@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/cli
 
+## 0.3.1
+
+### Patch Changes
+
+- Fix API token instructions: permission is "Account Analytics", not "Analytics Engine"
+
 ## 0.3.0
 
 ### Minor Changes

@@ -24,6 +24,7 @@ export async function extractPutInput(
   request: Request,
 ): Promise<RawPutInput> {
   const bodyBytes = new Uint8Array(await request.arrayBuffer());
+  const url = new URL(request.url);
 
   return {
     streamId,
@@ -32,7 +33,7 @@ export async function extractPutInput(
     ttlHeader: request.headers.get(HEADER_STREAM_TTL),
     expiresHeader: request.headers.get(HEADER_STREAM_EXPIRES_AT),
     streamSeqHeader: request.headers.get(HEADER_STREAM_SEQ),
-    publicHeader: request.headers.get("X-Stream-Public"),
+    publicParam: url.searchParams.get("public") === "true",
     bodyBytes,
     producer: parseProducerHeaders(request),
     requestUrl: request.url,
@@ -96,7 +97,7 @@ export function parsePutInput(raw: RawPutInput, now: number): Result<ParsedPutIn
       streamId: raw.streamId,
       contentType: raw.contentTypeHeader,
       requestedClosed: raw.closedHeader === "true",
-      isPublic: raw.publicHeader === "true",
+      isPublic: raw.publicParam,
       ttlSeconds: ttlSeconds.value,
       effectiveExpiresAt: effectiveExpiresAt ?? null,
       bodyBytes,

@@ -13,7 +13,6 @@ const CORS_ALLOW_HEADERS = [
   "Producer-Epoch",
   "Producer-Seq",
   "Authorization",
-  "X-Stream-Public",
 ];
 
 const CORS_EXPOSE_HEADERS = [

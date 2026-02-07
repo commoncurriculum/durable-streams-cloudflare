@@ -65,6 +65,8 @@ export async function startCoreWorker(options?: {
       "wrangler",
       "dev",
       "--local",
+      "--name",
+      "durable-streams",
       "--port",
       String(port),
       "--var",
@@ -87,8 +89,7 @@ export async function startCoreWorker(options?: {
   );
 
   const baseUrl = `http://localhost:${port}`;
-  // Health check for core - use a stream path
-  await waitForReady(`${baseUrl}/v1/stream/__health__?offset=0-0-0`);
+  await waitForReady(`${baseUrl}/health`);
 
   return {
     baseUrl,

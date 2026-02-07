@@ -319,7 +319,7 @@ export async function setup() {
       "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
       "  2. Click \"Create Token\"\n" +
       "  3. Use the \"Custom token\" template\n" +
-      '  4. Add permission: Account > Analytics Engine > Read\n' +
+      "  4. Add permission: Account > Account Analytics > Read\n" +
       "  5. Copy the token"
     );
     const input = await p.text({

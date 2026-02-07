@@ -25,7 +25,7 @@ export type RawPutInput = {
   ttlHeader: string | null;
   expiresHeader: string | null;
   streamSeqHeader: string | null;
-  publicHeader: string | null;
+  publicParam: boolean;
   bodyBytes: Uint8Array;
   producer: { value?: ProducerInput; error?: Response } | null;
   requestUrl: string;
