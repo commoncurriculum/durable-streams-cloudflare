@@ -40,7 +40,7 @@ describe("abort handling", () => {
 
     const url = new URL(client.streamUrl(streamId));
     await sendTruncatedBody(url.origin, url.pathname, "B");
-    await delay(100);
+    await delay(500);
 
     const text = await client.readAllText(streamId, ZERO_OFFSET);
     expect(text).toBe("A");

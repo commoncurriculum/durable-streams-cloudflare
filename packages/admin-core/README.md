@@ -49,6 +49,16 @@ pnpm deploy       # vite build && wrangler deploy
 | `CORE` | Service Binding | Service binding to the core worker (required). Uses Worker RPC for stream inspection and routing — no auth tokens needed. |
 | `REGISTRY` | KV Namespace | Per-project signing secrets (required for project management). Shared with the core worker. |
 
+## Authentication
+
+The admin dashboard relies on [Cloudflare Zero Trust (CF Access)](https://developers.cloudflare.com/cloudflare-one/applications/) for authentication. You must configure a CF Access application on the route or domain where the dashboard is deployed -- without it, the dashboard is publicly accessible.
+
+When `CF_ACCESS_TEAM_DOMAIN` is set (your Zero Trust team name, e.g. `myteam`), the worker verifies the `cf-access-jwt-assertion` header on every request and rejects unauthenticated or expired tokens. Set it as a secret:
+
+```bash
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
+```
+
 ## See Also
 
 - [`@durable-streams-cloudflare/core`](https://www.npmjs.com/package/@durable-streams-cloudflare/core) — the core stream protocol

@@ -14,6 +14,8 @@ const putStreamOptions = type({
   "contentType?": "string",
 });
 
+const INTERNAL_BASE_URL = "https://internal/v1/stream";
+
 export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   #handler = createStreamWorker({
     authorizeMutation,
@@ -45,7 +47,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
-      new Request(`https://internal/v1/stream?offset=${encodeURIComponent(offset)}`),
+      new Request(`${INTERNAL_BASE_URL}?offset=${encodeURIComponent(offset)}`),
     );
     const body = await response.text();
     return {
@@ -63,7 +65,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
-      new Request("https://internal/v1/stream", { method: "HEAD" }),
+      new Request(INTERNAL_BASE_URL, { method: "HEAD" }),
     );
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
@@ -89,7 +91,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
-      new Request("https://internal/v1/stream", {
+      new Request(INTERNAL_BASE_URL, {
         method: "PUT",
         headers,
         body: options?.body,
@@ -104,7 +106,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
-      new Request("https://internal/v1/stream", { method: "DELETE" }),
+      new Request(INTERNAL_BASE_URL, { method: "DELETE" }),
     );
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
@@ -126,7 +128,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
-      new Request("https://internal/v1/stream", { method: "POST", headers, body: payload }),
+      new Request(INTERNAL_BASE_URL, { method: "POST", headers, body: payload }),
     );
     const body = response.ok ? null : await response.text();
     return {

@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   SESSION_ID_PATTERN,
   STREAM_ID_PATTERN,
-  DEFAULT_SESSION_TTL_SECONDS,
-  DEFAULT_ANALYTICS_DATASET,
 } from "../src/constants";
 
 describe("constants", () => {
@@ -46,13 +44,4 @@ describe("constants", () => {
     });
   });
 
-  describe("default values", () => {
-    it("exports DEFAULT_SESSION_TTL_SECONDS", () => {
-      expect(DEFAULT_SESSION_TTL_SECONDS).toBe(1800);
-    });
-
-    it("exports DEFAULT_ANALYTICS_DATASET", () => {
-      expect(DEFAULT_ANALYTICS_DATASET).toBe("subscriptions_metrics");
-    });
-  });
 });

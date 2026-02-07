@@ -24,7 +24,6 @@ binding = "REGISTRY"
 id = "project-keys"
 
 [vars]
-DEBUG_TESTING = "1"
 # SEGMENT_MAX_MESSAGES = "1000"
 # SEGMENT_MAX_BYTES = "4194304"
 

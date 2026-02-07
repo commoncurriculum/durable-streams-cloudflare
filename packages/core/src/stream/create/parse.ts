@@ -96,7 +96,7 @@ export function parsePutInput(raw: RawPutInput, now: number): Result<ParsedPutIn
     value: {
       streamId: raw.streamId,
       contentType: raw.contentTypeHeader,
-      requestedClosed: raw.closedHeader === "true",
+      requestedClosed: raw.closedHeader?.toLowerCase() === "true",
       isPublic: raw.publicParam,
       ttlSeconds: ttlSeconds.value,
       effectiveExpiresAt: effectiveExpiresAt ?? null,

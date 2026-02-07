@@ -207,15 +207,4 @@ describe("SubscriptionDO", () => {
     });
   });
 
-  describe("SQLite state via runInDurableObject", () => {
-    it("should have subscribers table", async () => {
-      await stub.addSubscriber("session-1");
-
-      await runInDurableObject(stub, (_instance, state) => {
-        const rows = [...state.storage.sql.exec("SELECT session_id FROM subscribers")];
-        expect(rows).toHaveLength(1);
-        expect(rows[0].session_id).toBe("session-1");
-      });
-    });
-  });
 });

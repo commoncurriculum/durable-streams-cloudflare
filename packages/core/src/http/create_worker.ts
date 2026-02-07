@@ -13,6 +13,7 @@ export type BaseEnv = {
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
   REGISTRY: KVNamespace;
+  CORS_ORIGINS?: string;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -26,18 +27,32 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 
 const STREAM_PATH_RE = /^\/v1\/([^/]+)\/stream\/(.+)$/;
 const LEGACY_STREAM_PATH_RE = /^\/v1\/stream\/(.+)$/;
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const DEFAULT_PROJECT_ID = "_default";
 
-function corsError(status: number, message: string): Response {
+/**
+ * Resolve the CORS origin for a request.
+ * - If CORS_ORIGINS is not set or "*", returns "*".
+ * - If CORS_ORIGINS is a comma-separated list, returns the request's Origin
+ *   header if it matches, otherwise returns the first configured origin.
+ */
+function resolveCorsOrigin(corsOrigins: string | undefined, requestOrigin: string | null): string {
+  if (!corsOrigins || corsOrigins === "*") return "*";
+  const origins = corsOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+  if (origins.length === 0) return "*";
+  if (requestOrigin && origins.includes(requestOrigin)) return requestOrigin;
+  return origins[0];
+}
+
+function corsError(status: number, message: string, origin?: string): Response {
   const headers = new Headers({ "Cache-Control": "no-store" });
-  applyCorsHeaders(headers);
+  applyCorsHeaders(headers, origin);
   return new Response(message, { status, headers });
 }
 
-function wrapAuthError(response: Response): Response {
+function wrapAuthError(response: Response, origin?: string): Response {
   const headers = new Headers(response.headers);
-  applyCorsHeaders(headers);
+  applyCorsHeaders(headers, origin);
   if (!headers.has("Cache-Control")) {
     headers.set("Cache-Control", "no-store");
   }
@@ -75,16 +90,17 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const timingEnabled =
         env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
       const timing = timingEnabled ? new Timing() : null;
+      const corsOrigin = resolveCorsOrigin(env.CORS_ORIGINS, request.headers.get("Origin"));
 
       if (request.method === "OPTIONS") {
         const headers = new Headers();
-        applyCorsHeaders(headers);
+        applyCorsHeaders(headers, corsOrigin);
         return new Response(null, { status: 204, headers });
       }
 
       if (url.pathname === "/health") {
         const headers = new Headers({ "Cache-Control": "no-store" });
-        applyCorsHeaders(headers);
+        applyCorsHeaders(headers, corsOrigin);
         return new Response("ok", { status: 200, headers });
       }
 
@@ -94,7 +110,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const pathMatch = STREAM_PATH_RE.exec(url.pathname);
       const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(url.pathname) : null;
       if (!pathMatch && !legacyMatch) {
-        return corsError(404, "not found");
+        return corsError(404, "not found", corsOrigin);
       }
 
       let projectId: string;
@@ -108,13 +124,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           streamId = decodeURIComponent(legacyMatch![1]);
         }
       } catch {
-        return corsError(400, "malformed stream id");
+        return corsError(400, "malformed stream id", corsOrigin);
       }
       if (!projectId || !streamId) {
-        return corsError(400, "missing project or stream id");
+        return corsError(400, "missing project or stream id", corsOrigin);
       }
       if (!PROJECT_ID_PATTERN.test(projectId)) {
-        return corsError(400, "invalid project id");
+        return corsError(400, "invalid project id", corsOrigin);
       }
 
       // DO key combines project + stream for isolation
@@ -131,11 +147,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const pub = await isStreamPublic(env.REGISTRY, doKey);
         if (!pub) {
           const readAuth = await config.authorizeRead(request, doKey, env, timing);
-          if (!readAuth.ok) return wrapAuthError(readAuth.response);
+          if (!readAuth.ok) return wrapAuthError(readAuth.response, corsOrigin);
         }
       } else if (!isStreamRead && config?.authorizeMutation) {
         const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
-        if (!mutAuth.ok) return wrapAuthError(mutAuth.response);
+        if (!mutAuth.ok) return wrapAuthError(mutAuth.response, corsOrigin);
       }
       // #endregion docs-authorize-request
 
@@ -151,7 +167,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       doneOrigin?.();
       // #endregion docs-route-to-do
       const responseHeaders = new Headers(response.headers);
-      applyCorsHeaders(responseHeaders);
+      applyCorsHeaders(responseHeaders, corsOrigin);
       const wrapped = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,

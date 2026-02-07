@@ -30,12 +30,16 @@ interface Subscriber {
 // #region synced-to-docs:do-overview
 export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private sql: SqlStorage;
-  private nextFanoutSeq = 0;
+  private nextFanoutSeq: number;
 
   constructor(ctx: DurableObjectState, env: SubscriptionDOEnv) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    ctx.blockConcurrencyWhile(async () => this.initSchema());
+    this.nextFanoutSeq = 0;
+    ctx.blockConcurrencyWhile(async () => {
+      this.initSchema();
+      this.nextFanoutSeq = this.loadFanoutSeq();
+    });
   }
 
   private initSchema(): void {
@@ -45,6 +49,28 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         subscribed_at INTEGER NOT NULL
       );
     `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS fanout_state (
+        key TEXT PRIMARY KEY,
+        value INTEGER NOT NULL
+      );
+    `);
+  }
+
+  private loadFanoutSeq(): number {
+    const cursor = this.sql.exec("SELECT value FROM fanout_state WHERE key = 'next_seq'");
+    for (const row of cursor) {
+      return row.value as number;
+    }
+    return 0;
+  }
+
+  private persistFanoutSeq(seq: number): void {
+    this.sql.exec(
+      `INSERT INTO fanout_state (key, value) VALUES ('next_seq', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      seq,
+    );
   }
   // #endregion synced-to-docs:do-overview
 
@@ -65,9 +91,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   }
 
   async removeSubscribers(sessionIds: string[]): Promise<void> {
-    for (const sessionId of sessionIds) {
-      this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
-    }
+    if (sessionIds.length === 0) return;
+    const placeholders = sessionIds.map(() => "?").join(", ");
+    this.sql.exec(`DELETE FROM subscribers WHERE session_id IN (${placeholders})`, ...sessionIds);
   }
 
   // #region synced-to-docs:get-subscribers
@@ -126,6 +152,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // The sequence number must be a monotonically increasing integer (0, 1, 2, ...),
     // NOT the hex-encoded source offset.
     const fanoutSeq = this.nextFanoutSeq++;
+    this.persistFanoutSeq(this.nextFanoutSeq);
     const fanoutProducerHeaders = {
       producerId: `fanout:${streamId}`,
       producerEpoch: "1",
@@ -231,9 +258,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   }
 
   private removeStaleSubscribers(sessionIds: string[]): void {
-    for (const sessionId of sessionIds) {
-      this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
-    }
+    if (sessionIds.length === 0) return;
+    const placeholders = sessionIds.map(() => "?").join(", ");
+    this.sql.exec(`DELETE FROM subscribers WHERE session_id IN (${placeholders})`, ...sessionIds);
   }
 
   private getSubscriberSessionIds(): string[] {

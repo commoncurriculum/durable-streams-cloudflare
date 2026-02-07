@@ -14,7 +14,6 @@ import { handleGet, handleHead } from "./handlers/read";
 export type StreamEnv = {
   R2?: R2Bucket;
   DEBUG_COALESCE?: string;
-  DEBUG_TESTING?: string;
   DEBUG_TIMING?: string;
   R2_DELETE_OPS?: string;
   SEGMENT_MAX_MESSAGES?: string;

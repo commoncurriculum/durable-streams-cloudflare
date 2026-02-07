@@ -50,7 +50,14 @@ export function parseProducerHeaders(
     return { error: errorResponse(400, "Producer-Epoch and Producer-Seq must be integers") };
   }
 
-  return { value: { id, epoch: parseInt(epochStr, 10), seq: parseInt(seqStr, 10) } };
+  const epoch = parseInt(epochStr, 10);
+  const seq = parseInt(seqStr, 10);
+
+  if (epoch > Number.MAX_SAFE_INTEGER || seq > Number.MAX_SAFE_INTEGER) {
+    return { error: errorResponse(400, "Producer-Epoch and Producer-Seq must be <= 2^53-1") };
+  }
+
+  return { value: { id, epoch, seq } };
 }
 
 // #region docs-producer-evaluate

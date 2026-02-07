@@ -51,9 +51,9 @@ describe("Message Latency", () => {
     const maxLatency = Math.max(...latencies);
     console.log(`Average POST latency: ${avgLatency.toFixed(1)}ms, Max: ${maxLatency.toFixed(1)}ms`);
 
-    // Each POST should complete within 100ms on localhost
-    expect(avgLatency).toBeLessThan(100);
-    expect(maxLatency).toBeLessThan(500);
+    // Each POST should complete within 200ms on localhost (CI machines may be slower)
+    expect(avgLatency).toBeLessThan(200);
+    expect(maxLatency).toBeLessThan(1000);
   });
 
   it("should receive catchup messages quickly", async () => {

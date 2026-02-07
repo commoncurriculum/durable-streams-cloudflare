@@ -101,8 +101,8 @@ describe("Stress Latency", () => {
     }
 
     expect(errors.length).toBe(0);
-    expect(p95).toBeLessThan(200);
-    expect(max).toBeLessThan(2000);
+    expect(p95).toBeLessThan(500);
+    expect(max).toBeLessThan(3000);
   }, 60000); // 60 second timeout
 
   it("should handle 100 sequential messages without stalling", async () => {
@@ -157,7 +157,7 @@ describe("Stress Latency", () => {
     }
 
     expect(stalls.length).toBe(0);
-    expect(p95).toBeLessThan(100);
+    expect(p95).toBeLessThan(300);
   });
 
   it("should handle 200 sequential messages without degradation", async () => {

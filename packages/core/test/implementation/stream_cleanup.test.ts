@@ -40,7 +40,7 @@ describe("stream cleanup", () => {
     const start = Date.now();
     const longPollPromise = fetch(longPollUrl);
 
-    await delay(50);
+    await delay(200);
     await client.deleteStream(streamId);
 
     const longPollResponse = await longPollPromise;

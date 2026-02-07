@@ -26,7 +26,6 @@ export async function subscribe(
   // #endregion synced-to-docs:create-session-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
-    console.error(`Failed to create session stream in core: ${coreResponse.body} (status: ${coreResponse.status})`);
     throw new Error(`Failed to create session stream: ${coreResponse.body} (status: ${coreResponse.status})`);
   }
 
@@ -37,7 +36,6 @@ export async function subscribe(
   try {
     await stub.addSubscriber(sessionId);
   } catch (err) {
-    console.error("Failed to add subscription to DO:", err);
     // Rollback session if we just created it
     if (isNewSession) {
       try {

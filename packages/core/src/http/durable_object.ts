@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { errorResponse } from "../protocol/errors";
 import { isExpired } from "../protocol/expiry";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../protocol/limits";
 import { LongPollQueue } from "./handlers/realtime";
@@ -57,12 +56,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
       });
     }
 
-    if (this.env.DEBUG_TESTING === "1") {
-      const debugAction = request.headers.get("X-Debug-Action");
-      if (debugAction) {
-        return await this.handleDebugAction(debugAction, streamId, request);
-      }
-    }
     // #endregion docs-do-rpc
 
     // #region docs-build-context
@@ -165,70 +158,33 @@ export class StreamDO extends DurableObject<StreamEnv> {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_BYTES_DEFAULT;
   }
 
-  private async handleDebugAction(
-    action: string,
-    streamId: string,
-    request: Request,
-  ): Promise<Response> {
-    if (action === "producer-age") {
-      const payload = await request.json().catch(() => null);
-      if (!payload || typeof payload !== "object") {
-        return errorResponse(400, "invalid producer-age payload");
-      }
-      const producerId =
-        "producerId" in payload && typeof payload.producerId === "string"
-          ? payload.producerId
-          : null;
-      const lastUpdated =
-        "lastUpdated" in payload && typeof payload.lastUpdated === "number"
-          ? payload.lastUpdated
-          : null;
-      if (!producerId || lastUpdated === null) {
-        return errorResponse(400, "invalid producer-age payload");
-      }
+  // RPC methods for test tooling (accessible only via service bindings, not HTTP)
 
-      const updated = await this.storage.updateProducerLastUpdated(
-        streamId,
-        producerId,
-        lastUpdated,
-      );
-      if (!updated) return errorResponse(404, "producer not found");
-      return new Response(null, { status: 204 });
-    }
+  async testForceCompact(streamId: string, retainOps?: boolean): Promise<void> {
+    await this.rotateSegment(streamId, { force: true, retainOps: retainOps ?? false });
+  }
 
-    if (action === "compact-retain") {
-      await this.rotateSegment(streamId, { force: true, retainOps: true });
-      return new Response(null, { status: 204 });
-    }
+  async testGetOpsCount(streamId: string): Promise<number> {
+    const stats = await this.storage.getOpsStatsFrom(streamId, 0);
+    return stats.messageCount;
+  }
 
-    if (action === "compact") {
-      await this.rotateSegment(streamId, { force: true });
-      return new Response(null, { status: 204 });
-    }
+  async testSetProducerAge(streamId: string, producerId: string, lastUpdated: number): Promise<boolean> {
+    return await this.storage.updateProducerLastUpdated(streamId, producerId, lastUpdated);
+  }
 
-    if (action === "ops-count") {
-      const stats = await this.storage.getOpsStatsFrom(streamId, 0);
-      return new Response(JSON.stringify({ count: stats.messageCount }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (action === "truncate-latest") {
-      if (!this.env.R2) return errorResponse(400, "R2 unavailable");
-      const segment = await this.storage.getLatestSegment(streamId);
-      if (!segment) return errorResponse(404, "segment not found");
-      const object = await this.env.R2.get(segment.r2_key);
-      if (!object) return errorResponse(404, "segment object missing");
-      const buffer = new Uint8Array(await object.arrayBuffer());
-      if (buffer.byteLength <= 1) return errorResponse(400, "segment too small");
-      const truncated = buffer.slice(0, buffer.byteLength - 1);
-      await this.env.R2.put(segment.r2_key, truncated, {
-        httpMetadata: { contentType: segment.content_type },
-      });
-      return new Response(null, { status: 204 });
-    }
-
-    return errorResponse(400, "unknown debug action");
+  async testTruncateLatestSegment(streamId: string): Promise<boolean> {
+    if (!this.env.R2) return false;
+    const segment = await this.storage.getLatestSegment(streamId);
+    if (!segment) return false;
+    const object = await this.env.R2.get(segment.r2_key);
+    if (!object) return false;
+    const buffer = new Uint8Array(await object.arrayBuffer());
+    if (buffer.byteLength <= 1) return false;
+    const truncated = buffer.slice(0, buffer.byteLength - 1);
+    await this.env.R2.put(segment.r2_key, truncated, {
+      httpMetadata: { contentType: segment.content_type },
+    });
+    return true;
   }
 }

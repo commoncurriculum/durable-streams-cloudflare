@@ -11,6 +11,7 @@ service = "durable-streams-subscriptions"
 binding = "CORE"
 service = "durable-streams"
 
+# Replace with your actual KV namespace ID from: wrangler kv namespace create REGISTRY
 [[kv_namespaces]]
 binding = "REGISTRY"
 id = "REGISTRY_ID"

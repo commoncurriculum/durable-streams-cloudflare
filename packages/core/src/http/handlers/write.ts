@@ -118,12 +118,9 @@ export async function handlePost(
     const bodyError = validateRequestBody(request, parsed.value.bodyBytes.length);
     if (bodyError) return bodyError;
 
-    // 4. Evaluate producer (for duplicate detection)
-    // POST evaluates producer BEFORE validation to enable early duplicate detection.
-    // This differs from PUT (which defers to execute) because:
-    // 1. POST appends to existing streams where duplicates are common
-    // 2. PUT creates streams, so duplicates only occur on retry of the same creation
-    // 3. Early detection in POST avoids unnecessary validation work
+    // 4. Evaluate producer FIRST when present (duplicate detection takes priority)
+    // Producer dedup must return 204 even if stream is closed — idempotent clients
+    // retrying a close request must get the same response.
     let producerEval: ProducerEval = { kind: "none" };
     if (parsed.value.producer) {
       producerEval = await evaluateProducer(ctx.storage, streamId, parsed.value.producer);
@@ -137,12 +134,13 @@ export async function handlePost(
         return producerDuplicateResponse(producerEval.state, dupOffset, streamResult.value.closed === 1);
       }
     }
-    // #endregion docs-handle-post
 
-    // 5. Validate post operation
+    // 5. Validate post operation (checks closed status, content-type, stream-seq)
+    // For non-producer requests: closed > content-type > sequence.
     const encodedTailOffset = await ctx.encodeTailOffset(streamId, streamResult.value);
     const validated = validatePostInput(parsed.value, streamResult.value, encodedTailOffset);
     if (validated.kind === "error") return validated.response;
+    // #endregion docs-handle-post
 
     // 6. Execute
     const result = await executePost(ctx, validated.value);

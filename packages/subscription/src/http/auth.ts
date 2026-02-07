@@ -78,7 +78,7 @@ export async function parseRoute(
           return { action: "subscribe", project: subscribeMatch[1], streamId: body.streamId, sessionId: body.sessionId };
         }
       } catch {
-        // Malformed body — let Zod validation handle it downstream
+        // Malformed body — let ArkType validation handle it downstream
       }
       return null;
     }
@@ -93,7 +93,7 @@ export async function parseRoute(
           return { action: "unsubscribe", project: unsubscribeMatch[1], streamId: body.streamId, sessionId: body.sessionId };
         }
       } catch {
-        // Malformed body — let Zod validation handle it downstream
+        // Malformed body — let ArkType validation handle it downstream
       }
       return null;
     }

@@ -25,3 +25,7 @@ dist/
 
 # Wrangler local dev secrets
 .dev.vars
+
+# Playwright
+test-results/
+.worker-pids.json

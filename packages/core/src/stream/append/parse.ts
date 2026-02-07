@@ -44,7 +44,7 @@ export function parsePostInput(raw: RawPostInput): Result<ParsedPostInput> {
     kind: "ok",
     value: {
       streamId: raw.streamId,
-      closeStream: raw.closedHeader === "true",
+      closeStream: raw.closedHeader?.toLowerCase() === "true",
       contentType: raw.contentTypeHeader,
       streamSeq: raw.streamSeqHeader,
       bodyBytes: raw.bodyBytes,

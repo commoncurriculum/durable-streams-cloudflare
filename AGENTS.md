@@ -85,7 +85,7 @@ Both admin packages are **TanStack Start** apps on Cloudflare Workers. They shar
 
 Both core and subscription use [ArkType v2](https://arktype.io/) for schema validation at boundaries, with [`arkregex`](https://github.com/arktypeio/arktype/tree/main/ark/arkregex) for type-safe regex patterns.
 
-- **JIT compilation**: ArkType uses `new Function()` for compiled validators. Both workers have `allow_eval_during_startup` in `wrangler.toml`. Define all schemas at **module top-level** so compilation happens during Worker startup.
+- **JIT compilation**: ArkType uses `new Function()` for compiled validators. Cloudflare Workers allows `eval()` during startup by default. Define all schemas at **module top-level** so compilation happens during Worker startup.
 - **Pipe error pattern**: Use `(value, ctx) => ctx.error("message")` in pipe callbacks. Do NOT use `type.errors("message")` — `ArkErrors` is a class and cannot be called without `new`.
 - **Checking for errors**: Use `result instanceof type.errors` (not `=== undefined` or truthiness checks).
 - **arkregex**: Use `regex("pattern", "flags")` from `arkregex` instead of raw `RegExp` literals for patterns used in validation. Provides typed capture groups.

@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-// Core defines its own PROJECT_ID_PATTERN (same regex as subscription constants)
-// to avoid cross-package dependency. We test it here directly.
-const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+import { PROJECT_ID_PATTERN } from "../../../src/http/create_worker";
 
 describe("project ID validation", () => {
   it("accepts valid project IDs", () => {

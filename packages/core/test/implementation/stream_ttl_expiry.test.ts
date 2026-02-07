@@ -31,7 +31,7 @@ describe("stream TTL expiry", () => {
     const readBefore = await fetch(`${streamUrl}?offset=${ZERO_OFFSET}`);
     expect(readBefore.status).toBe(200);
 
-    await delay(1400);
+    await delay(2500);
 
     const readAfter = await fetch(`${streamUrl}?offset=${ZERO_OFFSET}`);
     expect(readAfter.status).toBe(404);

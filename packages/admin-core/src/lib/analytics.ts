@@ -45,17 +45,21 @@ async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
   return body.data ?? [];
 }
 
+function getDatasetName(): string {
+  return ((env as Record<string, unknown>).ANALYTICS_DATASET as string | undefined) ?? "durable_streams_metrics";
+}
+
 const QUERIES = {
-  systemStats: `
+  systemStats: () => `
     SELECT blob2 as event_type, count() as total, sum(double2) as total_bytes
-    FROM durable_streams_metrics
+    FROM ${getDatasetName()}
     WHERE timestamp > NOW() - INTERVAL '1' HOUR
     GROUP BY blob2
   `,
 
-  streamList: `
+  streamList: () => `
     SELECT blob1 as stream_id, min(timestamp) as first_seen, max(timestamp) as last_seen, count() as total_events
-    FROM durable_streams_metrics
+    FROM ${getDatasetName()}
     WHERE timestamp > NOW() - INTERVAL '24' HOUR AND blob2 != 'read'
     GROUP BY blob1
     ORDER BY last_seen DESC
@@ -64,7 +68,7 @@ const QUERIES = {
 
   hotStreams: (limit: number) => `
     SELECT blob1 as stream_id, count() as events, sum(double2) as bytes
-    FROM durable_streams_metrics
+    FROM ${getDatasetName()}
     WHERE timestamp > NOW() - INTERVAL '5' MINUTE AND blob2 = 'append'
     GROUP BY blob1
     ORDER BY events DESC
@@ -73,7 +77,7 @@ const QUERIES = {
 
   timeseries: (windowMinutes: number) => `
     SELECT intDiv(toUInt32(timestamp), 60) * 60 as bucket, blob2 as event_type, count() as total, sum(double2) as bytes
-    FROM durable_streams_metrics
+    FROM ${getDatasetName()}
     WHERE timestamp > NOW() - INTERVAL '${windowMinutes}' MINUTE
     GROUP BY bucket, event_type
     ORDER BY bucket
@@ -81,12 +85,12 @@ const QUERIES = {
 };
 
 export const getStats = createServerFn({ method: "GET" }).handler(async () => {
-  return queryAnalytics(QUERIES.systemStats);
+  return queryAnalytics(QUERIES.systemStats());
 });
 
 export const getStreams = createServerFn({ method: "GET" }).handler(
   async () => {
-    return queryAnalytics(QUERIES.streamList);
+    return queryAnalytics(QUERIES.streamList());
   },
 );
 

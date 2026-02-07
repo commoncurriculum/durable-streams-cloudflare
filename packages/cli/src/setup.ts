@@ -117,10 +117,10 @@ dataset = "durable_streams_metrics"
 }
 
 function subscriptionWorkerTs(): string {
-  return `import { createSubscriptionWorker, SubscriptionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
+  return `import { createSubscriptionWorker, SubscriptionDO, SessionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
 
 export default createSubscriptionWorker({ authorize: projectJwtAuth() });
-export { SubscriptionDO };
+export { SubscriptionDO, SessionDO };
 `;
 }
 
@@ -138,11 +138,18 @@ SESSION_TTL_SECONDS = "1800"
 ANALYTICS_DATASET = "subscriptions_metrics"
 
 [durable_objects]
-bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
+bindings = [
+  { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
+  { name = "SESSION_DO", class_name = "SessionDO" },
+]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SessionDO"]
 
 [[kv_namespaces]]
 binding = "${KV_BINDING}"

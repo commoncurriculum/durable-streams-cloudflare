@@ -19,6 +19,7 @@ binding = "METRICS"
 dataset = "durable_streams_metrics"
 
 # KV namespace for per-project signing secrets and stream metadata
+# Replace with your actual KV namespace ID from: wrangler kv namespace create REGISTRY
 [[kv_namespaces]]
 binding = "REGISTRY"
 id = "project-keys"
