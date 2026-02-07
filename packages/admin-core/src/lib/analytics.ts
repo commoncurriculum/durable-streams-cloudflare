@@ -124,26 +124,27 @@ export const sendTestAction = createServerFn({ method: "POST" })
     const core = (env as Record<string, unknown>).CORE as CoreService;
 
     const contentType = data.contentType ?? "application/json";
-    const method = data.action === "create" ? "PUT" : "POST";
+    const bodyBytes = new TextEncoder().encode(data.body);
 
-    const response = await core.routeRequest(
+    if (data.action === "create") {
+      const result = await core.putStream(data.streamId, {
+        body: bodyBytes.buffer as ArrayBuffer,
+        contentType,
+      });
+      return {
+        status: result.status,
+        statusText: result.ok ? "OK" : "Error",
+      };
+    }
+
+    const result = await core.postStream(
       data.streamId,
-      new Request("https://internal/v1/stream", {
-        method,
-        headers: { "Content-Type": contentType },
-        body: data.body,
-      }),
+      bodyBytes.buffer as ArrayBuffer,
+      contentType,
     );
-
-    const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      responseHeaders[key] = value;
-    });
-
     return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
+      status: result.status,
+      statusText: result.ok ? "OK" : "Error",
     };
   });
 
@@ -152,32 +153,23 @@ export const getStreamMessages = createServerFn({ method: "GET" })
   .handler(async ({ data: doKey }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService;
 
-    const response = await core.routeRequest(
-      doKey,
-      new Request("https://internal/v1/stream?offset=0000000000000000_0000000000000000"),
-    );
+    const result = await core.readStream(doKey, "0000000000000000_0000000000000000");
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Stream read failed (${response.status}): ${text}`);
+    if (!result.ok) {
+      throw new Error(`Stream read failed (${result.status}): ${result.body}`);
     }
 
-    const nextOffset = response.headers.get("Stream-Next-Offset") ?? null;
-    const upToDate = response.headers.get("Stream-Up-To-Date") === "true";
-    const contentType = response.headers.get("Content-Type") ?? "";
-
     let messages: Record<string, {}>[] = [];
-    if (contentType.includes("application/json")) {
-      const body = await response.json();
-      messages = Array.isArray(body) ? body : [body];
+    if (result.contentType.includes("application/json")) {
+      const parsed = JSON.parse(result.body);
+      messages = Array.isArray(parsed) ? parsed : [parsed];
     } else {
-      const text = await response.text();
-      if (text.trim()) {
-        messages = [{ _raw: text }];
+      if (result.body.trim()) {
+        messages = [{ _raw: result.body }];
       }
     }
 
-    return { messages, nextOffset, upToDate };
+    return { messages, nextOffset: result.nextOffset, upToDate: result.upToDate };
   });
 
 export const createProject = createServerFn({ method: "POST" })
