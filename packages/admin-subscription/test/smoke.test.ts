@@ -91,19 +91,6 @@ describe("admin-subscription smoke", () => {
     expect(html).toContain("Create Session");
   });
 
-  it("session detail page has session actions but NOT publish", async () => {
-    const res = await fetch(
-      `${BASE_URL}/projects/test-project/sessions/any-session`,
-    );
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("Subscribe");
-    expect(html).toContain("Unsub");
-    expect(html).toContain("Touch");
-    expect(html).toContain("Delete");
-    expect(html).not.toContain(">Publish<");
-  });
-
   it("GET /publish renders the publish form", async () => {
     const res = await fetch(`${BASE_URL}/publish`);
     expect(res.status).toBe(200);

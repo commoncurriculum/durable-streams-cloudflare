@@ -30,7 +30,14 @@ describe("sendSessionAction publish case", () => {
     expect(putIdx).toBeLessThan(pubIdx);
   });
 
-  it("propagates error status from publish result", () => {
+  it("checks putStream succeeded before publishing", () => {
+    expect(publishCase).toContain("putResult.ok");
+  });
+
+  it("throws on error status from publish result", () => {
     expect(publishCase).toContain("result.status >= 400");
+    // Must throw, not silently return a non-error value
+    const errorBlock = publishCase.slice(publishCase.indexOf("result.status >= 400"));
+    expect(errorBlock).toContain("throw");
   });
 });

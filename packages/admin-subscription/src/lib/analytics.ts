@@ -247,14 +247,17 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         // Ensure the stream exists on core (PUT is idempotent — creates or no-ops)
         const core = (env as Record<string, unknown>).CORE as CoreService;
         const doKey = `${data.projectId}/${data.streamId}`;
-        await core.putStream(doKey, { contentType });
+        const putResult = await core.putStream(doKey, { contentType });
+        if (!putResult.ok) {
+          throw new Error(`Failed to ensure stream exists (${putResult.status}): ${putResult.body}`);
+        }
         const payload = new TextEncoder().encode(data.body ?? "");
         const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType) as {
           status: number;
           body?: string;
         };
         if (result.status >= 400) {
-          return { status: result.status, statusText: result.body ?? "Publish failed" };
+          throw new Error(result.body ?? `Publish failed (${result.status})`);
         }
         return { status: result.status, statusText: "OK", body: result };
       }
