@@ -1,31 +1,33 @@
-# Edge Cache: Live Tail Request Collapsing
+# Edge Cache: Request Collapsing
 
-## Status: FIXED
+## Status: IMPLEMENTED
 
-The edge cache in `create_worker.ts` now caches at-tail long-poll 200 responses (where `Stream-Up-To-Date: true`). This enables request collapsing for live-tail long-poll reads — the primary scaling mechanism for fan-out.
+The edge cache in `create_worker.ts` caches GET 200 responses for mid-stream reads and long-poll reads. Plain GET at-tail reads are excluded to preserve read-after-write consistency. This enables request collapsing for long-poll reads — the primary scaling mechanism for fan-out.
 
 ### What Changed
 
-The cache store condition was narrowed from "exclude all at-tail responses" to "exclude at-tail responses only for plain GETs." Long-poll at-tail responses are now cached because cursor rotation makes them safe.
+An always-on `X-Cache` response header (`HIT`/`MISS`/`BYPASS`) was added to all cacheable GET responses, making cache behavior observable by tests and operators in any environment.
 
-The condition `!atTail || isLongPoll` replaces the previous `!wrapped.headers.has(HEADER_STREAM_UP_TO_DATE)`:
+The cache store guards:
 
 | Guard | What it excludes |
 |-------|-----------------|
 | `cacheable` (line 274) | SSE, debug requests, non-GET methods |
 | `wrapped.status === 200` | 204 timeout responses (prevents tight-retry loops) |
 | `!cc.includes("no-store")` | `offset=now` responses, expired streams |
-| `!atTail \|\| isLongPoll` | Plain GET at-tail responses (no cursor rotation) |
+| `!atTail \|\| isLongPoll` | Plain GET at-tail responses (breaks read-after-write if cached) |
 
-### Why Long-Poll At-Tail Caching Is Safe
+### Why Plain GET At-Tail Is Not Cached
+
+When a client reads at the tail of a stream, new appends can arrive at any time. If the response were cached, a subsequent read after an append would return stale data from the cache instead of the fresh data — breaking read-after-write consistency. This also breaks ETag behavior (the ETag changes when data arrives, but the cache would serve the old ETag) and delete+recreate semantics.
+
+Long-poll at-tail reads are safe to cache because the cursor mechanism rotates the URL on every response, preventing stale cache reuse.
+
+### Why Long-Poll Caching Is Safe
 
 **Long-poll reads** (`?live=long-poll&cursor=Y`): The cursor rotates on every response, changing the URL for the next request. Old cache entries are never reused. `max-age=20` bounds staleness within a single cycle.
 
 **204 timeout responses**: Excluded by `status === 200`. Caching 204s would cause tight retry loops (instant cache hit → immediate retry → same cached 204). The status check prevents this without any additional logic.
-
-### Why Plain GET At-Tail Is Still Excluded
-
-**Plain GET reads** (`?offset=X`, no `live` parameter) don't have cursor rotation. If cached, the same URL would serve stale data for up to `max-age=60` after new data is appended at that offset. Unlike long-poll clients who advance their cursor, plain GET clients re-requesting the same offset would see the same cached response.
 
 ---
 
@@ -109,7 +111,7 @@ Client request
   │
   ├─ Route to DO via stub.routeStreamRequest()
   │
-  └─ Cache store (GET 200, no no-store, at-tail only for long-poll)
+  └─ Cache store (GET 200, no no-store, !atTail || isLongPoll)
 ```
 
 ### Long-Poll Response Headers (set by DO)
@@ -138,7 +140,7 @@ Cache-Control: public, max-age=20
 
 ### Conformance tests
 
-The conformance test suite runs against a local wrangler worker via miniflare. Unlike `workers.dev`, miniflare implements `caches.default` locally. Plain GET at-tail responses remain excluded from caching, preserving read-after-write consistency for conformance tests. Long-poll at-tail responses are cached but conformance tests use cursor rotation, which naturally advances the cache key.
+The conformance test suite runs against a local wrangler worker via miniflare. Miniflare implements `caches.default` locally. Mid-stream GETs and long-poll reads are cached. At-tail plain GETs are not cached, preserving protocol correctness. Conformance tests use unique stream IDs per test, so cache entries don't interfere across tests.
 
 ### Client `Cache-Control: no-cache` bypass
 
@@ -146,7 +148,7 @@ The edge worker skips cache **lookup** but still **stores** the fresh response w
 
 ### Closed streams at the tail
 
-When a stream is closed, at-tail long-poll responses are truly immutable — no more data will ever be written. These are cached. Plain GET at-tail responses for closed streams are still excluded by the current logic, but this is a minor missed optimization.
+When a stream is closed, at-tail responses are truly immutable — no more data will ever be written. These are still excluded from the plain GET cache for simplicity (the guard checks `Stream-Up-To-Date` which is set for both open and closed at-tail reads). Long-poll at-tail reads of closed streams are cached normally via cursor rotation.
 
 ### TTL/expiring streams
 

@@ -21,6 +21,7 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     if (debugAction) {
       return this.#handleDebugAction(debugAction, request);
     }
+
     return this.#handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
   }
 

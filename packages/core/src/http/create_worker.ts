@@ -1,4 +1,4 @@
-import { HEADER_STREAM_UP_TO_DATE, HEADER_SSE_DATA_ENCODING } from "../protocol/headers";
+import { HEADER_SSE_DATA_ENCODING, HEADER_STREAM_UP_TO_DATE } from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
@@ -273,16 +273,28 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const hasDebugHeaders = request.headers.has("X-Debug-Coalesce");
       const cacheable = method === "GET" && !isSse && !hasDebugHeaders;
 
+      // Use the URL string for cache operations — passing the original
+      // request object causes cache key mismatches in miniflare/workerd.
+      const cacheUrl = cacheable ? request.url : null;
+
+      // Track cache status for the X-Cache response header.
+      // null = non-cacheable request (no header emitted).
+      let cacheStatus: string | null = null;
+
       // Respect client Cache-Control: no-cache — skip lookup but still
       // store the fresh DO response so subsequent normal requests benefit.
       const clientCc = request.headers.get("Cache-Control") ?? "";
       const skipCacheLookup =
         clientCc.includes("no-cache") || clientCc.includes("no-store");
 
+      if (cacheable && skipCacheLookup) {
+        cacheStatus = "BYPASS";
+      }
+
       if (cacheable && !skipCacheLookup) {
         const cache = caches.default;
         const doneCache = timing?.start("edge.cache");
-        const cached = await cache.match(request);
+        const cached = await cache.match(cacheUrl!);
         doneCache?.();
 
         if (cached) {
@@ -291,6 +303,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           const cachedEtag = cached.headers.get("ETag");
           if (ifNoneMatch && cachedEtag && ifNoneMatch === cachedEtag) {
             const headers304 = new Headers(cached.headers);
+            headers304.set("X-Cache", "HIT");
             applyCorsHeaders(headers304, corsOrigin);
             timing?.record("edge.cache.result", 0, "revalidate-304");
             return attachTiming(new Response(null, { status: 304, headers: headers304 }), timing);
@@ -298,6 +311,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
           // Cache hit — return cached response
           const responseHeaders = new Headers(cached.headers);
+          responseHeaders.set("X-Cache", "HIT");
           applyCorsHeaders(responseHeaders, corsOrigin);
           timing?.record("edge.cache.result", 0, "hit");
           return attachTiming(
@@ -306,6 +320,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           );
         }
         timing?.record("edge.cache.result", 0, "miss");
+        cacheStatus = "MISS";
       }
 
       // #region docs-route-to-do
@@ -347,21 +362,24 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // ================================================================
       // Edge cache: store cacheable 200 responses
       // ================================================================
-      // Mid-stream reads (no Stream-Up-To-Date) are always cached — the
-      // data at an offset never changes once written. At-tail reads are
-      // cached only for long-poll requests, where cursor rotation changes
-      // the URL on every response cycle, preventing stale cache loops.
-      // Plain GET at-tail responses are NOT cached because without cursor
-      // rotation the same URL would serve stale data after new appends.
-      // 204 timeouts are excluded by the status check. `offset=now`
-      // responses are excluded by the `no-store` check.
-      const isLongPoll = url.searchParams.get("live") === "long-poll";
+      // Cache mid-stream reads (immutable data) and long-poll reads
+      // (cursor rotation prevents stale loops, enables request collapsing).
+      // Plain GET at-tail responses are NOT cached — data can change as
+      // appends arrive, and caching them breaks read-after-write consistency.
+      // 204 timeouts are excluded by the status check.
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
-        const atTail = wrapped.headers.has(HEADER_STREAM_UP_TO_DATE);
+        const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
+        const isLongPoll = url.searchParams.get("live") === "long-poll";
         if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
-          ctx.waitUntil(caches.default.put(request, wrapped.clone()));
+          ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
         }
+      }
+
+      // Set X-Cache header on cacheable responses so cache behavior
+      // is observable by tests and operators in any environment.
+      if (cacheStatus) {
+        wrapped.headers.set("X-Cache", cacheStatus);
       }
 
       return attachTiming(wrapped, timing);

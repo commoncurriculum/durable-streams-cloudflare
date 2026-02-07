@@ -8,7 +8,8 @@ The edge worker (`create_worker.ts`) sits between clients and the Durable Object
 |---------|---------|
 | **CORS** | `OPTIONS` preflight + origin headers on all responses |
 | **Auth** | JWT verification, public stream bypass via KV |
-| **Edge cache** | Cloudflare Cache API (`caches.default`) for GET 200 responses (mid-stream + long-poll at-tail) |
+| **Edge cache** | Cloudflare Cache API (`caches.default`) for mid-stream GETs and long-poll reads |
+| **X-Cache header** | Always-on `X-Cache` response header on cacheable GETs: `HIT`, `MISS`, or `BYPASS` |
 | **SSE bridge** | For `?live=sse`: opens an internal WebSocket to the DO, bridges WS messages to SSE events |
 | **Routing** | Resolves DO stub from stream path, forwards request on cache miss |
 | **KV metadata** | Stores public stream flags on creation |
@@ -16,18 +17,30 @@ The edge worker (`create_worker.ts`) sits between clients and the Durable Object
 
 ## Edge Cache (`caches.default`)
 
-The edge worker caches GET 200 responses at the PoP level, avoiding DO round-trips for repeated reads of the same data. At-tail responses are cached for long-poll requests (which have cursor rotation), enabling request collapsing for live-tail reads.
+The edge worker caches GET 200 responses at the PoP level when the data is safe to cache: mid-stream reads (immutable data) and long-poll reads (cursor rotation prevents stale loops). Plain GET at-tail reads are NOT cached because new appends change the data, breaking read-after-write consistency. Staleness of cached entries is bounded by `max-age` which the DO sets per response type.
 
 **Requires a custom domain** — `caches.default` silently no-ops on `workers.dev` subdomains.
 
+### X-Cache Response Header
+
+All cacheable GET responses include an `X-Cache` header indicating cache status:
+
+| Value | Meaning |
+|-------|---------|
+| `HIT` | Served from edge cache (no DO round-trip) |
+| `MISS` | Cache miss, response fetched from origin DO |
+| `BYPASS` | Client sent `Cache-Control: no-cache` or `no-store`, skipped cache lookup |
+
+Non-cacheable requests (SSE, debug, HEAD, mutations) do not include the header.
+
 ### What Gets Cached
 
-Mid-stream reads are always cached (immutable data). At-tail reads are cached only for long-poll requests, where cursor rotation changes the URL on every response cycle, preventing stale cache loops.
+GET 200 responses are cached unless the response is at-tail (for plain GETs) or has `Cache-Control: no-store`. The cache store guard is: `!cc.includes("no-store") && (!atTail || isLongPoll)`.
 
 | Request type | Cached? | Edge TTL | Client TTL | Notes |
 |---|---|---|---|---|
 | `GET ?offset=X` (mid-stream) | Yes | 60s | 60s | Immutable data at a given offset never changes |
-| `GET ?offset=X` (at tail) | No | — | 60s | No cursor rotation; would serve stale data after writes |
+| `GET ?offset=X` (at tail) | No | — | 60s | Not stored; breaks read-after-write if cached |
 | `GET ?offset=X&live=long-poll&cursor=Y` (mid-stream) | Yes | 20s | 20s | Immutable data, cursor rotates cache key |
 | `GET ?offset=X&live=long-poll&cursor=Y` (at tail, 200) | Yes | 20s | 20s | Cursor rotation prevents stale loops |
 | `GET ?offset=X&live=long-poll` (204 timeout) | No | — | — | Excluded by status check; prevents tight retry loops |
@@ -36,11 +49,13 @@ Mid-stream reads are always cached (immutable data). At-tail reads are cached on
 | `HEAD` | No | — | — | Metadata-only |
 | `POST` / `PUT` / `DELETE` | No | — | — | Mutations |
 
-### Why Long-Poll At-Tail Caching Is Safe
+### Why Mid-Stream and Long-Poll Caching Is Safe
 
-For **long-poll reads**, the cursor rotates on every response, producing a different URL for the next request. Old cache entries are never reused. `max-age=20` bounds staleness within a single cycle. This enables request collapsing: 1M clients at the same offset share one cache entry, collapsing to a single DO hit per poll cycle.
+**Mid-stream reads**: Data at a given offset is immutable — once written, it never changes. Caching mid-stream reads is always safe. `max-age=60` bounds the staleness window, but the data is identical on every read.
 
-**Plain GET at-tail reads** are NOT cached because without cursor rotation, the same URL would serve stale data for up to `max-age=60` after new data is appended.
+**Long-poll reads**: The cursor rotates on every response, producing a different URL for the next request. Old cache entries are never reused. `max-age=20` bounds staleness within a single cycle. This enables request collapsing: 1M clients at the same offset share one cache entry, collapsing to a single DO hit per poll cycle.
+
+**Plain GET at-tail reads are NOT cached**: When a client reads at the tail, new appends can arrive at any time, changing the data available at that offset. Caching these responses would break read-after-write consistency — a client appends data, then reads, and gets the stale cached response instead of the fresh data. The DO still sets `Cache-Control: public, max-age=60` (for client-side caching), but the edge does not store the response.
 
 **204 timeout responses** are excluded by the `status === 200` check. Caching 204s would cause tight retry loops (instant cache hit → immediate retry → same cached 204).
 
@@ -114,6 +129,6 @@ Client ──> Edge Worker ──> [Edge Cache] ──> StreamDO ──> SQLite 
 | Layer | Role |
 |-------|------|
 | Edge worker | Auth, CORS, edge cache, SSE-via-WebSocket bridge, routing |
-| Edge cache (`caches.default`) | Per-PoP cache for GET 200 responses (mid-stream + long-poll at-tail), ETag revalidation |
+| Edge cache (`caches.default`) | Per-PoP cache for mid-stream GETs and long-poll reads (at-tail plain GETs and no-store excluded), ETag revalidation |
 | StreamDO | Sets `Cache-Control` + `ETag` headers per protocol |
 | ReadPath coalescing | DO-level request dedup (100ms, auto-invalidating) |
