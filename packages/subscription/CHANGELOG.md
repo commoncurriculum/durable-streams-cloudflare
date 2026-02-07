@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/subscription
 
+## 0.4.0
+
+### Patch Changes
+
+- Add edge cache for read request collapsing via Cache API, internal WebSocket bridge for DO hibernation on SSE reads, security and protocol conformance fixes
+
 ## 0.3.7
 
 ## 0.3.6

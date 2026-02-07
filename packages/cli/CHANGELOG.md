@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/cli
 
+## 0.4.0
+
+### Patch Changes
+
+- [`c581e5d`](https://github.com/commoncurriculum/durable-streams-cloudflare/commit/c581e5dfcf7a48aba6c0b6b0bbafb545c03c3d54) Thanks [@scottmessinger](https://github.com/scottmessinger)! - Add ESModule rules to admin wrangler.toml templates so wrangler uploads asset JS files, add version to CLI header
+
 ## 0.3.7
 
 ### Patch Changes
