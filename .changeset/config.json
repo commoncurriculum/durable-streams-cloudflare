@@ -10,8 +10,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@durable-streams-cloudflare/admin-core",
-    "@durable-streams-cloudflare/admin-subscription",
     "docs"
   ]
 }
