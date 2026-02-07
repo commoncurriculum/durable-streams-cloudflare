@@ -63,7 +63,7 @@ curl -N -H "Authorization: Bearer <JWT>" \
 
 | Package | What |
 |---------|------|
-| [`@durable-streams-cloudflare/core`](packages/core/) | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE (via internal WebSocket bridge for DO hibernation). |
+| [`@durable-streams-cloudflare/core`](packages/core/) | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE, DO hibernation. |
 | [`@durable-streams-cloudflare/subscription`](packages/subscription/) | Pub/sub fan-out. Session streams, subscribe/publish, TTL cleanup, Analytics Engine metrics. |
 | [`@durable-streams-cloudflare/admin-core`](packages/admin-core/) | Admin dashboard for core streams. |
 | [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Admin dashboard for subscriptions. |
@@ -76,15 +76,21 @@ See each package's README for full API docs, configuration options, and auth det
 ## Architecture
 
 ```
-Publisher ── POST /v1/publish/stream-A ──> Subscription Worker
-                                             │
-                                             ├─> Core: write to source stream
-                                             ├─> SubscriptionDO: get subscribers
-                                             └─> Fan-out: write to each session stream
-                                                  (session:alice, session:bob, ...)
+Writes + Fan-Out
+  Publisher ── POST /v1/publish/stream-A ──> Subscription Worker
+                                               │
+                                               ├─> Core: write to source stream
+                                               ├─> SubscriptionDO: get subscribers
+                                               └─> Fan-out: write to each session stream
+                                                    (session:alice, session:bob, ...)
 
-Clients read their session stream directly from the Core Worker (through CDN).
+Real-Time Reads
+  Client ←── SSE ──── Edge Worker ←── WebSocket (Hibernation API) ──── StreamDO
+                      (auth, cache)                                     (sleeps between
+                                                                         writes)
 ```
+
+Clients read their session stream from the Core Worker via SSE. The edge worker handles auth and caching, then bridges an internal WebSocket to the Durable Object. The DO can hibernate between writes — only waking to process new data — while the edge worker holds the client's SSE connection at zero cost.
 
 ## Manual Setup
 
