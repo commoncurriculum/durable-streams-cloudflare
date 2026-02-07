@@ -23,12 +23,29 @@ function cancelled(): never {
   process.exit(0);
 }
 
+/** Try multiple ways to invoke wrangler and return the working command prefix. */
+function detectWrangler(): string | null {
+  for (const cmd of ["wrangler", "npx -y wrangler", "pnpx wrangler"]) {
+    if (runMayFail(`${cmd} --version`).ok) return cmd;
+  }
+  return null;
+}
+
 function generateSigningSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
 export async function createProject() {
   p.intro("Durable Streams — Create Project");
+
+  const wranglerCmd = detectWrangler();
+  if (!wranglerCmd) {
+    p.log.error(
+      "wrangler is required but was not found.\n" +
+      "Install it with: npm install -g wrangler"
+    );
+    process.exit(1);
+  }
 
   // Step 1: Get project name
   const projectName = await p.text({
@@ -70,7 +87,7 @@ export async function createProject() {
   if (existsSync(coreTomlPath)) {
     try {
       const toml = readFileSync(coreTomlPath, "utf-8");
-      const match = toml.match(/binding\s*=\s*"PROJECT_KEYS"\s*\n\s*id\s*=\s*"([a-f0-9]+)"/);
+      const match = toml.match(/binding\s*=\s*"REGISTRY"\s*\n\s*id\s*=\s*"([a-f0-9]+)"/);
       if (match) detectedNamespaceId = match[1];
     } catch {
       // ignore read errors
@@ -78,7 +95,7 @@ export async function createProject() {
   }
 
   const namespaceId = await p.text({
-    message: "PROJECT_KEYS KV namespace ID:",
+    message: "REGISTRY KV namespace ID:",
     ...(detectedNamespaceId
       ? { defaultValue: detectedNamespaceId, placeholder: `Auto-detected: ${detectedNamespaceId}` }
       : { placeholder: "Find this in your wrangler.toml or CF dashboard" }),
@@ -94,7 +111,7 @@ export async function createProject() {
   // Escape single quotes for safe shell interpolation: replace ' with '\''
   const escapedValue = value.replace(/'/g, "'\\''");
   const result = runMayFail(
-    `npx -y wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${escapedValue}'`,
+    `${wranglerCmd} kv key put --namespace-id="${namespaceId}" "${projectName}" '${escapedValue}'`,
   );
 
   if (!result.ok) {

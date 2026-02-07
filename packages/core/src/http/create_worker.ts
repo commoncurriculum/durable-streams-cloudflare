@@ -12,7 +12,7 @@ export type BaseEnv = {
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
-  PROJECT_KEYS: KVNamespace;
+  REGISTRY: KVNamespace;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -153,8 +153,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const readAuth = await config.authorizeRead(request, doKey, env, timing);
         if (!readAuth.ok) {
           // On auth failure for reads, check if stream is public
-          if (readAuth.authFailed && env.PROJECT_KEYS) {
-            const pub = await isStreamPublic(env.PROJECT_KEYS, doKey);
+          if (readAuth.authFailed && env.REGISTRY) {
+            const pub = await isStreamPublic(env.REGISTRY, doKey);
             if (!pub) {
               return wrapAuthError(readAuth.response);
             }
@@ -207,8 +207,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
 
       // On successful PUT with X-Stream-Public: true, write public flag to KV
-      if (method === "PUT" && wrapped.status === 201 && request.headers.get("X-Stream-Public") === "true" && env.PROJECT_KEYS) {
-        ctx.waitUntil(env.PROJECT_KEYS.put(doKey, JSON.stringify({ public: true })));
+      if (method === "PUT" && wrapped.status === 201 && request.headers.get("X-Stream-Public") === "true" && env.REGISTRY) {
+        ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify({ public: true })));
       }
 
       return attachTiming(wrapped, timing);

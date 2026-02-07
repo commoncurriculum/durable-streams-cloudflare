@@ -15,7 +15,7 @@ export type AuthorizeSubscription<E = unknown> = (
 ) => SubscriptionAuthResult | Promise<SubscriptionAuthResult>;
 
 export type ProjectJwtEnv = {
-  PROJECT_KEYS: KVNamespace;
+  REGISTRY: KVNamespace;
 };
 
 // Path-based route patterns with project segment
@@ -202,8 +202,8 @@ const WRITE_ACTIONS = new Set(["publish", "unsubscribe", "deleteSession"]);
  */
 export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
   return async (request, route, env) => {
-    if (!env.PROJECT_KEYS) {
-      return { ok: false, response: Response.json({ error: "PROJECT_KEYS not configured" }, { status: 500 }) };
+    if (!env.REGISTRY) {
+      return { ok: false, response: Response.json({ error: "REGISTRY not configured" }, { status: 500 }) };
     }
 
     const token = extractBearerToken(request);
@@ -211,7 +211,7 @@ export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
 
-    const config = await lookupProjectConfig(env.PROJECT_KEYS, route.project);
+    const config = await lookupProjectConfig(env.REGISTRY, route.project);
     if (!config) {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }

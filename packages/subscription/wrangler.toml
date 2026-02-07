@@ -10,13 +10,20 @@ SESSION_TTL_SECONDS = "1800"
 # API_TOKEN should be set via: npx wrangler secret put API_TOKEN
 ANALYTICS_DATASET = "subscriptions_metrics"
 
-# Durable Objects for per-stream subscriber storage
+# Durable Objects for per-stream subscriber storage and per-session subscription tracking
 [durable_objects]
-bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
+bindings = [
+  { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
+  { name = "SESSION_DO", class_name = "SessionDO" },
+]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SessionDO"]
 
 # Analytics Engine for observability metrics
 [[analytics_engine_datasets]]
@@ -25,7 +32,7 @@ dataset = "subscriptions_metrics"
 
 # KV namespace for per-project signing secrets
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "<your-kv-namespace-id>"
 
 # Service binding to core worker (required)

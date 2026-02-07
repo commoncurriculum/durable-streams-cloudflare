@@ -72,7 +72,7 @@ service = "durable-streams"
 
 # Required for projectJwtAuth()
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "<your-kv-namespace-id>"
 
 [triggers]
@@ -124,7 +124,7 @@ curl -X DELETE $SUB/v1/myapp/unsubscribe \
 
 ### Per-Project JWT Auth (Default)
 
-The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `PROJECT_KEYS` KV namespace — same model as the core package.
+The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `REGISTRY` KV namespace — same model as the core package.
 
 ```ts
 import { createSubscriptionWorker, SubscriptionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
@@ -237,7 +237,7 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 | Binding | Type | Description |
 |---------|------|-------------|
 | `SUBSCRIPTION_DO` | Durable Object | SubscriptionDO namespace (required) |
-| `PROJECT_KEYS` | KV Namespace | Per-project signing secrets (required when using `projectJwtAuth`) |
+| `REGISTRY` | KV Namespace | Per-project signing secrets (required when using `projectJwtAuth`) |
 | `METRICS` | Analytics Engine | Subscription and fan-out metrics (optional) |
 | `CORE` | Service Binding | Service binding to core worker (required) |
 

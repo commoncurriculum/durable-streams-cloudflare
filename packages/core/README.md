@@ -60,7 +60,7 @@ dataset = "durable_streams_metrics"
 
 # Required for projectJwtAuth()
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "<your-kv-namespace-id>"
 ```
 
@@ -104,7 +104,7 @@ curl -N -H "Authorization: Bearer $JWT" \
 
 ### Per-Project JWT Auth (Default)
 
-The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `PROJECT_KEYS` KV namespace. Each project gets its own signing secret. JWTs are signed with that secret — the secret never goes over the wire.
+The built-in `projectJwtAuth()` uses per-project HMAC-SHA256 signing secrets stored in a `REGISTRY` KV namespace. Each project gets its own signing secret. JWTs are signed with that secret — the secret never goes over the wire.
 
 ```ts
 import { createStreamWorker, StreamDO, projectJwtAuth } from "@durable-streams-cloudflare/core";
@@ -231,7 +231,7 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 |---------|------|-------------|
 | `STREAMS` | Durable Object | StreamDO namespace (required) |
 | `R2` | R2 Bucket | Cold segment storage (required) |
-| `PROJECT_KEYS` | KV Namespace | Per-project signing secrets and public stream flags (required when using `projectJwtAuth`) |
+| `REGISTRY` | KV Namespace | Per-project signing secrets and public stream flags (required when using `projectJwtAuth`) |
 | `METRICS` | Analytics Engine | Stream operation metrics (optional) |
 
 ## Architecture

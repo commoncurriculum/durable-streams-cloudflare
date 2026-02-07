@@ -12,8 +12,8 @@ binding = "CORE"
 service = "durable-streams"
 
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
-id = "PROJECT_KEYS_ID"
+binding = "REGISTRY"
+id = "REGISTRY_ID"
 
 [vars]
 # CF_ACCOUNT_ID = "your-account-id"

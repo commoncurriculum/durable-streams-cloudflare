@@ -175,8 +175,8 @@ export const getStreamMessages = createServerFn({ method: "GET" })
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
-    if (!kv) throw new Error("PROJECT_KEYS KV namespace is not configured");
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
@@ -186,7 +186,7 @@ export const createProject = createServerFn({ method: "POST" })
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
+  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
   if (!kv) return [];
   const list = await kv.list();
   return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();

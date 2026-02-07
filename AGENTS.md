@@ -75,8 +75,8 @@ Both admin packages are **TanStack Start** apps on Cloudflare Workers. They shar
 - **Mocks — use sparingly, only for failure paths**: `@cloudflare/vitest-pool-workers` provides real Cloudflare bindings — prefer them over mocks. Mocks are acceptable only when the real binding cannot produce the needed condition:
   - `CORE.postStream`/`CORE.deleteStream` mocked to return `{ ok: false, status: 500 }` — simulates core server errors that can't be triggered from a test.
   - `CORE.headStream` mocked to return `{ ok: false, status: 404 }` — simulates a session whose backing stream was deleted externally.
-  - `PROJECT_KEYS.get` mocked to return specific JSON — controls JWT signing secrets for auth tests.
-  - `PROJECT_KEYS` removed from env entirely — tests the "misconfigured deployment" 500 path.
+  - `REGISTRY.get` mocked to return specific JSON — controls JWT signing secrets for auth tests.
+  - `REGISTRY` removed from env entirely — tests the "misconfigured deployment" 500 path.
   - `env.METRICS.writeDataPoint` mocked — Analytics Engine is unavailable in vitest pool workers.
   - If a condition can be triggered naturally (e.g., 404 from a nonexistent stream, 409 from content-type mismatch), do NOT mock — use the real binding.
 - **`Promise.allSettled` swallows rejections**: Fanout uses `Promise.allSettled`, so mocking an RPC to reject won't trigger catch blocks. To test error-handling paths inside `allSettled`, cause the error before the settled call (e.g., invalid base64 payload that throws during decode).

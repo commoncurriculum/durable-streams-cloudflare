@@ -11,7 +11,7 @@ Usage:
 
 Commands:
   setup            Scaffold workers, create resources, and deploy
-  create-project   Create a new project with an API key in PROJECT_KEYS KV
+  create-project   Create a new project with an API key in REGISTRY KV
 
 Options:
   --help   Show this help message

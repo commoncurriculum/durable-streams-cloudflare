@@ -20,7 +20,7 @@ export default defineConfig({
               STREAMS: { className: "StreamDO", useSQLite: true },
             },
             r2Buckets: ["R2"],
-            kvNamespaces: ["PROJECT_KEYS"],
+            kvNamespaces: ["REGISTRY"],
           },
         ],
       },

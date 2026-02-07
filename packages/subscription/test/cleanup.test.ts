@@ -25,8 +25,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         // No ACCOUNT_ID or API_TOKEN
       };
 
@@ -45,8 +46,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         ANALYTICS_DATASET: "test_metrics",
@@ -91,8 +93,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         ANALYTICS_DATASET: "test_metrics",
@@ -142,8 +145,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -174,8 +178,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -205,8 +210,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -225,8 +231,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
         // No ANALYTICS_DATASET - should use default
@@ -252,8 +259,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };
@@ -299,8 +307,9 @@ describe("cleanup", () => {
 
       const env = {
         CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        PROJECT_KEYS: mockProjectKeys,
+        REGISTRY: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
+        SESSION_DO: {} as AppEnv["SESSION_DO"],
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
       };

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import type { AnalyticsRow, SubscriptionService } from "../types";
+import type { AnalyticsRow, CoreService, SubscriptionService } from "../types";
 
 const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
@@ -185,8 +185,8 @@ export const inspectStreamSubscribers = createServerFn({ method: "GET" })
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
-    if (!kv) throw new Error("PROJECT_KEYS KV namespace is not configured");
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
@@ -196,7 +196,7 @@ export const createProject = createServerFn({ method: "POST" })
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
+  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
   if (!kv) return [];
   const list = await kv.list();
   return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
@@ -244,9 +244,19 @@ export const sendSessionAction = createServerFn({ method: "POST" })
           throw new Error("publish requires streamId");
         }
         const contentType = data.contentType ?? "application/json";
+        // Ensure the stream exists on core (PUT is idempotent — creates or no-ops)
+        const core = (env as Record<string, unknown>).CORE as CoreService;
+        const doKey = `${data.projectId}/${data.streamId}`;
+        await core.putStream(doKey, { contentType });
         const payload = new TextEncoder().encode(data.body ?? "");
-        const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType);
-        return { status: 200, statusText: "OK", body: result };
+        const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType) as {
+          status: number;
+          body?: string;
+        };
+        if (result.status >= 400) {
+          return { status: result.status, statusText: result.body ?? "Publish failed" };
+        }
+        return { status: result.status, statusText: "OK", body: result };
       }
       case "touch": {
         if (!data.sessionId) {

@@ -103,7 +103,7 @@ describe("createSubscriptionWorker", () => {
     const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
     const testEnv = {
       ...createBaseEnv(),
-      PROJECT_KEYS: {
+      REGISTRY: {
         get: vi.fn().mockResolvedValue(JSON.stringify({ signingSecret: "test-secret" })),
       } as unknown as KVNamespace,
     };
@@ -132,14 +132,14 @@ describe("createSubscriptionWorker", () => {
     expect(body).toEqual({ error: "Invalid project ID" });
   });
 
-  it("projectJwtAuth — rejects with 500 when PROJECT_KEYS missing", async () => {
+  it("projectJwtAuth — rejects with 500 when REGISTRY missing", async () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const { projectJwtAuth } = await import("../src/http/auth");
 
     const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
 
-    // Construct env without PROJECT_KEYS to trigger the 500 path
-    const { PROJECT_KEYS: _, ...envWithoutKeys } = createBaseEnv();
+    // Construct env without REGISTRY to trigger the 500 path
+    const { REGISTRY: _, ...envWithoutKeys } = createBaseEnv();
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, {
         method: "POST",

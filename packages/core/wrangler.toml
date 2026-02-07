@@ -20,7 +20,7 @@ dataset = "durable_streams_metrics"
 
 # KV namespace for per-project signing secrets and public stream flags
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "project-keys"
 
 [vars]

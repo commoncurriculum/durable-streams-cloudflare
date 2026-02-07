@@ -25,7 +25,7 @@ export type AuthorizeRead<E = unknown> = (
 ) => ReadAuthResult | Promise<ReadAuthResult>;
 
 export type ProjectJwtEnv = {
-  PROJECT_KEYS: KVNamespace;
+  REGISTRY: KVNamespace;
 };
 
 export type ProjectJwtClaims = {
@@ -145,7 +145,7 @@ export async function verifyProjectJwt(
  * Project JWT auth returning `authorizeMutation` and `authorizeRead` callbacks.
  *
  * Both callbacks share core logic:
- * 1. PROJECT_KEYS is required — 500 if not bound
+ * 1. REGISTRY is required — 500 if not bound
  * 2. Extract bearer token → 401 if missing
  * 3. Extract projectId from doKey (split on `/`)
  * 4. lookupProjectConfig → 401 if not found
@@ -158,8 +158,8 @@ export function projectJwtAuth(): {
   authorizeRead: AuthorizeRead<ProjectJwtEnv>;
 } {
   const authorizeMutation: AuthorizeMutation<ProjectJwtEnv> = async (request, doKey, env, timing) => {
-    if (!env.PROJECT_KEYS) {
-      return { ok: false, response: new Response("PROJECT_KEYS not configured", { status: 500 }) };
+    if (!env.REGISTRY) {
+      return { ok: false, response: new Response("REGISTRY not configured", { status: 500 }) };
     }
 
     const doneAuth = timing?.start("edge.auth");
@@ -175,7 +175,7 @@ export function projectJwtAuth(): {
       }
       const projectId = doKey.substring(0, slashIndex);
 
-      const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
+      const config = await lookupProjectConfig(env.REGISTRY, projectId);
       if (!config) {
         return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
@@ -204,8 +204,8 @@ export function projectJwtAuth(): {
   };
 
   const authorizeRead: AuthorizeRead<ProjectJwtEnv> = async (request, doKey, env, timing) => {
-    if (!env.PROJECT_KEYS) {
-      return { ok: false, response: new Response("PROJECT_KEYS not configured", { status: 500 }) };
+    if (!env.REGISTRY) {
+      return { ok: false, response: new Response("REGISTRY not configured", { status: 500 }) };
     }
 
     const doneAuth = timing?.start("edge.read_auth");
@@ -221,7 +221,7 @@ export function projectJwtAuth(): {
       }
       const projectId = doKey.substring(0, slashIndex);
 
-      const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
+      const config = await lookupProjectConfig(env.REGISTRY, projectId);
       if (!config) {
         return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
       }

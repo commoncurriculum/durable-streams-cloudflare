@@ -20,7 +20,7 @@ export type StreamEnv = {
   SEGMENT_MAX_MESSAGES?: string;
   SEGMENT_MAX_BYTES?: string;
   METRICS?: AnalyticsEngineDataset;
-  PROJECT_KEYS?: KVNamespace;
+  REGISTRY?: KVNamespace;
 };
 
 export type ResolveOffsetResult = {

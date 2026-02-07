@@ -39,6 +39,14 @@ function cancelled(): never {
   process.exit(0);
 }
 
+/** Try multiple ways to invoke wrangler and return the working command prefix. */
+function detectWrangler(): string | null {
+  for (const cmd of ["wrangler", "npx -y wrangler", "pnpx wrangler"]) {
+    if (runMayFail(`${cmd} --version`).ok) return cmd;
+  }
+  return null;
+}
+
 function ensureDir(dir: string) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
@@ -83,7 +91,7 @@ binding = "R2"
 bucket_name = "durable-streams"
 
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "${opts.kvNamespaceId}"
 
 [[analytics_engine_datasets]]
@@ -121,7 +129,7 @@ tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
 
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "${opts.kvNamespaceId}"
 
 [[analytics_engine_datasets]]
@@ -148,7 +156,7 @@ no_bundle = true
 directory = "node_modules/@durable-streams-cloudflare/admin-core/dist/client"
 
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "${opts.kvNamespaceId}"
 
 [[services]]
@@ -171,7 +179,7 @@ no_bundle = true
 directory = "node_modules/@durable-streams-cloudflare/admin-subscription/dist/client"
 
 [[kv_namespaces]]
-binding = "PROJECT_KEYS"
+binding = "REGISTRY"
 id = "${opts.kvNamespaceId}"
 
 [[services]]
@@ -191,9 +199,9 @@ enabled = true
 // Secret helper
 // ---------------------------------------------------------------------------
 
-function putSecret(name: string, value: string, configPath: string) {
+function putSecret(name: string, value: string, configPath: string, wrangler: string) {
   // wrangler secret put reads from stdin
-  const result = runMayFail(`npx -y wrangler secret put ${name} --config ${configPath}`, { input: value });
+  const result = runMayFail(`${wrangler} secret put ${name} --config ${configPath}`, { input: value });
   if (!result.ok) {
     p.log.warning(`  Failed to set ${name}: ${result.stderr}`);
   }
@@ -223,26 +231,26 @@ export async function setup() {
   const preflightSpinner = p.spinner();
   preflightSpinner.start("Checking prerequisites");
 
-  // Verify wrangler
-  const wranglerVersion = runMayFail("npx -y wrangler --version");
-  if (!wranglerVersion.ok) {
+  // Verify wrangler — try direct, npx, and pnpx
+  const wranglerCmd = detectWrangler();
+  if (!wranglerCmd) {
     preflightSpinner.stop("wrangler not found");
     p.log.error(
       "wrangler is required but was not found.\n" +
       "Install it with: npm install -g wrangler\n" +
-      "Or run: npx -y wrangler login"
+      "Then run this setup again."
     );
     process.exit(1);
   }
   preflightSpinner.message("wrangler found — checking auth");
 
   // Verify logged in + extract account ID
-  const whoami = runMayFail("npx -y wrangler whoami");
+  const whoami = runMayFail(`${wranglerCmd} whoami`);
   if (!whoami.ok) {
     preflightSpinner.stop("Not logged in to Cloudflare");
     p.log.error(
       "You must be logged in to Cloudflare.\n" +
-      "Run: npx -y wrangler login"
+      `Run: ${wranglerCmd} login`
     );
     process.exit(1);
   }
@@ -314,7 +322,7 @@ export async function setup() {
   const resourceSpinner = p.spinner();
   resourceSpinner.start("Creating R2 bucket");
 
-  const r2Result = runMayFail("npx -y wrangler r2 bucket create durable-streams");
+  const r2Result = runMayFail("${wranglerCmd} r2 bucket create durable-streams");
   if (!r2Result.ok) {
     if (r2Result.stderr.includes("already exists")) {
       resourceSpinner.stop("R2 bucket already exists (OK)");
@@ -327,12 +335,12 @@ export async function setup() {
     resourceSpinner.stop("R2 bucket created");
   }
 
-  // Create KV namespace for PROJECT_KEYS
+  // Create KV namespace for REGISTRY
   const kvSpinner = p.spinner();
-  kvSpinner.start("Creating KV namespace PROJECT_KEYS");
+  kvSpinner.start("Creating KV namespace REGISTRY");
 
   let kvNamespaceId = "";
-  const kvResult = runMayFail("npx -y wrangler kv namespace create PROJECT_KEYS");
+  const kvResult = runMayFail("${wranglerCmd} kv namespace create REGISTRY");
   if (kvResult.ok) {
     const idMatch = kvResult.stdout.match(/id\s*=\s*"([a-f0-9]+)"/);
     if (idMatch) {
@@ -347,7 +355,7 @@ export async function setup() {
 
   if (!kvNamespaceId) {
     const input = await p.text({
-      message: "PROJECT_KEYS KV namespace ID:",
+      message: "REGISTRY KV namespace ID:",
       placeholder: "Paste from CF dashboard or `wrangler kv namespace list`",
       validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
     });
@@ -451,7 +459,7 @@ export async function setup() {
 
   const coreConfig = join(workersDir, "streams", "wrangler.toml");
 
-  const coreDeploy = runMayFail(`npx -y wrangler deploy --config ${coreConfig}`);
+  const coreDeploy = runMayFail(`${wranglerCmd} deploy --config ${coreConfig}`);
   if (!coreDeploy.ok) {
     coreSpinner.stop("Core deploy failed");
     p.log.error(coreDeploy.stderr);
@@ -474,10 +482,10 @@ export async function setup() {
     const subConfig = join(workersDir, "subscriptions", "wrangler.toml");
 
     if (cfApiToken) {
-      putSecret("API_TOKEN", cfApiToken, subConfig);
+      putSecret("API_TOKEN", cfApiToken, subConfig, wranglerCmd);
     }
 
-    const subDeploy = runMayFail(`npx -y wrangler deploy --config ${subConfig}`);
+    const subDeploy = runMayFail(`${wranglerCmd} deploy --config ${subConfig}`);
     if (!subDeploy.ok) {
       subSpinner.stop("Subscription deploy failed");
       p.log.error(subDeploy.stderr);
@@ -500,10 +508,10 @@ export async function setup() {
 
     const adminConfig = join(workersDir, "admin-core", "wrangler.toml");
 
-    if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminConfig);
-    if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminConfig);
+    if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminConfig, wranglerCmd);
+    if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminConfig, wranglerCmd);
 
-    const adminDeploy = runMayFail(`npx -y wrangler deploy --config ${adminConfig}`);
+    const adminDeploy = runMayFail(`${wranglerCmd} deploy --config ${adminConfig}`);
     if (!adminDeploy.ok) {
       adminSpinner.stop("Admin-core deploy failed");
       p.log.error(adminDeploy.stderr);
@@ -526,10 +534,10 @@ export async function setup() {
 
     const adminSubConfig = join(workersDir, "admin-subscription", "wrangler.toml");
 
-    if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminSubConfig);
-    if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminSubConfig);
+    if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminSubConfig, wranglerCmd);
+    if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminSubConfig, wranglerCmd);
 
-    const adminSubDeploy = runMayFail(`npx -y wrangler deploy --config ${adminSubConfig}`);
+    const adminSubDeploy = runMayFail(`${wranglerCmd} deploy --config ${adminSubConfig}`);
     if (!adminSubDeploy.ok) {
       adminSubSpinner.stop("Admin-subscription deploy failed");
       p.log.error(adminSubDeploy.stderr);
