@@ -1,35 +1,23 @@
-# Cache-Control: public vs private — Research Needed
+# Cache-Control: Research Resolved
 
-## Context
+## Findings
 
-The Durable Streams protocol spec says:
+### 1. Workers ALWAYS execute on every request
 
-- Shared/public streams SHOULD use `Cache-Control: public`
-- User-specific/confidential streams SHOULD use `Cache-Control: private`
+Cloudflare Workers run before the cache. `Cache-Control` headers do NOT cause Cloudflare to skip the Worker. To cache at the edge, the Worker must explicitly use `cache.put()` / `cache.match()`.
 
-Currently, `packages/core/src/protocol/expiry.ts` always returns `Cache-Control: public, max-age=60, stale-while-revalidate=300` (or variants) for all streams regardless of whether they are public or authenticated.
+### 2. Cache-Control: public vs private
 
-## Architecture
+Since Workers always execute, `public` vs `private` only matters for downstream caches (browser, proxies). There is no risk of cross-user cache leakage at the Cloudflare edge because auth runs in the Worker before cache lookup. We use `public` for all cacheable responses per the protocol spec.
 
-- Edge Worker (`packages/core/src/http/create_worker.ts`) enforces auth on every request before forwarding to the DO
-- Streams can be marked public via `?public=true` on PUT — stored in KV
-- Public/private adn skipping auth is ireelvant -- auth is just a function inside the worker. The important questio: do all request hit the worker or does the cache control cause requests to skip it if it's alreayd cached?
-- The DO generates the response including Cache-Control headers
-- There is no `caches.default` usage in the edge worker (confirmed in `docs/cdn-cache-flow.md`)
+### 3. Cache API requires a custom domain
 
-## Questions
+`caches.default` silently no-ops on `workers.dev` subdomains. Only workers deployed to custom domains have functional cache operations.
 
-1. In Cloudflare's architecture, is the Worker invoked on every request to its route, or can Cloudflare's CDN cache layer serve responses without invoking the Worker? Does this change depending on whether you use a custom domain vs workers.dev?
+### 4. Cache is per-datacenter
 
-2. If the Worker always runs, does `Cache-Control: public` only affect downstream caches (browser, proxies between client and Cloudflare)? Is there any scenario where `public` causes cross-user cache leakage?
+Each PoP builds its own cache organically. A cached response in one datacenter won't serve requests routed to another.
 
-3. Do we need to add a stream specific auth key that we give to all the clients after they first join? E.g. they join and we redirect them with an autehtnicated key that's shared across sessions and that's the thing that's cached?
+## Implementation
 
-4. What is the practical difference between `Cache-Control: public` and `Cache-Control: private` when the response originates from a Cloudflare Worker (not a traditional origin server)?
-
-## Relevant Files
-
-- `packages/core/src/protocol/expiry.ts` — `cacheControlFor()` function
-- `packages/core/src/http/create_worker.ts` — edge worker auth + caching flow
-- `packages/core/src/http/worker.ts` — internal worker between edge and DO
-- `docs/cdn-cache-flow.md` — documented CDN caching model
+Edge caching was implemented in `create_worker.ts` using `caches.default`. See `docs/cdn-cache-flow.md` for the full architecture.

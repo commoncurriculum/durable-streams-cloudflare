@@ -8,6 +8,7 @@ import {
   isTextual,
 } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
+import { buildEtag } from "../../protocol/etag";
 import { generateResponseCursor } from "../../protocol/cursor";
 import { base64Encode } from "../../protocol/encoding";
 import {
@@ -229,6 +230,7 @@ export async function handleLongPoll(
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
     headers.set("Cache-Control", cacheControl);
+    headers.set("ETag", buildEtag(streamId, offset, initialRead.nextOffset, initialRead.closedAtTail));
     return new Response(initialRead.body, { status: 200, headers });
   }
   // #endregion docs-long-poll-immediate
@@ -269,6 +271,7 @@ export async function handleLongPoll(
   }
 
   headers.set("Cache-Control", cacheControl);
+  headers.set("ETag", buildEtag(streamId, offset, read.nextOffset, read.closedAtTail));
   return new Response(read.body, { status: 200, headers });
 }
 // #endregion docs-long-poll-wait

@@ -1,7 +1,11 @@
+import { HEADER_STREAM_UP_TO_DATE } from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
+
+// Edge TTL for immutable data (mid-stream reads where data at an offset never changes)
+const EDGE_IMMUTABLE_MAX_AGE = 300;
 
 // ============================================================================
 // Types
@@ -155,6 +159,41 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
       // #endregion docs-authorize-request
 
+      // ================================================================
+      // Edge cache: check for cached response before hitting the DO
+      // ================================================================
+      const isSse = method === "GET" && url.searchParams.get("live") === "sse";
+      const cacheable = method === "GET" && !isSse;
+
+      if (cacheable) {
+        const cache = caches.default;
+        const doneCache = timing?.start("edge.cache");
+        const cached = await cache.match(request);
+        doneCache?.();
+
+        if (cached) {
+          // ETag revalidation at the edge
+          const ifNoneMatch = request.headers.get("If-None-Match");
+          const cachedEtag = cached.headers.get("ETag");
+          if (ifNoneMatch && cachedEtag && ifNoneMatch === cachedEtag) {
+            const headers304 = new Headers(cached.headers);
+            applyCorsHeaders(headers304, corsOrigin);
+            timing?.record("edge.cache.result", 0, "revalidate-304");
+            return attachTiming(new Response(null, { status: 304, headers: headers304 }), timing);
+          }
+
+          // Cache hit — return cached response
+          const responseHeaders = new Headers(cached.headers);
+          applyCorsHeaders(responseHeaders, corsOrigin);
+          timing?.record("edge.cache.result", 0, "hit");
+          return attachTiming(
+            new Response(cached.body, { status: cached.status, headers: responseHeaders }),
+            timing,
+          );
+        }
+        timing?.record("edge.cache.result", 0, "miss");
+      }
+
       // #region docs-route-to-do
       const stub = env.STREAMS.getByName(doKey);
 
@@ -182,6 +221,28 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           created_at: Date.now(),
         };
         ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify(kvMeta)));
+      }
+
+      // ================================================================
+      // Edge cache: store immutable 200 responses (mid-stream only)
+      // ================================================================
+      // Only cache responses that are NOT at the stream tail. At-tail
+      // responses (Stream-Up-To-Date: true) can become stale when new
+      // data is appended, and we can't purge arbitrary offset URLs on
+      // mutation. Mid-stream data is immutable — once written at an
+      // offset, it never changes — so it's safe to cache with a long TTL.
+      if (cacheable && wrapped.status === 200) {
+        const cc = wrapped.headers.get("Cache-Control") ?? "";
+        const isUpToDate = wrapped.headers.has(HEADER_STREAM_UP_TO_DATE);
+        if (!cc.includes("no-store") && !isUpToDate) {
+          const cache = caches.default;
+          const toCache = wrapped.clone();
+          toCache.headers.set(
+            "Cache-Control",
+            `public, max-age=${EDGE_IMMUTABLE_MAX_AGE}`,
+          );
+          ctx.waitUntil(cache.put(request, toCache));
+        }
       }
 
       return attachTiming(wrapped, timing);
