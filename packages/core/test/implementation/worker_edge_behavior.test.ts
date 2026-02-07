@@ -92,11 +92,30 @@ describe("worker edge behavior", () => {
       await handle.stop();
     });
 
-    it("uses public caching", async () => {
-      const streamId = uniqueStreamId("cache");
+    it("uses no-store for open streams", async () => {
+      const streamId = uniqueStreamId("cache-open");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
       const hotOffset = await seedStream(url);
+
+      const hotRead = await fetch(`${url}?offset=${hotOffset}`);
+      expect(hotRead.status).toBe(200);
+      const hotCache = hotRead.headers.get("Cache-Control") ?? "";
+      expect(hotCache).toBe("no-store");
+    });
+
+    it("uses public caching for closed streams", async () => {
+      const streamId = uniqueStreamId("cache-closed");
+      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
+
+      const hotOffset = await seedStream(url);
+
+      // Close the stream — closed streams are immutable and safe to cache
+      const close = await fetch(url, {
+        method: "POST",
+        headers: { "Stream-Closed": "true" },
+      });
+      expect([200, 204]).toContain(close.status);
 
       const coldRead = await fetch(`${url}?offset=${ZERO_OFFSET}`);
       expect(coldRead.status).toBe(200);
@@ -109,14 +128,24 @@ describe("worker edge behavior", () => {
       const hotRead = await fetch(`${url}?offset=${hotOffset}`);
       expect(hotRead.status).toBe(200);
       const hotCache = hotRead.headers.get("Cache-Control") ?? "";
-      expect(hotCache).toBe("public, max-age=2");
+      expect(hotCache).toContain("public");
+      const hotMaxAge = parseMaxAge(hotCache);
+      expect(hotMaxAge).not.toBeNull();
+      expect(hotMaxAge!).toBeGreaterThan(0);
     });
 
-    it("records edge cache hits", async () => {
+    it("records edge cache hits for closed streams", async () => {
       const streamId = uniqueStreamId("cache-hit");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
       const hotOffset = await seedStream(url);
+
+      // Close the stream so responses are CDN-cacheable
+      const close = await fetch(url, {
+        method: "POST",
+        headers: { "Stream-Closed": "true" },
+      });
+      expect([200, 204]).toContain(close.status);
 
       const warm = await fetch(`${url}?offset=${hotOffset}`);
       expect(warm.status).toBe(200);

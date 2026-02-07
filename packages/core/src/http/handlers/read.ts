@@ -10,7 +10,7 @@ import {
   baseHeaders,
   isJsonContentType,
 } from "../../protocol/headers";
-import { cacheControlFor, applyExpiryHeaders } from "../../protocol/expiry";
+import { cacheControlFor, remainingTtlSeconds, applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
@@ -147,7 +147,17 @@ export async function handleGet(
   }
 
   if (read.source === "hot") {
-    response.headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+    if (meta.closed === 1) {
+      const ttlRemaining = remainingTtlSeconds(meta);
+      if (ttlRemaining !== null) {
+        const maxAge = Math.min(LONG_POLL_CACHE_SECONDS, Math.max(0, ttlRemaining));
+        response.headers.set("Cache-Control", maxAge > 0 ? `public, max-age=${maxAge}` : "no-store");
+      } else {
+        response.headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+      }
+    } else {
+      response.headers.set("Cache-Control", "no-store");
+    }
   }
 
   const ifNoneMatch = request.headers.get("If-None-Match");

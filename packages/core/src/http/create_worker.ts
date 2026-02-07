@@ -209,6 +209,16 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
       }
 
+      // Purge CDN cache on successful mutations to ensure read-after-write consistency.
+      if (!isStreamRead && [200, 201, 204].includes(wrapped.status)) {
+        ctx.waitUntil(
+          Promise.all([
+            cache.delete(buildCacheKey(url, "GET")),
+            cache.delete(buildCacheKey(url, "HEAD")),
+          ]),
+        );
+      }
+
       // On successful stream creation, write metadata to KV for edge lookups
       if (method === "PUT" && wrapped.status === 201 && env.REGISTRY) {
         const kvMeta = {

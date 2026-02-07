@@ -64,8 +64,9 @@ export function remainingTtlSeconds(meta: ExpiryMeta): number | null {
 export function cacheControlFor(meta: ExpiryMeta): string {
   const remaining = remainingTtlSeconds(meta);
   if (remaining === null) return "public, max-age=60, stale-while-revalidate=300";
-  const maxAge = Math.min(60, Math.max(0, remaining));
-  return `public, max-age=${maxAge}, stale-while-revalidate=300`;
+  if (remaining <= 0) return "no-store";
+  const maxAge = Math.min(60, remaining);
+  return `public, max-age=${maxAge}`;
 }
 
 export function isExpired(meta: ExpiryMeta): boolean {
