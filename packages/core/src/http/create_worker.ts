@@ -35,38 +35,6 @@ function corsError(status: number, message: string): Response {
   return new Response(message, { status, headers });
 }
 
-function shouldUseCache(request: Request, url: URL): boolean {
-  const method = request.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD") return false;
-  if (url.searchParams.get("live") === "sse") return false;
-  if (request.headers.has("If-None-Match")) return false;
-  return true;
-}
-
-function parseMaxAge(cacheControl: string): number | null {
-  const match = cacheControl.match(/max-age=(\d+)/i);
-  if (!match) return null;
-  const value = Number.parseInt(match[1], 10);
-  return Number.isFinite(value) ? value : null;
-}
-
-function isCacheableResponse(response: Response): boolean {
-  if (![200, 204].includes(response.status)) return false;
-  const cacheControl = response.headers.get("Cache-Control");
-  if (!cacheControl) return false;
-  const lower = cacheControl.toLowerCase();
-  if (lower.includes("no-store") || lower.includes("private")) return false;
-  const maxAge = parseMaxAge(lower);
-  return maxAge !== null && maxAge > 0;
-}
-
-function buildCacheKey(url: URL, method: string): Request {
-  return new Request(url.toString(), {
-    method,
-    cf: { cacheKey: url.toString() },
-  });
-}
-
 function wrapAuthError(response: Response): Response {
   const headers = new Headers(response.headers);
   applyCorsHeaders(headers);
@@ -171,21 +139,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
       // #endregion docs-authorize-request
 
-      const cacheable = shouldUseCache(request, url);
-      const cache = caches.default;
-      const cacheKey = buildCacheKey(url, method);
-
-      if (cacheable) {
-        const doneMatch = timing?.start("edge.cache.match");
-        const cached = await cache.match(cacheKey);
-        doneMatch?.();
-        if (cached) {
-          timing?.record("edge.cache", 0, "hit");
-          return attachTiming(cached, timing);
-        }
-        timing?.record("edge.cache", 0, "miss");
-      }
-
       // #region docs-route-to-do
       const stub = env.STREAMS.getByName(doKey);
 
@@ -204,20 +157,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         statusText: response.statusText,
         headers: responseHeaders,
       });
-
-      if (cacheable && isCacheableResponse(wrapped)) {
-        ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
-      }
-
-      // Purge CDN cache on successful mutations to ensure read-after-write consistency.
-      if (!isStreamRead && [200, 201, 204].includes(wrapped.status)) {
-        ctx.waitUntil(
-          Promise.all([
-            cache.delete(buildCacheKey(url, "GET")),
-            cache.delete(buildCacheKey(url, "HEAD")),
-          ]),
-        );
-      }
 
       // On successful stream creation, write metadata to KV for edge lookups
       if (method === "PUT" && wrapped.status === 201 && env.REGISTRY) {

@@ -1,6 +1,6 @@
 import { errorResponse } from "../../protocol/errors";
 import { buildEtag } from "../../protocol/etag";
-import { LONG_POLL_CACHE_SECONDS, MAX_CHUNK_BYTES } from "../../protocol/limits";
+import { MAX_CHUNK_BYTES } from "../../protocol/limits";
 import { ZERO_OFFSET } from "../../protocol/offsets";
 import {
   HEADER_STREAM_CLOSED,
@@ -10,7 +10,7 @@ import {
   baseHeaders,
   isJsonContentType,
 } from "../../protocol/headers";
-import { cacheControlFor, remainingTtlSeconds, applyExpiryHeaders } from "../../protocol/expiry";
+import { cacheControlFor, applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
@@ -144,20 +144,6 @@ export async function handleGet(
       blobs: [streamId, "read", "anonymous"],
       doubles: [1, read.body.byteLength],
     });
-  }
-
-  if (read.source === "hot") {
-    if (meta.closed === 1) {
-      const ttlRemaining = remainingTtlSeconds(meta);
-      if (ttlRemaining !== null) {
-        const maxAge = Math.min(LONG_POLL_CACHE_SECONDS, Math.max(0, ttlRemaining));
-        response.headers.set("Cache-Control", maxAge > 0 ? `public, max-age=${maxAge}` : "no-store");
-      } else {
-        response.headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
-      }
-    } else {
-      response.headers.set("Cache-Control", "no-store");
-    }
   }
 
   const ifNoneMatch = request.headers.get("If-None-Match");

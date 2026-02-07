@@ -14,7 +14,7 @@ import { readSegmentMessages } from "../../storage/segments";
 import type { SegmentRecord, StreamMeta, StreamStorage } from "../../storage/types";
 import type { StreamEnv } from "../../http/router";
 
-const COALESCE_CACHE_MS = 25;
+const COALESCE_CACHE_MS = 100;
 
 type ReadStats = { internalReads: number };
 
