@@ -1,0 +1,22 @@
+{
+  "name": "@durable-streams-cloudflare/loadtest",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/run.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json"
+  },
+  "dependencies": {
+    "@durable-streams/client": "^0.2.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^25.2.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.0.0"
+  }
+}

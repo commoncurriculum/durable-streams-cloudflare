@@ -1,0 +1,7 @@
+name = "durable-streams-loadtest"
+main = "src/worker.ts"
+compatibility_date = "2026-02-02"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "loadtest_metrics"
