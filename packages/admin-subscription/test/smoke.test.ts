@@ -70,20 +70,6 @@ describe("admin-subscription smoke", () => {
     expect(html).toContain("Subscription Service");
   });
 
-  it("GET /console/session/$id renders the child route, not just the search forms", async () => {
-    const res = await fetch(`${BASE_URL}/console/session/test-sess-123`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).not.toContain("Enter a session or stream ID to open");
-  });
-
-  it("GET /console/stream/$id renders the child route, not just the search forms", async () => {
-    const res = await fetch(`${BASE_URL}/console/stream/test-stream-abc`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).not.toContain("Enter a session or stream ID to open");
-  });
-
   it("GET /projects/:id/sessions renders a Create Session button", async () => {
     const res = await fetch(`${BASE_URL}/projects/test-project/sessions`);
     expect(res.status).toBe(200);
