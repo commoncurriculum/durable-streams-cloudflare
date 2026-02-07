@@ -322,7 +322,7 @@ export async function setup() {
   const resourceSpinner = p.spinner();
   resourceSpinner.start("Creating R2 bucket");
 
-  const r2Result = runMayFail("${wranglerCmd} r2 bucket create durable-streams");
+  const r2Result = runMayFail(`${wranglerCmd} r2 bucket create durable-streams`);
   if (!r2Result.ok) {
     if (r2Result.stderr.includes("already exists")) {
       resourceSpinner.stop("R2 bucket already exists (OK)");
@@ -340,7 +340,7 @@ export async function setup() {
   kvSpinner.start("Creating KV namespace REGISTRY");
 
   let kvNamespaceId = "";
-  const kvResult = runMayFail("${wranglerCmd} kv namespace create REGISTRY");
+  const kvResult = runMayFail(`${wranglerCmd} kv namespace create REGISTRY`);
   if (kvResult.ok) {
     const idMatch = kvResult.stdout.match(/id\s*=\s*"([a-f0-9]+)"/);
     if (idMatch) {

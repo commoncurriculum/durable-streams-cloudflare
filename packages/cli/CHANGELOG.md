@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/cli
 
+## 0.2.3
+
+### Patch Changes
+
+- Rename KV binding from PROJECT_KEYS to REGISTRY, fix template literal bugs in resource creation commands
+
 ## 0.2.2
 
 ### Patch Changes
