@@ -1,6 +1,8 @@
 import * as p from "@clack/prompts";
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdout: string; stderr: string } {
   try {
@@ -62,10 +64,24 @@ export async function createProject() {
     signingSecret = input;
   }
 
-  // Step 3: KV namespace ID
+  // Step 3: KV namespace ID (try to auto-detect from scaffolded wrangler.toml)
+  let detectedNamespaceId = "";
+  const coreTomlPath = join(process.cwd(), "workers", "streams", "wrangler.toml");
+  if (existsSync(coreTomlPath)) {
+    try {
+      const toml = readFileSync(coreTomlPath, "utf-8");
+      const match = toml.match(/binding\s*=\s*"PROJECT_KEYS"\s*\n\s*id\s*=\s*"([a-f0-9]+)"/);
+      if (match) detectedNamespaceId = match[1];
+    } catch {
+      // ignore read errors
+    }
+  }
+
   const namespaceId = await p.text({
     message: "PROJECT_KEYS KV namespace ID:",
-    placeholder: "Find this in your wrangler.toml or CF dashboard",
+    ...(detectedNamespaceId
+      ? { defaultValue: detectedNamespaceId, placeholder: `Auto-detected: ${detectedNamespaceId}` }
+      : { placeholder: "Find this in your wrangler.toml or CF dashboard" }),
     validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
   });
   if (p.isCancel(namespaceId)) cancelled();

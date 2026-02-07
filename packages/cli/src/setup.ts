@@ -66,7 +66,7 @@ export { StreamDO };
 `;
 }
 
-function coreWranglerToml(): string {
+function coreWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "durable-streams"
 main = "src/worker.ts"
 compatibility_date = "2025-02-02"
@@ -81,6 +81,10 @@ new_sqlite_classes = ["StreamDO"]
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "durable-streams"
+
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "${opts.kvNamespaceId}"
 
 [[analytics_engine_datasets]]
 binding = "METRICS"
@@ -98,6 +102,7 @@ export { SubscriptionDO };
 
 function subscriptionWranglerToml(opts: {
   accountId: string;
+  kvNamespaceId: string;
 }): string {
   return `name = "durable-streams-subscriptions"
 main = "src/worker.ts"
@@ -115,6 +120,10 @@ bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
 tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
 
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "${opts.kvNamespaceId}"
+
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "subscriptions_metrics"
@@ -128,7 +137,7 @@ crons = ["*/5 * * * *"]
 `;
 }
 
-function adminCoreWranglerToml(): string {
+function adminCoreWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "durable-streams-admin-core"
 main = "node_modules/@durable-streams-cloudflare/admin-core/dist/server/index.js"
 compatibility_date = "2026-02-02"
@@ -137,6 +146,10 @@ no_bundle = true
 
 [assets]
 directory = "node_modules/@durable-streams-cloudflare/admin-core/dist/client"
+
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "${opts.kvNamespaceId}"
 
 [[services]]
 binding = "CORE"
@@ -147,7 +160,7 @@ enabled = true
 `;
 }
 
-function adminSubscriptionWranglerToml(): string {
+function adminSubscriptionWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "durable-streams-admin-subscription"
 main = "node_modules/@durable-streams-cloudflare/admin-subscription/dist/server/index.js"
 compatibility_date = "2026-02-02"
@@ -156,6 +169,10 @@ no_bundle = true
 
 [assets]
 directory = "node_modules/@durable-streams-cloudflare/admin-subscription/dist/client"
+
+[[kv_namespaces]]
+binding = "PROJECT_KEYS"
+id = "${opts.kvNamespaceId}"
 
 [[services]]
 binding = "SUBSCRIPTION"
@@ -292,7 +309,54 @@ export async function setup() {
   }
 
   // -----------------------------------------------------------------------
-  // Step 3: Scaffold files
+  // Step 3: Create Cloudflare resources (needed before scaffolding)
+  // -----------------------------------------------------------------------
+  const resourceSpinner = p.spinner();
+  resourceSpinner.start("Creating R2 bucket");
+
+  const r2Result = runMayFail("npx wrangler r2 bucket create durable-streams");
+  if (!r2Result.ok) {
+    if (r2Result.stderr.includes("already exists")) {
+      resourceSpinner.stop("R2 bucket already exists (OK)");
+    } else {
+      resourceSpinner.stop("R2 bucket creation failed");
+      p.log.error(r2Result.stderr);
+      process.exit(1);
+    }
+  } else {
+    resourceSpinner.stop("R2 bucket created");
+  }
+
+  // Create KV namespace for PROJECT_KEYS
+  const kvSpinner = p.spinner();
+  kvSpinner.start("Creating KV namespace PROJECT_KEYS");
+
+  let kvNamespaceId = "";
+  const kvResult = runMayFail("npx wrangler kv namespace create PROJECT_KEYS");
+  if (kvResult.ok) {
+    const idMatch = kvResult.stdout.match(/id\s*=\s*"([a-f0-9]+)"/);
+    if (idMatch) {
+      kvNamespaceId = idMatch[1];
+      kvSpinner.stop(`KV namespace created: ${kvNamespaceId.slice(0, 8)}...`);
+    } else {
+      kvSpinner.stop("KV namespace created (ID not auto-detected)");
+    }
+  } else {
+    kvSpinner.stop("KV namespace creation failed (may already exist)");
+  }
+
+  if (!kvNamespaceId) {
+    const input = await p.text({
+      message: "PROJECT_KEYS KV namespace ID:",
+      placeholder: "Paste from CF dashboard or `wrangler kv namespace list`",
+      validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
+    });
+    if (p.isCancel(input)) cancelled();
+    kvNamespaceId = input;
+  }
+
+  // -----------------------------------------------------------------------
+  // Step 4: Scaffold files
   // -----------------------------------------------------------------------
   p.log.step("Scaffolding worker files into workers/");
 
@@ -305,7 +369,7 @@ export async function setup() {
   // Core (always)
   filesToWrite.push(
     { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
-    { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml() },
+    { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
   );
 
   // Subscription
@@ -314,7 +378,7 @@ export async function setup() {
       { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs() },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
-        content: subscriptionWranglerToml({ accountId }),
+        content: subscriptionWranglerToml({ accountId, kvNamespaceId }),
       },
     );
   }
@@ -322,14 +386,14 @@ export async function setup() {
   // Admin core — wrangler.toml only (pre-built package, no source files needed)
   if (includeAdminCore) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-core", "wrangler.toml"), content: adminCoreWranglerToml() },
+      { path: join(workersDir, "admin-core", "wrangler.toml"), content: adminCoreWranglerToml({ kvNamespaceId }) },
     );
   }
 
   // Admin subscription — wrangler.toml only (pre-built package, no source files needed)
   if (includeAdminSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-subscription", "wrangler.toml"), content: adminSubscriptionWranglerToml() },
+      { path: join(workersDir, "admin-subscription", "wrangler.toml"), content: adminSubscriptionWranglerToml({ kvNamespaceId }) },
     );
   }
 
@@ -358,7 +422,7 @@ export async function setup() {
   }
 
   // -----------------------------------------------------------------------
-  // Step 4: Install npm dependencies
+  // Step 5: Install npm dependencies
   // -----------------------------------------------------------------------
   const installSpinner = p.spinner();
   installSpinner.start("Installing npm dependencies");
@@ -375,25 +439,6 @@ export async function setup() {
     process.exit(1);
   }
   installSpinner.stop("Dependencies installed");
-
-  // -----------------------------------------------------------------------
-  // Step 5: Create Cloudflare resources
-  // -----------------------------------------------------------------------
-  const resourceSpinner = p.spinner();
-  resourceSpinner.start("Creating R2 bucket");
-
-  const r2Result = runMayFail("npx wrangler r2 bucket create durable-streams");
-  if (!r2Result.ok) {
-    if (r2Result.stderr.includes("already exists")) {
-      resourceSpinner.stop("R2 bucket already exists (OK)");
-    } else {
-      resourceSpinner.stop("R2 bucket creation failed");
-      p.log.error(r2Result.stderr);
-      process.exit(1);
-    }
-  } else {
-    resourceSpinner.stop("R2 bucket created");
-  }
 
   // -----------------------------------------------------------------------
   // Step 6: Set secrets & deploy
