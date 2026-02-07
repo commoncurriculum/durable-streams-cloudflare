@@ -1,11 +1,10 @@
-import { HEADER_STREAM_UP_TO_DATE } from "../protocol/headers";
+import { HEADER_STREAM_UP_TO_DATE, HEADER_SSE_DATA_ENCODING } from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
-
-// Edge TTL for immutable data (mid-stream reads where data at an offset never changes)
-const EDGE_IMMUTABLE_MAX_AGE = 300;
+import { buildSseDataEvent, buildSseControlEvent } from "./handlers/realtime";
+import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
 
 // ============================================================================
 // Types
@@ -78,6 +77,112 @@ async function isStreamPublic(kv: KVNamespace | undefined, doKey: string): Promi
     return true;
   }
   return false;
+}
+
+// ============================================================================
+// SSE-via-WebSocket Bridge
+// ============================================================================
+
+const sseTextEncoder = new TextEncoder();
+
+async function bridgeSseViaWebSocket(
+  stub: DurableObjectStub<StreamDO>,
+  doKey: string,
+  url: URL,
+  _request: Request,
+  corsOrigin: string,
+  timing: Timing | null,
+): Promise<Response> {
+  // Build the internal WS upgrade request to the DO.
+  // Must use stub.fetch() (not RPC) because WebSocket upgrade responses
+  // can't be serialized over RPC.
+  const wsUrl = new URL(url);
+  wsUrl.searchParams.set("live", "ws-internal");
+  const wsReq = new Request(wsUrl.toString(), {
+    headers: new Headers({
+      Upgrade: "websocket",
+    }),
+  });
+
+  const doneOrigin = timing?.start("edge.origin");
+  const wsResp = await stub.fetch(wsReq);
+  doneOrigin?.();
+
+  if (wsResp.status !== 101 || !wsResp.webSocket) {
+    // DO returned an error (400, 404, etc.) — forward as-is with CORS
+    const headers = new Headers(wsResp.headers);
+    applyCorsHeaders(headers, corsOrigin);
+    return new Response(wsResp.body, {
+      status: wsResp.status,
+      statusText: wsResp.statusText,
+      headers,
+    });
+  }
+
+  const ws = wsResp.webSocket;
+  ws.accept();
+
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+
+  // Encoding is set by the DO in the 101 response headers
+  const useBase64 = wsResp.headers.get("Stream-SSE-Data-Encoding") === "base64";
+
+  ws.addEventListener("message", (event) => {
+    try {
+      const msg = JSON.parse(event.data as string) as WsDataMessage | WsControlMessage;
+
+      if (msg.type === "data") {
+        const dataMsg = msg as WsDataMessage;
+
+        if (dataMsg.encoding === "base64") {
+          // Decode base64 back to binary, then build SSE event
+          const binary = Uint8Array.from(atob(dataMsg.payload), (c) => c.charCodeAt(0));
+          const sseEvent = buildSseDataEvent(binary.buffer as ArrayBuffer, true);
+          writer.write(sseTextEncoder.encode(sseEvent)).catch(() => {});
+        } else {
+          // Text payload — build SSE event from the raw text
+          const encoded = sseTextEncoder.encode(dataMsg.payload);
+          const sseEvent = buildSseDataEvent(encoded.buffer as ArrayBuffer, false);
+          writer.write(sseTextEncoder.encode(sseEvent)).catch(() => {});
+        }
+      } else if (msg.type === "control") {
+        const controlMsg = msg as WsControlMessage;
+        const { payload } = buildSseControlEvent({
+          nextOffset: controlMsg.streamNextOffset,
+          upToDate: controlMsg.upToDate ?? false,
+          streamClosed: controlMsg.streamClosed ?? false,
+          cursor: controlMsg.streamCursor ?? "",
+        });
+        writer.write(sseTextEncoder.encode(payload)).catch(() => {});
+      }
+    } catch {
+      // Malformed message — ignore
+    }
+  });
+
+  ws.addEventListener("close", () => {
+    writer.close().catch(() => {});
+  });
+
+  ws.addEventListener("error", () => {
+    writer.close().catch(() => {});
+  });
+
+  // Build SSE response headers
+  const sseHeaders = new Headers({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "X-Content-Type-Options": "nosniff",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  });
+  applyCorsHeaders(sseHeaders, corsOrigin);
+
+  if (useBase64) sseHeaders.set(HEADER_SSE_DATA_ENCODING, "base64");
+
+  return attachTiming(new Response(readable, { status: 200, headers: sseHeaders }), timing);
 }
 
 // ============================================================================
@@ -206,6 +311,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // #region docs-route-to-do
       const stub = env.STREAMS.getByName(doKey);
 
+      // ================================================================
+      // SSE via internal WebSocket bridge
+      // ================================================================
+      if (isSse) {
+        return bridgeSseViaWebSocket(stub, doKey, url, request, corsOrigin, timing);
+      }
+
       const doneOrigin = timing?.start("edge.origin");
       const response = await stub.routeStreamRequest(
         doKey,
@@ -243,13 +355,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
         if (!cc.includes("no-store") && !wrapped.headers.has(HEADER_STREAM_UP_TO_DATE)) {
-          const cache = caches.default;
-          const toCache = wrapped.clone();
-          toCache.headers.set(
-            "Cache-Control",
-            `public, max-age=${EDGE_IMMUTABLE_MAX_AGE}`,
-          );
-          ctx.waitUntil(cache.put(request, toCache));
+          ctx.waitUntil(caches.default.put(request, wrapped.clone()));
         }
       }
 

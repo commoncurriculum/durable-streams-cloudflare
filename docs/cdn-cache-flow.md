@@ -23,9 +23,9 @@ Only **immutable mid-stream reads** are cached — responses where `Stream-Up-To
 
 | Request type | Cached? | Edge TTL | Client TTL | Notes |
 |---|---|---|---|---|
-| `GET ?offset=X` (mid-stream) | Yes | 300s | 60s (protocol) | Immutable — data at an offset never changes |
+| `GET ?offset=X` (mid-stream) | Yes | 60s | 60s (protocol) | Immutable — data at an offset never changes |
 | `GET ?offset=X` (at tail, up-to-date) | No | — | 60s | Mutable — new data may arrive at this offset |
-| `GET ?offset=X&live=long-poll&cursor=Y` (200, mid-stream) | Yes | 300s | 20s | Immutable data + cursor rotates cache key |
+| `GET ?offset=X&live=long-poll&cursor=Y` (200, mid-stream) | Yes | 20s | 20s | Immutable data + cursor rotates cache key |
 | `GET ?offset=X&live=long-poll` (200, at tail) | No | — | 20s | Mutable — could become stale |
 | `GET ?offset=X&live=long-poll` (204 timeout) | No | — | — | Protocol: don't cache timeouts |
 | `GET ?offset=now` | No | — | no-store | Cursor bootstrap, must be fresh |
@@ -37,9 +37,9 @@ Only **immutable mid-stream reads** are cached — responses where `Stream-Up-To
 
 At-tail responses (`Stream-Up-To-Date: true`) can become stale when new data is appended. Since the Cache API doesn't support purging by URL prefix (only exact URL), we can't invalidate all offset-variant entries when a mutation occurs. Caching only immutable mid-stream data avoids serving stale data entirely.
 
-### Edge TTL Override
+### Edge TTL
 
-The DO returns `Cache-Control: public, max-age=60` per the protocol (client-facing). Before `cache.put()`, the edge worker overrides `Cache-Control` on the response clone to `max-age=300` since the data is immutable. The original response to the client keeps the protocol-correct 60s.
+The edge cache uses the DO's protocol-correct `Cache-Control` headers as-is — no override. Catch-up reads get `max-age=60`, long-poll reads get `max-age=20`. Since cached data is immutable, entries are simply re-cached on the next miss after expiry.
 
 ### ETag Revalidation at the Edge
 
