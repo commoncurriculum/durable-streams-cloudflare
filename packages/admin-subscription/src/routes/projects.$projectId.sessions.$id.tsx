@@ -4,12 +4,11 @@ import { useSessionInspect } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
 import { useSSE, type SseEvent } from "../hooks/use-sse";
 
-type SessionAction = "subscribe" | "unsubscribe" | "publish" | "touch" | "delete";
+type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
 
 const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
   { value: "subscribe", label: "Subscribe" },
   { value: "unsubscribe", label: "Unsub" },
-  { value: "publish", label: "Publish" },
   { value: "touch", label: "Touch" },
   { value: "delete", label: "Delete" },
 ];
@@ -24,7 +23,6 @@ function SessionDetailPage() {
 
   const [action, setAction] = useState<SessionAction>("subscribe");
   const [streamIdInput, setStreamIdInput] = useState("");
-  const [bodyInput, setBodyInput] = useState('{"hello":"world"}');
   const [sending, setSending] = useState(false);
 
   const [sseUrl, setSseUrl] = useState<string | null>(null);
@@ -44,16 +42,6 @@ function SessionDetailPage() {
             projectId,
             sessionId: id,
             streamId: streamIdInput.trim(),
-          };
-          break;
-        case "publish":
-          if (!streamIdInput.trim()) return;
-          payload = {
-            action,
-            projectId,
-            streamId: streamIdInput.trim(),
-            body: bodyInput,
-            contentType: "application/json",
           };
           break;
         case "touch":
@@ -80,7 +68,7 @@ function SessionDetailPage() {
     } finally {
       setSending(false);
     }
-  }, [action, projectId, id, streamIdInput, bodyInput, addEvent]);
+  }, [action, projectId, id, streamIdInput, addEvent]);
 
   if (isLoading) {
     return (
@@ -196,7 +184,7 @@ function SessionDetailPage() {
             ))}
           </div>
 
-          {(action === "subscribe" || action === "unsubscribe" || action === "publish") && (
+          {(action === "subscribe" || action === "unsubscribe") && (
             <>
               <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mt-4 mb-1">
                 Stream ID
@@ -208,21 +196,6 @@ function SessionDetailPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 placeholder="my-stream"
                 className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
-              />
-            </>
-          )}
-
-          {action === "publish" && (
-            <>
-              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mt-4 mb-1">
-                Message Body
-              </label>
-              <textarea
-                value={bodyInput}
-                onChange={(e) => setBodyInput(e.target.value)}
-                rows={4}
-                placeholder='{"hello":"world"}'
-                className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500 resize-y"
               />
             </>
           )}

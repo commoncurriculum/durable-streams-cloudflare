@@ -1,0 +1,99 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useCallback } from "react";
+import { sendSessionAction } from "../lib/analytics";
+import { TextField } from "../components/ui/text-field";
+import { Textarea } from "../components/ui/textarea";
+import { Button } from "../components/ui/button";
+import { Label } from "../components/ui/field";
+import { Input } from "react-aria-components";
+
+export const Route = createFileRoute("/publish")({
+  component: PublishPage,
+});
+
+function PublishPage() {
+  const [projectId, setProjectId] = useState("");
+  const [streamId, setStreamId] = useState("");
+  const [body, setBody] = useState('{"hello":"world"}');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const handleSend = useCallback(async () => {
+    if (!projectId.trim() || !streamId.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await sendSessionAction({
+        data: {
+          action: "publish",
+          projectId: projectId.trim(),
+          streamId: streamId.trim(),
+          body,
+          contentType: "application/json",
+        },
+      });
+      setResult({
+        type: "success",
+        message: `${res.status} ${res.statusText}`,
+      });
+    } catch (e) {
+      setResult({
+        type: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSending(false);
+    }
+  }, [projectId, streamId, body]);
+
+  return (
+    <div className="mx-auto max-w-lg space-y-6">
+      <h2 className="text-lg font-semibold">Publish to Stream</h2>
+
+      <TextField value={projectId} onChange={setProjectId}>
+        <Label>Project ID</Label>
+        <Input
+          placeholder="my-project"
+          className="mt-2 block w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm text-fg placeholder:text-muted-fg outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20"
+        />
+      </TextField>
+
+      <TextField value={streamId} onChange={setStreamId}>
+        <Label>Stream ID</Label>
+        <Input
+          placeholder="my-stream"
+          className="mt-2 block w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm text-fg placeholder:text-muted-fg outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20"
+        />
+      </TextField>
+
+      <TextField value={body} onChange={setBody}>
+        <Label>Message Body</Label>
+        <Textarea rows={4} className="mt-2 font-mono" />
+      </TextField>
+
+      <Button
+        intent="primary"
+        className="w-full"
+        isDisabled={sending || !projectId.trim() || !streamId.trim()}
+        onPress={handleSend}
+      >
+        {sending ? "Sending..." : "Send"}
+      </Button>
+
+      {result && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            result.type === "success"
+              ? "border-success/30 bg-success-subtle text-success-subtle-fg"
+              : "border-danger/30 bg-danger-subtle text-danger-subtle-fg"
+          }`}
+        >
+          {result.type === "success" ? "Success" : "Error"}: {result.message}
+        </div>
+      )}
+    </div>
+  );
+}

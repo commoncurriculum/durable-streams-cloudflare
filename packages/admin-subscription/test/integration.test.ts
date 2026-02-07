@@ -47,12 +47,9 @@ describe("admin-subscription integration", () => {
   let adminUrl: string;
 
   beforeAll(async () => {
-    // Build the admin worker
     execSync("pnpm exec vite build", { cwd: ROOT, stdio: "pipe" });
 
-    // Start core worker
     const corePort = await getAvailablePort();
-    const coreUrl = `http://localhost:${corePort}`;
     coreProc = spawn(
       "pnpm",
       [
@@ -63,11 +60,9 @@ describe("admin-subscription integration", () => {
       ],
       { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
     );
-    await waitForReady(coreUrl);
+    await waitForReady(`http://localhost:${corePort}`);
 
-    // Start subscription worker
     const subscriptionPort = await getAvailablePort();
-    const subscriptionUrl = `http://localhost:${subscriptionPort}`;
     subscriptionProc = spawn(
       "pnpm",
       [
@@ -78,9 +73,8 @@ describe("admin-subscription integration", () => {
       ],
       { cwd: SUBSCRIPTION_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
     );
-    await waitForReady(subscriptionUrl);
+    await waitForReady(`http://localhost:${subscriptionPort}`);
 
-    // Start admin worker (wrangler resolves CORE + SUBSCRIPTION service bindings)
     const adminPort = await getAvailablePort();
     adminUrl = `http://localhost:${adminPort}`;
     adminProc = spawn(
@@ -116,13 +110,21 @@ describe("admin-subscription integration", () => {
   it("session detail page renders session ID", async () => {
     const sessionId = `integration-session-${Date.now()}`;
 
-    // Load the session detail page — inspectSession checks via SUBSCRIPTION binding
     const detailRes = await fetch(
       `${adminUrl}/projects/${PROJECT_ID}/sessions/${sessionId}`,
     );
     expect(detailRes.status).toBe(200);
     const html = await detailRes.text();
-    // The detail route should render (even if session not found, the route still loads)
     expect(html).toContain(sessionId);
+  });
+
+  it("publish page renders the form", async () => {
+    const res = await fetch(`${adminUrl}/publish`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Publish to Stream");
+    expect(html).toContain("Project ID");
+    expect(html).toContain("Stream ID");
+    expect(html).toContain("Message Body");
   });
 });

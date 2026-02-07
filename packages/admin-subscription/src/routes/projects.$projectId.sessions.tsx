@@ -1,11 +1,13 @@
 import {
   createFileRoute,
+  Link,
   Outlet,
   useNavigate,
   useMatch,
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { createSession } from "../lib/analytics";
+import { addRecentSession, getRecentSessions } from "../lib/recent-sessions";
 
 export const Route = createFileRoute("/projects/$projectId/sessions")({
   component: SessionsLayout,
@@ -24,9 +26,7 @@ function SessionsLayout() {
       {childMatch ? (
         <Outlet />
       ) : (
-        <div className="py-12 text-center text-zinc-500">
-          Enter a session ID to inspect
-        </div>
+        <RecentSessionsList projectId={projectId} />
       )}
     </div>
   );
@@ -54,6 +54,7 @@ function SearchBar({ projectId }: { projectId: string }) {
     const sessionId = crypto.randomUUID();
     try {
       await createSession({ data: { projectId, sessionId } });
+      addRecentSession(projectId, sessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setCreating(false);
@@ -95,6 +96,42 @@ function SearchBar({ projectId }: { projectId: string }) {
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecentSessionsList({ projectId }: { projectId: string }) {
+  const sessions = getRecentSessions(projectId);
+
+  if (sessions.length === 0) {
+    return (
+      <div className="py-12 text-center text-zinc-500">
+        No recent sessions. Create one or enter an ID above.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+      <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
+        Recent Sessions
+      </h3>
+      <ul>
+        {sessions.map((s) => (
+          <li
+            key={s.sessionId}
+            className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+          >
+            <Link
+              to="/projects/$projectId/sessions/$id"
+              params={{ projectId, id: s.sessionId }}
+              className="block px-4 py-2.5 font-mono text-sm text-zinc-300 hover:text-zinc-100"
+            >
+              {s.sessionId}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
