@@ -83,7 +83,7 @@ function wrapAuthError(response: Response): Response {
 
 /**
  * Check if a stream is marked as public in KV.
- * KV key: `projectId/streamId`, value: JSON with `{ public: true }`.
+ * KV key: `projectId/streamId`, value: JSON with `{ public, content_type, created_at }`.
  */
 async function isStreamPublic(kv: KVNamespace | undefined, doKey: string): Promise<boolean> {
   if (!kv) return false;
@@ -158,19 +158,13 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const isStreamRead = method === "GET" || method === "HEAD";
 
       // #region docs-authorize-request
-      // Auth callbacks receive doKey (projectId/streamId) so they can check project scope
+      // Auth callbacks receive doKey (projectId/streamId) so they can check project scope.
+      // For reads, public streams skip auth entirely (checked via KV before auth).
       if (isStreamRead && config?.authorizeRead && env.DEBUG_TESTING !== "1") {
-        const readAuth = await config.authorizeRead(request, doKey, env, timing);
-        if (!readAuth.ok) {
-          // On auth failure for reads, check if stream is public
-          if (readAuth.authFailed && env.REGISTRY) {
-            const pub = await isStreamPublic(env.REGISTRY, doKey);
-            if (!pub) {
-              return wrapAuthError(readAuth.response);
-            }
-          } else {
-            return wrapAuthError(readAuth.response);
-          }
+        const pub = await isStreamPublic(env.REGISTRY, doKey);
+        if (!pub) {
+          const readAuth = await config.authorizeRead(request, doKey, env, timing);
+          if (!readAuth.ok) return wrapAuthError(readAuth.response);
         }
       } else if (!isStreamRead && config?.authorizeMutation && env.DEBUG_TESTING !== "1") {
         const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
@@ -216,9 +210,14 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         ctx.waitUntil(cache.put(cacheKey, wrapped.clone()));
       }
 
-      // On successful PUT with X-Stream-Public: true, write public flag to KV
-      if (method === "PUT" && wrapped.status === 201 && request.headers.get("X-Stream-Public") === "true" && env.REGISTRY) {
-        ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify({ public: true })));
+      // On successful stream creation, write metadata to KV for edge lookups
+      if (method === "PUT" && wrapped.status === 201 && env.REGISTRY) {
+        const kvMeta = {
+          public: url.searchParams.get("public") === "true",
+          content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
+          created_at: Date.now(),
+        };
+        ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify(kvMeta)));
       }
 
       return attachTiming(wrapped, timing);

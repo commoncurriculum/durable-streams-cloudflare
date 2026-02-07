@@ -218,7 +218,7 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
       );
     }
 
-    // Clean up public stream flag from KV
+    // Clean up stream metadata from KV
     if (ctx.env.REGISTRY) {
       ctx.state.waitUntil(ctx.env.REGISTRY.delete(streamId).catch(() => {}));
     }

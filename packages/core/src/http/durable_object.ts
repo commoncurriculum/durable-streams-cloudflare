@@ -122,7 +122,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   private async deleteStreamData(streamId: string): Promise<void> {
     await this.storage.deleteStreamData(streamId);
-    // Clean up public stream flag from KV
+    // Clean up stream metadata from KV
     if (this.env.REGISTRY) {
       try {
         await this.env.REGISTRY.delete(streamId);

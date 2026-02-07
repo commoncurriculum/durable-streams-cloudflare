@@ -5,8 +5,10 @@ import {
   createRootRoute,
   Link,
   useMatches,
+  useNavigate,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useProjects } from "../lib/queries";
 import "../styles.css";
 
 const queryClient = new QueryClient({
@@ -26,24 +28,18 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <RootDocument>
-      <QueryClientProvider client={queryClient}>
-        <Outlet />
-      </QueryClientProvider>
-    </RootDocument>
-  );
-}
-
-function RootDocument({ children }: { children: React.ReactNode }) {
-  return (
     <html lang="en" className="dark">
       <head>
         <HeadContent />
       </head>
       <body className="min-h-screen bg-zinc-950 text-zinc-100 font-sans antialiased">
         <Header />
-        <Nav />
-        <main className="mx-auto max-w-7xl px-6 py-6">{children}</main>
+        <QueryClientProvider client={queryClient}>
+          <Nav />
+          <main className="mx-auto max-w-7xl px-6 py-6">
+            <Outlet />
+          </main>
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>
@@ -61,37 +57,113 @@ function Header() {
   );
 }
 
+function useCurrentProjectId(): string | undefined {
+  const matches = useMatches();
+  for (const match of matches) {
+    const params = match.params as Record<string, string>;
+    if (params.projectId) return params.projectId;
+  }
+  return undefined;
+}
+
+function useCurrentSubRoute(): "sessions" | "publish" | null {
+  const matches = useMatches();
+  const lastPath = matches[matches.length - 1]?.pathname ?? "/";
+  if (lastPath.includes("/publish")) return "publish";
+  if (lastPath.includes("/sessions")) return "sessions";
+  return null;
+}
+
 function Nav() {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
+  const projectId = useCurrentProjectId();
+  const subRoute = useCurrentSubRoute();
+  const navigate = useNavigate();
+  const { data: projects } = useProjects();
 
-  const links = [
-    { to: "/", label: "Overview" },
-    { to: "/projects", label: "Projects" },
-    { to: "/publish", label: "Publish" },
-  ] as const;
+  const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newProjectId = e.target.value;
+    if (!newProjectId) return;
+    const target = subRoute ?? "sessions";
+    navigate({
+      to: `/projects/$projectId/${target}`,
+      params: { projectId: newProjectId },
+    });
+  };
+
+  const sessionsTo = projectId
+    ? `/projects/${projectId}/sessions`
+    : undefined;
+  const publishTo = projectId
+    ? `/projects/${projectId}/publish`
+    : undefined;
 
   return (
-    <nav className="flex border-b border-zinc-800 px-6">
-      {links.map(({ to, label }) => {
-        const isActive =
-          to === "/"
-            ? currentPath === "/"
-            : currentPath.startsWith(to);
-        return (
+    <nav className="flex items-center border-b border-zinc-800 px-6">
+      <div className="flex">
+        <Link
+          to="/"
+          className={`border-b-2 px-5 py-2.5 text-sm transition-colors ${
+            currentPath === "/"
+              ? "border-blue-500 text-blue-400"
+              : "border-transparent text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          Overview
+        </Link>
+        {sessionsTo ? (
           <Link
-            key={to}
-            to={to}
+            to={sessionsTo}
             className={`border-b-2 px-5 py-2.5 text-sm transition-colors ${
-              isActive
+              currentPath.includes("/sessions")
                 ? "border-blue-500 text-blue-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            {label}
+            Sessions
           </Link>
-        );
-      })}
+        ) : (
+          <span className="border-b-2 border-transparent px-5 py-2.5 text-sm text-zinc-600 cursor-default">
+            Sessions
+          </span>
+        )}
+        {publishTo ? (
+          <Link
+            to={publishTo}
+            className={`border-b-2 px-5 py-2.5 text-sm transition-colors ${
+              currentPath.includes("/publish")
+                ? "border-blue-500 text-blue-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Publish
+          </Link>
+        ) : (
+          <span className="border-b-2 border-transparent px-5 py-2.5 text-sm text-zinc-600 cursor-default">
+            Publish
+          </span>
+        )}
+      </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        <label htmlFor="project-select" className="text-xs text-zinc-500">
+          Project:
+        </label>
+        <select
+          id="project-select"
+          value={projectId ?? ""}
+          onChange={handleProjectChange}
+          className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-blue-500"
+        >
+          <option value="">Select project...</option>
+          {projects?.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
     </nav>
   );
 }

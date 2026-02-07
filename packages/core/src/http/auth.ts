@@ -6,9 +6,7 @@ import type { Timing } from "../protocol/timing";
 
 export type AuthResult = { ok: true } | { ok: false; response: Response };
 
-export type ReadAuthResult =
-  | { ok: true }
-  | { ok: false; response: Response; authFailed?: boolean };
+export type ReadAuthResult = AuthResult;
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -212,31 +210,31 @@ export function projectJwtAuth(): {
     try {
       const token = extractBearerToken(request);
       if (!token) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
 
       const slashIndex = doKey.indexOf("/");
       if (slashIndex === -1) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
       }
       const projectId = doKey.substring(0, slashIndex);
 
       const config = await lookupProjectConfig(env.REGISTRY, projectId);
       if (!config) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
 
       const claims = await verifyProjectJwt(token, config.signingSecret);
       if (!claims) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
 
       if (claims.sub !== projectId) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
       }
 
       if (Date.now() >= claims.exp * 1000) {
-        return { ok: false, response: new Response("token expired", { status: 401 }), authFailed: true };
+        return { ok: false, response: new Response("token expired", { status: 401 }) };
       }
 
       // Read auth accepts both "write" and "read" scope
@@ -244,7 +242,7 @@ export function projectJwtAuth(): {
       if (claims.stream_id) {
         const streamPart = doKey.substring(slashIndex + 1);
         if (claims.stream_id !== streamPart) {
-          return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
+          return { ok: false, response: new Response("forbidden", { status: 403 }) };
         }
       }
 

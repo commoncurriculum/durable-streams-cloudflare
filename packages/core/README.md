@@ -140,16 +140,15 @@ npx durable-streams create-project
 
 ### Public Streams
 
-Individual streams can be made publicly readable (no auth required) by setting the `X-Stream-Public: true` header on stream creation:
+Individual streams can be made publicly readable (no auth required) by adding `?public=true` to the stream creation URL:
 
 ```bash
 curl -X PUT -H 'Content-Type: application/json' \
-  -H 'X-Stream-Public: true' \
   -H "Authorization: Bearer $JWT" \
-  $URL/v1/my-project/stream/public-feed
+  "$URL/v1/my-project/stream/public-feed?public=true"
 ```
 
-Public streams are readable without a token. Writes still require auth.
+Public streams are readable without a token. Writes still require auth. The public flag is immutable — to change it, delete and recreate the stream.
 
 ### No Auth
 

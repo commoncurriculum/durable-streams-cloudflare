@@ -9,6 +9,7 @@ import {
   inspectSession,
   inspectStreamSubscribers,
   getProjects,
+  getStreamMeta,
 } from "./analytics";
 
 export function useStats() {
@@ -89,5 +90,13 @@ export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => getProjects(),
+  });
+}
+
+export function useStreamMeta(projectId: string | undefined, streamId: string | undefined) {
+  return useQuery({
+    queryKey: ["streamMeta", projectId, streamId],
+    queryFn: () => getStreamMeta({ data: { projectId: projectId!, streamId: streamId! } }),
+    enabled: !!projectId && !!streamId,
   });
 }

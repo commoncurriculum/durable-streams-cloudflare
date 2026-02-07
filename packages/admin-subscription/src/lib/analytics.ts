@@ -202,6 +202,22 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
 });
 
+export type StreamMeta = {
+  public: boolean;
+  content_type: string;
+  created_at: number;
+};
+
+export const getStreamMeta = createServerFn({ method: "GET" })
+  .inputValidator((data: { projectId: string; streamId: string }) => data)
+  .handler(async ({ data: { projectId, streamId } }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) return null;
+    const value = await kv.get(`${projectId}/${streamId}`, "json");
+    if (!value || typeof value !== "object") return null;
+    return value as StreamMeta;
+  });
+
 export const createSession = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; sessionId: string }) => data)
   .handler(async ({ data: { projectId, sessionId } }) => {

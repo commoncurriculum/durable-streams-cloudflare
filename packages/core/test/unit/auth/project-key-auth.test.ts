@@ -251,13 +251,12 @@ describe("projectJwtAuth - authorizeRead", () => {
     if (!result.ok) expect(result.response.status).toBe(500);
   });
 
-  it("rejects with 401 and authFailed when no token", async () => {
+  it("rejects with 401 when no token", async () => {
     const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const result = await authorizeRead(makeRequest(), "myproject/test", { REGISTRY: kv }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(401);
-      expect((result as any).authFailed).toBe(true);
     }
   });
 
@@ -282,7 +281,6 @@ describe("projectJwtAuth - authorizeRead", () => {
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(403);
-      expect((result as any).authFailed).toBe(true);
     }
   });
 
@@ -293,13 +291,13 @@ describe("projectJwtAuth - authorizeRead", () => {
     expect(result).toHaveProperty("ok", true);
   });
 
-  it("sets authFailed flag on all auth failures", async () => {
+  it("rejects with 403 when sub does not match project", async () => {
     const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ sub: "wrong" }), SECRET);
     const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
-      expect((result as any).authFailed).toBe(true);
+      expect(result.response.status).toBe(403);
     }
   });
 });

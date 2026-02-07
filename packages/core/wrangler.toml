@@ -18,7 +18,7 @@ bucket_name = "durable-streams"
 binding = "METRICS"
 dataset = "durable_streams_metrics"
 
-# KV namespace for per-project signing secrets and public stream flags
+# KV namespace for per-project signing secrets and stream metadata
 [[kv_namespaces]]
 binding = "REGISTRY"
 id = "project-keys"

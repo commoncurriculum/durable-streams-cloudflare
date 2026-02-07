@@ -13,7 +13,7 @@ Assumptions
 
 All stream reads use shared caching — responses are cacheable across users.
 Auth is checked first; the cache key uses the URL only (`Authorization` is not part
-of the cache key). Public streams (created with `X-Stream-Public: true`) skip auth
+of the cache key). Public streams (created with `?public=true`) skip auth
 entirely for reads.
 
 ### Hot read (tail, long-poll)

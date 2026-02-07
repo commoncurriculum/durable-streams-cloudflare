@@ -1,19 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { sendSessionAction } from "../lib/analytics";
+import { useStreamMeta } from "../lib/queries";
 import { TextField } from "../components/ui/text-field";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/field";
 import { Input } from "react-aria-components";
 
-export const Route = createFileRoute("/publish")({
+const CONTENT_TYPES = [
+  "application/json",
+  "text/plain",
+  "application/octet-stream",
+  "text/html",
+];
+
+export const Route = createFileRoute("/projects/$projectId/publish")({
   component: PublishPage,
 });
 
 function PublishPage() {
-  const [projectId, setProjectId] = useState("");
+  const { projectId } = Route.useParams();
   const [streamId, setStreamId] = useState("");
+  const [contentType, setContentType] = useState("application/json");
   const [body, setBody] = useState('{"hello":"world"}');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{
@@ -21,18 +30,27 @@ function PublishPage() {
     message: string;
   } | null>(null);
 
+  const debouncedStreamId = useDebounced(streamId.trim(), 500);
+  const { data: streamMeta } = useStreamMeta(projectId, debouncedStreamId);
+
+  useEffect(() => {
+    if (streamMeta?.content_type) {
+      setContentType(streamMeta.content_type);
+    }
+  }, [streamMeta?.content_type]);
+
   const handleSend = useCallback(async () => {
-    if (!projectId.trim() || !streamId.trim()) return;
+    if (!streamId.trim()) return;
     setSending(true);
     setResult(null);
     try {
       const res = await sendSessionAction({
         data: {
           action: "publish",
-          projectId: projectId.trim(),
+          projectId,
           streamId: streamId.trim(),
           body,
-          contentType: "application/json",
+          contentType,
         },
       });
       setResult({
@@ -47,19 +65,11 @@ function PublishPage() {
     } finally {
       setSending(false);
     }
-  }, [projectId, streamId, body]);
+  }, [projectId, streamId, body, contentType]);
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <h2 className="text-lg font-semibold">Publish to Stream</h2>
-
-      <TextField value={projectId} onChange={setProjectId}>
-        <Label>Project ID</Label>
-        <Input
-          placeholder="my-project"
-          className="mt-2 block w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm text-fg placeholder:text-muted-fg outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20"
-        />
-      </TextField>
 
       <TextField value={streamId} onChange={setStreamId}>
         <Label>Stream ID</Label>
@@ -69,6 +79,27 @@ function PublishPage() {
         />
       </TextField>
 
+      <div className="space-y-2">
+        <label
+          htmlFor="content-type-select"
+          className="text-sm font-medium text-fg"
+        >
+          Content Type
+        </label>
+        <select
+          id="content-type-select"
+          value={contentType}
+          onChange={(e) => setContentType(e.target.value)}
+          className="block w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm text-fg outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20"
+        >
+          {CONTENT_TYPES.map((ct) => (
+            <option key={ct} value={ct}>
+              {ct}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <TextField value={body} onChange={setBody}>
         <Label>Message Body</Label>
         <Textarea rows={4} className="mt-2 font-mono" />
@@ -77,7 +108,7 @@ function PublishPage() {
       <Button
         intent="primary"
         className="w-full"
-        isDisabled={sending || !projectId.trim() || !streamId.trim()}
+        isDisabled={sending || !streamId.trim()}
         onPress={handleSend}
       >
         {sending ? "Sending..." : "Send"}
@@ -96,4 +127,13 @@ function PublishPage() {
       )}
     </div>
   );
+}
+
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
 }

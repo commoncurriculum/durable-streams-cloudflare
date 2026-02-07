@@ -100,7 +100,15 @@ describe("admin-subscription integration", () => {
     }
   });
 
-  it("sessions page renders a Create Session button", async () => {
+  it("overview page renders with project dropdown", async () => {
+    const res = await fetch(adminUrl);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("project-select");
+    expect(html).toContain("Select project...");
+  });
+
+  it("sessions page renders at project-scoped URL", async () => {
     const res = await fetch(`${adminUrl}/projects/${PROJECT_ID}/sessions`);
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -118,13 +126,15 @@ describe("admin-subscription integration", () => {
     expect(html).toContain(sessionId);
   });
 
-  it("publish page renders the form", async () => {
-    const res = await fetch(`${adminUrl}/publish`);
+  it("publish page renders at project-scoped URL with content type", async () => {
+    const res = await fetch(`${adminUrl}/projects/${PROJECT_ID}/publish`);
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Publish to Stream");
-    expect(html).toContain("Project ID");
+    expect(html).toContain("Content Type");
     expect(html).toContain("Stream ID");
     expect(html).toContain("Message Body");
+    expect(html).toContain("application/json");
+    expect(html).toContain("text/plain");
   });
 });
