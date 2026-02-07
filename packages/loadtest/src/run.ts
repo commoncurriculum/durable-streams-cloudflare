@@ -184,6 +184,7 @@ interface WorkerSummary {
   eventsReceived: number;
   batches: number;
   errors: number;
+  errorMessage?: string;
   cacheHeaders: Record<string, number>;
   deliveryLatency: {
     avg: number;
@@ -386,6 +387,16 @@ async function runDistributed(coreUrl: string) {
   console.log(`    total events: ${totalEvents}`);
   console.log(`    total batches: ${totalBatches}`);
   console.log(`    total errors:  ${totalErrors}`);
+
+  const errorMessages = summaries.filter((s) => s.errorMessage).map((s) => s.errorMessage!);
+  if (errorMessages.length > 0) {
+    const unique = [...new Set(errorMessages)];
+    console.log(`    error details:`);
+    for (const msg of unique) {
+      const count = errorMessages.filter((m) => m === msg).length;
+      console.log(`      (${count}x) ${msg}`);
+    }
+  }
 
   if (allLatencies.length > 0) {
     console.log(`\n  EVENT DELIVERY LATENCY (weighted across workers)`);

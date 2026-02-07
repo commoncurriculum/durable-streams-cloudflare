@@ -26,6 +26,7 @@ interface WorkerSummary {
   eventsReceived: number;
   batches: number;
   errors: number;
+  errorMessage?: string;
   cacheHeaders: Record<string, number>;
   deliveryLatency: {
     avg: number;
@@ -82,6 +83,7 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   let eventsReceived = 0;
   let batches = 0;
   let errors = 0;
+  let errorMessage: string | undefined;
   const cacheHeaders: Record<string, number> = {};
   const latencySamples: number[] = [];
   const MAX_SAMPLES = 10_000;
@@ -129,9 +131,13 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
       signal: abortController.signal,
       headers,
       fetch: trackingFetch,
+      json: true,
     });
 
-    await res.subscribeJson(async (batch) => {
+    // subscribeJson returns an unsubscribe function synchronously.
+    // We need to keep the Worker alive until the abort fires, so we
+    // await res.closed (a Promise that resolves when the stream ends).
+    res.subscribeJson(async (batch) => {
       const now = Date.now();
       batches++;
       let batchLatency = 0;
@@ -162,11 +168,15 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
         abortController.abort();
       }
     });
+
+    // Keep alive until the stream closes (via abort or server close)
+    await res.closed;
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       // Expected — duration elapsed
     } else {
       errors++;
+      errorMessage = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     }
   } finally {
     clearTimeout(timeout);
@@ -178,6 +188,7 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     eventsReceived,
     batches,
     errors,
+    errorMessage,
     cacheHeaders,
     deliveryLatency: {
       avg: eventsReceived > 0 ? Math.round(latencyTotal / eventsReceived) : 0,
