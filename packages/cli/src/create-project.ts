@@ -1,21 +1,25 @@
 import * as p from "@clack/prompts";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
 
 function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdout: string; stderr: string } {
-  try {
-    const stdout = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
-      input: opts?.input,
-    }).trim();
-    return { ok: true, stdout, stderr: "" };
-  } catch (e: unknown) {
-    const err = e as Error & { stdout?: string; stderr?: string };
-    return { ok: false, stdout: err.stdout?.trim() ?? "", stderr: err.stderr?.trim() ?? "" };
-  }
+  const result = spawnSync(cmd, {
+    encoding: "utf-8",
+    stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+    input: opts?.input,
+    shell: true,
+  });
+  return {
+    ok: result.status === 0,
+    stdout: (result.stdout ?? "").trim(),
+    stderr: (result.stderr ?? "").trim(),
+  };
 }
 
 function cancelled(): never {
@@ -36,7 +40,7 @@ function generateSigningSecret(): string {
 }
 
 export async function createProject() {
-  p.intro("Durable Streams — Create Project");
+  p.intro(`Durable Streams — Create Project v${VERSION}`);
 
   const wranglerCmd = detectWrangler();
   if (!wranglerCmd) {

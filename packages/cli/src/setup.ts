@@ -1,8 +1,12 @@
 import * as p from "@clack/prompts";
 import { execSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,6 +168,10 @@ compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
 
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js"]
+
 [assets]
 directory = "dist/client"
 
@@ -186,6 +194,10 @@ main = "dist/server/index.js"
 compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
+
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js"]
 
 [assets]
 directory = "dist/client"
@@ -235,7 +247,7 @@ function parseDeployedUrl(output: string): string | null {
 // ---------------------------------------------------------------------------
 
 export async function setup() {
-  p.intro("Durable Streams — Setup Wizard");
+  p.intro(`Durable Streams — Setup Wizard v${VERSION}`);
 
   // -----------------------------------------------------------------------
   // Step 1: Preflight

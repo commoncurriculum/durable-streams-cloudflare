@@ -1,5 +1,41 @@
 # @durable-streams-cloudflare/cli
 
+## 0.3.7
+
+### Patch Changes
+
+- Fix admin package resolution: use exported ./worker path instead of ./package.json
+
+## 0.3.6
+
+### Patch Changes
+
+- Use require.resolve to find admin package paths through pnpm symlinks before copying dist files
+
+## 0.3.5
+
+### Patch Changes
+
+- Copy admin dist files into worker directories instead of referencing through node_modules symlinks
+
+## 0.3.4
+
+### Patch Changes
+
+- Install admin packages in their own worker directories so wrangler can find them
+
+## 0.3.3
+
+### Patch Changes
+
+- Fix admin wrangler.toml paths to resolve node_modules from project root
+
+## 0.3.2
+
+### Patch Changes
+
+- Fix KV namespace ID auto-detection (check stderr), extract magic strings into constants, show R2 bucket name in output
+
 ## 0.3.1
 
 ### Patch Changes
