@@ -25,8 +25,9 @@ Client
 - Validate requests and protocol headers.
 - Assign offsets and enforce ordering.
 - Enforce idempotent producers (`Producer-Id/Epoch/Seq`).
-- Serve catch-up reads, long-poll, and SSE from the stream log.
-- Maintain in-memory waiters for live reads.
+- Serve catch-up reads and long-poll from the stream log.
+- Handle internal WebSocket connections from edge workers (Hibernation API).
+- Broadcast new data to all connected WebSocket, SSE, and long-poll clients on writes.
 
 ## SQLite Schema (per-stream)
 ```sql
@@ -112,7 +113,14 @@ CREATE TABLE segments (
    - `Stream-Up-To-Date` when at tail
    - `Stream-Closed` when closed and at tail
 
-## Long-Poll Flow
+## Real-Time Delivery
+
+### SSE via Internal WebSocket Bridge
+SSE connections use an internal WebSocket bridge between the edge worker and the DO. The edge worker opens a WebSocket to the DO using the Hibernation API (`?live=ws-internal`), then bridges WebSocket messages to SSE events for the client. This allows the DO to hibernate between writes — only waking when a POST/PUT/DELETE arrives — while the client sees standard SSE events.
+
+The bridge preserves zero additional latency for live push: when a write arrives, the DO broadcasts to all WebSocket clients before returning to hibernation. The edge worker immediately translates the WebSocket message to an SSE event.
+
+### Long-Poll
 - Responses include protocol-correct `Cache-Control: public, max-age=20` headers.
 - DO-level in-flight coalescing and recent-read cache (100ms, auto-invalidating) deduplicate concurrent requests.
 
@@ -127,12 +135,18 @@ CREATE TABLE segments (
 - SQLite commit guarantees atomic append and producer state update.
 - Read-your-writes is guaranteed after commit.
 
+## DO Hibernation and Cost
+
+The internal WebSocket bridge enables DO hibernation between writes. Cloudflare does not bill for duration while a DO is hibernating — only hibernatable WebSocket connections remain, with no active requests, timers, or in-progress fetches. The DO wakes only when a write (POST/PUT/DELETE) arrives, processes it, broadcasts to WebSocket clients, and returns to hibernation.
+
+Edge workers are billed on CPU time, not wall clock. Holding an idle SSE stream and idle WebSocket costs $0. This reduces DO duration billing by ~99% for read-heavy workloads.
+
 ## Latency Target (50ms)
 Hitting ~50ms end-to-end (server -> client) is possible only when clients are geographically close to the compute and storage path for that document. For global users, design for **per-region** 50ms rather than global 50ms.
 
 Practical implications:
 - **Per-document locality**: pin each document to a primary region and keep the entire write path (Worker -> DO -> SQLite) within that region.
 - **Single round-trip in the hot path**: the ACK path should be exactly one DO SQLite transaction and no additional cross-region calls.
-- **Persistent connections**: keep SSE connections open to avoid re-handshakes.
+- **Persistent connections**: keep SSE connections open to avoid re-handshakes. The internal WebSocket bridge maintains persistent connections at the edge while allowing the DO to hibernate.
 - **Micro-batching**: coalesce keystrokes into 5–20ms batches to reduce per-append overhead.
 - **Optimistic UI**: render local ops immediately; reconcile on ACK to mask network variance.

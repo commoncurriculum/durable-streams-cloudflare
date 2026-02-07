@@ -63,7 +63,7 @@ curl -N -H "Authorization: Bearer <JWT>" \
 
 | Package | What |
 |---------|------|
-| [`@durable-streams-cloudflare/core`](packages/core/) | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE. |
+| [`@durable-streams-cloudflare/core`](packages/core/) | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE (via internal WebSocket bridge for DO hibernation). |
 | [`@durable-streams-cloudflare/subscription`](packages/subscription/) | Pub/sub fan-out. Session streams, subscribe/publish, TTL cleanup, Analytics Engine metrics. |
 | [`@durable-streams-cloudflare/admin-core`](packages/admin-core/) | Admin dashboard for core streams. |
 | [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Admin dashboard for subscriptions. |

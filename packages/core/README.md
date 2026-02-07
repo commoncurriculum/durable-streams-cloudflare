@@ -10,7 +10,7 @@ This is a **library** — you import `createStreamWorker()`, pass your auth conf
 - **SQLite hot log** — low-latency writes via DO transactional storage
 - **R2 cold segments** — automatic rotation of historical data to immutable R2 objects
 - **Protocol-correct caching** — Cache-Control headers per Durable Streams spec, external CDN-friendly
-- **Long-poll + SSE** — real-time delivery with catch-up reads
+- **Long-poll + SSE** — real-time delivery with catch-up reads, SSE via internal WebSocket bridge for DO hibernation
 - **JSON mode** — array flattening, JSON validation, message-count offsets
 - **TTL / Expires-At** — stream-level time-to-live enforcement
 - **Idempotent producers** — epoch/seq-based duplicate detection
@@ -244,6 +244,7 @@ Write Path
                      │
                    SQLite hot log (transactional append)
                      │
+                     ├──> broadcast to WebSocket/SSE/long-poll clients
                      └──> R2 rotation (when segment full)
 
 Read Path
@@ -253,7 +254,23 @@ Read Path
                    StreamDO
                      ├── hot log (SQLite) → recent messages
                      └── cold segment (R2) → historical messages
+
+SSE Live Path (Internal WebSocket Bridge)
+  Client ←──SSE──── Edge Worker ←──WebSocket (Hibernation API)──── StreamDO
+                    (bridges WS            (sleeps between writes,
+                     msgs to SSE)           wakes on POST/PUT/DELETE)
 ```
+
+### How SSE Works
+
+SSE connections use an internal WebSocket bridge to enable DO hibernation:
+
+1. Client requests `?live=sse` — the edge worker opens an internal WebSocket to the DO
+2. The DO sends catch-up data over the WebSocket, then hibernates
+3. On new writes, the DO wakes, broadcasts to all WebSocket clients, and hibernates again
+4. The edge worker translates WebSocket messages to SSE events for the client
+
+This keeps SSE as the client-facing protocol (standard `EventSource` works unchanged) while allowing the DO to hibernate between writes. Edge workers are billed on CPU time — holding an idle SSE stream + idle WebSocket costs $0.
 
 ## See Also
 

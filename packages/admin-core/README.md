@@ -9,7 +9,7 @@ Connects to the core worker via service binding. Reads metrics from Analytics En
 The admin dashboard has three views:
 
 - **Overview** — stream activity stats, throughput timeseries chart, hot streams, full stream list
-- **Inspect** — drill into a specific stream to see metadata, ops count, R2 segments, producer state, and real-time client counts (SSE/long-poll)
+- **Inspect** — drill into a specific stream to see metadata, ops count, R2 segments, producer state, and real-time client counts (WebSocket/SSE/long-poll)
 - **Test** — create streams and append messages directly from the browser, with a live SSE event log
 
 ## Tech Stack

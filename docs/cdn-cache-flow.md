@@ -8,6 +8,7 @@ The edge worker (`create_worker.ts`) handles:
 - **Auth** (JWT verification, public stream bypass via KV)
 - **Edge caching** via the Cloudflare Cache API (`caches.default`)
 - **Routing** to the correct Durable Object (on cache miss)
+- **SSE-via-WebSocket bridge** for `?live=sse` requests (opens internal WebSocket to DO, bridges to SSE)
 - **KV metadata** on stream creation
 - **Server-Timing** headers (when debug is enabled)
 
@@ -29,7 +30,7 @@ Only **immutable mid-stream reads** are cached — responses where `Stream-Up-To
 | `GET ?offset=X&live=long-poll` (200, at tail) | No | — | 20s | Mutable — could become stale |
 | `GET ?offset=X&live=long-poll` (204 timeout) | No | — | — | Protocol: don't cache timeouts |
 | `GET ?offset=now` | No | — | no-store | Cursor bootstrap, must be fresh |
-| `GET ?live=sse` | No | — | — | Streaming, not cacheable |
+| `GET ?live=sse` | No | — | — | Streaming via internal WS bridge, not cacheable |
 | `HEAD` | No | — | — | Not a GET |
 | `POST/PUT/DELETE` | No | — | — | Mutations |
 
@@ -97,7 +98,7 @@ This collapses bursts of identical requests at the DO level without risking stal
 
 | Layer | Role |
 |-------|------|
-| Edge worker | Auth + CORS + edge cache + routing |
+| Edge worker | Auth + CORS + edge cache + routing + SSE-via-WebSocket bridge |
 | Edge cache (caches.default) | Per-PoP cache for immutable mid-stream reads, ETag revalidation |
 | Durable Object | Sets `Cache-Control` + `ETag` headers per protocol |
 | ReadPath coalescing | DO-level request dedup (100ms, auto-invalidating) |
