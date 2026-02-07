@@ -19,8 +19,8 @@ npx @durable-streams-cloudflare/cli setup
 The wizard will:
 - Ask which components to deploy (core, subscription, admin dashboards)
 - Create an R2 bucket and KV namespace for you
-- Scaffold worker files into `workers/`
-- Install npm packages
+- Set up a pnpm workspace with per-worker packages in `workers/`
+- Install dependencies with a single `pnpm install`
 - Deploy everything to Cloudflare
 
 Then create your first project (this generates a JWT signing secret for auth):

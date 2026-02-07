@@ -227,6 +227,58 @@ enabled = true
 }
 
 // ---------------------------------------------------------------------------
+// Workspace templates
+// ---------------------------------------------------------------------------
+
+function rootPackageJson(opts: { dirName: string; components: string[] }): string {
+  const devCmds: string[] = [];
+  if (opts.components.includes("core")) devCmds.push("pnpm -C workers/streams run dev");
+  if (opts.components.includes("subscription")) devCmds.push("pnpm -C workers/subscriptions run dev");
+  if (opts.components.includes("admin-core")) devCmds.push("pnpm -C workers/admin-core run dev");
+  if (opts.components.includes("admin-subscription")) devCmds.push("pnpm -C workers/admin-subscription run dev");
+
+  const pkg: Record<string, unknown> = {
+    name: opts.dirName,
+    private: true,
+    scripts: {
+      ...(devCmds.length > 0 ? { dev: devCmds.join(" & ") + " & wait" } : {}),
+      deploy: "pnpm -r run deploy",
+    },
+    devDependencies: {
+      wrangler: "^4.0.0",
+    },
+  };
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
+function pnpmWorkspaceYaml(): string {
+  return "packages:\n  - workers/*\n";
+}
+
+function workerPackageJson(opts: {
+  name: string;
+  dependency: string;
+  port: number;
+  inspectorPort?: number;
+}): string {
+  const devCmd = opts.inspectorPort
+    ? `wrangler dev --local --port ${opts.port} --inspector-port ${opts.inspectorPort}`
+    : `wrangler dev --local --port ${opts.port}`;
+  const pkg: Record<string, unknown> = {
+    name: opts.name,
+    private: true,
+    scripts: {
+      dev: devCmd,
+      deploy: "wrangler deploy",
+    },
+    dependencies: {
+      [opts.dependency]: "*",
+    },
+  };
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
+// ---------------------------------------------------------------------------
 // Secret helper
 // ---------------------------------------------------------------------------
 
@@ -384,8 +436,8 @@ export async function setup() {
     workerNames.join("\n") + "\n\n" +
     "This will:\n" +
     "  - Create an R2 bucket and KV namespace on Cloudflare\n" +
-    "  - Scaffold worker files into workers/\n" +
-    "  - Install npm packages\n" +
+    "  - Set up a pnpm workspace with workers/ packages\n" +
+    "  - Install dependencies\n" +
     "  - Deploy all workers above",
     "Ready to go"
   );
@@ -459,7 +511,7 @@ export async function setup() {
   // -----------------------------------------------------------------------
   // Step 4: Scaffold files
   // -----------------------------------------------------------------------
-  p.log.step("Scaffolding worker files into workers/");
+  p.log.step("Setting up pnpm workspace");
 
   // Create project directory if needed
   if (dirChoice === "new") {
@@ -471,9 +523,17 @@ export async function setup() {
   // Check for existing files
   const filesToWrite: Array<{ path: string; content: string }> = [];
 
+  // Root workspace files
+  const dirName = projectDir.split("/").pop() ?? "durable-streams-project";
+  filesToWrite.push(
+    { path: join(projectDir, "package.json"), content: rootPackageJson({ dirName, components }) },
+    { path: join(projectDir, "pnpm-workspace.yaml"), content: pnpmWorkspaceYaml() },
+  );
+
   // Core
   if (includeCore) {
     filesToWrite.push(
+      { path: join(workersDir, "streams", "package.json"), content: workerPackageJson({ name: "streams", dependency: "@durable-streams-cloudflare/core", port: 8787, inspectorPort: 9229 }) },
       { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
       { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
     );
@@ -482,6 +542,7 @@ export async function setup() {
   // Subscription
   if (includeSubscription) {
     filesToWrite.push(
+      { path: join(workersDir, "subscriptions", "package.json"), content: workerPackageJson({ name: "subscriptions", dependency: "@durable-streams-cloudflare/subscription", port: 8788, inspectorPort: 9230 }) },
       { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs() },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
@@ -490,16 +551,18 @@ export async function setup() {
     );
   }
 
-  // Admin core — wrangler.toml only (pre-built package, no source files needed)
+  // Admin core — wrangler.toml + package.json (pre-built package, no source files needed)
   if (includeAdminCore) {
     filesToWrite.push(
+      { path: join(workersDir, "admin-core", "package.json"), content: workerPackageJson({ name: "admin-core", dependency: "@durable-streams-cloudflare/admin-core", port: 8790 }) },
       { path: join(workersDir, "admin-core", "wrangler.toml"), content: adminCoreWranglerToml({ kvNamespaceId }) },
     );
   }
 
-  // Admin subscription — wrangler.toml only (pre-built package, no source files needed)
+  // Admin subscription — wrangler.toml + package.json (pre-built package, no source files needed)
   if (includeAdminSubscription) {
     filesToWrite.push(
+      { path: join(workersDir, "admin-subscription", "package.json"), content: workerPackageJson({ name: "admin-subscription", dependency: "@durable-streams-cloudflare/admin-subscription", port: 8789 }) },
       { path: join(workersDir, "admin-subscription", "wrangler.toml"), content: adminSubscriptionWranglerToml({ kvNamespaceId }) },
     );
   }
@@ -529,43 +592,20 @@ export async function setup() {
   }
 
   // -----------------------------------------------------------------------
-  // Step 5: Install npm dependencies
+  // Step 5: Install dependencies (single pnpm install for the workspace)
   // -----------------------------------------------------------------------
   const installSpinner = p.spinner();
-  installSpinner.start("Installing npm dependencies");
+  installSpinner.start("Installing dependencies");
 
-  // Core + subscription install at project root (imported via src/worker.ts)
-  const rootPackages: string[] = [];
-  if (includeCore) rootPackages.push("@durable-streams-cloudflare/core");
-  if (includeSubscription) rootPackages.push("@durable-streams-cloudflare/subscription");
-
-  if (rootPackages.length > 0) {
-    const installResult = runMayFail(`cd ${projectDir} && pnpm add ${rootPackages.join(" ")}`);
-    if (!installResult.ok) {
-      installSpinner.stop("Install failed");
-      p.log.error(`Failed to install packages:\n${installResult.stderr}`);
-      process.exit(1);
-    }
+  const installResult = runMayFail(`cd "${projectDir}" && pnpm install`);
+  if (!installResult.ok) {
+    installSpinner.stop("Install failed");
+    p.log.error(`Failed to install packages:\n${installResult.stderr}`);
+    process.exit(1);
   }
 
-  // Admin packages: install at root then copy dist/ into worker directories.
+  // Admin packages: copy dist/ into worker directories.
   // Wrangler with no_bundle can't traverse pnpm symlinks, so we need real files.
-  const adminPackages: string[] = [];
-  if (includeAdminCore) adminPackages.push("@durable-streams-cloudflare/admin-core");
-  if (includeAdminSubscription) adminPackages.push("@durable-streams-cloudflare/admin-subscription");
-
-  if (adminPackages.length > 0) {
-    const result = runMayFail(`cd ${projectDir} && pnpm add ${adminPackages.join(" ")}`);
-    if (!result.ok) {
-      installSpinner.stop("Install failed");
-      p.log.error(`Failed to install admin packages:\n${result.stderr}`);
-      process.exit(1);
-    }
-  }
-
-  // Copy dist/ from the resolved package location (follows pnpm symlinks).
-  // The packages export "./worker" → "./dist/server/index.js", so we resolve
-  // that and walk up two levels to get the dist/ directory.
   for (const [flag, pkg, dir] of [
     [includeAdminCore, "@durable-streams-cloudflare/admin-core", "admin-core"],
     [includeAdminSubscription, "@durable-streams-cloudflare/admin-subscription", "admin-subscription"],
