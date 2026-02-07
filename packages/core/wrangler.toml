@@ -1,7 +1,7 @@
 name = "durable-streams"
 main = "src/http/worker.ts"
 compatibility_date = "2026-02-02"
-compatibility_flags = ["allow_eval_during_startup", "brotli_content_encoding"]
+compatibility_flags = []
 
 [durable_objects]
 bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
