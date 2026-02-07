@@ -27,6 +27,12 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     return this.#handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
   }
 
+  // RPC: register a project's signing secret in core's REGISTRY KV
+  // Called by admin workers so core can verify JWTs for browser SSE connections
+  async registerProject(projectId: string, signingSecret: string): Promise<void> {
+    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecret }));
+  }
+
   // RPC: stream inspection (replaces /admin HTTP endpoint)
   async inspectStream(doKey: string): Promise<StreamIntrospection | null> {
     const stub = this.env.STREAMS.getByName(doKey);

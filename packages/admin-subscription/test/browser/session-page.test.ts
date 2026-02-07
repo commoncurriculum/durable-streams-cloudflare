@@ -48,11 +48,11 @@ test("SSE badge shows connected after creating a project and session", async ({
   await page.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
   );
-  await page.waitForLoadState("networkidle");
 
-  // The SseStatusBadge renders the status as text content in a <span>
-  // Wait up to 10s for the badge to show "connected"
-  const badge = page.locator("text=connected").first();
+  // The SseStatusBadge renders the status as exact text in a <span>
+  // Use exact matching to distinguish "connected" from "disconnected".
+  // Don't use networkidle — the SSE connection keeps the network active.
+  const badge = page.getByText("connected", { exact: true });
   await expect(badge).toBeVisible({ timeout: 10_000 });
 });
 
@@ -62,7 +62,9 @@ test("subscribe action message does not misleadingly show 200 OK", async ({
   await page.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
   );
-  await page.waitForLoadState("networkidle");
+
+  // Wait for the page to render the action buttons (SSE keeps network active)
+  await page.waitForSelector('button:has-text("Send")', { timeout: 10_000 });
 
   // Subscribe is the default action. Fill in a stream ID.
   const streamInput = page.locator('input[placeholder="my-stream"]');
@@ -95,7 +97,9 @@ test("publishing to a subscribed stream shows events in the session log", async 
   await page.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
   );
-  await page.waitForLoadState("networkidle");
+
+  // Wait for the page to render (SSE keeps network active)
+  await page.waitForSelector('button:has-text("Send")', { timeout: 10_000 });
 
   // Subscribe to the stream first
   const streamInput = page.locator('input[placeholder="my-stream"]');
@@ -129,9 +133,9 @@ test("publishing to a subscribed stream shows events in the session log", async 
   await page.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
   );
-  await page.waitForLoadState("networkidle");
 
   // Wait up to 10s for a data event to appear in the log
+  // Don't use networkidle — the SSE connection keeps the network active
   const dataEvent = page
     .locator('[class*="bg-zinc-800"]')
     .filter({ hasText: "data" })

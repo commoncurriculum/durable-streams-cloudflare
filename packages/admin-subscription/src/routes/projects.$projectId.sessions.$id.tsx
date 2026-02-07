@@ -36,7 +36,7 @@ function SessionDetailPage() {
     projectId,
     streamKey: id,
     token: tokenData?.token,
-    enabled: !!data,
+    enabled: !!data && !!tokenData?.token,
   });
 
   const handleSend = useCallback(async () => {
@@ -64,10 +64,23 @@ function SessionDetailPage() {
       }
 
       const result = await sendSessionAction({ data: payload });
-      addEvent(
-        "control",
-        `${action.toUpperCase()} => ${result.status} ${result.statusText}`,
-      );
+      const body = result.body as Record<string, unknown> | undefined;
+      let message: string;
+      switch (action) {
+        case "subscribe":
+          message = `Subscribed to ${(body?.streamId as string) ?? streamIdInput}`;
+          break;
+        case "unsubscribe":
+          message = `Unsubscribed from ${streamIdInput}`;
+          break;
+        case "touch":
+          message = "Session touched";
+          break;
+        case "delete":
+          message = "Session deleted";
+          break;
+      }
+      addEvent("control", message);
     } catch (e) {
       addEvent("error", e instanceof Error ? e.message : String(e));
     } finally {

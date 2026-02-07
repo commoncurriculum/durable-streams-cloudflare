@@ -197,6 +197,11 @@ export const createProject = createServerFn({ method: "POST" })
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
     await kv.put(projectId, JSON.stringify({ signingSecret: secret }));
+    // Also register in core's KV so core can verify JWTs for browser SSE connections
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (core) {
+      await core.registerProject(projectId, secret);
+    }
     return { ok: true, signingSecret: secret };
   });
 

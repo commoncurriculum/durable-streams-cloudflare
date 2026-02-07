@@ -1,4 +1,4 @@
-import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 import net from "node:net";
 import fs from "node:fs";

@@ -77,12 +77,11 @@ describe("admin-subscription smoke", () => {
     expect(html).toContain("Create Session");
   });
 
-  it("GET /publish renders the publish form", async () => {
-    const res = await fetch(`${BASE_URL}/publish`);
+  it("GET /projects/:id/publish renders the publish form", async () => {
+    const res = await fetch(`${BASE_URL}/projects/test-project/publish`);
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Publish to Stream");
-    expect(html).toContain("Project ID");
     expect(html).toContain("Stream ID");
     expect(html).toContain("Message Body");
     expect(html).toContain("Send");
