@@ -47,6 +47,7 @@ export async function startWorker(options?: {
   port?: number;
   persistDir?: string;
   vars?: Record<string, string>;
+  useProductionAuth?: boolean;
 }): Promise<WorkerHandle> {
   const port = options?.port ?? (await getAvailablePort());
   const persistDir = options?.persistDir ?? (await createPersistDir());
@@ -56,6 +57,10 @@ export async function startWorker(options?: {
   for (const [key, value] of Object.entries(vars)) {
     extraVars.push("--var", `${key}:${value}`);
   }
+
+  // Use wrangler.test.toml (auth-free worker) by default.
+  // When useProductionAuth is true, use production wrangler.toml (has JWT auth).
+  const configArgs = options?.useProductionAuth ? [] : ["--config", "wrangler.test.toml"];
 
   const child = spawn(
     "pnpm",
@@ -68,6 +73,7 @@ export async function startWorker(options?: {
       String(port),
       "--var",
       "DEBUG_COALESCE:1",
+      ...configArgs,
       ...extraVars,
       "--persist-to",
       persistDir,

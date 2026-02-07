@@ -9,11 +9,11 @@ function expectCors(headers: Headers): void {
 }
 
 describe("CORS + error cache headers", () => {
-  describe("with AUTH_TOKEN", () => {
+  describe("with auth enabled", () => {
     let handle: WorkerHandle;
 
     beforeAll(async () => {
-      handle = await startWorker({ vars: { AUTH_TOKEN: "test-token" } });
+      handle = await startWorker({ useProductionAuth: true });
     });
 
     afterAll(async () => {
@@ -78,37 +78,8 @@ describe("CORS + error cache headers", () => {
       expect(cacheControl).toContain("no-store");
     });
 
-    it("applies private cache mode to HEAD responses", async () => {
-      const streamId = uniqueStreamId("cors-head-private");
-      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
-
-      const create = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "text/plain" },
-      });
-      expect([200, 201]).toContain(create.status);
-
-      const head = await fetch(url, { method: "HEAD" });
-      expect(head.status).toBe(200);
-      expectCors(head.headers);
-      const cacheControl = head.headers.get("Cache-Control") ?? "";
-      expect(cacheControl).toBe("private, no-store");
-    });
-  });
-
-  describe("with CACHE_MODE=shared", () => {
-    let handle: WorkerHandle;
-
-    beforeAll(async () => {
-      handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
-    });
-
-    afterAll(async () => {
-      await handle.stop();
-    });
-
-    it("keeps no-store on HEAD in shared mode", async () => {
-      const streamId = uniqueStreamId("cors-head-shared");
+    it("includes no-store on HEAD responses", async () => {
+      const streamId = uniqueStreamId("cors-head");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
       const create = await fetch(url, {

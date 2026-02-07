@@ -5,7 +5,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     return async () => {};
   }
 
-  const handle = await startWorker({ vars: { DEBUG_TESTING: "1" } });
+  const handle = await startWorker();
   process.env.CONFORMANCE_TEST_URL = handle.baseUrl;
 
   return async () => {

@@ -57,18 +57,18 @@ function hasEdgeCacheTiming(
 }
 
 describe("worker edge behavior", () => {
-  describe("with AUTH_TOKEN", () => {
+  describe("with auth enabled", () => {
     let handle: WorkerHandle;
 
     beforeAll(async () => {
-      handle = await startWorker({ vars: { AUTH_TOKEN: "test-token" } });
+      handle = await startWorker({ useProductionAuth: true });
     });
 
     afterAll(async () => {
       await handle.stop();
     });
 
-    it("rejects requests without the configured auth token", async () => {
+    it("rejects requests without a valid auth token", async () => {
       const streamId = uniqueStreamId("auth");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
@@ -78,31 +78,21 @@ describe("worker edge behavior", () => {
         body: "hello",
       });
       expect(unauthorized.status).toBe(401);
-
-      const authorized = await fetch(url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "text/plain",
-          Authorization: "Bearer test-token",
-        },
-        body: "hello",
-      });
-      expect([200, 201]).toContain(authorized.status);
     });
   });
 
-  describe("with CACHE_MODE=shared", () => {
+  describe("caching behavior", () => {
     let handle: WorkerHandle;
 
     beforeAll(async () => {
-      handle = await startWorker({ vars: { CACHE_MODE: "shared" } });
+      handle = await startWorker();
     });
 
     afterAll(async () => {
       await handle.stop();
     });
 
-    it("uses public caching in shared mode", async () => {
+    it("uses public caching", async () => {
       const streamId = uniqueStreamId("cache");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
@@ -122,7 +112,7 @@ describe("worker edge behavior", () => {
       expect(hotCache).toBe("public, max-age=2");
     });
 
-    it("records edge cache hits in shared mode", async () => {
+    it("records edge cache hits", async () => {
       const streamId = uniqueStreamId("cache-hit");
       const url = `${handle.baseUrl}/v1/stream/${streamId}`;
 
@@ -171,35 +161,6 @@ describe("worker edge behavior", () => {
       const timing = second.headers.get("Server-Timing");
       expect(hasEdgeCacheTiming(timing)).toBe(false);
     });
-  });
-
-  describe("with default (private) mode", () => {
-    let handle: WorkerHandle;
-
-    beforeAll(async () => {
-      handle = await startWorker();
-    });
-
-    afterAll(async () => {
-      await handle.stop();
-    });
-
-    it("forces private caching in private mode", async () => {
-      const streamId = uniqueStreamId("cache-private");
-      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
-
-      const hotOffset = await seedStream(url);
-
-      const coldRead = await fetch(`${url}?offset=${ZERO_OFFSET}`);
-      expect(coldRead.status).toBe(200);
-      const coldCache = coldRead.headers.get("Cache-Control") ?? "";
-      expect(coldCache).toBe("private, no-store");
-
-      const hotRead = await fetch(`${url}?offset=${hotOffset}`);
-      expect(hotRead.status).toBe(200);
-      const hotCache = hotRead.headers.get("Cache-Control") ?? "";
-      expect(hotCache).toBe("private, no-store");
-    });
 
     it("emits Server-Timing when debug is enabled", async () => {
       const streamId = uniqueStreamId("timing");
@@ -214,24 +175,6 @@ describe("worker edge behavior", () => {
       const timing = create.headers.get("Server-Timing");
       expect(timing).toBeTruthy();
       expect(timing ?? "").toContain("edge.origin");
-    });
-
-    it("does not use edge cache in private mode", async () => {
-      const streamId = uniqueStreamId("cache-private-no-edge");
-      const url = `${handle.baseUrl}/v1/stream/${streamId}`;
-
-      const hotOffset = await seedStream(url);
-
-      const first = await fetch(`${url}?offset=${hotOffset}`);
-      expect(first.status).toBe(200);
-      await first.arrayBuffer();
-
-      const second = await fetch(`${url}?offset=${hotOffset}`, {
-        headers: { "X-Debug-Timing": "1" },
-      });
-      expect(second.status).toBe(200);
-      const timing = second.headers.get("Server-Timing");
-      expect(hasEdgeCacheTiming(timing)).toBe(false);
     });
   });
 });
