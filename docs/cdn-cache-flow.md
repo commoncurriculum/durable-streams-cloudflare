@@ -8,7 +8,7 @@ The edge worker (`create_worker.ts`) sits between clients and the Durable Object
 |---------|---------|
 | **CORS** | `OPTIONS` preflight + origin headers on all responses |
 | **Auth** | JWT verification, public stream bypass via KV |
-| **Edge cache** | Cloudflare Cache API (`caches.default`) for immutable mid-stream reads |
+| **Edge cache** | Cloudflare Cache API (`caches.default`) for GET 200 responses (mid-stream + long-poll at-tail) |
 | **SSE bridge** | For `?live=sse`: opens an internal WebSocket to the DO, bridges WS messages to SSE events |
 | **Routing** | Resolves DO stub from stream path, forwards request on cache miss |
 | **KV metadata** | Stores public stream flags on creation |
@@ -16,29 +16,33 @@ The edge worker (`create_worker.ts`) sits between clients and the Durable Object
 
 ## Edge Cache (`caches.default`)
 
-The edge worker caches immutable GET responses at the PoP level, avoiding DO round-trips for repeated reads of the same data.
+The edge worker caches GET 200 responses at the PoP level, avoiding DO round-trips for repeated reads of the same data. At-tail responses are cached for long-poll requests (which have cursor rotation), enabling request collapsing for live-tail reads.
 
 **Requires a custom domain** — `caches.default` silently no-ops on `workers.dev` subdomains.
 
 ### What Gets Cached
 
-Only **immutable mid-stream reads** are cached — responses where `Stream-Up-To-Date` is absent, meaning the data is behind the stream's tail. Data at a given offset never changes once written, so these responses are safe to cache with a long TTL.
+Mid-stream reads are always cached (immutable data). At-tail reads are cached only for long-poll requests, where cursor rotation changes the URL on every response cycle, preventing stale cache loops.
 
 | Request type | Cached? | Edge TTL | Client TTL | Notes |
 |---|---|---|---|---|
 | `GET ?offset=X` (mid-stream) | Yes | 60s | 60s | Immutable data at a given offset never changes |
-| `GET ?offset=X` (at tail) | No | — | 60s | New data may arrive at this offset |
+| `GET ?offset=X` (at tail) | No | — | 60s | No cursor rotation; would serve stale data after writes |
 | `GET ?offset=X&live=long-poll&cursor=Y` (mid-stream) | Yes | 20s | 20s | Immutable data, cursor rotates cache key |
-| `GET ?offset=X&live=long-poll` (at tail) | No | — | 20s | Mutable |
-| `GET ?offset=X&live=long-poll` (204 timeout) | No | — | — | Don't cache timeouts |
+| `GET ?offset=X&live=long-poll&cursor=Y` (at tail, 200) | Yes | 20s | 20s | Cursor rotation prevents stale loops |
+| `GET ?offset=X&live=long-poll` (204 timeout) | No | — | — | Excluded by status check; prevents tight retry loops |
 | `GET ?offset=now` | No | — | no-store | Cursor bootstrap, must be fresh |
 | `GET ?live=sse` | No | — | — | Streaming via internal WS bridge |
 | `HEAD` | No | — | — | Metadata-only |
 | `POST` / `PUT` / `DELETE` | No | — | — | Mutations |
 
-### Why Only Immutable Responses
+### Why Long-Poll At-Tail Caching Is Safe
 
-At-tail responses (`Stream-Up-To-Date: true`) can become stale when new data is appended. The Cache API doesn't support purging by URL prefix (only exact URL), so we can't invalidate all offset-variant entries on mutation. Caching only immutable mid-stream data avoids serving stale data entirely.
+For **long-poll reads**, the cursor rotates on every response, producing a different URL for the next request. Old cache entries are never reused. `max-age=20` bounds staleness within a single cycle. This enables request collapsing: 1M clients at the same offset share one cache entry, collapsing to a single DO hit per poll cycle.
+
+**Plain GET at-tail reads** are NOT cached because without cursor rotation, the same URL would serve stale data for up to `max-age=60` after new data is appended.
+
+**204 timeout responses** are excluded by the `status === 200` check. Caching 204s would cause tight retry loops (instant cache hit → immediate retry → same cached 204).
 
 ### Edge TTL
 
@@ -55,13 +59,13 @@ When a client sends `If-None-Match`:
 
 ### Long-Poll Collapsing
 
-The protocol's cursor mechanism naturally enables request collapsing for mid-stream long-poll reads:
+The protocol's cursor mechanism enables request collapsing for all long-poll reads (both mid-stream and at-tail):
 
 - Multiple clients at `?offset=100&live=long-poll&cursor=2000` share one cache entry.
 - First cache miss hits the DO and stores the response. Subsequent requests get the cached response.
-- The cursor advances on each response, creating a new cache key — no infinite loops.
+- The cursor advances on each response, creating a new cache key — no stale loops.
 
-At-tail long-poll responses are NOT cached, so collapsing only applies during catch-up reads.
+This is the primary scaling mechanism: 1M followers of a stream collapse to 1 DO hit per long-poll cycle.
 
 ### Cache Bypass
 
@@ -86,7 +90,7 @@ The DO sets protocol-correct `Cache-Control` headers on all read responses:
 | HEAD | `no-store` | Metadata-only, always fresh |
 | `?offset=now` | `no-store` | Cursor bootstrap, must be fresh |
 | Long-poll 200 | `public, max-age=20` | Short client TTL |
-| Long-poll 204 (timeout) | `public, max-age=20` | Not cached at edge (only immutable 200s are stored) |
+| Long-poll 204 (timeout) | `public, max-age=20` | Not cached at edge (excluded by status check) |
 | SSE | `no-cache` | Real-time streaming |
 
 ## DO-Level Deduplication
@@ -110,6 +114,6 @@ Client ──> Edge Worker ──> [Edge Cache] ──> StreamDO ──> SQLite 
 | Layer | Role |
 |-------|------|
 | Edge worker | Auth, CORS, edge cache, SSE-via-WebSocket bridge, routing |
-| Edge cache (`caches.default`) | Per-PoP cache for immutable mid-stream reads, ETag revalidation |
+| Edge cache (`caches.default`) | Per-PoP cache for GET 200 responses (mid-stream + long-poll at-tail), ETag revalidation |
 | StreamDO | Sets `Cache-Control` + `ETag` headers per protocol |
 | ReadPath coalescing | DO-level request dedup (100ms, auto-invalidating) |

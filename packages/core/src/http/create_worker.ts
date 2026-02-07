@@ -347,14 +347,19 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // ================================================================
       // Edge cache: store cacheable 200 responses
       // ================================================================
-      // Only cache immutable mid-stream reads (no Stream-Up-To-Date
-      // header). Data at an offset never changes once written, so these
-      // are safe to cache with a long edge TTL. At-tail responses are
-      // NOT cached because new data may arrive at that offset — the
-      // DO-level ReadPath coalescing handles concurrent at-tail reads.
+      // Mid-stream reads (no Stream-Up-To-Date) are always cached — the
+      // data at an offset never changes once written. At-tail reads are
+      // cached only for long-poll requests, where cursor rotation changes
+      // the URL on every response cycle, preventing stale cache loops.
+      // Plain GET at-tail responses are NOT cached because without cursor
+      // rotation the same URL would serve stale data after new appends.
+      // 204 timeouts are excluded by the status check. `offset=now`
+      // responses are excluded by the `no-store` check.
+      const isLongPoll = url.searchParams.get("live") === "long-poll";
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
-        if (!cc.includes("no-store") && !wrapped.headers.has(HEADER_STREAM_UP_TO_DATE)) {
+        const atTail = wrapped.headers.has(HEADER_STREAM_UP_TO_DATE);
+        if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
           ctx.waitUntil(caches.default.put(request, wrapped.clone()));
         }
       }

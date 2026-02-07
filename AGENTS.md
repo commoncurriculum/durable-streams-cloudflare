@@ -38,6 +38,10 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 - **Lint/Format**: oxlint + oxfmt (NOT ESLint/Prettier)
 - **Package Manager**: pnpm (see `packageManager` in root `package.json` for exact version)
 
+## Critical Design Constraints
+
+- **Edge request collapsing is a CORE design goal.** The entire point of the edge cache layer (`caches.default` in `create_worker.ts`) is to collapse concurrent reads at the same stream position into a single DO round-trip. Without this, the system cannot scale fan-out reads — 1M followers of a stream means 1M hits to the Durable Object, which is unacceptable. Any change to the edge cache must preserve (or improve) collapsing for live tail long-poll reads. See `docs/edge-cache-live-tail-collapsing.md` for the current status and required fix.
+
 ## Key Conventions
 
 - Core and subscription workers follow the same pattern: `createXWorker()` factory + exported DO class. Entry point is always `src/http/worker.ts`.
