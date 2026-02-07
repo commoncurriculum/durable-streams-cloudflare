@@ -18,7 +18,10 @@ export async function readFromOffset(
     end_offset: number;
     size_bytes: number;
     body: ArrayBuffer | Uint8Array | string | number[];
+    created_at: number;
   }> = [];
+
+  let maxCreatedAt = 0;
 
   if (offset > 0) {
     const overlap = await storage.selectOverlap(streamId, offset);
@@ -31,6 +34,7 @@ export async function readFromOffset(
           upToDate: false,
           closedAtTail: false,
           hasData: false,
+          writeTimestamp: 0,
           error: errorResponse(400, "invalid offset"),
         };
       }
@@ -42,7 +46,9 @@ export async function readFromOffset(
         end_offset: overlap.end_offset,
         size_bytes: slice.byteLength,
         body: slice,
+        created_at: overlap.created_at,
       });
+      if (overlap.created_at > maxCreatedAt) maxCreatedAt = overlap.created_at;
     }
   }
 
@@ -67,7 +73,9 @@ export async function readFromOffset(
         end_offset: row.end_offset,
         size_bytes: row.size_bytes,
         body,
+        created_at: row.created_at,
       });
+      if (row.created_at > maxCreatedAt) maxCreatedAt = row.created_at;
       bytes += row.size_bytes;
       cursor = row.end_offset;
       if (bytes >= maxChunkBytes) {
@@ -87,7 +95,7 @@ export async function readFromOffset(
     const closedAtTail = meta.closed === 1 && upToDate;
     if (isJsonContentType(meta.content_type)) {
       const empty = emptyJsonArray();
-      return { body: empty, nextOffset: offset, upToDate, closedAtTail, hasData: false };
+      return { body: empty, nextOffset: offset, upToDate, closedAtTail, hasData: false, writeTimestamp: 0 };
     }
     return {
       body: new ArrayBuffer(0),
@@ -95,6 +103,7 @@ export async function readFromOffset(
       upToDate,
       closedAtTail,
       hasData: false,
+      writeTimestamp: 0,
     };
   }
 
@@ -111,5 +120,5 @@ export async function readFromOffset(
     body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
   }
 
-  return { body, nextOffset, upToDate, closedAtTail, hasData: true };
+  return { body, nextOffset, upToDate, closedAtTail, hasData: true, writeTimestamp: maxCreatedAt };
 }

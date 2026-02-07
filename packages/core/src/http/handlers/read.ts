@@ -7,6 +7,7 @@ import {
   HEADER_STREAM_CURSOR,
   HEADER_STREAM_NEXT_OFFSET,
   HEADER_STREAM_UP_TO_DATE,
+  HEADER_STREAM_WRITE_TIMESTAMP,
   baseHeaders,
   isJsonContentType,
 } from "../../protocol/headers";
@@ -43,6 +44,7 @@ export function buildReadResponse(params: {
   closedAtTail: boolean;
   includeCursor?: string | null;
   offset: number;
+  writeTimestamp?: number;
 }): Response {
   const headers = baseHeaders({
     "Content-Type": params.meta.content_type,
@@ -52,6 +54,9 @@ export function buildReadResponse(params: {
   if (params.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
   if (params.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
   if (params.includeCursor) headers.set(HEADER_STREAM_CURSOR, params.includeCursor);
+  if (params.writeTimestamp && params.writeTimestamp > 0) {
+    headers.set(HEADER_STREAM_WRITE_TIMESTAMP, String(params.writeTimestamp));
+  }
 
   applyExpiryHeaders(headers, params.meta);
 
@@ -139,6 +144,7 @@ export async function handleGet(
     upToDate: read.upToDate,
     closedAtTail: read.closedAtTail,
     offset,
+    writeTimestamp: read.writeTimestamp,
   });
 
   // Record metrics for read

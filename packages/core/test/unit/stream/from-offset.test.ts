@@ -21,6 +21,7 @@ function baseMeta(overrides: Partial<StreamMeta> = {}): StreamMeta {
     closed_by_producer_id: null,
     closed_by_epoch: null,
     closed_by_seq: null,
+    public: 0,
     ...overrides,
   };
 }
@@ -33,6 +34,7 @@ function binaryChunk(startOffset: number, data: string): ReadChunk {
     end_offset: startOffset + body.byteLength,
     size_bytes: body.byteLength,
     body,
+    created_at: Date.now(),
   };
 }
 
@@ -44,6 +46,7 @@ function jsonChunk(startOffset: number, value: unknown): ReadChunk {
     end_offset: startOffset + 1, // JSON offsets are message indices
     size_bytes: body.byteLength,
     body,
+    created_at: Date.now(),
   };
 }
 

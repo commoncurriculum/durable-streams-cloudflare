@@ -153,6 +153,7 @@ async function bridgeSseViaWebSocket(
           upToDate: controlMsg.upToDate ?? false,
           streamClosed: controlMsg.streamClosed ?? false,
           cursor: controlMsg.streamCursor ?? "",
+          writeTimestamp: controlMsg.streamWriteTimestamp ?? 0,
         });
         writer.write(sseTextEncoder.encode(payload)).catch(() => {});
       }

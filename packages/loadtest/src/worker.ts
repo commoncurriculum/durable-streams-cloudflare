@@ -106,10 +106,15 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     cacheHeaders[key] = (cacheHeaders[key] ?? 0) + 1;
   }
 
-  // Custom fetch that tracks x-cache headers
+  // Track latest server-side write timestamp for clock-skew-free latency
+  let lastWriteTimestamp = 0;
+
+  // Custom fetch that tracks x-cache and Stream-Write-Timestamp headers
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
     const res = await globalThis.fetch(input, init);
     recordCache(res.headers.get("x-cache"));
+    const wt = res.headers.get("stream-write-timestamp");
+    if (wt) lastWriteTimestamp = Number(wt);
     return res;
   };
 
@@ -144,7 +149,12 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
 
       for (const item of batch.items) {
         eventsReceived++;
-        if (typeof item.t === "number") {
+        // Prefer server-side write timestamp (no clock skew) over payload timestamp
+        if (lastWriteTimestamp > 0) {
+          const latency = now - lastWriteTimestamp;
+          recordLatency(latency);
+          batchLatency = latency;
+        } else if (typeof item.t === "number") {
           const latency = now - item.t;
           recordLatency(latency);
           batchLatency = latency;

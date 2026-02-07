@@ -157,6 +157,8 @@ export async function handlePost(
     // 7. Side effects (notifications, broadcast, metrics)
     ctx.longPoll.notify(result.value.newTailOffset);
 
+    const writeTimestamp = Date.now();
+
     if (validated.value.kind === "close_only") {
       await broadcastSseControl(
         ctx,
@@ -164,6 +166,7 @@ export async function handlePost(
         streamResult.value,
         result.value.newTailOffset,
         true,
+        writeTimestamp,
       );
       await broadcastWebSocketControl(
         ctx,
@@ -171,6 +174,7 @@ export async function handlePost(
         streamResult.value,
         result.value.newTailOffset,
         true,
+        writeTimestamp,
       );
     } else {
       await broadcastSse(
@@ -181,6 +185,7 @@ export async function handlePost(
         result.value.ssePayload,
         result.value.newTailOffset,
         validated.value.closeStream,
+        writeTimestamp,
       );
       await broadcastWebSocket(
         ctx,
@@ -190,6 +195,7 @@ export async function handlePost(
         result.value.ssePayload,
         result.value.newTailOffset,
         validated.value.closeStream,
+        writeTimestamp,
       );
     }
 

@@ -4,6 +4,7 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   HEADER_STREAM_UP_TO_DATE,
   HEADER_STREAM_CURSOR,
+  HEADER_STREAM_WRITE_TIMESTAMP,
   baseHeaders,
   isTextual,
 } from "../../protocol/headers";
@@ -46,6 +47,7 @@ export type WsControlMessage = {
   upToDate?: boolean;
   streamClosed?: boolean;
   streamCursor?: string;
+  streamWriteTimestamp?: number;
 };
 
 // ============================================================================
@@ -156,10 +158,15 @@ export function buildSseControlEvent(params: {
   upToDate: boolean;
   streamClosed: boolean;
   cursor: string;
+  writeTimestamp?: number;
 }): { payload: string; nextCursor: string | null } {
   const control: Record<string, unknown> = {
     streamNextOffset: params.nextOffset,
   };
+
+  if (params.writeTimestamp && params.writeTimestamp > 0) {
+    control.streamWriteTimestamp = params.writeTimestamp;
+  }
 
   if (params.streamClosed) {
     control.streamClosed = true;
@@ -190,6 +197,7 @@ export function buildLongPollHeaders(params: {
   upToDate: boolean;
   closedAtTail: boolean;
   cursor: string | null;
+  writeTimestamp?: number;
 }): Headers {
   const headers = baseHeaders({
     "Content-Type": params.meta.content_type,
@@ -198,6 +206,9 @@ export function buildLongPollHeaders(params: {
   if (params.cursor) headers.set(HEADER_STREAM_CURSOR, params.cursor);
   if (params.upToDate) headers.set(HEADER_STREAM_UP_TO_DATE, "true");
   if (params.closedAtTail) headers.set(HEADER_STREAM_CLOSED, "true");
+  if (params.writeTimestamp && params.writeTimestamp > 0) {
+    headers.set(HEADER_STREAM_WRITE_TIMESTAMP, String(params.writeTimestamp));
+  }
   applyExpiryHeaders(headers, params.meta);
   return headers;
 }
@@ -254,6 +265,7 @@ export async function handleLongPoll(
       upToDate: initialRead.upToDate,
       closedAtTail: initialRead.closedAtTail,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
+      writeTimestamp: initialRead.writeTimestamp,
     });
     headers.set("Cache-Control", cacheControl);
     headers.set("ETag", buildEtag(streamId, offset, initialRead.nextOffset, initialRead.closedAtTail));
@@ -289,6 +301,7 @@ export async function handleLongPoll(
     upToDate: read.upToDate,
     closedAtTail: read.closedAtTail,
     cursor: generateResponseCursor(url.searchParams.get("cursor")),
+    writeTimestamp: read.writeTimestamp,
   });
 
   if (!read.hasData) {
@@ -396,6 +409,7 @@ export async function broadcastSse(
   payload: ArrayBuffer | null,
   nextOffset: number,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   if (!payload) return;
 
@@ -403,7 +417,7 @@ export async function broadcastSse(
   const entries = Array.from(ctx.sseState.clients.values());
   for (const client of entries) {
     if (client.closed) continue;
-    await writeSseData(client, payload, nextOffsetHeader, true, streamClosed);
+    await writeSseData(client, payload, nextOffsetHeader, true, streamClosed, writeTimestamp);
     client.offset = nextOffset;
     if (streamClosed) {
       await closeSseClient(ctx, client);
@@ -418,12 +432,13 @@ export async function broadcastSseControl(
   meta: StreamMeta,
   nextOffset: number,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
   for (const client of entries) {
     if (client.closed) continue;
-    await writeSseControl(client, nextOffsetHeader, true, streamClosed);
+    await writeSseControl(client, nextOffsetHeader, true, streamClosed, writeTimestamp);
     client.offset = nextOffset;
     if (streamClosed) {
       await closeSseClient(ctx, client);
@@ -458,7 +473,7 @@ async function runSseSession(
 
     if (read.hasData) {
       const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-      await writeSseData(client, read.body, nextOffsetHeader, read.upToDate, read.closedAtTail);
+      await writeSseData(client, read.body, nextOffsetHeader, read.upToDate, read.closedAtTail, read.writeTimestamp);
       currentOffset = read.nextOffset;
       client.offset = currentOffset;
 
@@ -467,7 +482,7 @@ async function runSseSession(
         if (read.error) break;
         if (!read.hasData) break;
         const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-        await writeSseData(client, read.body, header, read.upToDate, read.closedAtTail);
+        await writeSseData(client, read.body, header, read.upToDate, read.closedAtTail, read.writeTimestamp);
         currentOffset = read.nextOffset;
         client.offset = currentOffset;
       }
@@ -506,6 +521,7 @@ async function writeSseData(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   const dataEvent = buildSseDataEvent(payload, client.useBase64);
   const control = buildSseControlEvent({
@@ -513,6 +529,7 @@ async function writeSseData(
     upToDate,
     streamClosed,
     cursor: client.cursor,
+    writeTimestamp,
   });
   if (control.nextCursor) client.cursor = control.nextCursor;
   await client.writer.write(textEncoder.encode(dataEvent + control.payload));
@@ -523,12 +540,14 @@ async function writeSseControl(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   const control = buildSseControlEvent({
     nextOffset: nextOffsetHeader,
     upToDate,
     streamClosed,
     cursor: client.cursor,
+    writeTimestamp,
   });
   if (control.nextCursor) client.cursor = control.nextCursor;
   await client.writer.write(textEncoder.encode(control.payload));
@@ -557,11 +576,16 @@ export function buildWsControlMessage(params: {
   upToDate: boolean;
   streamClosed: boolean;
   cursor: string;
+  writeTimestamp?: number;
 }): { message: WsControlMessage; nextCursor: string | null } {
   const msg: WsControlMessage = {
     type: "control",
     streamNextOffset: params.nextOffset,
   };
+
+  if (params.writeTimestamp && params.writeTimestamp > 0) {
+    msg.streamWriteTimestamp = params.writeTimestamp;
+  }
 
   if (params.streamClosed) {
     msg.streamClosed = true;
@@ -658,7 +682,7 @@ async function sendWsCatchUp(
     if (read.hasData) {
       sendWsData(ws, attachment, read.body);
       const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-      sendWsControl(ws, attachment, nextOffsetHeader, read.upToDate, read.closedAtTail);
+      sendWsControl(ws, attachment, nextOffsetHeader, read.upToDate, read.closedAtTail, read.writeTimestamp);
       currentOffset = read.nextOffset;
       attachment.offset = currentOffset;
 
@@ -667,7 +691,7 @@ async function sendWsCatchUp(
         if (read.error || !read.hasData) break;
         sendWsData(ws, attachment, read.body);
         const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-        sendWsControl(ws, attachment, header, read.upToDate, read.closedAtTail);
+        sendWsControl(ws, attachment, header, read.upToDate, read.closedAtTail, read.writeTimestamp);
         currentOffset = read.nextOffset;
         attachment.offset = currentOffset;
       }
@@ -698,12 +722,14 @@ function sendWsControl(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): void {
   const { message, nextCursor } = buildWsControlMessage({
     nextOffset: nextOffsetHeader,
     upToDate,
     streamClosed,
     cursor: attachment.cursor,
+    writeTimestamp,
   });
   if (nextCursor) attachment.cursor = nextCursor;
   ws.send(JSON.stringify(message));
@@ -721,6 +747,7 @@ export async function broadcastWebSocket(
   payload: ArrayBuffer | null,
   nextOffset: number,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   const sockets = ctx.getWebSockets(streamId);
   if (sockets.length === 0) return;
@@ -738,6 +765,7 @@ export async function broadcastWebSocket(
         upToDate: true,
         streamClosed,
         cursor: attachment.cursor,
+        writeTimestamp,
       });
       if (nextCursor) attachment.cursor = nextCursor;
       attachment.offset = nextOffset;
@@ -759,6 +787,7 @@ export async function broadcastWebSocketControl(
   meta: StreamMeta,
   nextOffset: number,
   streamClosed: boolean,
+  writeTimestamp: number = 0,
 ): Promise<void> {
   const sockets = ctx.getWebSockets(streamId);
   if (sockets.length === 0) return;
@@ -773,6 +802,7 @@ export async function broadcastWebSocketControl(
         upToDate: true,
         streamClosed,
         cursor: attachment.cursor,
+        writeTimestamp,
       });
       if (nextCursor) attachment.cursor = nextCursor;
       attachment.offset = nextOffset;
