@@ -13,6 +13,7 @@ export type ReadResult = {
   upToDate: boolean;
   closedAtTail: boolean;
   hasData: boolean;
+  writeTimestamp: number;
   source?: "hot" | "r2";
   error?: Response;
 };
@@ -35,6 +36,7 @@ export function emptyResult(
     upToDate: opts.upToDate ?? false,
     closedAtTail: opts.closedAtTail ?? false,
     hasData: false,
+    writeTimestamp: 0,
     source: opts.source,
   };
 }
@@ -53,6 +55,7 @@ export function errorResult(
     upToDate: false,
     closedAtTail: false,
     hasData: false,
+    writeTimestamp: 0,
     source,
     error,
   };
@@ -72,6 +75,7 @@ export function gapResult(
     upToDate: false,
     closedAtTail,
     hasData: false,
+    writeTimestamp: 0,
     source,
   };
 }
@@ -84,6 +88,7 @@ export function dataResult(params: {
   nextOffset: number;
   tailOffset: number;
   closed: boolean;
+  writeTimestamp?: number;
   source?: "hot" | "r2";
 }): ReadResult {
   const upToDate = params.nextOffset === params.tailOffset;
@@ -93,6 +98,7 @@ export function dataResult(params: {
     upToDate,
     closedAtTail: params.closed && upToDate,
     hasData: true,
+    writeTimestamp: params.writeTimestamp ?? 0,
     source: params.source,
   };
 }

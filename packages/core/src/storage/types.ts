@@ -31,6 +31,7 @@ export type ReadChunk = {
   end_offset: number;
   size_bytes: number;
   body: ArrayBuffer | Uint8Array | string | number[];
+  created_at: number;
 };
 
 export type OpsStats = {

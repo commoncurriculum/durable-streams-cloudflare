@@ -267,9 +267,10 @@ export class DoSqliteStorage implements StreamStorage {
       end_offset: number;
       size_bytes: number;
       body: ArrayBuffer | string | number | null;
+      created_at: number;
     }>(
       `
-        SELECT start_offset, end_offset, size_bytes, body
+        SELECT start_offset, end_offset, size_bytes, body, created_at
         FROM ops
         WHERE start_offset < ? AND end_offset > ?
         ORDER BY start_offset DESC
@@ -288,9 +289,10 @@ export class DoSqliteStorage implements StreamStorage {
       end_offset: number;
       size_bytes: number;
       body: ArrayBuffer | string | number | null;
+      created_at: number;
     }>(
       `
-        SELECT start_offset, end_offset, size_bytes, body
+        SELECT start_offset, end_offset, size_bytes, body, created_at
         FROM ops
         WHERE start_offset >= ?
         ORDER BY start_offset ASC
@@ -311,9 +313,10 @@ export class DoSqliteStorage implements StreamStorage {
       end_offset: number;
       size_bytes: number;
       body: ArrayBuffer | string | number | null;
+      created_at: number;
     }>(
       `
-        SELECT start_offset, end_offset, size_bytes, body
+        SELECT start_offset, end_offset, size_bytes, body, created_at
         FROM ops
         WHERE start_offset >= ? AND end_offset <= ?
         ORDER BY start_offset ASC
@@ -330,9 +333,10 @@ export class DoSqliteStorage implements StreamStorage {
       end_offset: number;
       size_bytes: number;
       body: ArrayBuffer | string | number | null;
+      created_at: number;
     }>(
       `
-        SELECT start_offset, end_offset, size_bytes, body
+        SELECT start_offset, end_offset, size_bytes, body, created_at
         FROM ops
         ORDER BY start_offset ASC
       `,

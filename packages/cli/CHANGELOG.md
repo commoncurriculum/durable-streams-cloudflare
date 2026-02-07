@@ -1,5 +1,17 @@
 # @durable-streams-cloudflare/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- Add X-Cache response header for edge cache observability and scaffold new projects as pnpm workspaces
+
+## 0.5.0
+
+### Minor Changes
+
+- Add X-Cache response header for edge cache observability and scaffold new projects as pnpm workspaces
+
 ## 0.4.0
 
 ### Patch Changes

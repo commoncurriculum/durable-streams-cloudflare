@@ -1,6 +1,6 @@
 {
   "name": "@durable-streams-cloudflare/core",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "type": "module",
   "license": "MIT",
   "description": "Core durable-streams protocol for Cloudflare Workers + Durable Objects",
@@ -10,6 +10,8 @@
     "directory": "packages/core"
   },
   "files": [
+    "src/",
+    "tsconfig.build.json",
     "dist"
   ],
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@durable-streams-cloudflare/admin-subscription",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "type": "module",
   "license": "MIT",
   "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
@@ -10,6 +10,9 @@
     "directory": "packages/admin-subscription"
   },
   "files": [
+    "src/",
+    "vite.config.ts",
+    "tsconfig.json",
     "dist/server",
     "dist/client",
     "!dist/server/.dev.vars"
