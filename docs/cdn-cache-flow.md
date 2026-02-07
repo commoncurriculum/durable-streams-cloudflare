@@ -59,6 +59,12 @@ The protocol's cursor mechanism naturally enables request collapsing for mid-str
 
 At-tail long-poll responses are NOT cached (they're up-to-date), so long-poll collapsing only applies during catch-up reads.
 
+### Cache Bypass
+
+The edge cache is skipped (both lookup and store) for:
+- **Debug requests** (`X-Debug-Coalesce` header) — these change the response format
+- **Client `Cache-Control: no-cache` or `no-store`** — standard CDN behavior, skips lookup but still stores the fresh DO response
+
 ### Per-Datacenter Cache
 
 Each Cloudflare PoP builds its own cache organically from client traffic. A cached response in Dallas won't serve London.

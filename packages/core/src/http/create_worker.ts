@@ -163,9 +163,18 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // Edge cache: check for cached response before hitting the DO
       // ================================================================
       const isSse = method === "GET" && url.searchParams.get("live") === "sse";
-      const cacheable = method === "GET" && !isSse;
+      // Debug requests change the response format (JSON stats instead of
+      // stream data) so they must never share a cache entry with normal reads.
+      const hasDebugHeaders = request.headers.has("X-Debug-Coalesce");
+      const cacheable = method === "GET" && !isSse && !hasDebugHeaders;
 
-      if (cacheable) {
+      // Respect client Cache-Control: no-cache — skip lookup but still
+      // store the fresh DO response so subsequent normal requests benefit.
+      const clientCc = request.headers.get("Cache-Control") ?? "";
+      const skipCacheLookup =
+        clientCc.includes("no-cache") || clientCc.includes("no-store");
+
+      if (cacheable && !skipCacheLookup) {
         const cache = caches.default;
         const doneCache = timing?.start("edge.cache");
         const cached = await cache.match(request);
@@ -224,17 +233,16 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
 
       // ================================================================
-      // Edge cache: store immutable 200 responses (mid-stream only)
+      // Edge cache: store cacheable 200 responses
       // ================================================================
-      // Only cache responses that are NOT at the stream tail. At-tail
-      // responses (Stream-Up-To-Date: true) can become stale when new
-      // data is appended, and we can't purge arbitrary offset URLs on
-      // mutation. Mid-stream data is immutable — once written at an
-      // offset, it never changes — so it's safe to cache with a long TTL.
+      // Only cache immutable mid-stream reads (no Stream-Up-To-Date
+      // header). Data at an offset never changes once written, so these
+      // are safe to cache with a long edge TTL. At-tail responses are
+      // NOT cached because new data may arrive at that offset — the
+      // DO-level ReadPath coalescing handles concurrent at-tail reads.
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
-        const isUpToDate = wrapped.headers.has(HEADER_STREAM_UP_TO_DATE);
-        if (!cc.includes("no-store") && !isUpToDate) {
+        if (!cc.includes("no-store") && !wrapped.headers.has(HEADER_STREAM_UP_TO_DATE)) {
           const cache = caches.default;
           const toCache = wrapped.clone();
           toCache.headers.set(
