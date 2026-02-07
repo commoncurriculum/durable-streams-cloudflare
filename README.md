@@ -1,80 +1,79 @@
 # durable-streams-cloudflare
 
-This repo contains two independent projects:
+Durable Streams on Cloudflare — an append-only log with pub/sub fan-out, running on Workers + Durable Objects.
 
-|          | What                                                                                                                                          | Package                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Port** | Cloudflare Workers implementation of the existing [Durable Streams](https://github.com/electric-sql/durable-streams) protocol by Electric SQL | [`@durable-streams-cloudflare/core`](packages/core/)                 |
-| **New**  | Pub/sub subscription layer — session streams, fan-out, TTL cleanup, metrics                                                                   | [`@durable-streams-cloudflare/subscription`](packages/subscription/) |
+A port of the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol to Cloudflare, plus a subscription layer for session-based pub/sub on top.
 
-They are separate Workers that deploy independently. The subscription worker depends on core, but core works fine on its own.
+## Quick Start
 
----
-
-## Core — Durable Streams on Cloudflare
-
-A port of the [Durable Streams](https://github.com/durable-streams/durable-streams) protocol to Cloudflare Workers + Durable Objects. One DO per stream acts as the sequencer, SQLite for the hot log, R2 for cold segments. Conformance-tested against the official test suite.
-
-If you already know Durable Streams, this is that — running on Cloudflare instead of Caddy/filesystem.
-
-| Package                                                                                                          | Description                                                                  |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [`@durable-streams-cloudflare/core`](https://www.npmjs.com/package/@durable-streams-cloudflare/core)             | DO sequencer, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE |
-| [`@durable-streams-cloudflare/admin-core`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-core) | Admin dashboard for core streams                                             |
-
-### Quick Start
+The CLI handles everything: scaffolds your workers, creates Cloudflare resources (R2 bucket, KV namespace), and deploys.
 
 ```bash
-npm install @durable-streams-cloudflare/core
+# 1. Log in to Cloudflare
+npx wrangler login
+
+# 2. Run the setup wizard
+npx @durable-streams-cloudflare/cli setup
 ```
 
-`src/worker.ts`:
+The wizard will:
+- Ask which components to deploy (core, subscription, admin dashboards)
+- Create an R2 bucket and KV namespace for you
+- Scaffold worker files into `workers/`
+- Install npm packages
+- Deploy everything to Cloudflare
 
-```ts
-import { createStreamWorker, StreamDO } from "@durable-streams-cloudflare/core";
-
-export default createStreamWorker();
-export { StreamDO };
-```
-
-`wrangler.toml`:
-
-```toml
-name = "durable-streams"
-main = "src/worker.ts"
-compatibility_date = "2025-02-02"
-
-[durable_objects]
-bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["StreamDO"]
-
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "durable-streams"
-```
+Then create your first project (this generates a JWT signing secret for auth):
 
 ```bash
-npx wrangler r2 bucket create durable-streams
-npx wrangler deploy
+npx @durable-streams-cloudflare/cli create-project
 ```
 
-See the [core README](packages/core/README.md) for full details.
+That's it. You'll get a signing secret and instructions for minting JWTs.
 
----
+## Try It
 
-## Subscription — Pub/Sub Fan-Out
+```bash
+CORE=https://durable-streams.<your-subdomain>.workers.dev
+SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
 
-A new layer built on top of core. Subscribe sessions to source streams, publish once, fan out to all subscribers. Each subscriber gets their own session stream they can read independently via core.
+# Create a stream
+curl -X PUT -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  $CORE/v1/<project>/stream/chat-room-1
 
-| Package                                                                                                                          | Description                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`@durable-streams-cloudflare/subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/subscription)             | Session management, subscribe/publish, fan-out, TTL cleanup, Analytics Engine metrics |
-| [`@durable-streams-cloudflare/admin-subscription`](https://www.npmjs.com/package/@durable-streams-cloudflare/admin-subscription) | Admin dashboard for subscriptions                                                     |
+# Subscribe a session
+curl -X POST -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}' \
+  $SUB/v1/<project>/subscribe
 
-### How It Works
+# Publish a message — fans out to all subscribers
+curl -X POST -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"hello world"}' \
+  $SUB/v1/<project>/publish/chat-room-1
+
+# Read the session stream via SSE
+curl -N -H "Authorization: Bearer <JWT>" \
+  "$CORE/v1/<project>/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
+```
+
+## What's in the Box
+
+| Package | What |
+|---------|------|
+| [`@durable-streams-cloudflare/core`](packages/core/) | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE. |
+| [`@durable-streams-cloudflare/subscription`](packages/subscription/) | Pub/sub fan-out. Session streams, subscribe/publish, TTL cleanup, Analytics Engine metrics. |
+| [`@durable-streams-cloudflare/admin-core`](packages/admin-core/) | Admin dashboard for core streams. |
+| [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Admin dashboard for subscriptions. |
+| [`@durable-streams-cloudflare/cli`](packages/cli/) | Setup wizard and project management CLI. |
+
+Core and subscription are separate Workers that deploy independently. Subscription depends on core, but core works fine on its own.
+
+See each package's README for full API docs, configuration options, and auth details.
+
+## Architecture
 
 ```
 Publisher ── POST /v1/publish/stream-A ──> Subscription Worker
@@ -87,92 +86,11 @@ Publisher ── POST /v1/publish/stream-A ──> Subscription Worker
 Clients read their session stream directly from the Core Worker (through CDN).
 ```
 
-### Quick Start
+## Manual Setup
 
-Requires a deployed core worker.
-
-```bash
-npm install @durable-streams-cloudflare/subscription
-```
-
-`src/worker.ts`:
-
-```ts
-import {
-  createSubscriptionWorker,
-  SubscriptionDO,
-} from "@durable-streams-cloudflare/subscription";
-
-export default createSubscriptionWorker();
-export { SubscriptionDO };
-```
-
-`wrangler.toml`:
-
-```toml
-name = "durable-streams-subscriptions"
-main = "src/worker.ts"
-compatibility_date = "2025-02-02"
-
-[vars]
-SESSION_TTL_SECONDS = "1800"
-
-[durable_objects]
-bindings = [{ name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" }]
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["SubscriptionDO"]
-
-[[services]]
-binding = "CORE"
-service = "durable-streams"
-
-[triggers]
-crons = ["*/5 * * * *"]
-```
-
-```bash
-npx wrangler deploy
-```
-
-See the [subscription README](packages/subscription/README.md) for full details.
-
----
-
-## Try Them Together
-
-```bash
-CORE=https://durable-streams.<your-subdomain>.workers.dev
-SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
-
-# Create a stream (core)
-curl -X PUT $CORE/v1/stream/chat-room-1
-
-# Subscribe a session (subscription)
-curl -X POST $SUB/v1/subscribe \
-  -H 'Content-Type: application/json' \
-  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
-
-# Publish a message — fans out to all subscribers (subscription)
-curl -X POST $SUB/v1/publish/chat-room-1 \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"hello world"}'
-
-# Read the session stream via SSE (core)
-curl -N "$CORE/v1/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
-
-# Check session info (subscription)
-curl $SUB/v1/session/user-alice
-
-# Extend session TTL (subscription)
-curl -X POST $SUB/v1/session/user-alice/touch
-
-# Unsubscribe (subscription)
-curl -X DELETE $SUB/v1/unsubscribe \
-  -H 'Content-Type: application/json' \
-  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}'
-```
+If you prefer to set things up by hand instead of using the CLI, see the individual package READMEs:
+- [Core README](packages/core/README.md) — worker setup, wrangler.toml, auth configuration
+- [Subscription README](packages/subscription/README.md) — worker setup, service bindings, cron cleanup
 
 ## Releasing
 
@@ -182,11 +100,11 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for versio
    ```bash
    pnpm changeset
    ```
-   Pick which packages changed and whether it's a patch, minor, or major bump. This creates a markdown file in `.changeset/`.
+   Pick which packages changed and whether it's a patch, minor, or major bump.
 
-2. **Merge to main.** The publish workflow detects pending changesets and opens a "chore: version packages" PR that bumps versions and updates changelogs.
+2. **Merge to main.** The publish workflow opens a "chore: version packages" PR that bumps versions and updates changelogs.
 
-3. **Merge the version PR.** The workflow publishes to npm automatically via trusted publishing (OIDC). No tokens required.
+3. **Merge the version PR.** The workflow publishes to npm automatically.
 
 All three public packages (`core`, `subscription`, `cli`) stay on the same version number via the `fixed` config in `.changeset/config.json`.
 

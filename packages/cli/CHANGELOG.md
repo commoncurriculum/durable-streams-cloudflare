@@ -1,5 +1,11 @@
 # @durable-streams-cloudflare/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- Fix wrangler detection by using `npx -y` to auto-confirm install prompts in child processes
+
 ## 0.2.0
 
 ### Minor Changes

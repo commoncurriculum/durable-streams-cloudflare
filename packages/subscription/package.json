@@ -1,6 +1,6 @@
 {
   "name": "@durable-streams-cloudflare/subscription",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "license": "MIT",
   "description": "Subscription service for durable-streams on Cloudflare Workers + Durable Objects",

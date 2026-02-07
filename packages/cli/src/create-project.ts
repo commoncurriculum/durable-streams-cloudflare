@@ -94,7 +94,7 @@ export async function createProject() {
   // Escape single quotes for safe shell interpolation: replace ' with '\''
   const escapedValue = value.replace(/'/g, "'\\''");
   const result = runMayFail(
-    `npx wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${escapedValue}'`,
+    `npx -y wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${escapedValue}'`,
   );
 
   if (!result.ok) {
