@@ -14,7 +14,7 @@ import { cacheControlFor, applyExpiryHeaders } from "../../protocol/expiry";
 import { emptyJsonArray } from "../../protocol/json";
 import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
-import { handleLongPoll, handleSse } from "./realtime";
+import { handleLongPoll, handleSse, handleWsUpgrade } from "./realtime";
 
 // ============================================================================
 // Response Builders (from engine/stream.ts)
@@ -91,6 +91,10 @@ export async function handleGet(
 
   if (live === "sse") {
     return handleSse(ctx, streamId, meta, url);
+  }
+
+  if (live === "ws-internal") {
+    return handleWsUpgrade(ctx, streamId, meta, url, request);
   }
   // #endregion docs-sse-mode-detection
   // #endregion docs-handle-get

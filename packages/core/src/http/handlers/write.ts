@@ -6,7 +6,14 @@ import {
   type ProducerEval,
 } from "../../stream/producer";
 import type { StreamContext } from "../router";
-import { broadcastSse, broadcastSseControl, closeAllSseClients } from "./realtime";
+import {
+  broadcastSse,
+  broadcastSseControl,
+  broadcastWebSocket,
+  broadcastWebSocketControl,
+  closeAllSseClients,
+  closeAllWebSockets,
+} from "./realtime";
 
 // PUT operations
 import { extractPutInput, parsePutInput } from "../../stream/create/parse";
@@ -158,8 +165,24 @@ export async function handlePost(
         result.value.newTailOffset,
         true,
       );
+      await broadcastWebSocketControl(
+        ctx,
+        streamId,
+        streamResult.value,
+        result.value.newTailOffset,
+        true,
+      );
     } else {
       await broadcastSse(
+        ctx,
+        streamId,
+        streamResult.value,
+        validated.value.contentType,
+        result.value.ssePayload,
+        result.value.newTailOffset,
+        validated.value.closeStream,
+      );
+      await broadcastWebSocket(
         ctx,
         streamId,
         streamResult.value,
@@ -206,6 +229,7 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     await ctx.storage.deleteStreamData(streamId);
     ctx.longPoll.notifyAll();
     await closeAllSseClients(ctx);
+    closeAllWebSockets(ctx);
 
     if (ctx.env.R2 && segments.length > 0) {
       const r2 = ctx.env.R2; // Narrowed to non-null by conditional

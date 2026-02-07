@@ -23,6 +23,32 @@ import type { StreamMeta } from "../../storage/types";
 import type { StreamContext } from "../router";
 
 // ============================================================================
+// WebSocket Types (Internal WS Bridge)
+// ============================================================================
+
+export type WsAttachment = {
+  offset: number;
+  contentType: string;
+  useBase64: boolean;
+  cursor: string;
+  streamId: string;
+};
+
+export type WsDataMessage = {
+  type: "data";
+  payload: string;
+  encoding?: "base64";
+};
+
+export type WsControlMessage = {
+  type: "control";
+  streamNextOffset: string;
+  upToDate?: boolean;
+  streamClosed?: boolean;
+  streamCursor?: string;
+};
+
+// ============================================================================
 // SSE Types
 // ============================================================================
 
@@ -506,4 +532,265 @@ async function writeSseControl(
   });
   if (control.nextCursor) client.cursor = control.nextCursor;
   await client.writer.write(textEncoder.encode(control.payload));
+}
+
+// ============================================================================
+// WebSocket Internal Bridge — Message Builders
+// ============================================================================
+
+export function buildWsDataMessage(payload: ArrayBuffer, useBase64: boolean): WsDataMessage {
+  if (useBase64) {
+    return {
+      type: "data",
+      payload: base64Encode(new Uint8Array(payload)),
+      encoding: "base64",
+    };
+  }
+  return {
+    type: "data",
+    payload: new TextDecoder().decode(payload),
+  };
+}
+
+export function buildWsControlMessage(params: {
+  nextOffset: string;
+  upToDate: boolean;
+  streamClosed: boolean;
+  cursor: string;
+}): { message: WsControlMessage; nextCursor: string | null } {
+  const msg: WsControlMessage = {
+    type: "control",
+    streamNextOffset: params.nextOffset,
+  };
+
+  if (params.streamClosed) {
+    msg.streamClosed = true;
+    return { message: msg, nextCursor: null };
+  }
+
+  const nextCursor = generateResponseCursor(params.cursor);
+  msg.streamCursor = nextCursor;
+  if (params.upToDate) msg.upToDate = true;
+
+  return { message: msg, nextCursor };
+}
+
+// ============================================================================
+// WebSocket Internal Bridge — Upgrade Handler
+// ============================================================================
+
+export async function handleWsUpgrade(
+  ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
+  url: URL,
+  request: Request,
+): Promise<Response> {
+  const upgradeHeader = request.headers.get("Upgrade");
+  if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
+    return errorResponse(426, "WebSocket upgrade required");
+  }
+
+  const offsetParam = url.searchParams.get("offset");
+  if (!offsetParam) return errorResponse(400, "offset is required");
+
+  let offset: number;
+  if (offsetParam === "now") {
+    offset = meta.tail_offset;
+  } else {
+    const resolved = await ctx.resolveOffset(
+      streamId,
+      meta,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+    );
+    if (resolved.error) return resolved.error;
+    offset = resolved.offset;
+  }
+
+  const contentType = meta.content_type;
+  const useBase64 = !isTextual(contentType);
+  const cursor = url.searchParams.get("cursor") ?? "";
+
+  const pair = new WebSocketPair();
+  const [client, server] = [pair[0], pair[1]];
+
+  const attachment: WsAttachment = {
+    offset,
+    contentType,
+    useBase64,
+    cursor,
+    streamId,
+  };
+
+  ctx.state.acceptWebSocket(server, [streamId]);
+  server.serializeAttachment(attachment);
+
+  // Send catch-up data in the background after returning the 101
+  ctx.state.waitUntil(
+    (async () => {
+      await Promise.resolve();
+      await sendWsCatchUp(ctx, streamId, meta, server, attachment);
+    })(),
+  );
+
+  const headers = new Headers();
+  if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");
+
+  return new Response(null, { status: 101, webSocket: client, headers });
+}
+
+// ============================================================================
+// WebSocket Internal Bridge — Catch-Up + Broadcast
+// ============================================================================
+
+async function sendWsCatchUp(
+  ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
+  ws: WebSocket,
+  attachment: WsAttachment,
+): Promise<void> {
+  try {
+    let currentOffset = attachment.offset;
+    let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+    if (read.error) return;
+
+    if (read.hasData) {
+      sendWsData(ws, attachment, read.body);
+      const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
+      sendWsControl(ws, attachment, nextOffsetHeader, read.upToDate, read.closedAtTail);
+      currentOffset = read.nextOffset;
+      attachment.offset = currentOffset;
+
+      while (!read.upToDate && !read.closedAtTail) {
+        read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+        if (read.error || !read.hasData) break;
+        sendWsData(ws, attachment, read.body);
+        const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
+        sendWsControl(ws, attachment, header, read.upToDate, read.closedAtTail);
+        currentOffset = read.nextOffset;
+        attachment.offset = currentOffset;
+      }
+    } else {
+      const header = await ctx.encodeOffset(streamId, meta, currentOffset);
+      const closedAtTail = meta.closed === 1 && currentOffset >= meta.tail_offset;
+      sendWsControl(ws, attachment, header, true, closedAtTail);
+    }
+
+    ws.serializeAttachment(attachment);
+
+    if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
+      ws.close(1000, "stream closed");
+    }
+  } catch {
+    try { ws.close(1011, "catch-up error"); } catch { /* already closed */ }
+  }
+}
+
+function sendWsData(ws: WebSocket, attachment: WsAttachment, payload: ArrayBuffer): void {
+  const msg = buildWsDataMessage(payload, attachment.useBase64);
+  ws.send(JSON.stringify(msg));
+}
+
+function sendWsControl(
+  ws: WebSocket,
+  attachment: WsAttachment,
+  nextOffsetHeader: string,
+  upToDate: boolean,
+  streamClosed: boolean,
+): void {
+  const { message, nextCursor } = buildWsControlMessage({
+    nextOffset: nextOffsetHeader,
+    upToDate,
+    streamClosed,
+    cursor: attachment.cursor,
+  });
+  if (nextCursor) attachment.cursor = nextCursor;
+  ws.send(JSON.stringify(message));
+}
+
+// ============================================================================
+// WebSocket Internal Bridge — Broadcast (called from write handlers)
+// ============================================================================
+
+export async function broadcastWebSocket(
+  ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
+  contentType: string,
+  payload: ArrayBuffer | null,
+  nextOffset: number,
+  streamClosed: boolean,
+): Promise<void> {
+  const sockets = ctx.getWebSockets(streamId);
+  if (sockets.length === 0) return;
+  if (!payload) return;
+
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
+
+  for (const ws of sockets) {
+    try {
+      const attachment = ws.deserializeAttachment() as WsAttachment;
+      sendWsData(ws, attachment, payload);
+
+      const { message, nextCursor } = buildWsControlMessage({
+        nextOffset: nextOffsetHeader,
+        upToDate: true,
+        streamClosed,
+        cursor: attachment.cursor,
+      });
+      if (nextCursor) attachment.cursor = nextCursor;
+      attachment.offset = nextOffset;
+      ws.serializeAttachment(attachment);
+      ws.send(JSON.stringify(message));
+
+      if (streamClosed) {
+        ws.close(1000, "stream closed");
+      }
+    } catch {
+      try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
+    }
+  }
+}
+
+export async function broadcastWebSocketControl(
+  ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
+  nextOffset: number,
+  streamClosed: boolean,
+): Promise<void> {
+  const sockets = ctx.getWebSockets(streamId);
+  if (sockets.length === 0) return;
+
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
+
+  for (const ws of sockets) {
+    try {
+      const attachment = ws.deserializeAttachment() as WsAttachment;
+      const { message, nextCursor } = buildWsControlMessage({
+        nextOffset: nextOffsetHeader,
+        upToDate: true,
+        streamClosed,
+        cursor: attachment.cursor,
+      });
+      if (nextCursor) attachment.cursor = nextCursor;
+      attachment.offset = nextOffset;
+      ws.serializeAttachment(attachment);
+      ws.send(JSON.stringify(message));
+
+      if (streamClosed) {
+        ws.close(1000, "stream closed");
+      }
+    } catch {
+      try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
+    }
+  }
+}
+
+export function closeAllWebSockets(ctx: StreamContext): void {
+  const sockets = ctx.getWebSockets();
+  for (const ws of sockets) {
+    try { ws.close(1000, "stream deleted"); } catch { /* already closed */ }
+  }
 }

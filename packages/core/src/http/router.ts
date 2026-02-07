@@ -52,6 +52,7 @@ export type StreamContext = {
     streamId: string,
     options?: { force?: boolean; retainOps?: boolean },
   ) => Promise<void>;
+  getWebSockets: (tag?: string) => WebSocket[];
 };
 
 // ============================================================================

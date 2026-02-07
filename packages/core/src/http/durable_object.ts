@@ -19,6 +19,7 @@ export type StreamIntrospection = {
   producers: ProducerState[];
   sseClientCount: number;
   longPollWaiterCount: number;
+  wsClientCount: number;
 };
 
 export class StreamDO extends DurableObject<StreamEnv> {
@@ -35,6 +36,39 @@ export class StreamDO extends DurableObject<StreamEnv> {
     ctx.blockConcurrencyWhile(async () => {
       this.storage.initSchema();
     });
+  }
+
+  // Handle WebSocket upgrade requests via fetch() — RPC cannot serialize WebSocket responses
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const live = url.searchParams.get("live");
+    if (live !== "ws-internal") {
+      return new Response("not found", { status: 404 });
+    }
+    // Extract streamId from the URL path: /v1/stream/:id or /v1/:project/stream/:id
+    // The edge worker sends the full URL, so we parse it here.
+    // Use a simple approach: the doKey is encoded in the path but we need the
+    // streamId that routeStreamRequest would receive. Since the edge worker
+    // constructs the WS URL from the original request URL, we can extract it.
+    const pathMatch = /\/v1\/([^/]+)\/stream\/(.+)$/.exec(url.pathname);
+    const legacyMatch = !pathMatch ? /\/v1\/stream\/(.+)$/.exec(url.pathname) : null;
+    let streamId: string;
+    let projectId: string;
+    try {
+      if (pathMatch) {
+        projectId = decodeURIComponent(pathMatch[1]);
+        streamId = decodeURIComponent(pathMatch[2]);
+      } else if (legacyMatch) {
+        projectId = "_default";
+        streamId = decodeURIComponent(legacyMatch[1]);
+      } else {
+        return new Response("not found", { status: 404 });
+      }
+    } catch {
+      return new Response("malformed stream id", { status: 400 });
+    }
+    const doKey = `${projectId}/${streamId}`;
+    return this.routeStreamRequest(doKey, false, request);
   }
 
   // #region docs-do-rpc
@@ -75,6 +109,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
       readFromOffset: (streamId, meta, offset, maxChunkBytes) =>
         this.readPath.readFromOffset(streamId, meta, offset, maxChunkBytes, timing),
       rotateSegment: this.rotateSegment.bind(this),
+      getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
     };
 
     const response = await routeRequest(ctx, streamId, request);
@@ -98,6 +133,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
       producers,
       sseClientCount: this.sseState.clients.size,
       longPollWaiterCount: this.longPoll.getWaiterCount(),
+      wsClientCount: this.ctx.getWebSockets().length,
     };
   }
 
@@ -156,6 +192,35 @@ export class StreamDO extends DurableObject<StreamEnv> {
     const raw = this.env.SEGMENT_MAX_BYTES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_BYTES_DEFAULT;
+  }
+
+  // =========================================================================
+  // Hibernation API event handlers (internal WebSocket bridge)
+  // =========================================================================
+
+  webSocketMessage(_ws: WebSocket, _message: string | ArrayBuffer): void {
+    // Internal bridge: edge worker doesn't send messages to the DO.
+    // Reserved for future use (e.g., offset acknowledgements).
+  }
+
+  webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): void {
+    // Connection closed — no cleanup needed beyond what Cloudflare does
+    // automatically. The WebSocket is already removed from getWebSockets().
+    if (this.env.METRICS) {
+      try {
+        const attachment = ws.deserializeAttachment() as { streamId?: string } | null;
+        const streamId = attachment?.streamId ?? "unknown";
+        this.env.METRICS.writeDataPoint({
+          indexes: [streamId],
+          blobs: [streamId, "ws_disconnect", "anonymous"],
+          doubles: [1, 0],
+        });
+      } catch { /* best-effort metrics */ }
+    }
+  }
+
+  webSocketError(ws: WebSocket, _error: unknown): void {
+    try { ws.close(1011, "internal error"); } catch { /* already closed */ }
   }
 
   // RPC methods for test tooling (accessible only via service bindings, not HTTP)
