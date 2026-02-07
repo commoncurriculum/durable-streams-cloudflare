@@ -3,7 +3,7 @@
 This document describes the Cloudflare-only architecture for Durable Streams with **low-latency, consistent writes** suitable for a real-time text editor.
 
 ## Summary
-- **Worker** handles auth, routing, and cache policy.
+- **Worker** handles auth and routing.
 - **Durable Object (one per stream/document)** provides strict ordering, live fan-out, and protocol behavior.
 - **DO SQLite** is the **durable hot log**. ACK only after a SQLite commit.
 - **R2** is cold storage for immutable segments, never on the ACK path.
@@ -15,7 +15,7 @@ Object storage is **not** in the ACK path. The ACK path is **Durable Object + SQ
 ## Architecture
 ```
 Client
-  -> Worker (auth, routing, cache policy)
+  -> Worker (auth, routing)
        -> Durable Object (per stream)
             -> SQLite (hot log, metadata, producer state)
             -> R2 (cold segments)
@@ -113,8 +113,8 @@ CREATE TABLE segments (
    - `Stream-Closed` when closed and at tail
 
 ## Long-Poll Flow
-- **Shared-cache mode**: responses are cacheable with short TTL (1–2s) to enable CDN collapse.
-- **Private-cache mode**: no-store + DO in-flight coalescing.
+- Responses include protocol-correct `Cache-Control: public, max-age=20` headers.
+- DO-level in-flight coalescing and recent-read cache (100ms, auto-invalidating) deduplicate concurrent requests.
 
 ## Segment Rotation
 - Rotate when either limit is hit:

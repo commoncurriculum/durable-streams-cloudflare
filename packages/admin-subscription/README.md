@@ -47,7 +47,7 @@ pnpm deploy       # vite build && wrangler deploy
 | Binding | Type | Description |
 |---------|------|-------------|
 | `SUBSCRIPTION` | Service Binding | Service binding to the subscription worker (required). Uses Worker RPC for admin operations — no auth tokens needed. |
-| `CORE` | Service Binding | Service binding to the core worker (required, for SSE proxy via Worker RPC) |
+| `CORE` | Service Binding | Service binding to the core worker (required, for stream operations via Worker RPC) |
 | `REGISTRY` | KV Namespace | Per-project signing secrets (required for project management). Shared with the core and subscription workers. |
 
 ## See Also

@@ -9,7 +9,7 @@ This is a **library** — you import `createStreamWorker()`, pass your auth conf
 - **Durable Object per stream** — single-threaded sequencer with strong ordering
 - **SQLite hot log** — low-latency writes via DO transactional storage
 - **R2 cold segments** — automatic rotation of historical data to immutable R2 objects
-- **CDN-aware caching** — shared edge cache integration with public stream support
+- **Protocol-correct caching** — Cache-Control headers per Durable Streams spec, external CDN-friendly
 - **Long-poll + SSE** — real-time delivery with catch-up reads
 - **JSON mode** — array flattening, JSON validation, message-count offsets
 - **TTL / Expires-At** — stream-level time-to-live enforcement
@@ -249,15 +249,10 @@ Write Path
 Read Path
   Client ──GET───> Worker (JWT auth or public stream check)
                      │
-                     ├──> Edge cache hit? → return cached
-                     │
                      v
                    StreamDO
                      ├── hot log (SQLite) → recent messages
                      └── cold segment (R2) → historical messages
-                                              │
-                                              v
-                                           Edge cache
 ```
 
 ## See Also
