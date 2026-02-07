@@ -831,10 +831,28 @@ export async function setup() {
       if (p.isCancel(createRepo)) cancelled();
 
       if (createRepo) {
+        // List GitHub orgs so user can pick where to create the repo
+        const orgsResult = runMayFail("gh api user/orgs --jq '.[].login'");
+        const orgs = orgsResult.ok ? orgsResult.stdout.split("\n").filter(Boolean) : [];
+
+        let repoOwner = "";
+        if (orgs.length > 0) {
+          const ownerChoice = await p.select({
+            message: "Create repo under:",
+            options: [
+              ...orgs.map((org) => ({ value: org, label: org })),
+              { value: "_personal", label: "Personal account" },
+            ],
+          });
+          if (p.isCancel(ownerChoice)) cancelled();
+          repoOwner = ownerChoice === "_personal" ? "" : ownerChoice;
+        }
+
+        const defaultName = projectDir.split("/").pop() ?? WORKER_CORE;
         const repoName = await p.text({
           message: "GitHub repo name:",
-          placeholder: projectDir.split("/").pop() ?? WORKER_CORE,
-          defaultValue: projectDir.split("/").pop() ?? WORKER_CORE,
+          placeholder: defaultName,
+          defaultValue: defaultName,
           validate: (v) => v.length === 0 ? "Repo name is required" : undefined,
         });
         if (p.isCancel(repoName)) cancelled();
@@ -848,21 +866,24 @@ export async function setup() {
         });
         if (p.isCancel(visibility)) cancelled();
 
+        const fullRepoName = repoOwner ? `${repoOwner}/${repoName}` : repoName;
+
         const repoSpinner = p.spinner();
-        repoSpinner.start("Creating GitHub repo");
+        repoSpinner.start(`Creating ${visibility} repo: ${fullRepoName}`);
 
         const ghResult = runMayFail(
-          `cd ${projectDir} && gh repo create ${repoName} --${visibility} --source=. --push`,
+          `cd "${projectDir}" && gh repo create "${fullRepoName}" --${visibility} --source=. --push`,
         );
 
         if (ghResult.ok) {
-          // Try to extract repo URL
-          const urlMatch = ghResult.stdout.match(/https:\/\/github\.com\/[^\s]+/);
+          // gh outputs the URL to stderr
+          const combined = ghResult.stdout + "\n" + ghResult.stderr;
+          const urlMatch = combined.match(/https:\/\/github\.com\/[^\s]+/);
           repoUrl = urlMatch ? urlMatch[0] : "";
           repoSpinner.stop(repoUrl ? `Repo created: ${repoUrl}` : "Repo created and pushed");
         } else {
           repoSpinner.stop("Repo creation failed");
-          p.log.warning(ghResult.stderr);
+          p.log.warning(ghResult.stderr || ghResult.stdout);
           p.log.info("You can create the repo manually and push later.");
         }
       }
