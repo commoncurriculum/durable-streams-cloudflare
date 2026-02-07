@@ -299,7 +299,7 @@ Runs every 5 minutes via cron. Records cleanup metrics including expired session
 
 # 6. Core Service Binding
 
-The subscription worker communicates with core via a Cloudflare service binding (`env.CORE`). All calls go through `env.CORE.fetch()` — an internal RPC call with no network hop and no auth overhead.
+The subscription worker communicates with core via a Cloudflare service binding (`env.CORE`). All calls use typed RPC methods (`env.CORE.putStream()`, `env.CORE.postStream()`, `env.CORE.deleteStream()`, `env.CORE.headStream()`) — direct RPC with no network hop and no auth overhead.
 
 ---
 

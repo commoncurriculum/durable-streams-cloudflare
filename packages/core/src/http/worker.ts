@@ -70,7 +70,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
       "Content-Type": options?.contentType ?? "application/json",
     };
     if (options?.expiresAt) {
-      headers["X-Stream-Expires-At"] = options.expiresAt.toString();
+      headers["Stream-Expires-At"] = options.expiresAt.toString();
     }
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
@@ -116,9 +116,9 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     return {
       ok: response.ok,
       status: response.status,
-      nextOffset: response.headers.get("X-Stream-Next-Offset"),
-      upToDate: response.headers.get("X-Stream-Up-To-Date"),
-      streamClosed: response.headers.get("X-Stream-Closed"),
+      nextOffset: response.headers.get("Stream-Next-Offset"),
+      upToDate: response.headers.get("Stream-Up-To-Date"),
+      streamClosed: response.headers.get("Stream-Closed"),
       body,
     };
   }

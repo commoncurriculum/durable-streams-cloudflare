@@ -104,18 +104,13 @@ export async function startCoreWorker(options?: {
 export async function startSubscriptionsWorker(options?: {
   port?: number;
   persistDir?: string;
-  coreUrl?: string;
   vars?: Record<string, string>;
 }): Promise<WorkerHandle> {
   const port = options?.port ?? (await getAvailablePort());
   const persistDir = options?.persistDir ?? (await createPersistDir("subs-"));
-  const coreUrl = options?.coreUrl ?? "http://localhost:8787";
   const vars = options?.vars ?? {};
 
-  const extraVars: string[] = [
-    "--var",
-    `CORE_URL:${coreUrl}`,
-  ];
+  const extraVars: string[] = [];
   for (const [key, value] of Object.entries(vars)) {
     extraVars.push("--var", `${key}:${value}`);
   }
@@ -174,10 +169,9 @@ export async function startTestStack(): Promise<TestStack> {
   // Start core first
   const core = await startCoreWorker({ persistDir: corePersist });
 
-  // Start subscriptions pointing to core
+  // Start subscriptions worker (uses service bindings to reach core)
   const subscriptions = await startSubscriptionsWorker({
     persistDir: subsPersist,
-    coreUrl: core.baseUrl,
   });
 
   return {

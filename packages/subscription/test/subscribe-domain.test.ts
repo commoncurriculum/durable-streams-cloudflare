@@ -18,8 +18,8 @@ const mockIdFromName = vi.fn().mockReturnValue("do-id");
 const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
-const mockFetch = vi.fn();
-const mockRouteRequest = vi.fn();
+const mockPutStream = vi.fn();
+const mockDeleteStream = vi.fn();
 
 function createEnv() {
   return {
@@ -27,7 +27,7 @@ function createEnv() {
       get: vi.fn().mockReturnValue(mockStub),
       idFromName: mockIdFromName,
     } as unknown as AppEnv["SUBSCRIPTION_DO"],
-    CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+    CORE: { putStream: mockPutStream, deleteStream: mockDeleteStream, headStream: vi.fn(), postStream: vi.fn() },
     METRICS: undefined,
   };
 }
@@ -35,7 +35,8 @@ function createEnv() {
 describe("subscribe domain", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockPutStream.mockReset();
+    mockDeleteStream.mockReset();
     mockAddSubscriber.mockReset();
   });
 
@@ -44,7 +45,7 @@ describe("subscribe domain", () => {
   });
 
   it("happy path — session created, DO succeeds, metrics recorded", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockPutStream.mockResolvedValueOnce({ ok: true, status: 200 });
     mockAddSubscriber.mockResolvedValueOnce(undefined);
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
@@ -60,7 +61,7 @@ describe("subscribe domain", () => {
   });
 
   it("session already exists (409) — isNewSession is false", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 409 }));
+    mockPutStream.mockResolvedValueOnce({ ok: false, status: 409 });
     mockAddSubscriber.mockResolvedValueOnce(undefined);
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
@@ -73,26 +74,22 @@ describe("subscribe domain", () => {
 
   it("DO failure triggers rollback for new session", async () => {
     // Core creates session (200)
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockPutStream.mockResolvedValueOnce({ ok: true, status: 200 });
     // DO fails
     mockAddSubscriber.mockRejectedValueOnce(new Error("DO error"));
     // Rollback DELETE
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockDeleteStream.mockResolvedValueOnce({ ok: true, status: 200 });
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");
 
-    // Verify DELETE was called to rollback
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    // The second call should be a DELETE request with project-scoped URL
-    const rollbackRequest = mockFetch.mock.calls[1][0] as Request;
-    expect(rollbackRequest.url).toContain(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
-    expect(rollbackRequest.method).toBe("DELETE");
+    // Verify deleteStream RPC was called to rollback with correct doKey
+    expect(mockDeleteStream).toHaveBeenCalledWith(`${PROJECT_ID}/${SESSION_ID}`);
   });
 
   it("DO failure does NOT rollback existing session (409)", async () => {
     // Core returns 409 (session exists)
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 409 }));
+    mockPutStream.mockResolvedValueOnce({ ok: false, status: 409 });
     // DO fails
     mockAddSubscriber.mockRejectedValueOnce(new Error("DO error"));
 
@@ -100,16 +97,16 @@ describe("subscribe domain", () => {
     await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");
 
     // No rollback DELETE
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockDeleteStream).not.toHaveBeenCalled();
   });
 
   it("rollback itself fails — original error still thrown", async () => {
     // Core creates session (200)
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    mockPutStream.mockResolvedValueOnce({ ok: true, status: 200 });
     // DO fails
     mockAddSubscriber.mockRejectedValueOnce(new Error("DO error"));
     // Rollback DELETE fails
-    mockFetch.mockRejectedValueOnce(new Error("rollback failed"));
+    mockDeleteStream.mockRejectedValueOnce(new Error("rollback failed"));
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     await expect(subscribe(createEnv() as never, PROJECT_ID, "stream-1", SESSION_ID)).rejects.toThrow("DO error");

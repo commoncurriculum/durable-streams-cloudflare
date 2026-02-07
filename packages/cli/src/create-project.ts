@@ -75,8 +75,10 @@ export async function createProject() {
   spinner.start("Creating project in KV");
 
   const value = JSON.stringify({ signingSecret });
+  // Escape single quotes for safe shell interpolation: replace ' with '\''
+  const escapedValue = value.replace(/'/g, "'\\''");
   const result = runMayFail(
-    `npx wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${value}'`,
+    `npx wrangler kv key put --namespace-id="${namespaceId}" "${projectName}" '${escapedValue}'`,
   );
 
   if (!result.ok) {

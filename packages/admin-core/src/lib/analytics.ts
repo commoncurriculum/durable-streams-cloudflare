@@ -177,9 +177,11 @@ export const createProject = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
     if (!kv) throw new Error("PROJECT_KEYS KV namespace is not configured");
-    if (!data.projectId.trim()) throw new Error("Project ID is required");
+    const projectId = data.projectId.trim();
+    if (!projectId) throw new Error("Project ID is required");
+    if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(data.projectId.trim(), JSON.stringify({ signingSecret: secret }));
+    await kv.put(projectId, JSON.stringify({ signingSecret: secret }));
     return { ok: true, signingSecret: secret };
   });
 
@@ -187,5 +189,5 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   const kv = (env as Record<string, unknown>).PROJECT_KEYS as KVNamespace | undefined;
   if (!kv) return [];
   const list = await kv.list();
-  return list.keys.map((k) => k.name).sort();
+  return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
 });

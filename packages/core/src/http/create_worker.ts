@@ -153,7 +153,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const readAuth = await config.authorizeRead(request, doKey, env, timing);
         if (!readAuth.ok) {
           // On auth failure for reads, check if stream is public
-          if ((readAuth as { authFailed?: boolean }).authFailed && env.PROJECT_KEYS) {
+          if (readAuth.authFailed && env.PROJECT_KEYS) {
             const pub = await isStreamPublic(env.PROJECT_KEYS, doKey);
             if (!pub) {
               return wrapAuthError(readAuth.response);

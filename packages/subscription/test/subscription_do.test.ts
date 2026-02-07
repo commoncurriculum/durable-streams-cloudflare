@@ -32,8 +32,7 @@ vi.mock("cloudflare:workers", () => ({
 
 const PROJECT_ID = "test-project";
 
-const mockFetch = vi.fn();
-const mockRouteRequest = vi.fn();
+const mockPostStream = vi.fn();
 
 function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStorage>>) {
   return {
@@ -44,7 +43,7 @@ function createMockState(sqlStorage: Awaited<ReturnType<typeof createTestSqlStor
 
 function createMockEnv(overrides: Record<string, unknown> = {}) {
   return {
-    CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+    CORE: { postStream: mockPostStream, headStream: vi.fn(), putStream: vi.fn(), deleteStream: vi.fn() },
     METRICS: undefined,
     ...overrides,
   };
@@ -59,7 +58,7 @@ describe("SubscriptionDO", () => {
     mockState = createMockState(sqlStorage);
     mockEnv = createMockEnv();
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockPostStream.mockReset();
     mockFanoutToSubscribers.mockReset();
   });
 
@@ -154,12 +153,9 @@ describe("SubscriptionDO", () => {
       await dobj.addSubscriber("session-2");
 
       // Mock core write success
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "5" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: "5", upToDate: null, streamClosed: null, body: null,
+      });
 
       // Mock fanout
       mockFanoutToSubscribers.mockResolvedValueOnce({
@@ -179,10 +175,13 @@ describe("SubscriptionDO", () => {
       expect(result.fanoutFailures).toBe(0);
       expect(result.fanoutMode).toBe("inline");
 
-      // Verify core write was called via fetch (project-scoped URL)
-      expect(mockFetch).toHaveBeenCalledWith(expect.any(Request));
-      const writeRequest = mockFetch.mock.calls[0][0] as Request;
-      expect(writeRequest.url).toContain(`/v1/${PROJECT_ID}/stream/test-stream`);
+      // Verify core postStream RPC was called with correct doKey
+      expect(mockPostStream).toHaveBeenCalledWith(
+        `${PROJECT_ID}/test-stream`,
+        expect.any(ArrayBuffer),
+        "application/json",
+        undefined,
+      );
 
       // Verify shared fanout function was called
       expect(mockFanoutToSubscribers).toHaveBeenCalledTimes(1);
@@ -195,9 +194,9 @@ describe("SubscriptionDO", () => {
       await dobj.addSubscriber("session-1");
 
       // Mock core write failure
-      mockFetch.mockResolvedValueOnce(
-        new Response("Internal error", { status: 500 }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: false, status: 500, nextOffset: null, upToDate: null, streamClosed: null, body: "Internal error",
+      });
 
       const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -217,12 +216,9 @@ describe("SubscriptionDO", () => {
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Mock core write success
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+      });
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 0, failures: 0, staleSessionIds: [] });
 
@@ -234,14 +230,13 @@ describe("SubscriptionDO", () => {
         producerSeq: "42",
       });
 
-      expect(mockFetch).toHaveBeenCalledWith(expect.any(Request));
-
-      // Verify the Request has producer headers and correct URL
-      const calledRequest = mockFetch.mock.calls[0][0] as Request;
-      expect(calledRequest.url).toContain(`/v1/${PROJECT_ID}/stream/test-stream`);
-      expect(calledRequest.headers.get("Producer-Id")).toBe("producer-123");
-      expect(calledRequest.headers.get("Producer-Epoch")).toBe("1");
-      expect(calledRequest.headers.get("Producer-Seq")).toBe("42");
+      // Verify core postStream RPC was called with producer headers
+      expect(mockPostStream).toHaveBeenCalledWith(
+        `${PROJECT_ID}/test-stream`,
+        expect.any(ArrayBuffer),
+        "application/json",
+        { producerId: "producer-123", producerEpoch: "1", producerSeq: "42" },
+      );
     });
 
     it("should use fanout producer headers with source offset", async () => {
@@ -251,12 +246,9 @@ describe("SubscriptionDO", () => {
       await dobj.addSubscriber("session-1");
 
       // Mock core write success with offset
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "99" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: "99", upToDate: null, streamClosed: null, body: null,
+      });
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
@@ -273,9 +265,9 @@ describe("SubscriptionDO", () => {
         expect.any(ArrayBuffer),
         "application/json",
         {
-          "Producer-Id": "fanout:my-stream",
-          "Producer-Epoch": "1",
-          "Producer-Seq": "99",
+          producerId: "fanout:my-stream",
+          producerEpoch: "1",
+          producerSeq: "99",
         },
       );
     });
@@ -291,12 +283,9 @@ describe("SubscriptionDO", () => {
       expect(before.count).toBe(2);
 
       // Mock core write success
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "5" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: "5", upToDate: null, streamClosed: null, body: null,
+      });
 
       // Mock fanout with stale session
       mockFanoutToSubscribers.mockResolvedValueOnce({
@@ -328,12 +317,9 @@ describe("SubscriptionDO", () => {
       await dobj.addSubscriber("session-1");
 
       // Mock core write success
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+      });
 
       mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 1, failures: 0, staleSessionIds: [] });
 
@@ -362,9 +348,9 @@ describe("SubscriptionDO", () => {
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Mock core write failure
-      mockFetch.mockResolvedValueOnce(
-        new Response("Internal error", { status: 500 }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: false, status: 500, nextOffset: null, upToDate: null, streamClosed: null, body: "Internal error",
+      });
 
       await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -383,12 +369,9 @@ describe("SubscriptionDO", () => {
       const dobj = new SubscriptionDO(mockState as unknown as DurableObjectState, mockEnv);
 
       // Mock core write success
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockPostStream.mockResolvedValueOnce({
+        ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+      });
 
       const result = await dobj.publish(PROJECT_ID, "test-stream", {
         payload: new TextEncoder().encode(JSON.stringify({ message: "hello" })).buffer as ArrayBuffer,
@@ -425,12 +408,9 @@ describe("SubscriptionDO", () => {
         await dobj.addSubscriber("s3");
 
         // Mock core write success
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "10" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: "10", upToDate: null, streamClosed: null, body: null,
+        });
 
         const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
@@ -462,12 +442,9 @@ describe("SubscriptionDO", () => {
         await dobj.addSubscriber("s1");
         await dobj.addSubscriber("s2");
 
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+        });
 
         mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
 
@@ -491,12 +468,9 @@ describe("SubscriptionDO", () => {
         await dobj.addSubscriber("s1");
         await dobj.addSubscriber("s2");
 
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+        });
 
         mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
 
@@ -525,12 +499,9 @@ describe("SubscriptionDO", () => {
         await dobj.addSubscriber("s1");
         await dobj.addSubscriber("s2");
 
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+        });
 
         const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
@@ -560,12 +531,9 @@ describe("SubscriptionDO", () => {
           await dobj.addSubscriber(`s${i}`);
         }
 
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json", "X-Stream-Next-Offset": "1" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: "1", upToDate: null, streamClosed: null, body: null,
+        });
 
         const result = await dobj.publish(PROJECT_ID, "test-stream", {
           payload: new TextEncoder().encode("hello").buffer as ArrayBuffer,
@@ -595,12 +563,9 @@ describe("SubscriptionDO", () => {
         await dobj.addSubscriber("s1");
         await dobj.addSubscriber("s2");
 
-        mockFetch.mockResolvedValueOnce(
-          new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
+        mockPostStream.mockResolvedValueOnce({
+          ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null,
+        });
 
         mockFanoutToSubscribers.mockResolvedValueOnce({ successes: 2, failures: 0, staleSessionIds: [] });
 

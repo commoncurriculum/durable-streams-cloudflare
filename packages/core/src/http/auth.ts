@@ -163,42 +163,44 @@ export function projectJwtAuth(): {
     }
 
     const doneAuth = timing?.start("edge.auth");
-    const token = extractBearerToken(request);
-    doneAuth?.();
+    try {
+      const token = extractBearerToken(request);
+      if (!token) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+      }
 
-    if (!token) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+      const slashIndex = doKey.indexOf("/");
+      if (slashIndex === -1) {
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
+      }
+      const projectId = doKey.substring(0, slashIndex);
+
+      const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
+      if (!config) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+      }
+
+      const claims = await verifyProjectJwt(token, config.signingSecret);
+      if (!claims) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
+      }
+
+      if (claims.sub !== projectId) {
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
+      }
+
+      if (Date.now() >= claims.exp * 1000) {
+        return { ok: false, response: new Response("token expired", { status: 401 }) };
+      }
+
+      if (claims.scope !== "write") {
+        return { ok: false, response: new Response("forbidden", { status: 403 }) };
+      }
+
+      return { ok: true };
+    } finally {
+      doneAuth?.();
     }
-
-    const slashIndex = doKey.indexOf("/");
-    if (slashIndex === -1) {
-      return { ok: false, response: new Response("forbidden", { status: 403 }) };
-    }
-    const projectId = doKey.substring(0, slashIndex);
-
-    const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
-    if (!config) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-    }
-
-    const claims = await verifyProjectJwt(token, config.signingSecret);
-    if (!claims) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-    }
-
-    if (claims.sub !== projectId) {
-      return { ok: false, response: new Response("forbidden", { status: 403 }) };
-    }
-
-    if (Date.now() >= claims.exp * 1000) {
-      return { ok: false, response: new Response("token expired", { status: 401 }) };
-    }
-
-    if (claims.scope !== "write") {
-      return { ok: false, response: new Response("forbidden", { status: 403 }) };
-    }
-
-    return { ok: true };
   };
 
   const authorizeRead: AuthorizeRead<ProjectJwtEnv> = async (request, doKey, env, timing) => {
@@ -207,47 +209,49 @@ export function projectJwtAuth(): {
     }
 
     const doneAuth = timing?.start("edge.read_auth");
-    const token = extractBearerToken(request);
-    doneAuth?.();
+    try {
+      const token = extractBearerToken(request);
+      if (!token) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+      }
 
-    if (!token) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
-    }
-
-    const slashIndex = doKey.indexOf("/");
-    if (slashIndex === -1) {
-      return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
-    }
-    const projectId = doKey.substring(0, slashIndex);
-
-    const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
-    if (!config) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
-    }
-
-    const claims = await verifyProjectJwt(token, config.signingSecret);
-    if (!claims) {
-      return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
-    }
-
-    if (claims.sub !== projectId) {
-      return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
-    }
-
-    if (Date.now() >= claims.exp * 1000) {
-      return { ok: false, response: new Response("token expired", { status: 401 }), authFailed: true };
-    }
-
-    // Read auth accepts both "write" and "read" scope
-    // If stream_id is present, verify it matches the stream portion of doKey
-    if (claims.stream_id) {
-      const streamPart = doKey.substring(slashIndex + 1);
-      if (claims.stream_id !== streamPart) {
+      const slashIndex = doKey.indexOf("/");
+      if (slashIndex === -1) {
         return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
       }
-    }
+      const projectId = doKey.substring(0, slashIndex);
 
-    return { ok: true };
+      const config = await lookupProjectConfig(env.PROJECT_KEYS, projectId);
+      if (!config) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+      }
+
+      const claims = await verifyProjectJwt(token, config.signingSecret);
+      if (!claims) {
+        return { ok: false, response: new Response("unauthorized", { status: 401 }), authFailed: true };
+      }
+
+      if (claims.sub !== projectId) {
+        return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
+      }
+
+      if (Date.now() >= claims.exp * 1000) {
+        return { ok: false, response: new Response("token expired", { status: 401 }), authFailed: true };
+      }
+
+      // Read auth accepts both "write" and "read" scope
+      // If stream_id is present, verify it matches the stream portion of doKey
+      if (claims.stream_id) {
+        const streamPart = doKey.substring(slashIndex + 1);
+        if (claims.stream_id !== streamPart) {
+          return { ok: false, response: new Response("forbidden", { status: 403 }), authFailed: true };
+        }
+      }
+
+      return { ok: true };
+    } finally {
+      doneAuth?.();
+    }
   };
 
   return { authorizeMutation, authorizeRead };

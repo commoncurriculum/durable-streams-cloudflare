@@ -18,14 +18,13 @@ vi.mock("../src/metrics", () => ({
 const PROJECT_ID = "test-project";
 const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
-const mockFetch = vi.fn();
-const mockRouteRequest = vi.fn();
+const mockDeleteStream = vi.fn();
 const mockProjectKeys = {} as KVNamespace;
 
 describe("cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch.mockReset();
+    mockDeleteStream.mockReset();
   });
 
   describe("cleanupExpiredSessions", () => {
@@ -33,7 +32,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         // No ACCOUNT_ID or API_TOKEN
@@ -53,7 +52,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -94,12 +93,12 @@ describe("cleanup", () => {
       };
 
       // Mock core RPC for session deletion
-      mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -117,11 +116,8 @@ describe("cleanup", () => {
       expect(mockRemoveSubscriber).toHaveBeenCalledTimes(2);
       expect(mockRemoveSubscriber).toHaveBeenCalledWith(SESSION_ID);
 
-      // Verify core was called via fetch to delete session stream
-      expect(mockFetch).toHaveBeenCalledWith(expect.any(Request));
-      const calledRequest = mockFetch.mock.calls[0][0] as Request;
-      expect(calledRequest.url).toContain(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
-      expect(calledRequest.method).toBe("DELETE");
+      // Verify core deleteStream RPC was called with correct doKey
+      expect(mockDeleteStream).toHaveBeenCalledWith(`${PROJECT_ID}/${SESSION_ID}`);
     });
 
     it("should handle DO RPC failures gracefully", async () => {
@@ -148,12 +144,12 @@ describe("cleanup", () => {
       };
 
       // Mock core RPC
-      mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -180,12 +176,12 @@ describe("cleanup", () => {
       vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
       // Mock core RPC to fail
-      mockFetch.mockResolvedValue(new Response(null, { status: 500 }));
+      mockDeleteStream.mockResolvedValue({ ok: false, status: 500 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -211,12 +207,12 @@ describe("cleanup", () => {
       vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
 
       // Mock core RPC to return 404
-      mockFetch.mockResolvedValue(new Response(null, { status: 404 }));
+      mockDeleteStream.mockResolvedValue({ ok: false, status: 404 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -236,7 +232,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -263,7 +259,7 @@ describe("cleanup", () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",
@@ -305,12 +301,12 @@ describe("cleanup", () => {
       };
 
       // Mock core RPC
-      mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
       const env = {
-        CORE: { fetch: mockFetch, routeRequest: mockRouteRequest },
+        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
         PROJECT_KEYS: mockProjectKeys,
         SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
         ACCOUNT_ID: "test-account",

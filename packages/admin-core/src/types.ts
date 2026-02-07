@@ -1,5 +1,6 @@
 export interface CoreService {
   inspectStream(doKey: string): Promise<object>;
+  routeRequest(doKey: string, request: Request): Promise<Response>;
   putStream(doKey: string, options?: { body?: ArrayBuffer; contentType?: string }): Promise<{ ok: boolean; status: number }>;
   postStream(
     doKey: string,

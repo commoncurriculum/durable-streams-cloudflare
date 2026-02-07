@@ -23,7 +23,10 @@ function createMockEnv() {
   return {
     env: {
       CORE: {
-        fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+        postStream: vi.fn(),
+        headStream: vi.fn(),
+        putStream: vi.fn(),
+        deleteStream: vi.fn(),
       },
       SUBSCRIPTION_DO: {
         idFromName: vi.fn().mockReturnValue("do-id"),
@@ -96,9 +99,9 @@ describe("handleFanoutQueue", () => {
     const { env } = createMockEnv();
 
     const producerHeaders = {
-      "Producer-Id": "fanout:stream-1",
-      "Producer-Epoch": "1",
-      "Producer-Seq": "42",
+      producerId: "fanout:stream-1",
+      producerEpoch: "1",
+      producerSeq: "42",
     };
 
     const msg = createMessage({

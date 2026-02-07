@@ -180,16 +180,13 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // Record publish metric
     metrics.publish(streamId, subscribers.length, Date.now() - start);
 
-    // Read body from write response
-    const body = await writeResponse.text();
-
     // #region synced-to-docs:publish-response
     return {
-      status: writeResponse.status,
-      nextOffset: writeResponse.headers.get("X-Stream-Next-Offset"),
-      upToDate: writeResponse.headers.get("X-Stream-Up-To-Date"),
-      streamClosed: writeResponse.headers.get("X-Stream-Closed"),
-      body,
+      status: writeResult.status,
+      nextOffset: writeResult.nextOffset,
+      upToDate: writeResult.upToDate,
+      streamClosed: writeResult.streamClosed,
+      body: writeResult.body ?? "",
       fanoutCount: subscribers.length,
       fanoutSuccesses: successCount,
       fanoutFailures: failureCount,
