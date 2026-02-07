@@ -28,6 +28,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@durable-streams/client": "^0.2.1",
     "@tanstack/react-query": "^5",
     "@tanstack/react-router": "^1",
     "@tanstack/react-start": "^1",

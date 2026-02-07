@@ -1,8 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { useSessionInspect } from "../lib/queries";
+import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
-import { useSSE, type SseEvent } from "../hooks/use-sse";
+import {
+  useDurableStream,
+  type StreamEvent,
+} from "../hooks/use-durable-stream";
 
 type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
 
@@ -25,8 +28,16 @@ function SessionDetailPage() {
   const [streamIdInput, setStreamIdInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  const [sseUrl, setSseUrl] = useState<string | null>(null);
-  const { status, events, addEvent, clearEvents } = useSSE(sseUrl);
+  const { data: coreUrl } = useCoreUrl();
+  const { data: tokenData } = useStreamToken(projectId);
+
+  const { status, events, addEvent, clearEvents } = useDurableStream({
+    coreUrl,
+    projectId,
+    streamKey: id,
+    token: tokenData?.token,
+    enabled: !!data,
+  });
 
   const handleSend = useCallback(async () => {
     setSending(true);
@@ -57,12 +68,6 @@ function SessionDetailPage() {
         "control",
         `${action.toUpperCase()} => ${result.status} ${result.statusText}`,
       );
-
-      if (action === "subscribe") {
-        setSseUrl(
-          `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}?live=sse&offset=now`,
-        );
-      }
     } catch (e) {
       addEvent("error", e instanceof Error ? e.message : String(e));
     } finally {
@@ -267,7 +272,7 @@ function SseStatusBadge({ status }: { status: string }) {
   );
 }
 
-function LogEntry({ event }: { event: SseEvent }) {
+function LogEntry({ event }: { event: StreamEvent }) {
   const time = event.timestamp.toLocaleTimeString("en-US", {
     hour12: false,
     hour: "2-digit",

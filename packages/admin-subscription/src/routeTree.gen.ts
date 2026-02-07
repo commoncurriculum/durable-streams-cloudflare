@@ -9,20 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as PublishRouteImport } from './routes/publish'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects.$projectId.sessions'
+import { Route as ProjectsProjectIdPublishRouteImport } from './routes/projects.$projectId.publish'
 import { Route as ProjectsProjectIdSessionsIdRouteImport } from './routes/projects.$projectId.sessions.$id'
-import { Route as ApiSseProjectIdRouteImport } from './routes/api/sse.$project.$id'
 
-const PublishRoute = PublishRouteImport.update({
-  id: '/publish',
-  path: '/publish',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
@@ -32,11 +25,6 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ProjectsRoute,
 } as any)
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/$projectId',
@@ -49,46 +37,42 @@ const ProjectsProjectIdSessionsRoute =
     path: '/sessions',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
+const ProjectsProjectIdPublishRoute =
+  ProjectsProjectIdPublishRouteImport.update({
+    id: '/publish',
+    path: '/publish',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 const ProjectsProjectIdSessionsIdRoute =
   ProjectsProjectIdSessionsIdRouteImport.update({
     id: '/$id',
     path: '/$id',
     getParentRoute: () => ProjectsProjectIdSessionsRoute,
   } as any)
-const ApiSseProjectIdRoute = ApiSseProjectIdRouteImport.update({
-  id: '/api/sse/$project/$id',
-  path: '/api/sse/$project/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRouteWithChildren
-  '/publish': typeof PublishRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
-  '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
-  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/publish': typeof PublishRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
-  '/projects': typeof ProjectsIndexRoute
+  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
-  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRouteWithChildren
-  '/publish': typeof PublishRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
-  '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
-  '/api/sse/$project/$id': typeof ApiSseProjectIdRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRouteTypes {
@@ -96,49 +80,35 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/projects'
-    | '/publish'
     | '/projects/$projectId'
-    | '/projects/'
+    | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
-    | '/api/sse/$project/$id'
     | '/projects/$projectId/sessions/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/publish'
-    | '/projects/$projectId'
     | '/projects'
+    | '/projects/$projectId'
+    | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
-    | '/api/sse/$project/$id'
     | '/projects/$projectId/sessions/$id'
   id:
     | '__root__'
     | '/'
     | '/projects'
-    | '/publish'
     | '/projects/$projectId'
-    | '/projects/'
+    | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
-    | '/api/sse/$project/$id'
     | '/projects/$projectId/sessions/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
-  PublishRoute: typeof PublishRoute
-  ApiSseProjectIdRoute: typeof ApiSseProjectIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/publish': {
-      id: '/publish'
-      path: '/publish'
-      fullPath: '/publish'
-      preLoaderRoute: typeof PublishRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/projects': {
       id: '/projects'
       path: '/projects'
@@ -152,13 +122,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/projects/': {
-      id: '/projects/'
-      path: '/'
-      fullPath: '/projects/'
-      preLoaderRoute: typeof ProjectsIndexRouteImport
-      parentRoute: typeof ProjectsRoute
     }
     '/projects/$projectId': {
       id: '/projects/$projectId'
@@ -174,19 +137,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSessionsRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/publish': {
+      id: '/projects/$projectId/publish'
+      path: '/publish'
+      fullPath: '/projects/$projectId/publish'
+      preLoaderRoute: typeof ProjectsProjectIdPublishRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
     '/projects/$projectId/sessions/$id': {
       id: '/projects/$projectId/sessions/$id'
       path: '/$id'
       fullPath: '/projects/$projectId/sessions/$id'
       preLoaderRoute: typeof ProjectsProjectIdSessionsIdRouteImport
       parentRoute: typeof ProjectsProjectIdSessionsRoute
-    }
-    '/api/sse/$project/$id': {
-      id: '/api/sse/$project/$id'
-      path: '/api/sse/$project/$id'
-      fullPath: '/api/sse/$project/$id'
-      preLoaderRoute: typeof ApiSseProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -206,10 +169,12 @@ const ProjectsProjectIdSessionsRouteWithChildren =
   )
 
 interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdPublishRoute: typeof ProjectsProjectIdPublishRoute
   ProjectsProjectIdSessionsRoute: typeof ProjectsProjectIdSessionsRouteWithChildren
 }
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdPublishRoute: ProjectsProjectIdPublishRoute,
   ProjectsProjectIdSessionsRoute: ProjectsProjectIdSessionsRouteWithChildren,
 }
 
@@ -218,12 +183,10 @@ const ProjectsProjectIdRouteWithChildren =
 
 interface ProjectsRouteChildren {
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
-  ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
-  ProjectsIndexRoute: ProjectsIndexRoute,
 }
 
 const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
@@ -233,8 +196,6 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
-  PublishRoute: PublishRoute,
-  ApiSseProjectIdRoute: ApiSseProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

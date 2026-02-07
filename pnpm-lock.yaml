@@ -87,6 +87,9 @@ importers:
 
   packages/admin-subscription:
     dependencies:
+      '@durable-streams/client':
+        specifier: ^0.2.1
+        version: 0.2.1
       '@tanstack/react-query':
         specifier: ^5
         version: 5.90.20(react@19.2.4)

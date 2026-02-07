@@ -10,6 +10,8 @@ import {
   inspectStreamSubscribers,
   getProjects,
   getStreamMeta,
+  getCoreStreamUrl,
+  mintStreamToken,
 } from "./analytics";
 
 export function useStats() {
@@ -98,5 +100,25 @@ export function useStreamMeta(projectId: string | undefined, streamId: string | 
     queryKey: ["streamMeta", projectId, streamId],
     queryFn: () => getStreamMeta({ data: { projectId: projectId!, streamId: streamId! } }),
     enabled: !!projectId && !!streamId,
+  });
+}
+
+const FOUR_MINUTES = 4 * 60 * 1000;
+
+export function useCoreUrl() {
+  return useQuery({
+    queryKey: ["coreUrl"],
+    queryFn: () => getCoreStreamUrl(),
+    staleTime: Infinity,
+  });
+}
+
+export function useStreamToken(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["streamToken", projectId],
+    queryFn: () => mintStreamToken({ data: { projectId: projectId! } }),
+    enabled: !!projectId,
+    staleTime: FOUR_MINUTES,
+    refetchInterval: FOUR_MINUTES,
   });
 }

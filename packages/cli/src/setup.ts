@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,17 +22,17 @@ function run(cmd: string, opts?: { input?: string }): string {
 }
 
 function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdout: string; stderr: string } {
-  try {
-    const stdout = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
-      input: opts?.input,
-    }).trim();
-    return { ok: true, stdout, stderr: "" };
-  } catch (e: unknown) {
-    const err = e as Error & { stdout?: string; stderr?: string };
-    return { ok: false, stdout: err.stdout?.trim() ?? "", stderr: err.stderr?.trim() ?? "" };
-  }
+  const result = spawnSync(cmd, {
+    encoding: "utf-8",
+    stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+    input: opts?.input,
+    shell: true,
+  });
+  return {
+    ok: result.status === 0,
+    stdout: (result.stdout ?? "").trim(),
+    stderr: (result.stderr ?? "").trim(),
+  };
 }
 
 function cancelled(): never {
@@ -63,6 +63,17 @@ function writeFile(path: string, content: string, overwriteAll: boolean): boolea
 }
 
 // ---------------------------------------------------------------------------
+// Names — single source of truth, used in templates + CLI logic
+// ---------------------------------------------------------------------------
+
+const WORKER_CORE = "durable-streams";
+const WORKER_SUBSCRIPTION = "durable-streams-subscriptions";
+const WORKER_ADMIN_CORE = "durable-streams-admin-core";
+const WORKER_ADMIN_SUBSCRIPTION = "durable-streams-admin-subscription";
+const R2_BUCKET = "durable-streams";
+const KV_BINDING = "REGISTRY";
+
+// ---------------------------------------------------------------------------
 // File templates
 // ---------------------------------------------------------------------------
 
@@ -76,7 +87,7 @@ export { StreamDO };
 }
 
 function coreWranglerToml(opts: { kvNamespaceId: string }): string {
-  return `name = "durable-streams"
+  return `name = "${WORKER_CORE}"
 main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
@@ -89,10 +100,10 @@ new_sqlite_classes = ["StreamDO"]
 
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "durable-streams"
+bucket_name = "${R2_BUCKET}"
 
 [[kv_namespaces]]
-binding = "REGISTRY"
+binding = "${KV_BINDING}"
 id = "${opts.kvNamespaceId}"
 
 [[analytics_engine_datasets]]
@@ -113,7 +124,7 @@ function subscriptionWranglerToml(opts: {
   accountId: string;
   kvNamespaceId: string;
 }): string {
-  return `name = "durable-streams-subscriptions"
+  return `name = "${WORKER_SUBSCRIPTION}"
 main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
@@ -130,7 +141,7 @@ tag = "v1"
 new_sqlite_classes = ["SubscriptionDO"]
 
 [[kv_namespaces]]
-binding = "REGISTRY"
+binding = "${KV_BINDING}"
 id = "${opts.kvNamespaceId}"
 
 [[analytics_engine_datasets]]
@@ -139,7 +150,7 @@ dataset = "subscriptions_metrics"
 
 [[services]]
 binding = "CORE"
-service = "durable-streams"
+service = "${WORKER_CORE}"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -147,22 +158,22 @@ crons = ["*/5 * * * *"]
 }
 
 function adminCoreWranglerToml(opts: { kvNamespaceId: string }): string {
-  return `name = "durable-streams-admin-core"
-main = "node_modules/@durable-streams-cloudflare/admin-core/dist/server/index.js"
+  return `name = "${WORKER_ADMIN_CORE}"
+main = "dist/server/index.js"
 compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
 
 [assets]
-directory = "node_modules/@durable-streams-cloudflare/admin-core/dist/client"
+directory = "dist/client"
 
 [[kv_namespaces]]
-binding = "REGISTRY"
+binding = "${KV_BINDING}"
 id = "${opts.kvNamespaceId}"
 
 [[services]]
 binding = "CORE"
-service = "durable-streams"
+service = "${WORKER_CORE}"
 
 [observability]
 enabled = true
@@ -170,26 +181,26 @@ enabled = true
 }
 
 function adminSubscriptionWranglerToml(opts: { kvNamespaceId: string }): string {
-  return `name = "durable-streams-admin-subscription"
-main = "node_modules/@durable-streams-cloudflare/admin-subscription/dist/server/index.js"
+  return `name = "${WORKER_ADMIN_SUBSCRIPTION}"
+main = "dist/server/index.js"
 compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
 
 [assets]
-directory = "node_modules/@durable-streams-cloudflare/admin-subscription/dist/client"
+directory = "dist/client"
 
 [[kv_namespaces]]
-binding = "REGISTRY"
+binding = "${KV_BINDING}"
 id = "${opts.kvNamespaceId}"
 
 [[services]]
 binding = "SUBSCRIPTION"
-service = "durable-streams-subscriptions"
+service = "${WORKER_SUBSCRIPTION}"
 
 [[services]]
 binding = "CORE"
-service = "durable-streams"
+service = "${WORKER_CORE}"
 
 [observability]
 enabled = true
@@ -318,8 +329,8 @@ export async function setup() {
       "An API token is needed for Analytics Engine access.\n" +
       "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
       "  2. Click \"Create Token\"\n" +
-      "  3. Use the \"Custom token\" template\n" +
-      "  4. Add permission: Account > Account Analytics > Read\n" +
+      '  3. Use the "Read analytics and logs" template\n' +
+      "  4. Click \"Continue to summary\" > \"Create Token\"\n" +
       "  5. Copy the token"
     );
     const input = await p.text({
@@ -343,10 +354,10 @@ export async function setup() {
 
   // Confirm before proceeding
   const workerNames: string[] = [];
-  if (includeCore) workerNames.push("  durable-streams                      (core)");
-  if (includeSubscription) workerNames.push("  durable-streams-subscriptions        (subscription)");
-  if (includeAdminCore) workerNames.push("  durable-streams-admin-core           (admin)");
-  if (includeAdminSubscription) workerNames.push("  durable-streams-admin-subscription   (admin)");
+  if (includeCore) workerNames.push(`  ${WORKER_CORE.padEnd(38)} (core)`);
+  if (includeSubscription) workerNames.push(`  ${WORKER_SUBSCRIPTION.padEnd(38)} (subscription)`);
+  if (includeAdminCore) workerNames.push(`  ${WORKER_ADMIN_CORE.padEnd(38)} (admin)`);
+  if (includeAdminSubscription) workerNames.push(`  ${WORKER_ADMIN_SUBSCRIPTION.padEnd(38)} (admin)`);
 
   p.note(
     `Directory: ${projectDir}\n\n` +
@@ -369,42 +380,56 @@ export async function setup() {
   // Step 3: Create Cloudflare resources (needed before scaffolding)
   // -----------------------------------------------------------------------
   const resourceSpinner = p.spinner();
-  resourceSpinner.start("Creating R2 bucket");
+  resourceSpinner.start(`Creating R2 bucket '${R2_BUCKET}'`);
 
-  const r2Result = runMayFail(`${wranglerCmd} r2 bucket create durable-streams`);
+  const r2Result = runMayFail(`${wranglerCmd} r2 bucket create ${R2_BUCKET}`);
   if (!r2Result.ok) {
     if (r2Result.stderr.includes("already exists")) {
-      resourceSpinner.stop("R2 bucket already exists (OK)");
+      resourceSpinner.stop(`R2 bucket '${R2_BUCKET}' already exists (OK)`);
     } else {
       resourceSpinner.stop("R2 bucket creation failed");
       p.log.error(r2Result.stderr);
       process.exit(1);
     }
   } else {
-    resourceSpinner.stop("R2 bucket created");
+    resourceSpinner.stop(`R2 bucket '${R2_BUCKET}' created`);
   }
 
   // Create KV namespace for REGISTRY
   const kvSpinner = p.spinner();
-  kvSpinner.start("Creating KV namespace REGISTRY");
+  kvSpinner.start(`Creating KV namespace ${KV_BINDING}`);
 
   let kvNamespaceId = "";
-  const kvResult = runMayFail(`${wranglerCmd} kv namespace create REGISTRY`);
-  if (kvResult.ok) {
-    const idMatch = kvResult.stdout.match(/id\s*=\s*"([a-f0-9]+)"/);
-    if (idMatch) {
-      kvNamespaceId = idMatch[1];
-      kvSpinner.stop(`KV namespace created: ${kvNamespaceId.slice(0, 8)}...`);
-    } else {
-      kvSpinner.stop("KV namespace created (ID not auto-detected)");
-    }
+  const kvResult = runMayFail(`${wranglerCmd} kv namespace create ${KV_BINDING}`);
+  // Wrangler outputs the namespace ID to stderr, so check both streams
+  const kvOutput = kvResult.stdout + "\n" + kvResult.stderr;
+  const idMatch = kvOutput.match(/id\s*=\s*"([a-f0-9]+)"/);
+  if (idMatch) {
+    kvNamespaceId = idMatch[1];
+    kvSpinner.stop(`KV namespace created: ${kvNamespaceId.slice(0, 8)}...`);
+  } else if (kvResult.ok) {
+    kvSpinner.stop("KV namespace created (ID not auto-detected)");
   } else {
-    kvSpinner.stop("KV namespace creation failed (may already exist)");
+    // Namespace may already exist — try listing to find its ID
+    kvSpinner.stop("KV namespace may already exist, looking it up...");
+    const listResult = runMayFail(`${wranglerCmd} kv namespace list`);
+    if (listResult.ok) {
+      try {
+        const namespaces = JSON.parse(listResult.stdout) as Array<{ id: string; title: string }>;
+        const existing = namespaces.find((ns) => ns.title.includes(KV_BINDING));
+        if (existing) {
+          kvNamespaceId = existing.id;
+          p.log.success(`Found existing KV namespace: ${kvNamespaceId.slice(0, 8)}...`);
+        }
+      } catch {
+        // JSON parse failed, fall through to manual prompt
+      }
+    }
   }
 
   if (!kvNamespaceId) {
     const input = await p.text({
-      message: "REGISTRY KV namespace ID:",
+      message: `${KV_BINDING} KV namespace ID:`,
       placeholder: "Paste from CF dashboard or `wrangler kv namespace list`",
       validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
     });
@@ -490,18 +515,62 @@ export async function setup() {
   const installSpinner = p.spinner();
   installSpinner.start("Installing npm dependencies");
 
-  const packages: string[] = [];
-  if (includeCore) packages.push("@durable-streams-cloudflare/core");
-  if (includeSubscription) packages.push("@durable-streams-cloudflare/subscription");
-  if (includeAdminCore) packages.push("@durable-streams-cloudflare/admin-core");
-  if (includeAdminSubscription) packages.push("@durable-streams-cloudflare/admin-subscription");
+  // Core + subscription install at project root (imported via src/worker.ts)
+  const rootPackages: string[] = [];
+  if (includeCore) rootPackages.push("@durable-streams-cloudflare/core");
+  if (includeSubscription) rootPackages.push("@durable-streams-cloudflare/subscription");
 
-  const installResult = runMayFail(`cd ${projectDir} && pnpm add ${packages.join(" ")}`);
-  if (!installResult.ok) {
-    installSpinner.stop("Install failed");
-    p.log.error(`Failed to install packages:\n${installResult.stderr}`);
-    process.exit(1);
+  if (rootPackages.length > 0) {
+    const installResult = runMayFail(`cd ${projectDir} && pnpm add ${rootPackages.join(" ")}`);
+    if (!installResult.ok) {
+      installSpinner.stop("Install failed");
+      p.log.error(`Failed to install packages:\n${installResult.stderr}`);
+      process.exit(1);
+    }
   }
+
+  // Admin packages: install at root then copy dist/ into worker directories.
+  // Wrangler with no_bundle can't traverse pnpm symlinks, so we need real files.
+  const adminPackages: string[] = [];
+  if (includeAdminCore) adminPackages.push("@durable-streams-cloudflare/admin-core");
+  if (includeAdminSubscription) adminPackages.push("@durable-streams-cloudflare/admin-subscription");
+
+  if (adminPackages.length > 0) {
+    const result = runMayFail(`cd ${projectDir} && pnpm add ${adminPackages.join(" ")}`);
+    if (!result.ok) {
+      installSpinner.stop("Install failed");
+      p.log.error(`Failed to install admin packages:\n${result.stderr}`);
+      process.exit(1);
+    }
+  }
+
+  // Copy dist/ from the resolved package location (follows pnpm symlinks).
+  // The packages export "./worker" → "./dist/server/index.js", so we resolve
+  // that and walk up two levels to get the dist/ directory.
+  for (const [flag, pkg, dir] of [
+    [includeAdminCore, "@durable-streams-cloudflare/admin-core", "admin-core"],
+    [includeAdminSubscription, "@durable-streams-cloudflare/admin-subscription", "admin-subscription"],
+  ] as const) {
+    if (!flag) continue;
+    const resolve = runMayFail(
+      `cd "${projectDir}" && node -e "const p=require('path');console.log(p.resolve(require.resolve('${pkg}/worker'),'..','..'))"`
+    );
+    if (!resolve.ok || !resolve.stdout) {
+      installSpinner.stop(`Failed to locate ${pkg}`);
+      p.log.error(resolve.stderr);
+      process.exit(1);
+    }
+    const distDir = resolve.stdout.trim();
+    const dest = join(workersDir, dir, "dist");
+    ensureDir(dest);
+    const cpResult = runMayFail(`cp -R "${distDir}/." "${dest}"`);
+    if (!cpResult.ok) {
+      installSpinner.stop(`Failed to copy ${pkg} dist files`);
+      p.log.error(cpResult.stderr);
+      process.exit(1);
+    }
+  }
+
   installSpinner.stop("Dependencies installed");
 
   // -----------------------------------------------------------------------
@@ -594,6 +663,7 @@ export async function setup() {
 
     if (accountId) putSecret("CF_ACCOUNT_ID", accountId, adminSubConfig, wranglerCmd);
     if (cfApiToken) putSecret("CF_API_TOKEN", cfApiToken, adminSubConfig, wranglerCmd);
+    if (deployedUrls.core) putSecret("CORE_URL", deployedUrls.core, adminSubConfig, wranglerCmd);
 
     const adminSubDeploy = runMayFail(`${wranglerCmd} deploy --config ${adminSubConfig}`);
     if (!adminSubDeploy.ok) {
@@ -751,8 +821,8 @@ export async function setup() {
       if (createRepo) {
         const repoName = await p.text({
           message: "GitHub repo name:",
-          placeholder: projectDir.split("/").pop() ?? "durable-streams",
-          defaultValue: projectDir.split("/").pop() ?? "durable-streams",
+          placeholder: projectDir.split("/").pop() ?? WORKER_CORE,
+          defaultValue: projectDir.split("/").pop() ?? WORKER_CORE,
           validate: (v) => v.length === 0 ? "Repo name is required" : undefined,
         });
         if (p.isCancel(repoName)) cancelled();
@@ -797,10 +867,10 @@ export async function setup() {
   // -----------------------------------------------------------------------
   if (setupGit) {
     const deployedWorkerNames: string[] = [];
-    if (includeCore) deployedWorkerNames.push("durable-streams");
-    if (includeSubscription) deployedWorkerNames.push("durable-streams-subscriptions");
-    if (includeAdminCore) deployedWorkerNames.push("durable-streams-admin-core");
-    if (includeAdminSubscription) deployedWorkerNames.push("durable-streams-admin-subscription");
+    if (includeCore) deployedWorkerNames.push(WORKER_CORE);
+    if (includeSubscription) deployedWorkerNames.push(WORKER_SUBSCRIPTION);
+    if (includeAdminCore) deployedWorkerNames.push(WORKER_ADMIN_CORE);
+    if (includeAdminSubscription) deployedWorkerNames.push(WORKER_ADMIN_SUBSCRIPTION);
 
     p.note(
       "Connect your repo to Cloudflare for automatic deploys on push:\n\n" +
