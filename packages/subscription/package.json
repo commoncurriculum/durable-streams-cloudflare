@@ -10,22 +10,16 @@
     "directory": "packages/subscription"
   },
   "files": [
-    "src/",
-    "tsconfig.build.json",
-    "dist"
+    "src/"
   ],
   "exports": {
-    ".": {
-      "types": "./dist/http/worker.d.ts",
-      "import": "./dist/http/worker.js"
-    }
+    ".": "./src/http/worker.ts"
   },
-  "main": "./dist/http/worker.js",
-  "types": "./dist/http/worker.d.ts",
+  "main": "./src/http/worker.ts",
+  "types": "./src/http/worker.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build",
     "dev": "wrangler dev --local --port 8788 --inspector-port 9230 --persist-to ../../.wrangler/state",
     "lint": "oxlint src test",
     "format": "oxfmt --write src test",
