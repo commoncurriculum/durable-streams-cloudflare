@@ -226,9 +226,6 @@ const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
 // Random jitter before the sentinel check spreads concurrent arrivals so
 // the first request can store the sentinel before the rest check.
-//
-// Random jitter before the sentinel check spreads concurrent arrivals so
-// the first request can store the sentinel before the rest check.
 // MISSes/write ≈ N × P / J (N = LP clients, P ≈ 10ms propagation, J = jitter).
 // 20ms keeps average added latency to 10ms while providing meaningful spread.
 const SENTINEL_JITTER_MS = 20;

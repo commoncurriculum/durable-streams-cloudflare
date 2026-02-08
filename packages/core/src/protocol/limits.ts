@@ -12,6 +12,6 @@ export const LONG_POLL_CACHE_SECONDS = 20;
  *
  * Set to 0 to disable (resolve all waiters immediately).
  */
-export const LONGPOLL_STAGGER_MS = 300;
+export const LONGPOLL_STAGGER_MS = 100;
 export const SEGMENT_MAX_BYTES_DEFAULT = 4 * 1024 * 1024;
 export const SEGMENT_MAX_MESSAGES_DEFAULT = 1000;
