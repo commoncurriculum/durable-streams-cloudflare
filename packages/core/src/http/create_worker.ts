@@ -235,7 +235,7 @@ const MAX_POLL_MS = 31_000;
 //   - Expected: ~3-5 DO hits instead of ~100
 const CANDIDATE_P = 0.02;
 const CANDIDATE_JITTER_MS = 20;
-const DEFER_MS = 300;
+const DEFER_MS = 200;
 
 async function pollCacheForResult(
   url: string,
