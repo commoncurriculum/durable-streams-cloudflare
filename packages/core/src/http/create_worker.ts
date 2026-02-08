@@ -224,12 +224,16 @@ const COALESCE_LINGER_MS = 200;
 const SENTINEL_TTL_S = 30;
 const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
-// Micro-jitter to shrink the sentinel race window.
-// When a request finds no sentinel, it waits JITTER_MIN + random(0..JITTER_RANGE)
-// milliseconds and re-checks.  This gives the first "winner" time to store the
-// sentinel before the rest of the thundering herd commits to their own DO calls.
-const JITTER_MIN_MS = 20;
-const JITTER_RANGE_MS = 30;
+// Jitter to shrink the sentinel race window.  When a request finds no
+// sentinel, it waits JITTER_MIN + random(0..JITTER_RANGE) milliseconds and
+// re-checks.  This gives the first "winner" time to store the sentinel
+// before the rest of the thundering herd commits to their own DO calls.
+// The effective race window is ~6ms (caches.default propagation time).
+// A larger JITTER_RANGE spreads requests over more time, so fewer land
+// inside the race window.  With range=200ms and window=6ms, only ~3% of
+// requests (6/200) become duplicate winners.
+const JITTER_MIN_MS = 50;
+const JITTER_RANGE_MS = 200;
 
 async function pollCacheForResult(
   url: string,
