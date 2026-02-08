@@ -3,7 +3,7 @@ import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
-import { buildSseDataEvent, buildSseControlEvent } from "./handlers/realtime";
+import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
 
 // ============================================================================
@@ -148,14 +148,26 @@ async function bridgeSseViaWebSocket(
         }
       } else if (msg.type === "control") {
         const controlMsg = msg as WsControlMessage;
-        const { payload } = buildSseControlEvent({
-          nextOffset: controlMsg.streamNextOffset,
-          upToDate: controlMsg.upToDate ?? false,
-          streamClosed: controlMsg.streamClosed ?? false,
-          cursor: controlMsg.streamCursor ?? "",
-          writeTimestamp: controlMsg.streamWriteTimestamp ?? 0,
-        });
-        writer.write(sseTextEncoder.encode(payload)).catch(() => {});
+        // Build SSE control event directly from the WS message — do NOT
+        // use buildSseControlEvent() which would double-process the cursor
+        // through generateResponseCursor() (the DO already computed it).
+        const control: Record<string, unknown> = {
+          streamNextOffset: controlMsg.streamNextOffset,
+        };
+        if (controlMsg.streamWriteTimestamp && controlMsg.streamWriteTimestamp > 0) {
+          control.streamWriteTimestamp = controlMsg.streamWriteTimestamp;
+        }
+        if (controlMsg.streamClosed) {
+          control.streamClosed = true;
+        }
+        if (controlMsg.streamCursor) {
+          control.streamCursor = controlMsg.streamCursor;
+        }
+        if (controlMsg.upToDate) {
+          control.upToDate = true;
+        }
+        const ssePayload = `event: control\ndata:${JSON.stringify(control)}\n\n`;
+        writer.write(sseTextEncoder.encode(ssePayload)).catch(() => {});
       }
     } catch {
       // Malformed message — ignore
@@ -201,6 +213,31 @@ type InFlightResult = {
 // arriving just after the winner resolves still get a HIT without
 // waiting for caches.default.put() to complete.
 const COALESCE_LINGER_MS = 200;
+
+// Cross-isolate coalescing via Cache API sentinel.
+// Cloudflare runs each request in its own isolate, so the in-memory
+// inFlight Map only coalesces within one isolate.  The sentinel
+// pattern extends coalescing across ALL isolates in the same colo:
+// the first cache-miss for a long-poll URL stores a short-lived
+// sentinel marker in caches.default; later arrivals see it and poll
+// for the cached result instead of opening duplicate DO connections.
+const SENTINEL_TTL_S = 30;
+const POLL_INTERVAL_MS = 50;
+const MAX_POLL_MS = 31_000;
+
+async function pollCacheForResult(
+  url: string,
+  intervalMs: number,
+  maxMs: number,
+): Promise<Response | null> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const cached = await caches.default.match(url);
+    if (cached) return cached;
+  }
+  return null;
+}
 
 // ============================================================================
 // Factory
@@ -296,10 +333,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // stream data) so they must never share a cache entry with normal reads.
       const hasDebugHeaders = request.headers.has("X-Debug-Coalesce");
       const cacheable = method === "GET" && !isSse && !hasDebugHeaders;
+      const isLongPoll = cacheable && url.searchParams.get("live") === "long-poll";
 
       // Use the URL string for cache operations — passing the original
       // request object causes cache key mismatches in miniflare/workerd.
       const cacheUrl = cacheable ? request.url : null;
+      let sentinelUrl: string | null = null;
 
       // Track cache status for the X-Cache response header.
       // null = non-cacheable request (no header emitted).
@@ -383,6 +422,42 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return bridgeSseViaWebSocket(stub, doKey, url, request, corsOrigin, timing);
       }
 
+      // ================================================================
+      // Cross-isolate sentinel coalescing (via Cache API)
+      // ================================================================
+      // In production, Cloudflare runs each request in its own isolate,
+      // so the in-memory inFlight Map above only coalesces within one
+      // isolate.  The sentinel pattern extends coalescing across ALL
+      // isolates in the same colo: the first cache-miss sets a short-
+      // lived marker in caches.default; later arrivals see it and poll
+      // for the cached result instead of opening duplicate DO connections.
+      if (cacheStatus === "MISS" && cacheUrl && isLongPoll) {
+        sentinelUrl = cacheUrl + (cacheUrl.includes("?") ? "&" : "?") + "__sentinel=1";
+        const sentinel = await caches.default.match(sentinelUrl);
+        if (sentinel) {
+          // Another isolate is already fetching from DO — poll cache
+          const polled = await pollCacheForResult(cacheUrl, POLL_INTERVAL_MS, MAX_POLL_MS);
+          if (polled) {
+            const polledHeaders = new Headers(polled.headers);
+            polledHeaders.set("X-Cache", "HIT");
+            applyCorsHeaders(polledHeaders, corsOrigin);
+            return attachTiming(
+              new Response(polled.body, { status: polled.status, headers: polledHeaders }),
+              timing,
+            );
+          }
+          // Timeout — fall through to make our own DO call
+        } else {
+          // We're the winner for this colo — set sentinel
+          await caches.default.put(
+            sentinelUrl,
+            new Response(null, {
+              headers: { "Cache-Control": `s-maxage=${SENTINEL_TTL_S}` },
+            }),
+          );
+        }
+      }
+
       // Register as the in-flight winner for this URL so concurrent
       // requests can coalesce on our result instead of hitting the DO.
       let resolveInFlight: ((r: InFlightResult) => void) | undefined;
@@ -407,6 +482,9 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         );
         doneOrigin?.();
       } catch (err) {
+        if (sentinelUrl) {
+          ctx.waitUntil(caches.default.delete(sentinelUrl));
+        }
         if (rejectInFlight && cacheUrl) {
           rejectInFlight(err);
           inFlight.delete(cacheUrl);
@@ -444,35 +522,52 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // Plain GET at-tail responses are NOT cached — data can change as
       // appends arrive, and caching them breaks read-after-write consistency.
       // 204 timeouts are excluded by the status check.
+      let storedInCache = false;
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
         const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
-        const isLongPoll = url.searchParams.get("live") === "long-poll";
         if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
-          ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
+          if (sentinelUrl) {
+            // Synchronous put so sentinel-polling isolates find the entry
+            // on their next poll cycle (≤ POLL_INTERVAL_MS latency).
+            await caches.default.put(cacheUrl!, wrapped.clone());
+          } else {
+            ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
+          }
+          storedInCache = true;
         }
+      }
+      // Clean up sentinel marker now that the cache entry is stored
+      // (or response was non-cacheable).
+      if (sentinelUrl) {
+        ctx.waitUntil(caches.default.delete(sentinelUrl));
       }
 
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
       // waiter can apply its own CORS headers.
-      // The entry lingers in the map for COALESCE_LINGER_MS so requests
-      // arriving just after resolution still find the resolved promise
-      // and get a HIT (covers the gap before caches.default.put completes).
       if (resolveInFlight && cacheUrl) {
         const rawHeaders: [string, string][] = [];
         for (const [k, v] of response.headers) {
           rawHeaders.push([k, v]);
         }
         resolveInFlight({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
-        const lingerKey = cacheUrl;
-        const lingerPromise = inFlight.get(lingerKey);
-        setTimeout(() => {
-          // Only delete if the entry hasn't been replaced by a new winner
-          if (inFlight.get(lingerKey) === lingerPromise) {
-            inFlight.delete(lingerKey);
-          }
-        }, COALESCE_LINGER_MS);
+        if (storedInCache) {
+          // Linger so requests arriving just after resolution still find
+          // the resolved promise (covers the gap before cache.put completes).
+          const lingerKey = cacheUrl;
+          const lingerPromise = inFlight.get(lingerKey);
+          setTimeout(() => {
+            if (inFlight.get(lingerKey) === lingerPromise) {
+              inFlight.delete(lingerKey);
+            }
+          }, COALESCE_LINGER_MS);
+        } else {
+          // Response was NOT cached (e.g., at-tail plain GET, 404, 204).
+          // Delete immediately — lingering would serve stale data when
+          // the stream's tail moves on the next append.
+          inFlight.delete(cacheUrl);
+        }
       }
 
       // Set X-Cache header on cacheable responses so cache behavior
