@@ -187,12 +187,28 @@ async function bridgeSseViaWebSocket(
 }
 
 // ============================================================================
+// In-flight request coalescing types
+// ============================================================================
+
+type InFlightResult = {
+  body: ArrayBuffer;
+  status: number;
+  statusText: string;
+  headers: [string, string][];
+};
+
+// ============================================================================
 // Factory
 // ============================================================================
 
 export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   config?: StreamWorkerConfig<E>,
 ): ExportedHandler<E> {
+  // Deduplicates concurrent cache-miss requests for the same URL within
+  // a single Worker isolate. The first request becomes the "winner" and
+  // makes the DO round-trip; all others await the same promise.
+  const inFlight = new Map<string, Promise<InFlightResult>>();
+
   return {
     // #region docs-request-arrives
     async fetch(request: Request, env: E, ctx: ExecutionContext): Promise<Response> {
@@ -324,6 +340,32 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         cacheStatus = "MISS";
       }
 
+      // ================================================================
+      // In-flight coalescing: deduplicate concurrent cache misses
+      // ================================================================
+      if (cacheStatus === "MISS" && cacheUrl) {
+        const pending = inFlight.get(cacheUrl);
+        if (pending) {
+          // Another request is already fetching this URL — wait for it
+          try {
+            const coalesced = await pending;
+            const headers = new Headers(coalesced.headers);
+            headers.set("X-Cache", "HIT");
+            applyCorsHeaders(headers, corsOrigin);
+            return attachTiming(
+              new Response(coalesced.body, {
+                status: coalesced.status,
+                statusText: coalesced.statusText,
+                headers,
+              }),
+              timing,
+            );
+          } catch {
+            // Winner failed — fall through to make our own DO call
+          }
+        }
+      }
+
       // #region docs-route-to-do
       const stub = env.STREAMS.getByName(doKey);
 
@@ -334,17 +376,44 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return bridgeSseViaWebSocket(stub, doKey, url, request, corsOrigin, timing);
       }
 
-      const doneOrigin = timing?.start("edge.origin");
-      const response = await stub.routeStreamRequest(
-        doKey,
-        timingEnabled,
-        request,
-      );
-      doneOrigin?.();
+      // Register as the in-flight winner for this URL so concurrent
+      // requests can coalesce on our result instead of hitting the DO.
+      let resolveInFlight: ((r: InFlightResult) => void) | undefined;
+      let rejectInFlight: ((e: unknown) => void) | undefined;
+      if (cacheStatus === "MISS" && cacheUrl && !inFlight.has(cacheUrl)) {
+        inFlight.set(
+          cacheUrl,
+          new Promise<InFlightResult>((resolve, reject) => {
+            resolveInFlight = resolve;
+            rejectInFlight = reject;
+          }),
+        );
+      }
+
+      let response: Response;
+      try {
+        const doneOrigin = timing?.start("edge.origin");
+        response = await stub.routeStreamRequest(
+          doKey,
+          timingEnabled,
+          request,
+        );
+        doneOrigin?.();
+      } catch (err) {
+        if (rejectInFlight && cacheUrl) {
+          rejectInFlight(err);
+          inFlight.delete(cacheUrl);
+        }
+        throw err;
+      }
       // #endregion docs-route-to-do
+
+      // Buffer body so it can be shared with coalesced waiters
+      const bodyBuffer = await response.arrayBuffer();
+
       const responseHeaders = new Headers(response.headers);
       applyCorsHeaders(responseHeaders, corsOrigin);
-      const wrapped = new Response(response.body, {
+      const wrapped = new Response(bodyBuffer, {
         status: response.status,
         statusText: response.statusText,
         headers: responseHeaders,
@@ -375,6 +444,18 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
           ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
         }
+      }
+
+      // Resolve the in-flight promise so coalesced waiters get the result.
+      // Headers are captured from the DO response (before CORS) so each
+      // waiter can apply its own CORS headers.
+      if (resolveInFlight && cacheUrl) {
+        const rawHeaders: [string, string][] = [];
+        for (const [k, v] of response.headers) {
+          rawHeaders.push([k, v]);
+        }
+        resolveInFlight({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
+        inFlight.delete(cacheUrl);
       }
 
       // Set X-Cache header on cacheable responses so cache behavior
