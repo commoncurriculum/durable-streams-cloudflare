@@ -224,6 +224,12 @@ const COALESCE_LINGER_MS = 200;
 const SENTINEL_TTL_S = 30;
 const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
+// Micro-jitter to shrink the sentinel race window.
+// When a request finds no sentinel, it waits JITTER_MIN + random(0..JITTER_RANGE)
+// milliseconds and re-checks.  This gives the first "winner" time to store the
+// sentinel before the rest of the thundering herd commits to their own DO calls.
+const JITTER_MIN_MS = 5;
+const JITTER_RANGE_MS = 20;
 
 async function pollCacheForResult(
   url: string,
@@ -433,7 +439,30 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // for the cached result instead of opening duplicate DO connections.
       if (cacheStatus === "MISS" && cacheUrl && isLongPoll) {
         sentinelUrl = cacheUrl + (cacheUrl.includes("?") ? "&" : "?") + "__sentinel=1";
-        const sentinel = await caches.default.match(sentinelUrl);
+        let sentinel = await caches.default.match(sentinelUrl);
+
+        // Micro-jitter: when no sentinel exists, wait and re-check before
+        // committing as winner.  All long-poll clients reconnect simultaneously
+        // after a write (thundering herd).  The jitter gives the first request
+        // time to store the sentinel (~5-10ms) so the rest find it on re-check.
+        if (!sentinel) {
+          await new Promise((r) => setTimeout(r, JITTER_MIN_MS + Math.random() * JITTER_RANGE_MS));
+          // After jitter, check if the cache entry itself appeared (winner
+          // may have already stored the result while we waited).
+          const cachedAfterJitter = await caches.default.match(cacheUrl);
+          if (cachedAfterJitter) {
+            const jitterHeaders = new Headers(cachedAfterJitter.headers);
+            jitterHeaders.set("X-Cache", "HIT");
+            applyCorsHeaders(jitterHeaders, corsOrigin);
+            return attachTiming(
+              new Response(cachedAfterJitter.body, { status: cachedAfterJitter.status, headers: jitterHeaders }),
+              timing,
+            );
+          }
+          // Re-check sentinel — it may have been stored during the jitter delay.
+          sentinel = await caches.default.match(sentinelUrl);
+        }
+
         if (sentinel) {
           // Another isolate is already fetching from DO — poll cache
           const polled = await pollCacheForResult(cacheUrl, POLL_INTERVAL_MS, MAX_POLL_MS);
