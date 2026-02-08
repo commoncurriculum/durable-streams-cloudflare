@@ -224,16 +224,18 @@ const COALESCE_LINGER_MS = 200;
 const SENTINEL_TTL_S = 30;
 const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
-// Jitter to shrink the sentinel race window.  When a request finds no
-// sentinel, it waits JITTER_MIN + random(0..JITTER_RANGE) milliseconds and
-// re-checks.  This gives the first "winner" time to store the sentinel
-// before the rest of the thundering herd commits to their own DO calls.
-// The effective race window is ~6ms (caches.default propagation time).
-// A larger JITTER_RANGE spreads requests over more time, so fewer land
-// inside the race window.  With range=200ms and window=6ms, only ~3% of
-// requests (6/200) become duplicate winners.
-const JITTER_MIN_MS = 50;
-const JITTER_RANGE_MS = 200;
+// Probabilistic deferral: when no sentinel is found, most requests
+// voluntarily "stand down" to let a small number of candidates race for
+// the sentinel.  This dramatically reduces the thundering herd.
+//
+// With 500 concurrent long-poll requests and CANDIDATE_P = 0.02:
+//   - ~10 candidates proceed immediately (small jitter among them)
+//   - ~490 defer for DEFER_MS, then check the cache (winners will have
+//     completed the DO round-trip and stored the result by then)
+//   - Expected: ~3-5 DO hits instead of ~100
+const CANDIDATE_P = 0.02;
+const CANDIDATE_JITTER_MS = 20;
+const DEFER_MS = 120;
 
 async function pollCacheForResult(
   url: string,
@@ -445,25 +447,44 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         sentinelUrl = cacheUrl + (cacheUrl.includes("?") ? "&" : "?") + "__sentinel=1";
         let sentinel = await caches.default.match(sentinelUrl);
 
-        // Micro-jitter: when no sentinel exists, wait and re-check before
-        // committing as winner.  All long-poll clients reconnect simultaneously
-        // after a write (thundering herd).  The jitter gives the first request
-        // time to store the sentinel (~5-10ms) so the rest find it on re-check.
-        if (!sentinel) {
-          await new Promise((r) => setTimeout(r, JITTER_MIN_MS + Math.random() * JITTER_RANGE_MS));
-          // After jitter, check if the cache entry itself appeared (winner
-          // may have already stored the result while we waited).
-          const cachedAfterJitter = await caches.default.match(cacheUrl);
-          if (cachedAfterJitter) {
-            const jitterHeaders = new Headers(cachedAfterJitter.headers);
-            jitterHeaders.set("X-Cache", "HIT");
-            applyCorsHeaders(jitterHeaders, corsOrigin);
-            return attachTiming(
-              new Response(cachedAfterJitter.body, { status: cachedAfterJitter.status, headers: jitterHeaders }),
-              timing,
-            );
+        // Probabilistic deferral: most requests voluntarily stand down,
+        // giving a small number of "candidates" a clear path to win the
+        // sentinel and fetch from the DO.  After a defer sleep (long
+        // enough for the winner's DO round-trip), deferred requests check
+        // the cache directly — if the winner finished, they get an instant
+        // HIT without polling.
+        //
+        // Skip deferral for offset=now — these are subscribe operations
+        // where the client needs to reach the DO quickly to establish its
+        // position.  Deferring would shift "now" and miss writes that
+        // land during the defer window.
+        const isSubscribe = url.searchParams.get("offset") === "now";
+        if (!sentinel && !isSubscribe) {
+          if (Math.random() < CANDIDATE_P) {
+            // Candidate path (~2%): small jitter to elect a single winner
+            // among the few candidates.
+            await new Promise((r) => setTimeout(r, Math.random() * CANDIDATE_JITTER_MS));
+            sentinel = await caches.default.match(sentinelUrl);
+          } else {
+            // Deferred path (~98%): wait for candidates to populate cache.
+            await new Promise((r) => setTimeout(r, DEFER_MS));
+            const cachedAfterDefer = await caches.default.match(cacheUrl);
+            if (cachedAfterDefer) {
+              const deferHeaders = new Headers(cachedAfterDefer.headers);
+              deferHeaders.set("X-Cache", "HIT");
+              applyCorsHeaders(deferHeaders, corsOrigin);
+              return attachTiming(
+                new Response(cachedAfterDefer.body, { status: cachedAfterDefer.status, headers: deferHeaders }),
+                timing,
+              );
+            }
+            // Winner hasn't finished yet — check sentinel and fall through
+            // to polling or winner path.
+            sentinel = await caches.default.match(sentinelUrl);
           }
-          // Re-check sentinel — it may have been stored during the jitter delay.
+        } else if (!sentinel && isSubscribe) {
+          // Subscribe path: minimal jitter only (no long defer)
+          await new Promise((r) => setTimeout(r, Math.random() * CANDIDATE_JITTER_MS));
           sentinel = await caches.default.match(sentinelUrl);
         }
 
