@@ -194,6 +194,14 @@ When a long-poll request gets a cache MISS:
 6. Winner gets DO response, does **`await cache.put()`** (synchronous, not fire-and-forget) so polling isolates find the entry on their next poll cycle.
 7. Winner cleans up sentinel after cache store. Error path also cleans up sentinel so a failed winner doesn't block retries.
 
+### DO Stagger
+
+When a write wakes long-poll waiters, resolving them all at once creates a thundering herd — all clients reconnect simultaneously, overwhelming the sentinel race window. The fix: resolve the first waiter immediately (the "scout") and spread the rest over a random `[0, LONGPOLL_STAGGER_MS]` window.
+
+This gives the scout time to reach the edge, get a cache MISS, fetch from the DO, and store the response in `caches.default` before the bulk of reconnecting clients arrive. Combined with the sentinel pattern, stagger reduces the number of simultaneous arrivals during the critical race window.
+
+`LONGPOLL_STAGGER_MS` is set in `packages/core/src/protocol/limits.ts`. The stagger happens inside the DO (before clients reconnect to the edge), so it adds no perceptible latency to the end-user — the data was just written and clients receive it within the stagger window.
+
 ### Constants
 
 | Constant | Value | Purpose |
@@ -202,6 +210,7 @@ When a long-poll request gets a cache MISS:
 | `POLL_INTERVAL_MS` | 50ms | How often pollers check for the cached result |
 | `MAX_POLL_MS` | 31,000ms | Polling timeout (slightly longer than long-poll DO timeout) |
 | `SENTINEL_JITTER_MS` | 20ms | Random jitter before sentinel check to spread arrivals |
+| `LONGPOLL_STAGGER_MS` | 100ms | DO-side stagger window for long-poll waiter resolution |
 
 ### The Sentinel Race Window
 
@@ -225,11 +234,19 @@ In practice, requests that miss the sentinel but arrive after the winner starts 
 
 **Sentinel retention** (reverted): Keeping the sentinel alive (letting it expire via TTL instead of deleting after cache store). Showed no improvement — the race window occurs before the sentinel exists, not after it's deleted.
 
-**Wider jitter** (100ms, reverted): Improved low-follower (48 LP/stream) from 40% → 53% HIT, but regressed high-follower (476 LP/stream) from 86% → 77% HIT. The low-follower improvement doesn't matter in absolute terms — 48 LP/stream with 50% MISS = ~24 DO connections per write, which is negligible load. The high-follower regression is a real cost. 20ms jitter (avg 10ms added latency) is the right tradeoff.
+**Wider jitter** (50ms, 100ms — reverted): Tested jitter at 50ms and 100ms. At 100ms, improved low-follower (48 LP/stream) from 40% → 53% HIT, but regressed high-follower (476 LP/stream) from 86% → 77% HIT. At 50ms combined with stagger=100, showed no improvement over 20ms jitter. The low-follower improvement doesn't matter in absolute terms — 48 LP/stream with 50% MISS = ~24 DO connections per write, which is negligible load. 20ms jitter (avg 10ms added latency) is the right tradeoff.
+
+**Stagger + wider jitter combo** (reverted): Tested stagger=100ms with jitter=50ms to see if benefits are additive. They are not — the combo showed the same 86% HIT rate as stagger=100ms alone. The stagger already spreads the reconnection burst enough that wider jitter provides no additional benefit.
+
+**Longer stagger** (300ms, reverted): Tested stagger=300ms to give the scout more time to cache its response. Showed 85% HIT (high-follower) and 51% HIT (low-follower) — no improvement over 100ms, with diminishing returns as the added delay approaches the long-poll timeout.
+
+**DO-side cache pre-warming** (analyzed, not implemented): Considered having the DO store the response in `caches.default` before releasing waiters. Analysis showed this approach is fundamentally limited: the DO can only pre-cache the response for the CURRENT long-poll URL (which clients have already consumed), not the NEXT URL (which would be a 204 timeout that we deliberately don't cache). The sentinel race window cannot be eliminated from the DO side.
 
 ### Loadtest Results
 
-All tests: 1 write/second, 120-300s duration, distributed across Cloudflare Workers.
+All tests: 1 write/second, 120s duration, distributed across Cloudflare Workers.
+
+#### Sentinel-Only Results (stagger=0, jitter=20ms)
 
 | Config | LP/stream | HIT% | MISS% | p50 Latency | DO Reduction |
 |--------|-----------|------|-------|-------------|--------------|
@@ -240,7 +257,18 @@ All tests: 1 write/second, 120-300s duration, distributed across Cloudflare Work
 | 1K clients, all-LP, 10 streams | ~93 | **61%** | 39% | 258ms | ~2.5x |
 | 1K clients, 50/50, 10 streams | ~48 | **40%** | 59% | 121ms | ~1.7x |
 
-Wider jitter (100ms) was tested but reverted — see "Approaches Tried and Rejected" above.
+#### DO Stagger Experiments (jitter=20ms unless noted)
+
+| Stagger | Jitter | High-follower (1K LP, 1 str) HIT% | Low-follower (1K 50/50, 10 str) HIT% |
+|---------|--------|-----------------------------------|--------------------------------------|
+| 0 (baseline) | 20ms | 87% | 40% |
+| 50ms | 20ms | 87% | 53% |
+| **100ms** | **20ms** | **91%** | **55%** |
+| 200ms | 20ms | 88% | 54% |
+| 300ms | 20ms | 85% | 51% |
+| 100ms | 50ms | 86% | 37% |
+
+Stagger=100ms is the sweet spot: +4% on high-follower, +15% on low-follower. Wider jitter is not additive with stagger — the stagger already spreads reconnections enough. Longer stagger (200ms, 300ms) shows diminishing returns.
 
 **Key observations:**
 
@@ -250,7 +278,9 @@ Wider jitter (100ms) was tested but reverted — see "Approaches Tried and Rejec
 
 3. **The sentinel race window is the bottleneck.** ~100-130 MISSes per write with 500+ LP clients, regardless of strategy. This is the ~5-10ms window where `caches.default.put()` hasn't propagated yet.
 
-4. **No artificial delays.** All latency is natural DO round-trip + cache propagation. The only added delay is 0-20ms random jitter (average 10ms).
+4. **DO stagger is the most effective lever.** Spreading waiter resolution over 100ms gives the scout time to cache its response before the bulk of reconnections arrive. Unlike client-side delays, the stagger adds no perceptible user-facing latency — it happens inside the DO's long-poll wait.
+
+5. **No artificial client delays.** All latency is natural DO round-trip + cache propagation. The only added delay is 0-20ms sentinel jitter (average 10ms) + 0-100ms DO stagger (server-side, invisible to clients).
 
 ### Key Learnings
 
