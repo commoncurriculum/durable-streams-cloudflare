@@ -1,13 +1,5 @@
 const CURSOR_EPOCH_MS = Date.UTC(2024, 9, 9, 0, 0, 0, 0);
 const CURSOR_INTERVAL_SECONDS = 20;
-const MIN_JITTER_SECONDS = 1;
-const MAX_JITTER_SECONDS = 3600;
-
-function generateJitterIntervals(intervalSeconds: number): number {
-  const jitterSeconds =
-    MIN_JITTER_SECONDS + Math.floor(Math.random() * (MAX_JITTER_SECONDS - MIN_JITTER_SECONDS + 1));
-  return Math.max(1, Math.ceil(jitterSeconds / intervalSeconds));
-}
 
 export function generateCursor(): string {
   const now = Date.now();
@@ -27,6 +19,5 @@ export function generateResponseCursor(clientCursor: string | null | undefined):
     return current;
   }
 
-  const jitterIntervals = generateJitterIntervals(CURSOR_INTERVAL_SECONDS);
-  return (clientInterval + jitterIntervals).toString(10);
+  return (currentInterval + 1).toString(10);
 }

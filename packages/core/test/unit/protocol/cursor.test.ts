@@ -168,20 +168,13 @@ describe("generateResponseCursor — current client cursor", () => {
     vi.useRealTimers();
   });
 
-  it("returns client cursor plus jitter intervals when client equals current", () => {
-    const result = generateResponseCursor("50");
-    const resultInterval = parseInt(result, 10);
-
-    // Jitter: ceil(rand(1..3600) / 20) => min 1, max ceil(3600/20) = 180
-    expect(resultInterval).toBeGreaterThan(50);
-    expect(resultInterval).toBeLessThanOrEqual(50 + 180);
+  it("returns currentInterval + 1 when client equals current", () => {
+    expect(generateResponseCursor("50")).toBe("51");
   });
 
-  it("always returns a value strictly greater than the client cursor", () => {
-    // Run multiple times to guard against edge cases
+  it("always returns exactly one ahead of current interval", () => {
     for (let i = 0; i < 100; i++) {
-      const result = generateResponseCursor("50");
-      expect(parseInt(result, 10)).toBeGreaterThan(50);
+      expect(generateResponseCursor("50")).toBe("51");
     }
   });
 });
@@ -200,29 +193,22 @@ describe("generateResponseCursor — future client cursor", () => {
     vi.useRealTimers();
   });
 
-  it("returns client cursor plus jitter intervals when client is ahead of current", () => {
-    const result = generateResponseCursor("100");
-    const resultInterval = parseInt(result, 10);
-
-    // Jitter added on top of 100, not 50
-    expect(resultInterval).toBeGreaterThan(100);
-    expect(resultInterval).toBeLessThanOrEqual(100 + 180);
+  it("returns currentInterval + 1 when client is ahead of current", () => {
+    // Client at 100, current at 50 — returns 51 (deterministic, based on server time)
+    expect(generateResponseCursor("100")).toBe("51");
   });
 
-  it("preserves the client interval as the base (not the server interval)", () => {
-    const result = generateResponseCursor("200");
-    const resultInterval = parseInt(result, 10);
-
-    // Must be at least 201 (200 + min jitter of 1 interval)
-    expect(resultInterval).toBeGreaterThanOrEqual(201);
+  it("returns currentInterval + 1 regardless of how far ahead client is", () => {
+    expect(generateResponseCursor("200")).toBe("51");
+    expect(generateResponseCursor("999")).toBe("51");
   });
 });
 
 // ============================================================================
-// generateResponseCursor — jitter bounds
+// generateResponseCursor — deterministic (proves no jitter/divergence)
 // ============================================================================
 
-describe("generateResponseCursor — jitter bounds", () => {
+describe("generateResponseCursor — deterministic", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(CURSOR_EPOCH_MS + 50 * CURSOR_INTERVAL_MS));
@@ -232,51 +218,19 @@ describe("generateResponseCursor — jitter bounds", () => {
     vi.useRealTimers();
   });
 
-  it("adds minimum jitter of 1 interval when Math.random returns 0", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
-    const result = generateResponseCursor("50");
-    const resultInterval = parseInt(result, 10);
-
-    // jitterSeconds = 1 + floor(0 * 3600) = 1
-    // jitterIntervals = max(1, ceil(1 / 20)) = 1
-    expect(resultInterval).toBe(51);
-    vi.restoreAllMocks();
+  it("produces identical cursors for identical inputs (no jitter)", () => {
+    const results = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      results.add(generateResponseCursor("50"));
+    }
+    expect(results.size).toBe(1);
+    expect(results.has("51")).toBe(true);
   });
 
-  it("adds maximum jitter of 180 intervals when Math.random returns just under 1", () => {
-    // Math.random() returns values in [0, 1)
-    // floor(0.999... * 3600) = 3599
-    // jitterSeconds = 1 + 3599 = 3600
-    // jitterIntervals = ceil(3600 / 20) = 180
-    vi.spyOn(Math, "random").mockReturnValue(0.9999999);
-    const result = generateResponseCursor("50");
-    const resultInterval = parseInt(result, 10);
-
-    expect(resultInterval).toBe(50 + 180);
-    vi.restoreAllMocks();
-  });
-
-  it("jitter produces a mid-range value", () => {
-    // random = 0.5 => floor(0.5 * 3600) = 1800
-    // jitterSeconds = 1 + 1800 = 1801
-    // jitterIntervals = ceil(1801 / 20) = ceil(90.05) = 91
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
-    const result = generateResponseCursor("50");
-    const resultInterval = parseInt(result, 10);
-
-    expect(resultInterval).toBe(50 + 91);
-    vi.restoreAllMocks();
-  });
-
-  it("jitter minimum is guaranteed by Math.max(1, ...)", () => {
-    // Even with random = 0, jitterSeconds = 1, ceil(1/20) = 1, max(1,1) = 1
-    // The Math.max(1, ...) ensures at least 1 interval
-    vi.spyOn(Math, "random").mockReturnValue(0);
-    const result = generateResponseCursor("50");
-    const resultInterval = parseInt(result, 10);
-
-    expect(resultInterval).toBeGreaterThanOrEqual(51);
-    vi.restoreAllMocks();
+  it("all clients with different future cursors converge to the same value", () => {
+    const cursors = ["50", "75", "100"].map((c) => generateResponseCursor(c));
+    expect(new Set(cursors).size).toBe(1);
+    expect(cursors[0]).toBe("51");
   });
 });
 
@@ -303,11 +257,11 @@ describe("generateResponseCursor — output format", () => {
     const stale = generateResponseCursor("10");
     expect(stale).toMatch(/^-?\d+$/);
 
-    // Fresh cursor path (with jitter)
+    // Current cursor path (deterministic)
     const fresh = generateResponseCursor("50");
     expect(fresh).toMatch(/^-?\d+$/);
 
-    // Future cursor path (with jitter)
+    // Future cursor path (deterministic)
     const future = generateResponseCursor("100");
     expect(future).toMatch(/^-?\d+$/);
   });
