@@ -1,5 +1,6 @@
 import { baseHeaders } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
+import { LONGPOLL_STAGGER_MS } from "../../protocol/limits";
 import {
   evaluateProducer,
   producerDuplicateResponse,
@@ -155,7 +156,7 @@ export async function handlePost(
 
     // #region docs-side-effects
     // 7. Side effects (notifications, broadcast, metrics)
-    ctx.longPoll.notify(result.value.newTailOffset);
+    ctx.longPoll.notify(result.value.newTailOffset, LONGPOLL_STAGGER_MS);
 
     const writeTimestamp = Date.now();
 

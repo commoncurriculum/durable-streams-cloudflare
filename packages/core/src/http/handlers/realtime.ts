@@ -101,13 +101,30 @@ export class LongPollQueue {
     });
   }
 
-  notify(newTail: number): void {
+  notify(newTail: number, staggerMs = 0): void {
     const ready = this.waiters.filter((w) => newTail > w.offset);
     this.waiters = this.waiters.filter((w) => newTail <= w.offset);
 
-    for (const waiter of ready) {
-      clearTimeout(waiter.timer);
-      waiter.resolve({ timedOut: false });
+    if (staggerMs <= 0 || ready.length <= 1) {
+      for (const waiter of ready) {
+        clearTimeout(waiter.timer);
+        waiter.resolve({ timedOut: false });
+      }
+      return;
+    }
+
+    // Resolve first waiter immediately (the "scout") so its Worker
+    // caches the response before the rest reconnect.
+    clearTimeout(ready[0].timer);
+    ready[0].resolve({ timedOut: false });
+
+    // Spread remaining over [0, staggerMs] random window.
+    for (let i = 1; i < ready.length; i++) {
+      const delay = Math.random() * staggerMs;
+      setTimeout(() => {
+        clearTimeout(ready[i].timer);
+        ready[i].resolve({ timedOut: false });
+      }, delay);
     }
   }
 
