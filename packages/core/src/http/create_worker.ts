@@ -224,18 +224,10 @@ const COALESCE_LINGER_MS = 200;
 const SENTINEL_TTL_S = 30;
 const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
-// Probabilistic deferral: when no sentinel is found, most requests
-// voluntarily "stand down" to let a small number of candidates race for
-// the sentinel.  This dramatically reduces the thundering herd.
-//
-// With 500 concurrent long-poll requests and CANDIDATE_P = 0.02:
-//   - ~10 candidates proceed immediately (small jitter among them)
-//   - ~490 defer for DEFER_MS, then check the cache (winners will have
-//     completed the DO round-trip and stored the result by then)
-//   - Expected: ~3-5 DO hits instead of ~100
-const CANDIDATE_P = 0.02;
-const CANDIDATE_JITTER_MS = 20;
-const DEFER_MS = 300;
+// Small jitter (0-20ms) before the sentinel check so that concurrent
+// requests arriving in the same millisecond spread out slightly, giving
+// the first arrival time to store the sentinel before the rest check.
+const SENTINEL_JITTER_MS = 20;
 
 async function pollCacheForResult(
   url: string,
@@ -447,44 +439,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         sentinelUrl = cacheUrl + (cacheUrl.includes("?") ? "&" : "?") + "__sentinel=1";
         let sentinel = await caches.default.match(sentinelUrl);
 
-        // Probabilistic deferral: most requests voluntarily stand down,
-        // giving a small number of "candidates" a clear path to win the
-        // sentinel and fetch from the DO.  After a defer sleep (long
-        // enough for the winner's DO round-trip), deferred requests check
-        // the cache directly — if the winner finished, they get an instant
-        // HIT without polling.
-        //
-        // Skip deferral for offset=now — these are subscribe operations
-        // where the client needs to reach the DO quickly to establish its
-        // position.  Deferring would shift "now" and miss writes that
-        // land during the defer window.
-        const isSubscribe = url.searchParams.get("offset") === "now";
-        if (!sentinel && !isSubscribe) {
-          if (Math.random() < CANDIDATE_P) {
-            // Candidate path (~2%): small jitter to elect a single winner
-            // among the few candidates.
-            await new Promise((r) => setTimeout(r, Math.random() * CANDIDATE_JITTER_MS));
-            sentinel = await caches.default.match(sentinelUrl);
-          } else {
-            // Deferred path (~98%): wait for candidates to populate cache.
-            await new Promise((r) => setTimeout(r, DEFER_MS));
-            const cachedAfterDefer = await caches.default.match(cacheUrl);
-            if (cachedAfterDefer) {
-              const deferHeaders = new Headers(cachedAfterDefer.headers);
-              deferHeaders.set("X-Cache", "HIT");
-              applyCorsHeaders(deferHeaders, corsOrigin);
-              return attachTiming(
-                new Response(cachedAfterDefer.body, { status: cachedAfterDefer.status, headers: deferHeaders }),
-                timing,
-              );
-            }
-            // Winner hasn't finished yet — check sentinel and fall through
-            // to polling or winner path.
-            sentinel = await caches.default.match(sentinelUrl);
-          }
-        } else if (!sentinel && isSubscribe) {
-          // Subscribe path: minimal jitter only (no long defer)
-          await new Promise((r) => setTimeout(r, Math.random() * CANDIDATE_JITTER_MS));
+        // Small jitter spreads concurrent arrivals so the first request
+        // can store the sentinel before the rest check.  No artificial
+        // delay — every request proceeds as fast as possible.
+        if (!sentinel) {
+          await new Promise((r) => setTimeout(r, Math.random() * SENTINEL_JITTER_MS));
           sentinel = await caches.default.match(sentinelUrl);
         }
 
@@ -591,16 +550,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           storedInCache = true;
         }
       }
-      // Let the sentinel expire naturally via its TTL (SENTINEL_TTL_S).
-      // Deleting it immediately creates a race: deferred requests that
-      // wake up after the sentinel is deleted but before caches.default
-      // propagates the cached entry become redundant winners that hit
-      // the DO.  Leaving the sentinel alive means those late-wakers will
-      // find the sentinel, poll for the (already-stored) cached entry,
-      // and return a HIT instead.
-      //
-      // The error path (catch block) still deletes the sentinel so that
-      // a failed winner doesn't block other requests from retrying.
+      // Clean up sentinel marker now that the cache entry is stored
+      // (or response was non-cacheable).
+      if (sentinelUrl) {
+        ctx.waitUntil(caches.default.delete(sentinelUrl));
+      }
 
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
