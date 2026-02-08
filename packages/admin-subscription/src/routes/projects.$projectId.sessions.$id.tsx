@@ -47,7 +47,10 @@ function SessionDetailPage() {
       switch (action) {
         case "subscribe":
         case "unsubscribe":
-          if (!streamIdInput.trim()) return;
+          if (!streamIdInput.trim()) {
+            setSending(false);
+            return;
+          }
           payload = {
             action,
             projectId,
@@ -63,26 +66,42 @@ function SessionDetailPage() {
           break;
       }
 
-      const result = await sendSessionAction({ data: payload });
-      const body = result.body as Record<string, unknown> | undefined;
-      let message: string;
-      switch (action) {
-        case "subscribe":
-          message = `Subscribed to ${(body?.streamId as string) ?? streamIdInput}`;
+      const MAX_RETRIES = 2;
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const result = await sendSessionAction({ data: payload });
+          const body = result.body as Record<string, unknown> | undefined;
+          let message: string;
+          switch (action) {
+            case "subscribe":
+              message = `Subscribed to ${(body?.streamId as string) ?? streamIdInput}`;
+              break;
+            case "unsubscribe":
+              message = `Unsubscribed from ${streamIdInput}`;
+              break;
+            case "touch":
+              message = "Session touched";
+              break;
+            case "delete":
+              message = "Session deleted";
+              break;
+          }
+          addEvent("control", message);
+          lastError = undefined;
           break;
-        case "unsubscribe":
-          message = `Unsubscribed from ${streamIdInput}`;
-          break;
-        case "touch":
-          message = "Session touched";
-          break;
-        case "delete":
-          message = "Session deleted";
-          break;
+        } catch (e) {
+          lastError = e;
+          const msg = e instanceof Error ? e.message : String(e);
+          if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+            await new Promise((r) => setTimeout(r, 300));
+            continue;
+          }
+        }
       }
-      addEvent("control", message);
-    } catch (e) {
-      addEvent("error", e instanceof Error ? e.message : String(e));
+      if (lastError) {
+        addEvent("error", lastError instanceof Error ? lastError.message : String(lastError));
+      }
     } finally {
       setSending(false);
     }

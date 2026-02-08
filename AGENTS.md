@@ -124,7 +124,7 @@ pnpm -r run test
 This runs each package's default `test` script:
 - **core**: runs implementation tests (live wrangler workers via `vitest.implementation.config.ts`)
 - **subscription**: runs unit tests via `@cloudflare/vitest-pool-workers` (excludes `test/integration/`)
-- **admin-core**: runs integration tests (builds with vite, starts core + admin workers)
+- **admin-core**: runs vitest integration tests (builds with vite, starts core + admin workers) **then** Playwright browser tests (chromium). Requires `playwright install chromium` first.
 - **admin-subscription**: runs smoke/integration tests
 
 ### 4. Core unit tests
@@ -156,14 +156,10 @@ Starts both core and subscription workers, then runs `test/integration/**/*.test
 Run all 6 CI checks sequentially (stop on first failure):
 
 ```sh
-pnpm -r run typecheck && \
-pnpm -C packages/core run lint && \
-pnpm -C packages/subscription run lint && \
-pnpm -r run test && \
-pnpm -C packages/core run test:unit && \
-pnpm -C packages/core run conformance && \
-pnpm -C packages/subscription run test:integration
+pnpm test:all
 ```
+
+This runs: typecheck → lint → all package tests (including Playwright browser tests) → core unit tests → conformance → subscription integration.
 
 ### What Each Package's `test` Script Actually Runs
 
@@ -171,7 +167,7 @@ pnpm -C packages/subscription run test:integration
 |---------|-------------------|--------|
 | `packages/core` | Implementation tests (live workers) | `vitest.implementation.config.ts` |
 | `packages/subscription` | Unit tests (miniflare pool) | `vitest.config.ts` (excludes `test/integration/`) |
-| `packages/admin-core` | Integration tests (vite build + wrangler) | `vitest.config.ts` |
+| `packages/admin-core` | Vitest integration + Playwright browser tests | `vitest.config.ts` + `playwright.config.ts` |
 | `packages/admin-subscription` | Smoke tests | `vitest.config.ts` |
 
 ## Documentation Regions (subscription only)

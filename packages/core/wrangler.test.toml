@@ -1,4 +1,4 @@
-name = "durable-streams-test"
+name = "durable-streams"
 main = "test/implementation/test-worker.ts"
 compatibility_date = "2026-02-02"
 compatibility_flags = []

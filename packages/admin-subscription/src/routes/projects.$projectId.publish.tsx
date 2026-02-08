@@ -43,28 +43,34 @@ function PublishPage() {
     if (!streamId.trim()) return;
     setSending(true);
     setResult(null);
-    try {
-      const res = await sendSessionAction({
-        data: {
-          action: "publish",
-          projectId,
-          streamId: streamId.trim(),
-          body,
-          contentType,
-        },
-      });
-      setResult({
-        type: "success",
-        message: `${res.status} ${res.statusText}`,
-      });
-    } catch (e) {
-      setResult({
-        type: "error",
-        message: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setSending(false);
+
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await sendSessionAction({
+          data: {
+            action: "publish",
+            projectId,
+            streamId: streamId.trim(),
+            body,
+            contentType,
+          },
+        });
+        setResult({
+          type: "success",
+          message: `${res.status} ${res.statusText}`,
+        });
+        break;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+          await new Promise((r) => setTimeout(r, 300));
+          continue;
+        }
+        setResult({ type: "error", message: msg });
+      }
     }
+    setSending(false);
   }, [projectId, streamId, body, contentType]);
 
   return (

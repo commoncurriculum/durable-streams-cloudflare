@@ -35,7 +35,7 @@ id = "project-keys"
 # Service binding to core worker (required)
 [[services]]
 binding = "CORE"
-service = "durable-streams-test"
+service = "durable-streams"
 
 # Session cleanup cron
 [triggers]

@@ -73,6 +73,11 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     return new Response("unknown action", { status: 400 });
   }
 
+  async routeRequest(doKey: string, request: Request): Promise<Response> {
+    const stub = this.env.STREAMS.getByName(doKey);
+    return stub.routeStreamRequest(doKey, false, request);
+  }
+
   async headStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(

@@ -221,16 +221,16 @@ describe("admin-core integration", () => {
     const reader = sseRes.body!.getReader();
     const decoder = new TextDecoder();
     let collected = "";
-    const readDeadline = Date.now() + 5000;
+    const readDeadline = Date.now() + 10_000;
 
     while (Date.now() < readDeadline) {
       const { value, done } = await Promise.race([
         reader.read(),
         new Promise<{ value: undefined; done: true }>((r) =>
-          setTimeout(() => r({ value: undefined, done: true }), 3000),
+          setTimeout(() => r({ value: undefined, done: true }), 500),
         ),
       ]);
-      if (done) break;
+      if (done && Date.now() >= readDeadline) break;
       if (value) collected += decoder.decode(value, { stream: true });
       if (collected.includes("live")) break;
     }

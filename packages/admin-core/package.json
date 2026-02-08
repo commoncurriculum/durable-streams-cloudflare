@@ -27,7 +27,7 @@
     "deploy": "pnpm build && wrangler deploy",
     "prepublishOnly": "pnpm run build",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "test": "pnpm exec vitest run",
+    "test": "pnpm exec vitest run && pnpm exec playwright test --config playwright.config.ts",
     "test:browser": "pnpm exec playwright test --config playwright.config.ts",
     "cf-typegen": "wrangler types"
   },

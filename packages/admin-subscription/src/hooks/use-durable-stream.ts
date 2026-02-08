@@ -69,6 +69,9 @@ export function useDurableStream(options: {
         setStatus("connected");
 
         response.subscribeBytes((chunk) => {
+          // Skip empty chunks (e.g. initial SSE connection handshake)
+          if (chunk.data.byteLength === 0) return;
+
           let display: string;
           try {
             display = new TextDecoder().decode(chunk.data);
