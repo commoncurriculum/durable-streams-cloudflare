@@ -240,7 +240,9 @@ In practice, requests that miss the sentinel but arrive after the winner starts 
 
 **Longer stagger** (300ms, reverted): Tested stagger=300ms to give the scout more time to cache its response. Showed 85% HIT (high-follower) and 51% HIT (low-follower) — no improvement over 100ms, with diminishing returns as the added delay approaches the long-poll timeout.
 
-**DO-side cache pre-warming** (analyzed, not implemented): Considered having the DO store the response in `caches.default` before releasing waiters. Analysis showed this approach is fundamentally limited: the DO can only pre-cache the response for the CURRENT long-poll URL (which clients have already consumed), not the NEXT URL (which would be a 204 timeout that we deliberately don't cache). The sentinel race window cannot be eliminated from the DO side.
+**DO-side cache pre-warming** (implemented, marginal improvement): The DO stores the response in `caches.default` at each waiter's URL before resolving waiters. This bypasses the sentinel race window for clients in the DO's colo. Results: no improvement in high-follower (89% vs 90% baseline) but +13pp in low-follower (53% vs 40%). The improvement is limited because: (1) `caches.default.put()` from a DO only writes to the DO's colo cache — edge Workers in other colos don't see it; (2) with high concurrency, the sentinel still dominates the race window for non-local colos.
+
+**Edge pre-warming** (implemented, no measurable improvement): After the sentinel-winning edge Worker caches a response, it fires a background long-poll for the NEXT URL (next offset + cursor). The idea is to have a cached response ready before clients reconnect. Results: no measurable improvement. The pre-warm long-polls for the next write, which arrives ~1s later. But clients reconnect within milliseconds of receiving the current response — by the time the pre-warm caches the next URL's response, all clients have already passed the cache check for that URL.
 
 ### Loadtest Results
 
@@ -270,6 +272,19 @@ All tests: 1 write/second, 120s duration, distributed across Cloudflare Workers.
 
 Stagger=100ms is the sweet spot: +4% on high-follower, +15% on low-follower. Wider jitter is not additive with stagger — the stagger already spreads reconnections enough. Longer stagger (200ms, 300ms) shows diminishing returns.
 
+#### DO Pre-Cache + Edge Pre-Warming (stagger=100ms, jitter=20ms)
+
+Both approaches layered on top of sentinel coalescing + stagger:
+
+| Config | LP/stream | HIT% | Baseline HIT% | Delta |
+|--------|-----------|------|---------------|-------|
+| 1K clients, all-LP, 1 stream | ~1000 | **89%** | 90% | -1pp (noise) |
+| 1K clients, 50/50, 10 streams (134 failed) | ~37 | **53%** | 40% | **+13pp** |
+
+The DO pre-cache shows meaningful improvement in the low-follower scenario: with fewer clients per stream, a larger fraction of readers are in the DO's colo and benefit from the pre-cached response. In the high-follower scenario, the sentinel race window still dominates for non-local colos.
+
+Edge pre-warming shows no measurable improvement in either scenario — the pre-warm races with clients for the same write. By the time write N+1 arrives (~1s later) and the pre-warm caches, all clients from write N have already reconnected and passed the cache check.
+
 **Key observations:**
 
 1. **HIT rate scales with LP clients per stream.** More readers sharing a cache key → more benefit from sentinel coalescing. At 1M readers per stream, expected HIT rate approaches 99.99%.
@@ -281,6 +296,83 @@ Stagger=100ms is the sweet spot: +4% on high-follower, +15% on low-follower. Wid
 4. **DO stagger is the most effective lever.** Spreading waiter resolution over 100ms gives the scout time to cache its response before the bulk of reconnections arrive. Unlike client-side delays, the stagger adds no perceptible user-facing latency — it happens inside the DO's long-poll wait.
 
 5. **No artificial client delays.** All latency is natural DO round-trip + cache propagation. The only added delay is 0-20ms sentinel jitter (average 10ms) + 0-100ms DO stagger (server-side, invisible to clients).
+
+---
+
+## WebSocket Cache Bridge
+
+### Problem with Previous Approaches
+
+All previous approaches (sentinel coalescing, DO stagger, DO pre-cache, edge pre-warming) share a fundamental limitation: **edge workers long-poll the DO directly**. When data arrives, the DO responds to each waiting edge worker individually. This means N concurrent readers = N DO connections, even though they all get the same data.
+
+The sentinel pattern reduces this by coalescing most readers behind a cache poll, but the sentinel race window still lets ~100-130 edge workers through to the DO per write. And the DO pre-cache is always "one step behind" — it caches at URLs for clients already inside the DO.
+
+### Architecture: DO Pushes, Edge Caches, Long-Poll Never Hits the DO
+
+The SSE bridge already follows this pattern: one WebSocket to the DO, data pushed on writes, forwarded to SSE clients. The WebSocket cache bridge extends this to long-poll:
+
+```
+Previous:
+  Long-poll client → edge → cache MISS → HTTP long-poll to DO → DO responds → edge caches
+
+New:
+  Bridge worker ←——WebSocket——→ DO  (persistent, pushes on every write)
+  Bridge worker → caches.default.put()  (on every push)
+  Long-poll client → edge → cache HIT → immediate response
+```
+
+The sentinel winner opens a persistent WebSocket to the DO (same mechanism as the SSE bridge). Instead of making a one-shot HTTP long-poll, the WebSocket stays alive for ~25 seconds via `ctx.waitUntil()`. On each write, the DO pushes data over the WebSocket. The bridge constructs a cacheable HTTP response and stores it in `caches.default`.
+
+### How It Works
+
+**Bridge lifecycle:**
+1. First long-poll cache-miss in a colo → sentinel check → no sentinel → become bridge
+2. Bridge opens WebSocket to DO via `stub.fetch()` with `live=ws-internal`
+3. DO sends catch-up data (if client is behind) or `upToDate` control message
+4. Bridge returns first data as HTTP response to its own long-poll client
+5. Edge worker caches this response (existing cache store logic)
+6. Bridge continues running in `ctx.waitUntil()` for ~25 seconds
+7. On each subsequent write push from DO:
+   - Bridge constructs cache URL from the PREVIOUS response's next-offset + cursor
+   - Bridge builds HTTP response from the WebSocket data+control messages
+   - Bridge calls `await caches.default.put()` at that URL
+   - Bridge sets proactive sentinels at the NEXT expected URL
+8. Bridge dies after ~25s. Next cache-miss client becomes the new bridge.
+
+**Proactive sentinels:**
+After caching each response, the bridge sets a sentinel at the NEXT URL clients will request. When those clients reconnect at the edge, they find the sentinel immediately — no race window. When the next write arrives, the bridge caches the response and pollers find it.
+
+**Cursor coverage:**
+The bridge caches at both active cursor intervals (`currentInterval` and `currentInterval + 1`) to cover clients that received their previous response at different times within the 20-second cursor window.
+
+### Expected Behavior
+
+With 500 concurrent long-poll clients in one colo, 1 write/sec:
+
+- **T=0**: Write N arrives. Bridge caches response. Sets sentinels at next URLs.
+- **T=0+stagger**: Long-poll clients reconnect. Cache HIT (bridge cached it). ~0 DO connections.
+- **T=1s**: Write N+1 arrives. Bridge receives push, caches response. Sets sentinels.
+- **T=1s+stagger**: Clients reconnect. Cache HIT again.
+
+**Expected: ~100% cache HIT** in the bridge's colo. Each colo has its own bridge (via sentinel pattern). The DO sends 1 WebSocket message per colo per write (not per client).
+
+For high-frequency writes (10/sec): the bridge receives 10 WS messages/sec, caches each immediately. No "double long-poll" — the bridge persists across writes.
+
+### Constants
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `BRIDGE_TIMEOUT_MS` | 6,000ms | Max wait for first data on bridge WebSocket |
+| `BRIDGE_BG_LIFETIME_MS` | 25,000ms | How long bridge populates cache after returning initial response |
+
+### Key Files
+
+| File | Change |
+|------|--------|
+| `packages/core/src/http/create_worker.ts` | `bridgeLongPollViaWebSocket()` function + sentinel winner uses bridge for long-poll |
+| `packages/core/src/http/handlers/realtime.ts` | `handleWsUpgrade` includes Content-Type in 101 response |
+
+---
 
 ### Key Learnings
 

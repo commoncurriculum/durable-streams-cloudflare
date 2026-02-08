@@ -4,7 +4,10 @@ import {
   HEADER_STREAM_CURSOR,
   HEADER_STREAM_NEXT_OFFSET,
   HEADER_STREAM_UP_TO_DATE,
+  HEADER_STREAM_WRITE_TIMESTAMP,
+  baseHeaders,
 } from "../protocol/headers";
+import { LONG_POLL_CACHE_SECONDS } from "../protocol/limits";
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
@@ -248,6 +251,206 @@ async function pollCacheForResult(
     if (cached) return cached;
   }
   return null;
+}
+
+// ============================================================================
+// Long-Poll via WebSocket Cache Bridge
+// ============================================================================
+
+// How long the background WS stays alive caching future write pushes.
+const BRIDGE_BG_LIFETIME_MS = 25_000;
+
+/**
+ * Background WebSocket cache bridge for long-poll sentinel winners.
+ *
+ * Opens a persistent WebSocket to the DO and caches every write push
+ * at the URL that reconnecting long-poll clients will request next.
+ * This runs as a fire-and-forget background task via ctx.waitUntil().
+ *
+ * The first response is always served via normal DO RPC — the bridge
+ * only handles future writes. This avoids edge cases where the bridge
+ * would return incorrect responses (missing cursor, wrong status on
+ * delete, etc).
+ */
+async function startBackgroundCacheBridge(
+  stub: DurableObjectStub<StreamDO>,
+  doKey: string,
+  url: URL,
+  initialNextOffset: string,
+  initialNextCursor: string | null,
+  streamContentType: string,
+): Promise<void> {
+  const wsUrl = new URL(url);
+  wsUrl.searchParams.set("live", "ws-internal");
+  // Start from the offset we already served — the DO sends a catch-up
+  // first, then pushes new writes.
+  wsUrl.searchParams.set("offset", initialNextOffset);
+  const wsReq = new Request(wsUrl.toString(), {
+    headers: new Headers({ Upgrade: "websocket" }),
+  });
+
+  const wsResp = await stub.fetch(wsReq);
+
+  if (wsResp.status !== 101 || !wsResp.webSocket) return;
+
+  const ws = wsResp.webSocket;
+  ws.accept();
+
+  let done = false;
+  let pendingData: ArrayBuffer | null = null;
+  let nextOffset: string = initialNextOffset;
+  let nextCursor: string | null = initialNextCursor;
+
+  const lifetime = setTimeout(() => {
+    done = true;
+    try {
+      ws.close(1000, "bridge lifetime");
+    } catch {
+      /* already closed */
+    }
+  }, BRIDGE_BG_LIFETIME_MS);
+
+  ws.addEventListener("message", (event) => {
+    if (done) return;
+    try {
+      const msg = JSON.parse(
+        event.data as string,
+      ) as WsDataMessage | WsControlMessage;
+
+      if (msg.type === "data") {
+        const dataMsg = msg as WsDataMessage;
+        if (dataMsg.encoding === "base64") {
+          const binary = Uint8Array.from(
+            atob(dataMsg.payload),
+            (c) => c.charCodeAt(0),
+          );
+          pendingData = binary.buffer as ArrayBuffer;
+        } else {
+          pendingData = sseTextEncoder
+            .encode(dataMsg.payload)
+            .buffer as ArrayBuffer;
+        }
+        return;
+      }
+
+      // Control message — cache data if we have a pending payload
+      const control = msg as WsControlMessage;
+
+      if (pendingData && nextOffset) {
+        const body = pendingData;
+        pendingData = null;
+
+        // Build the cache URL that reconnecting clients will request
+        const bgUrl = new URL(url);
+        bgUrl.searchParams.set("offset", nextOffset);
+        if (nextCursor) bgUrl.searchParams.set("cursor", nextCursor);
+        const bgCacheUrl = bgUrl.toString();
+
+        // Build cacheable response headers
+        const headers = baseHeaders({
+          "Content-Type": streamContentType,
+        });
+        headers.set(HEADER_STREAM_NEXT_OFFSET, control.streamNextOffset);
+        if (control.streamCursor)
+          headers.set(HEADER_STREAM_CURSOR, control.streamCursor);
+        if (control.upToDate)
+          headers.set(HEADER_STREAM_UP_TO_DATE, "true");
+        if (control.streamClosed)
+          headers.set(HEADER_STREAM_CLOSED, "true");
+        if (
+          control.streamWriteTimestamp &&
+          control.streamWriteTimestamp > 0
+        ) {
+          headers.set(
+            HEADER_STREAM_WRITE_TIMESTAMP,
+            String(control.streamWriteTimestamp),
+          );
+        }
+        headers.set(
+          "Cache-Control",
+          `public, max-age=${LONG_POLL_CACHE_SECONDS}`,
+        );
+
+        // Cache response + proactive sentinel at the NEXT URL
+        (async () => {
+          try {
+            await caches.default.put(
+              bgCacheUrl,
+              new Response(body.slice(0), {
+                status: 200,
+                headers: new Headers(headers),
+              }),
+            );
+            // Proactive sentinel so reconnecting clients find a sentinel
+            // instead of racing through the check-then-set window.
+            if (
+              control.streamNextOffset &&
+              control.streamCursor &&
+              !control.streamClosed
+            ) {
+              const sentUrl = new URL(url);
+              sentUrl.searchParams.set("offset", control.streamNextOffset);
+              sentUrl.searchParams.set("cursor", control.streamCursor);
+              const sentSentinelUrl =
+                sentUrl.toString() +
+                (sentUrl.search ? "&" : "?") +
+                "__sentinel=1";
+              await caches.default.put(
+                sentSentinelUrl,
+                new Response(null, {
+                  headers: {
+                    "Cache-Control": `s-maxage=${SENTINEL_TTL_S}`,
+                  },
+                }),
+              );
+            }
+          } catch {
+            // Background cache failure is non-critical
+          }
+        })();
+
+        nextOffset = control.streamNextOffset;
+        nextCursor = control.streamCursor ?? null;
+
+        if (control.streamClosed) {
+          done = true;
+          clearTimeout(lifetime);
+          try {
+            ws.close(1000, "stream closed");
+          } catch {
+            /* already closed */
+          }
+        }
+      } else {
+        // Control without data — just update tracking (catch-up/up-to-date)
+        if (control.streamNextOffset) nextOffset = control.streamNextOffset;
+        if (control.streamCursor) nextCursor = control.streamCursor;
+        pendingData = null;
+      }
+    } catch {
+      // Malformed message — ignore
+    }
+  });
+
+  ws.addEventListener("close", () => {
+    done = true;
+    clearTimeout(lifetime);
+  });
+
+  ws.addEventListener("error", () => {
+    done = true;
+    clearTimeout(lifetime);
+  });
+
+  // Keep this promise alive for the lifetime of the WS
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (done) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 1000);
+  });
 }
 
 // ============================================================================
@@ -496,13 +699,15 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       let response: Response;
       try {
-        const doneOrigin = timing?.start("edge.origin");
-        response = await stub.routeStreamRequest(
-          doKey,
-          timingEnabled,
-          request,
-        );
-        doneOrigin?.();
+        {
+          const doneOrigin = timing?.start("edge.origin");
+          response = await stub.routeStreamRequest(
+            doKey,
+            timingEnabled,
+            request,
+          );
+          doneOrigin?.();
+        }
       } catch (err) {
         if (sentinelUrl) {
           ctx.waitUntil(caches.default.delete(sentinelUrl));
@@ -565,6 +770,23 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         ctx.waitUntil(caches.default.delete(sentinelUrl));
       }
 
+      // Start background WebSocket bridge for long-poll sentinel winners.
+      // The bridge caches future write pushes at the URLs that reconnecting
+      // clients will request, providing instant cache HITs on the next wave.
+      if (isLongPoll && wasSentinelSetter && storedInCache) {
+        const nextOffset = wrapped.headers.get(HEADER_STREAM_NEXT_OFFSET);
+        const nextCursor = wrapped.headers.get(HEADER_STREAM_CURSOR);
+        const contentType = wrapped.headers.get("Content-Type") || "application/octet-stream";
+        const isClosed = wrapped.headers.get(HEADER_STREAM_CLOSED) === "true";
+        if (nextOffset && !isClosed) {
+          ctx.waitUntil(
+            startBackgroundCacheBridge(
+              stub, doKey, url, nextOffset, nextCursor, contentType,
+            ),
+          );
+        }
+      }
+
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
       // waiter can apply its own CORS headers.
@@ -589,54 +811,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           // Delete immediately — lingering would serve stale data when
           // the stream's tail moves on the next append.
           inFlight.delete(cacheUrl);
-        }
-      }
-
-      // ================================================================
-      // Edge pre-warm: populate cache for the NEXT long-poll cycle
-      // ================================================================
-      // After the sentinel winner caches the current response, fire a
-      // background DO long-poll for the next expected URL.  When the
-      // next write arrives, the background request gets the response
-      // and caches it — so reconnecting clients find a HIT instead of
-      // racing through the sentinel window.
-      //
-      // Only the sentinel setter fires (≤1 pre-warm per write per colo).
-      // The pre-warm calls the DO directly via RPC, bypassing auth.
-      if (isLongPoll && wasSentinelSetter && storedInCache && wrapped.status === 200) {
-        const nextOffset = wrapped.headers.get(HEADER_STREAM_NEXT_OFFSET);
-        const nextCursor = wrapped.headers.get(HEADER_STREAM_CURSOR);
-        const isClosed = wrapped.headers.get(HEADER_STREAM_CLOSED) === "true";
-
-        if (nextOffset && nextCursor && !isClosed) {
-          const prewarmUrl = new URL(url);
-          prewarmUrl.searchParams.set("offset", nextOffset);
-          prewarmUrl.searchParams.set("cursor", nextCursor);
-          const prewarmUrlStr = prewarmUrl.toString();
-
-          ctx.waitUntil(
-            (async () => {
-              try {
-                const prewarmReq = new Request(prewarmUrlStr);
-                const prewarmResp = await stub.routeStreamRequest(
-                  doKey,
-                  false,
-                  prewarmReq,
-                );
-
-                // Cache 200 responses (data arrived from a new write).
-                // 204 timeouts are intentionally not cached.
-                if (prewarmResp.status === 200) {
-                  const cc = prewarmResp.headers.get("Cache-Control") ?? "";
-                  if (!cc.includes("no-store")) {
-                    await caches.default.put(prewarmUrlStr, prewarmResp);
-                  }
-                }
-              } catch {
-                // Pre-warm failure is non-critical
-              }
-            })(),
-          );
         }
       }
 

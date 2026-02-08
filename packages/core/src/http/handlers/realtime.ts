@@ -724,6 +724,7 @@ export async function handleWsUpgrade(
   );
 
   const headers = new Headers();
+  headers.set("Content-Type", contentType);
   if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");
 
   return new Response(null, { status: 101, webSocket: client, headers });
