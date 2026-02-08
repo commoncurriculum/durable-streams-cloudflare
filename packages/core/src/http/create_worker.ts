@@ -224,10 +224,20 @@ const COALESCE_LINGER_MS = 200;
 const SENTINEL_TTL_S = 30;
 const POLL_INTERVAL_MS = 50;
 const MAX_POLL_MS = 31_000;
-// Small jitter (0-20ms) before the sentinel check so that concurrent
-// requests arriving in the same millisecond spread out slightly, giving
-// the first arrival time to store the sentinel before the rest check.
-const SENTINEL_JITTER_MS = 20;
+// Random jitter before the sentinel check spreads concurrent arrivals so
+// the first request can store the sentinel before the rest check.
+//
+// The jitter window directly controls the MISS rate for low-follower
+// streams: MISSes/write ≈ N × P / J, where N = LP clients, P = sentinel
+// propagation time (~10ms), J = jitter window.
+//
+//   J=20ms  → 50% of clients miss the sentinel (bad for <100 followers)
+//   J=100ms → 10% of clients miss the sentinel (good for all scales)
+//
+// 100ms adds an average of 50ms to each long-poll cycle — well under the
+// 100ms "instant" UI threshold and imperceptible in a system where the
+// DO round-trip alone is 100-300ms.
+const SENTINEL_JITTER_MS = 100;
 
 async function pollCacheForResult(
   url: string,
