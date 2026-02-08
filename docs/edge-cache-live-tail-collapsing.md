@@ -234,11 +234,13 @@ All tests: 1 write/second, 120-300s duration, distributed across Cloudflare Work
 | Config | LP/stream | HIT% | MISS% | p50 Latency | DO Reduction |
 |--------|-----------|------|-------|-------------|--------------|
 | Before sentinel (baseline) | ~500 | 0% | 98% | — | 1x |
-| 1K clients, all-LP, 1 stream | ~938 | **90%** | 10% | 289ms | ~10x |
+| 1K clients, all-LP, 1 stream | ~922 | **87%** | 13% | 186ms | ~8x |
 | 1K clients, 50/50 SSE/LP, 1 stream | ~476 | **86%** | 14% | 320ms | ~7x |
 | 500 clients, 50/50, 1 stream | ~248 | **75%** | 24% | 280ms | ~4x |
 | 1K clients, all-LP, 10 streams | ~93 | **61%** | 39% | 258ms | ~2.5x |
 | 1K clients, 50/50, 10 streams | ~48 | **40%** | 59% | 121ms | ~1.7x |
+
+Wider jitter (100ms) was tested but reverted — see "Approaches Tried and Rejected" above.
 
 **Key observations:**
 
