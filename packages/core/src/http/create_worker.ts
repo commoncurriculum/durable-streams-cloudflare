@@ -228,8 +228,8 @@ const MAX_POLL_MS = 31_000;
 // When a request finds no sentinel, it waits JITTER_MIN + random(0..JITTER_RANGE)
 // milliseconds and re-checks.  This gives the first "winner" time to store the
 // sentinel before the rest of the thundering herd commits to their own DO calls.
-const JITTER_MIN_MS = 5;
-const JITTER_RANGE_MS = 20;
+const JITTER_MIN_MS = 20;
+const JITTER_RANGE_MS = 30;
 
 async function pollCacheForResult(
   url: string,
