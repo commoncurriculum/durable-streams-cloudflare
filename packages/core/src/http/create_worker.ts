@@ -197,6 +197,11 @@ type InFlightResult = {
   headers: [string, string][];
 };
 
+// How long resolved in-flight entries stay in the map so that requests
+// arriving just after the winner resolves still get a HIT without
+// waiting for caches.default.put() to complete.
+const COALESCE_LINGER_MS = 200;
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -207,6 +212,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // Deduplicates concurrent cache-miss requests for the same URL within
   // a single Worker isolate. The first request becomes the "winner" and
   // makes the DO round-trip; all others await the same promise.
+  // Resolved entries linger for COALESCE_LINGER_MS so that requests
+  // arriving just after resolution still get a HIT.
   const inFlight = new Map<string, Promise<InFlightResult>>();
 
   return {
@@ -449,13 +456,23 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
       // waiter can apply its own CORS headers.
+      // The entry lingers in the map for COALESCE_LINGER_MS so requests
+      // arriving just after resolution still find the resolved promise
+      // and get a HIT (covers the gap before caches.default.put completes).
       if (resolveInFlight && cacheUrl) {
         const rawHeaders: [string, string][] = [];
         for (const [k, v] of response.headers) {
           rawHeaders.push([k, v]);
         }
         resolveInFlight({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
-        inFlight.delete(cacheUrl);
+        const lingerKey = cacheUrl;
+        const lingerPromise = inFlight.get(lingerKey);
+        setTimeout(() => {
+          // Only delete if the entry hasn't been replaced by a new winner
+          if (inFlight.get(lingerKey) === lingerPromise) {
+            inFlight.delete(lingerKey);
+          }
+        }, COALESCE_LINGER_MS);
       }
 
       // Set X-Cache header on cacheable responses so cache behavior
