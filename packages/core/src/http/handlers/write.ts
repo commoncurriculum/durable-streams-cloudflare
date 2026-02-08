@@ -12,9 +12,11 @@ import {
   broadcastSseControl,
   broadcastWebSocket,
   broadcastWebSocketControl,
+  buildPreCacheResponse,
   closeAllSseClients,
   closeAllWebSockets,
 } from "./realtime";
+import { ZERO_OFFSET } from "../../protocol/offsets";
 
 // PUT operations
 import { extractPutInput, parsePutInput } from "../../stream/create/parse";
@@ -156,6 +158,43 @@ export async function handlePost(
 
     // #region docs-side-effects
     // 7. Side effects (notifications, broadcast, metrics)
+
+    // 7a. Pre-cache long-poll response at waiter URLs BEFORE resolving.
+    // caches.default from a DO writes to the DO's colo cache.  When
+    // edge Workers in the same colo later check the cache for these
+    // URLs, they get an instant HIT — eliminating the sentinel race
+    // window for the DO's colo.
+    const waiterUrls = ctx.longPoll.getReadyWaiterUrls(result.value.newTailOffset);
+    if (waiterUrls.length > 0) {
+      const currentMeta = await ctx.getStream(streamId);
+      if (currentMeta) {
+        for (const waiterUrl of waiterUrls) {
+          try {
+            const parsedUrl = new URL(waiterUrl);
+            const offsetParam = parsedUrl.searchParams.get("offset");
+            const cursor = parsedUrl.searchParams.get("cursor");
+            if (!offsetParam) continue;
+
+            const resolved = await ctx.resolveOffset(
+              streamId,
+              currentMeta,
+              offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+            );
+            if (resolved.error) continue;
+
+            const preCacheResp = await buildPreCacheResponse(
+              ctx, streamId, currentMeta, resolved.offset, cursor,
+            );
+            if (preCacheResp) {
+              await caches.default.put(waiterUrl, preCacheResp);
+            }
+          } catch {
+            // Pre-cache failure is non-critical — continue
+          }
+        }
+      }
+    }
+
     ctx.longPoll.notify(result.value.newTailOffset, LONGPOLL_STAGGER_MS);
 
     const writeTimestamp = Date.now();

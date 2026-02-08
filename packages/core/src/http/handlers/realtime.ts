@@ -76,6 +76,7 @@ export type SseState = {
 
 export type Waiter = {
   offset: number;
+  url: string;
   resolve: (result: { timedOut: boolean }) => void;
   timer: number;
 };
@@ -84,7 +85,7 @@ export type Waiter = {
 export class LongPollQueue {
   private waiters: Waiter[] = [];
 
-  async waitForData(offset: number, timeoutMs: number): Promise<boolean> {
+  async waitForData(offset: number, url: string, timeoutMs: number): Promise<boolean> {
     return await new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w.timer !== timer);
@@ -93,6 +94,7 @@ export class LongPollQueue {
 
       const waiter: Waiter = {
         offset,
+        url,
         timer: timer as unknown as number,
         resolve: (result) => resolve(result.timedOut),
       };
@@ -135,6 +137,18 @@ export class LongPollQueue {
       clearTimeout(waiter.timer);
       waiter.resolve({ timedOut: false });
     }
+  }
+
+  /**
+   * Return unique URLs of waiters that would be resolved by a new tail offset.
+   * Used by the write handler to pre-cache responses before resolving waiters.
+   */
+  getReadyWaiterUrls(newTail: number): string[] {
+    const urls = new Set<string>();
+    for (const w of this.waiters) {
+      if (newTail > w.offset) urls.add(w.url);
+    }
+    return [...urls];
   }
 
   getWaiterCount(): number {
@@ -231,6 +245,41 @@ export function buildLongPollHeaders(params: {
 }
 
 // ============================================================================
+// Long-Poll Pre-Cache (for write-time cache warming)
+// ============================================================================
+
+/**
+ * Build a cacheable long-poll response for the given offset/cursor.
+ * Used by the write handler to pre-populate caches.default BEFORE
+ * resolving long-poll waiters, so edge Workers in the same colo find
+ * the entry on their next cache check.
+ *
+ * Returns null if no data is available at the offset.
+ */
+export async function buildPreCacheResponse(
+  ctx: StreamContext,
+  streamId: string,
+  meta: StreamMeta,
+  offset: number,
+  cursor: string | null,
+): Promise<Response | null> {
+  const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
+  if (read.error || !read.hasData) return null;
+
+  const headers = buildLongPollHeaders({
+    meta,
+    nextOffsetHeader: await ctx.encodeOffset(streamId, meta, read.nextOffset),
+    upToDate: read.upToDate,
+    closedAtTail: read.closedAtTail,
+    cursor: generateResponseCursor(cursor),
+    writeTimestamp: read.writeTimestamp,
+  });
+  headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
+  headers.set("ETag", buildEtag(streamId, offset, read.nextOffset, read.closedAtTail));
+  return new Response(read.body, { status: 200, headers });
+}
+
+// ============================================================================
 // Long-Poll Handler
 // ============================================================================
 
@@ -292,7 +341,7 @@ export async function handleLongPoll(
 
   // #region docs-long-poll-wait
   const doneWait = ctx.timing?.start("longpoll.wait");
-  const timedOut = await ctx.longPoll.waitForData(offset, LONG_POLL_TIMEOUT_MS);
+  const timedOut = await ctx.longPoll.waitForData(offset, url.toString(), LONG_POLL_TIMEOUT_MS);
   doneWait?.();
   const current = await ctx.getStream(streamId);
   if (!current) return errorResponse(404, "stream not found");

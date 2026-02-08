@@ -1,4 +1,10 @@
-import { HEADER_SSE_DATA_ENCODING, HEADER_STREAM_UP_TO_DATE } from "../protocol/headers";
+import {
+  HEADER_SSE_DATA_ENCODING,
+  HEADER_STREAM_CLOSED,
+  HEADER_STREAM_CURSOR,
+  HEADER_STREAM_NEXT_OFFSET,
+  HEADER_STREAM_UP_TO_DATE,
+} from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
@@ -344,6 +350,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // request object causes cache key mismatches in miniflare/workerd.
       const cacheUrl = cacheable ? request.url : null;
       let sentinelUrl: string | null = null;
+      let wasSentinelSetter = false;
 
       // Track cache status for the X-Cache response header.
       // null = non-cacheable request (no header emitted).
@@ -463,6 +470,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           // Timeout — fall through to make our own DO call
         } else {
           // We're the winner for this colo — set sentinel
+          wasSentinelSetter = true;
           await caches.default.put(
             sentinelUrl,
             new Response(null, {
@@ -581,6 +589,54 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           // Delete immediately — lingering would serve stale data when
           // the stream's tail moves on the next append.
           inFlight.delete(cacheUrl);
+        }
+      }
+
+      // ================================================================
+      // Edge pre-warm: populate cache for the NEXT long-poll cycle
+      // ================================================================
+      // After the sentinel winner caches the current response, fire a
+      // background DO long-poll for the next expected URL.  When the
+      // next write arrives, the background request gets the response
+      // and caches it — so reconnecting clients find a HIT instead of
+      // racing through the sentinel window.
+      //
+      // Only the sentinel setter fires (≤1 pre-warm per write per colo).
+      // The pre-warm calls the DO directly via RPC, bypassing auth.
+      if (isLongPoll && wasSentinelSetter && storedInCache && wrapped.status === 200) {
+        const nextOffset = wrapped.headers.get(HEADER_STREAM_NEXT_OFFSET);
+        const nextCursor = wrapped.headers.get(HEADER_STREAM_CURSOR);
+        const isClosed = wrapped.headers.get(HEADER_STREAM_CLOSED) === "true";
+
+        if (nextOffset && nextCursor && !isClosed) {
+          const prewarmUrl = new URL(url);
+          prewarmUrl.searchParams.set("offset", nextOffset);
+          prewarmUrl.searchParams.set("cursor", nextCursor);
+          const prewarmUrlStr = prewarmUrl.toString();
+
+          ctx.waitUntil(
+            (async () => {
+              try {
+                const prewarmReq = new Request(prewarmUrlStr);
+                const prewarmResp = await stub.routeStreamRequest(
+                  doKey,
+                  false,
+                  prewarmReq,
+                );
+
+                // Cache 200 responses (data arrived from a new write).
+                // 204 timeouts are intentionally not cached.
+                if (prewarmResp.status === 200) {
+                  const cc = prewarmResp.headers.get("Cache-Control") ?? "";
+                  if (!cc.includes("no-store")) {
+                    await caches.default.put(prewarmUrlStr, prewarmResp);
+                  }
+                }
+              } catch {
+                // Pre-warm failure is non-critical
+              }
+            })(),
+          );
         }
       }
 
