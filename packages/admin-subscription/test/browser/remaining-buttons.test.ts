@@ -78,6 +78,15 @@ test("project selector dropdown navigates to selected project", async ({ page })
   await page.goto(ADMIN_URL);
   await page.waitForLoadState("networkidle");
 
+  // Wait for the project option to be available in the dropdown (options are hidden elements)
+  await page.waitForFunction(
+    (id) => {
+      const select = document.querySelector("#project-select") as HTMLSelectElement;
+      return select && Array.from(select.options).some((o) => o.value === id);
+    },
+    PROJECT_ID,
+    { timeout: 10_000 },
+  );
   await page.selectOption("#project-select", PROJECT_ID);
 
   await page.waitForURL(`**/projects/${PROJECT_ID}/**`);

@@ -52,18 +52,27 @@ function SearchBar({ projectId }: { projectId: string }) {
     setCreating(true);
     setError("");
     const sessionId = crypto.randomUUID();
-    try {
-      await createSession({ data: { projectId, sessionId } });
-      addRecentSession(projectId, sessionId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setCreating(false);
-      return;
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await createSession({ data: { projectId, sessionId } });
+        addRecentSession(projectId, sessionId);
+        navigate({
+          to: "/projects/$projectId/sessions/$id",
+          params: { projectId, id: sessionId },
+        });
+        return;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+          await new Promise((r) => setTimeout(r, 300));
+          continue;
+        }
+        setError(msg);
+        setCreating(false);
+        return;
+      }
     }
-    navigate({
-      to: "/projects/$projectId/sessions/$id",
-      params: { projectId, id: sessionId },
-    });
   };
 
   return (
