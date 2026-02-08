@@ -591,11 +591,16 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           storedInCache = true;
         }
       }
-      // Clean up sentinel marker now that the cache entry is stored
-      // (or response was non-cacheable).
-      if (sentinelUrl) {
-        ctx.waitUntil(caches.default.delete(sentinelUrl));
-      }
+      // Let the sentinel expire naturally via its TTL (SENTINEL_TTL_S).
+      // Deleting it immediately creates a race: deferred requests that
+      // wake up after the sentinel is deleted but before caches.default
+      // propagates the cached entry become redundant winners that hit
+      // the DO.  Leaving the sentinel alive means those late-wakers will
+      // find the sentinel, poll for the (already-stored) cached entry,
+      // and return a HIT instead.
+      //
+      // The error path (catch block) still deletes the sentinel so that
+      // a failed winner doesn't block other requests from retrying.
 
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
