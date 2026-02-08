@@ -51,20 +51,29 @@ function CreateStreamForm({
   const handleCreate = useCallback(async () => {
     setSending(true);
     setError(null);
-    try {
-      const result = await sendTestAction({
-        data: { streamId: doKey, action: "create", contentType, body },
-      });
-      if (result.status >= 200 && result.status < 300) {
-        await router.invalidate();
-      } else {
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = await sendTestAction({
+          data: { streamId: doKey, action: "create", contentType, body },
+        });
+        if (result.status >= 200 && result.status < 300) {
+          await router.invalidate();
+          setSending(false);
+          return;
+        }
         setError(`${result.status} ${result.statusText}`);
+        break;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+          await new Promise((r) => setTimeout(r, 300));
+          continue;
+        }
+        setError(msg);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSending(false);
     }
+    setSending(false);
   }, [doKey, contentType, body, router]);
 
   return (
@@ -347,19 +356,26 @@ function SendMessagePanel({
   const handleSend = useCallback(async () => {
     setSending(true);
     setLastResult(null);
-    try {
-      const result = await sendTestAction({
-        data: { streamId: doKey, action: "append", contentType, body },
-      });
-      setLastResult(result);
-      addEvent("control", `APPEND => ${result.status} ${result.statusText}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      addEvent("error", msg);
-      setLastResult({ status: 0, statusText: msg });
-    } finally {
-      setSending(false);
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = await sendTestAction({
+          data: { streamId: doKey, action: "append", contentType, body },
+        });
+        setLastResult(result);
+        addEvent("control", `APPEND => ${result.status} ${result.statusText}`);
+        break;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+          await new Promise((r) => setTimeout(r, 300));
+          continue;
+        }
+        addEvent("error", msg);
+        setLastResult({ status: 0, statusText: msg });
+      }
     }
+    setSending(false);
   }, [doKey, contentType, body, addEvent]);
 
   return (

@@ -49,7 +49,6 @@ export default async function globalSetup() {
       "--port", String(corePort),
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
-      "--config", "wrangler.test.toml",
     ],
     { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
