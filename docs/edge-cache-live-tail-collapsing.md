@@ -225,7 +225,7 @@ In practice, requests that miss the sentinel but arrive after the winner starts 
 
 **Sentinel retention** (reverted): Keeping the sentinel alive (letting it expire via TTL instead of deleting after cache store). Showed no improvement — the race window occurs before the sentinel exists, not after it's deleted.
 
-**Wider jitter** (50-250ms): Marginal improvement (79% vs 75%) but adds up to 250ms of latency to some requests.
+**Wider jitter** (100ms, reverted): Improved low-follower (48 LP/stream) from 40% → 53% HIT, but regressed high-follower (476 LP/stream) from 86% → 77% HIT. The low-follower improvement doesn't matter in absolute terms — 48 LP/stream with 50% MISS = ~24 DO connections per write, which is negligible load. The high-follower regression is a real cost. 20ms jitter (avg 10ms added latency) is the right tradeoff.
 
 ### Loadtest Results
 
