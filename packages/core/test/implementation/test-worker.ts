@@ -10,11 +10,14 @@ const putStreamOptions = type({
   "contentType?": "string",
 });
 
+// Created at module scope so the in-flight coalescing Map is shared across
+// all requests in the isolate (WorkerEntrypoint creates a new instance per
+// request, so an instance field would give each request its own empty Map).
+const handler = createStreamWorker();
+
 // Auth-free worker for tests: no auth callbacks = no auth checks.
 // Extends WorkerEntrypoint so subscription integration tests can use RPC methods.
 export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
-  #handler = createStreamWorker();
-
   async fetch(request: Request): Promise<Response> {
     // Route test-only debug actions via X-Debug-Action header to DO RPC methods
     const debugAction = request.headers.get("X-Debug-Action");
@@ -22,7 +25,7 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
       return this.#handleDebugAction(debugAction, request);
     }
 
-    return this.#handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
+    return handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
   }
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {

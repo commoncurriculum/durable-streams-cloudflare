@@ -8,6 +8,14 @@ import type { BaseEnv } from "./create_worker";
 
 const { authorizeMutation, authorizeRead } = projectJwtAuth();
 
+// Created at module scope so the in-flight coalescing Map is shared across
+// all requests in the isolate (WorkerEntrypoint creates a new instance per
+// request, so an instance field would give each request its own empty Map).
+const handler = createStreamWorker({
+  authorizeMutation,
+  authorizeRead,
+});
+
 const putStreamOptions = type({
   "expiresAt?": "number",
   "body?": "ArrayBuffer",
@@ -17,14 +25,9 @@ const putStreamOptions = type({
 const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
-  #handler = createStreamWorker({
-    authorizeMutation,
-    authorizeRead,
-  });
-
   // HTTP traffic delegates to existing factory (external callers, unchanged)
   async fetch(request: Request): Promise<Response> {
-    return this.#handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
+    return handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
   }
 
   // RPC: register a project's signing secret in core's REGISTRY KV
