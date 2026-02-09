@@ -1,9 +1,8 @@
 {
-  "extends": "../../tsconfig.build.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
-    "rootDir": "src",
-    "noEmit": true
+    "noEmit": true,
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["src/worker.ts"]

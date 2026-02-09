@@ -227,7 +227,6 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SESSION_TTL_SECONDS` | `1800` | Session TTL in seconds (default: 30 minutes) |
-| `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated, `*`, or omit for all) |
 | `ACCOUNT_ID` | *(none)* | Cloudflare account ID (required for cron cleanup) |
 | `API_TOKEN` | *(none)* | Cloudflare API token (required for cron cleanup Analytics Engine queries) |
 | `ANALYTICS_DATASET` | `subscriptions_metrics` | Analytics Engine dataset name |
@@ -237,7 +236,7 @@ Sessions have a configurable TTL (default 30 minutes). Each `touch` resets the T
 | Binding | Type | Description |
 |---------|------|-------------|
 | `SUBSCRIPTION_DO` | Durable Object | SubscriptionDO namespace (required) |
-| `REGISTRY` | KV Namespace | Per-project signing secrets (required when using `projectJwtAuth`) |
+| `REGISTRY` | KV Namespace | Per-project signing secrets and CORS origins (required when using `projectJwtAuth`). See [CORS Configuration](../../docs/13-cors-configuration.md). |
 | `METRICS` | Analytics Engine | Subscription and fan-out metrics (optional) |
 | `CORE` | Service Binding | Service binding to core worker (required) |
 

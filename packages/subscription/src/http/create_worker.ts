@@ -1,11 +1,10 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
 import { sessionRoutes } from "./routes/session";
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
-import { parseRoute } from "./auth";
+import { parseRoute, lookupProjectConfig } from "./auth";
 import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
 import type { AuthorizeSubscription } from "./auth";
@@ -15,37 +14,46 @@ export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
   authorize?: AuthorizeSubscription<E>;
 }
 
+const CORS_ALLOW_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-Session-Id",
+  "Producer-Id",
+  "Producer-Epoch",
+  "Producer-Seq",
+].join(", ");
+
+const CORS_EXPOSE_HEADERS = [
+  "Stream-Fanout-Count",
+  "Stream-Fanout-Successes",
+  "Stream-Fanout-Failures",
+  "Stream-Fanout-Mode",
+  "Stream-Next-Offset",
+  "Stream-Up-To-Date",
+  "Stream-Closed",
+].join(", ");
+
 /**
- * Parse CORS_ORIGINS env var into origin configuration.
- * - undefined or empty: allow all ("*")
- * - "*": allow all
- * - "https://example.com": single origin
- * - "https://a.com,https://b.com": multiple origins
+ * Resolve the CORS origin for a request from per-project config.
+ * Returns null (no CORS headers) when no corsOrigins are configured.
  */
-function parseCorsOrigins(
-  corsOrigins: string | undefined,
-): string | string[] | ((origin: string) => string | undefined | null) {
-  if (!corsOrigins || corsOrigins === "*") {
-    return "*";
-  }
-
-  const origins = corsOrigins
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-  if (origins.length === 1) {
-    return origins[0];
-  }
-
-  // Multiple origins: return a function that validates
-  return (origin: string) => {
-    if (origins.includes(origin)) {
-      return origin;
-    }
-    return null;
-  };
+function resolveProjectCorsOrigin(corsOrigins: string[] | undefined, requestOrigin: string | null): string | null {
+  if (!corsOrigins || corsOrigins.length === 0) return null;
+  if (corsOrigins.includes("*")) return "*";
+  if (requestOrigin && corsOrigins.includes(requestOrigin)) return requestOrigin;
+  return corsOrigins[0];
 }
+
+function applyCorsHeaders(headers: Headers, origin: string | null): void {
+  if (origin === null) return;
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
+  headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS);
+}
+
+/** Extract projectId from /v1/:project/... paths */
+const PROJECT_PATH_RE = /^\/v1\/([^/]+)\//;
 
 // #region synced-to-docs:worker-entry
 export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
@@ -55,31 +63,32 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   // #endregion synced-to-docs:worker-entry
 
   // #region synced-to-docs:middleware
-  // CORS middleware
+  // Per-project CORS middleware — looks up corsOrigins from KV
   app.use("*", async (c, next) => {
-    const corsOrigin = parseCorsOrigins(c.env.CORS_ORIGINS);
-    const corsMiddleware = cors({
-      origin: corsOrigin,
-      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-Session-Id",
-        "Producer-Id",
-        "Producer-Epoch",
-        "Producer-Seq",
-      ],
-      exposeHeaders: [
-        "Stream-Fanout-Count",
-        "Stream-Fanout-Successes",
-        "Stream-Fanout-Failures",
-        "Stream-Fanout-Mode",
-        "Stream-Next-Offset",
-        "Stream-Up-To-Date",
-        "Stream-Closed",
-      ],
-    });
-    return corsMiddleware(c, next);
+    const url = new URL(c.req.url);
+    const projectMatch = PROJECT_PATH_RE.exec(url.pathname);
+    let corsOrigin: string | null = null;
+
+    if (projectMatch && c.env.REGISTRY) {
+      const projectId = projectMatch[1];
+      if (isValidProjectId(projectId)) {
+        const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
+        corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+      }
+    }
+
+    // Handle OPTIONS preflight
+    if (c.req.method === "OPTIONS") {
+      const headers = new Headers();
+      applyCorsHeaders(headers, corsOrigin);
+      return new Response(null, { status: 204, headers });
+    }
+
+    // Store corsOrigin for after-response header injection
+    await next();
+
+    // Apply CORS headers to the response
+    applyCorsHeaders(c.res.headers, corsOrigin);
   });
 
   // Auth middleware — skips /health and runs only when authorize is configured

@@ -1,96 +1,155 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import type { AppEnv } from "../src/env";
 
-function createTestEnv(overrides: Record<string, unknown> = {}): AppEnv {
-  return { ...env, ...overrides } as unknown as AppEnv;
+const PROJECT_ID = "cors-test-project";
+
+function createTestEnv(): AppEnv {
+  return { ...env } as unknown as AppEnv;
 }
 
-async function createTestWorker(testEnv: AppEnv) {
-  const { default: WorkerClass } = await import("../src/http/worker");
-  return new WorkerClass({} as unknown as ExecutionContext, testEnv);
+async function createTestWorker() {
+  const { createSubscriptionWorker } = await import("../src/http/create_worker");
+  return createSubscriptionWorker();
 }
 
-describe("CORS configuration", () => {
-  it("allows all origins by default (no CORS_ORIGINS set)", async () => {
-    const worker = await createTestWorker(createTestEnv());
-    const request = new Request("http://localhost/health", {
-      headers: { Origin: "https://any-origin.com" },
-    });
+describe("Per-project CORS from KV", () => {
+  beforeEach(async () => {
+    // Clean up KV between tests
+    await env.REGISTRY.delete(PROJECT_ID);
+  });
 
-    const response = await worker.fetch(request);
+  it("non-project routes (/health) have no CORS headers", async () => {
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/health", {
+        headers: { Origin: "https://any-origin.com" },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  it("project routes with corsOrigins: ['*'] return wildcard", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
+      signingSecrets: ["test-secret"],
+      corsOrigins: ["*"],
+    }));
+
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+        headers: { Origin: "https://any-origin.com" },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 
-  it("uses CORS_ORIGINS from env when set to specific domain", async () => {
-    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
-    const request = new Request("http://localhost/health", {
-      headers: { Origin: "https://example.com" },
-    });
+  it("project routes with specific corsOrigins return matching origin", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
+      signingSecrets: ["test-secret"],
+      corsOrigins: ["https://example.com", "https://test.com"],
+    }));
 
-    const response = await worker.fetch(request);
-
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
-  });
-
-  it("supports comma-separated CORS_ORIGINS", async () => {
-    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com,https://test.com" }));
-    const request = new Request("http://localhost/health", {
-      headers: { Origin: "https://test.com" },
-    });
-
-    const response = await worker.fetch(request);
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+        headers: { Origin: "https://test.com" },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://test.com");
   });
 
-  it("rejects origins not in CORS_ORIGINS list", async () => {
-    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
-    const request = new Request("http://localhost/health", {
-      headers: { Origin: "https://evil.com" },
-    });
+  it("project routes with no corsOrigins configured have no CORS headers", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
+      signingSecrets: ["test-secret"],
+    }));
 
-    const response = await worker.fetch(request);
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+        headers: { Origin: "https://any-origin.com" },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("allows all origins when CORS_ORIGINS is '*'", async () => {
-    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "*" }));
-    const request = new Request("http://localhost/health", {
-      headers: { Origin: "https://any-origin.com" },
-    });
+  it("project routes with no KV entry have no CORS headers", async () => {
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+        headers: { Origin: "https://any-origin.com" },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
-    const response = await worker.fetch(request);
-
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("handles OPTIONS preflight request", async () => {
-    const worker = await createTestWorker(createTestEnv({ CORS_ORIGINS: "https://example.com" }));
-    const request = new Request("http://localhost/health", {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://example.com",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
+  it("OPTIONS preflight at project paths returns CORS from KV", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
+      signingSecrets: ["test-secret"],
+      corsOrigins: ["https://example.com"],
+    }));
 
-    const response = await worker.fetch(request);
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
     expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
   });
+
+  it("OPTIONS preflight at non-project paths has no CORS headers", async () => {
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/health", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "GET",
+        },
+      }),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
 });
 
 describe("health check", () => {
   it("returns ok status", async () => {
-    const worker = await createTestWorker(createTestEnv());
-    const request = new Request("http://localhost/health");
-
-    const response = await worker.fetch(request);
+    const worker = await createTestWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/health"),
+      createTestEnv(),
+      {} as ExecutionContext,
+    );
 
     expect(response.status).toBe(200);
     const body = await response.json();

@@ -9,7 +9,6 @@ export interface AppEnv {
   SESSION_DO: DurableObjectNamespace<SessionDO>;
   METRICS?: AnalyticsEngineDataset;
   SESSION_TTL_SECONDS?: string;
-  CORS_ORIGINS?: string;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
   MAX_INLINE_FANOUT?: string;

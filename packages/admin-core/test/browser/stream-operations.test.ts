@@ -1,8 +1,24 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `stream-test-${Date.now()}`;
 const STREAM_ID = "test-stream";
+
+/**
+ * After creating a stream, the loader may still return null (showing
+ * the create form instead of the stream console). Reload up to
+ * `maxAttempts` times until "Live Event Log" is visible.
+ */
+async function waitForStreamConsole(page: Page, maxAttempts = 5) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const visible = await page.getByText("Live Event Log").isVisible().catch(() => false);
+    if (visible) return;
+    await page.waitForTimeout(1000);
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+  }
+  await expect(page.getByText("Live Event Log")).toBeVisible({ timeout: 10_000 });
+}
 
 // Create a project AND a stream before tests run.
 test.beforeAll(async ({ browser }) => {
@@ -28,12 +44,8 @@ test.beforeAll(async ({ browser }) => {
   await page.click('button:has-text("Create Stream")');
 
   // The server function fires but router.invalidate() may not fully reload.
-  // Wait for either the stream console or give it time, then reload.
-  await page.waitForTimeout(2000);
-  await page.reload();
-
-  // After reload, the page should show the stream console
-  await page.waitForSelector("text=Live Event Log", { timeout: 15_000 });
+  // Poll with reload until the stream console appears.
+  await waitForStreamConsole(page);
 
   await page.close();
 });
@@ -78,12 +90,8 @@ test("Create Stream form creates a new stream", async ({ page }) => {
   await page.locator("textarea").fill('{"hello":"world"}');
   await page.click('button:has-text("Create Stream")');
 
-  // Wait for the server function call to complete, then reload
-  await page.waitForTimeout(2000);
-  await page.reload();
-
-  // After reload, should show the stream console
-  await expect(page.getByText("Live Event Log")).toBeVisible({ timeout: 15_000 });
+  // Poll with reload until the stream console appears.
+  await waitForStreamConsole(page);
 });
 
 // ── Stream detail metadata renders ──

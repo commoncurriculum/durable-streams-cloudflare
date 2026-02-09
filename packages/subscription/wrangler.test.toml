@@ -5,7 +5,6 @@ compatibility_flags = []
 
 [vars]
 SESSION_TTL_SECONDS = "1800"
-ANALYTICS_DATASET = "subscriptions_metrics"
 
 # Durable Objects for per-stream subscriber storage and per-session subscription tracking
 [durable_objects]
@@ -30,13 +29,10 @@ dataset = "subscriptions_metrics"
 # KV namespace for per-project signing secrets
 [[kv_namespaces]]
 binding = "REGISTRY"
-id = "project-keys"
+id = "registry"
 
 # Service binding to core worker (required)
 [[services]]
 binding = "CORE"
 service = "durable-streams"
 
-# Session cleanup cron
-[triggers]
-crons = ["*/5 * * * *"]

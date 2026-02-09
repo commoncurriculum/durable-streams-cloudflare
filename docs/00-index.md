@@ -41,6 +41,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 12. **[CDN Reader Key](12-cdn-reader-key.md)** -- Per-stream shared reader key design for CDN-cached read authorization. Prevents unauthorized reads of cached responses without fragmenting the cache.
 
+13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9

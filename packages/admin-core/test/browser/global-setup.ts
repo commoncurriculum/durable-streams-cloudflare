@@ -40,7 +40,19 @@ export default async function globalSetup() {
   // Build the admin app first
   execSync("pnpm exec vite build", { cwd: ROOT, stdio: "pipe" });
 
-  // Start core worker
+  // Use a unique core worker name so parallel test runs (pnpm -r run test)
+  // don't collide with the core package's own implementation tests — both
+  // spawn a wrangler worker, and wrangler's local dev registry resolves
+  // service bindings by name.
+  const CORE_WORKER_NAME = "ds-admin-browser-core";
+  const wranglerJsonPath = path.join(ROOT, "dist/server/wrangler.json");
+  const wranglerJson = JSON.parse(fs.readFileSync(wranglerJsonPath, "utf-8"));
+  wranglerJson.services = wranglerJson.services.map((s: { binding: string; service: string }) =>
+    s.binding === "CORE" ? { ...s, service: CORE_WORKER_NAME } : s,
+  );
+  fs.writeFileSync(wranglerJsonPath, JSON.stringify(wranglerJson));
+
+  // Start core worker with the unique name
   const corePort = await getAvailablePort();
   const coreProc = spawn(
     "pnpm",
@@ -49,12 +61,13 @@ export default async function globalSetup() {
       "--port", String(corePort),
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
+      "--name", CORE_WORKER_NAME,
     ],
     { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
   await waitForReady(`http://localhost:${corePort}`);
 
-  // Start admin worker (uses built output)
+  // Start admin worker (service binding targets CORE_WORKER_NAME)
   const adminPort = await getAvailablePort();
   const adminProc = spawn(
     "pnpm",

@@ -1,66 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { env, runInDurableObject } from "cloudflare:test";
 import {
   closeStreamOnly,
   buildClosedConflict,
   validateStreamSeq,
 } from "../../../src/stream/close";
-import { DoSqliteStorage } from "../../../src/storage/queries";
-import type { StreamMeta } from "../../../src/storage/types";
 import type { ProducerInput } from "../../../src/stream/producer";
 import { encodeCurrentOffset } from "../../../src/stream/offsets";
+import { baseMeta, withStorage, seedStream } from "../helpers";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function baseStreamMeta(overrides: Partial<StreamMeta> = {}): StreamMeta {
-  return {
-    stream_id: "test-stream",
+// close.test uses application/json with zeroed segment fields
+function closeBaseMeta(overrides: Partial<Parameters<typeof baseMeta>[0]> = {}) {
+  return baseMeta({
     content_type: "application/json",
-    closed: 0,
     tail_offset: 0,
-    read_seq: 0,
-    segment_start: 0,
     segment_messages: 0,
     segment_bytes: 0,
-    last_stream_seq: null,
-    ttl_seconds: null,
-    expires_at: null,
-    created_at: Date.now(),
-    closed_at: null,
-    closed_by_producer_id: null,
-    closed_by_epoch: null,
-    closed_by_seq: null,
-    public: 0,
     ...overrides,
-  };
-}
-
-/**
- * Run test logic inside a fresh Durable Object with real DoSqliteStorage.
- * The DO's schema is already initialized by the constructor.
- */
-async function withStorage(fn: (storage: DoSqliteStorage) => Promise<void>): Promise<void> {
-  const id = env.STREAMS.idFromName(`close-test-${crypto.randomUUID()}`);
-  const stub = env.STREAMS.get(id);
-  await runInDurableObject(stub, async (instance) => {
-    const sql = (instance as unknown as { ctx: DurableObjectState }).ctx.storage.sql;
-    const storage = new DoSqliteStorage(sql);
-    await fn(storage);
-  });
-}
-
-/** Insert a stream into real storage matching the given meta. */
-async function seedStream(storage: DoSqliteStorage, meta: StreamMeta): Promise<void> {
-  await storage.insertStream({
-    streamId: meta.stream_id,
-    contentType: meta.content_type,
-    closed: meta.closed === 1,
-    isPublic: meta.public === 1,
-    ttlSeconds: meta.ttl_seconds,
-    expiresAt: meta.expires_at,
-    createdAt: meta.created_at,
   });
 }
 
@@ -70,7 +25,7 @@ async function seedStream(storage: DoSqliteStorage, meta: StreamMeta): Promise<v
 
 describe("buildClosedConflict", () => {
   it("returns a 409 response with body 'stream is closed'", async () => {
-    const meta = baseStreamMeta({ tail_offset: 50, segment_start: 0, read_seq: 0 });
+    const meta = closeBaseMeta({ tail_offset: 50, segment_start: 0, read_seq: 0 });
     const nextOffset = encodeCurrentOffset(meta);
     const response = buildClosedConflict(meta, nextOffset);
 
@@ -79,7 +34,7 @@ describe("buildClosedConflict", () => {
   });
 
   it("sets Stream-Next-Offset and Stream-Closed headers", () => {
-    const meta = baseStreamMeta({ tail_offset: 100, segment_start: 0, read_seq: 1 });
+    const meta = closeBaseMeta({ tail_offset: 100, segment_start: 0, read_seq: 1 });
     const nextOffset = encodeCurrentOffset(meta);
     const response = buildClosedConflict(meta, nextOffset);
 
@@ -94,28 +49,28 @@ describe("buildClosedConflict", () => {
 
 describe("validateStreamSeq", () => {
   it("returns ok when streamSeq is null", () => {
-    const meta = baseStreamMeta({ last_stream_seq: "5" });
+    const meta = closeBaseMeta({ last_stream_seq: "5" });
     const result = validateStreamSeq(meta, null);
 
     expect(result.kind).toBe("ok");
   });
 
   it("returns ok when last_stream_seq is null (no prior seq)", () => {
-    const meta = baseStreamMeta({ last_stream_seq: null });
+    const meta = closeBaseMeta({ last_stream_seq: null });
     const result = validateStreamSeq(meta, "3");
 
     expect(result.kind).toBe("ok");
   });
 
   it("returns ok when streamSeq is greater than last_stream_seq", () => {
-    const meta = baseStreamMeta({ last_stream_seq: "5" });
+    const meta = closeBaseMeta({ last_stream_seq: "5" });
     const result = validateStreamSeq(meta, "6");
 
     expect(result.kind).toBe("ok");
   });
 
   it("returns error 409 when streamSeq equals last_stream_seq", () => {
-    const meta = baseStreamMeta({ last_stream_seq: "5" });
+    const meta = closeBaseMeta({ last_stream_seq: "5" });
     const result = validateStreamSeq(meta, "5");
 
     expect(result.kind).toBe("error");
@@ -125,7 +80,7 @@ describe("validateStreamSeq", () => {
   });
 
   it("returns error 409 when streamSeq is less than last_stream_seq", () => {
-    const meta = baseStreamMeta({ last_stream_seq: "5" });
+    const meta = closeBaseMeta({ last_stream_seq: "5" });
     const result = validateStreamSeq(meta, "3");
 
     expect(result.kind).toBe("error");
@@ -135,7 +90,7 @@ describe("validateStreamSeq", () => {
   });
 
   it("returns ok when both streamSeq and last_stream_seq are null", () => {
-    const meta = baseStreamMeta({ last_stream_seq: null });
+    const meta = closeBaseMeta({ last_stream_seq: null });
     const result = validateStreamSeq(meta, null);
 
     expect(result.kind).toBe("ok");
@@ -151,8 +106,8 @@ describe("closeStreamOnly", () => {
 
   describe("without producer", () => {
     it("closes an open stream and returns Stream-Closed header", async () => {
-      await withStorage(async (storage) => {
-        const meta = baseStreamMeta({ closed: 0, tail_offset: 100 });
+      await withStorage("close-test", async (storage) => {
+        const meta = closeBaseMeta({ closed: 0, tail_offset: 100 });
         await seedStream(storage, meta);
 
         const result = await closeStreamOnly(storage, meta);
@@ -164,8 +119,8 @@ describe("closeStreamOnly", () => {
     });
 
     it("actually closes the stream in storage", async () => {
-      await withStorage(async (storage) => {
-        const meta = baseStreamMeta({ closed: 0 });
+      await withStorage("close-test", async (storage) => {
+        const meta = closeBaseMeta({ closed: 0 });
         await seedStream(storage, meta);
 
         await closeStreamOnly(storage, meta);
@@ -177,8 +132,8 @@ describe("closeStreamOnly", () => {
     });
 
     it("does not upsert a producer when none is provided", async () => {
-      await withStorage(async (storage) => {
-        const meta = baseStreamMeta({ closed: 0 });
+      await withStorage("close-test", async (storage) => {
+        const meta = closeBaseMeta({ closed: 0 });
         await seedStream(storage, meta);
 
         await closeStreamOnly(storage, meta);
@@ -189,8 +144,8 @@ describe("closeStreamOnly", () => {
     });
 
     it("does not set Producer-Epoch or Producer-Seq headers when no producer", async () => {
-      await withStorage(async (storage) => {
-        const meta = baseStreamMeta({ closed: 0 });
+      await withStorage("close-test", async (storage) => {
+        const meta = closeBaseMeta({ closed: 0 });
         await seedStream(storage, meta);
 
         const result = await closeStreamOnly(storage, meta);
@@ -201,8 +156,8 @@ describe("closeStreamOnly", () => {
     });
 
     it("skips closing when stream is already closed (no producer)", async () => {
-      await withStorage(async (storage) => {
-        const meta = baseStreamMeta({ closed: 1 });
+      await withStorage("close-test", async (storage) => {
+        const meta = closeBaseMeta({ closed: 1 });
         await seedStream(storage, meta);
 
         const result = await closeStreamOnly(storage, meta);
@@ -217,9 +172,9 @@ describe("closeStreamOnly", () => {
 
   describe("with producer — idempotent (same producer tuple)", () => {
     it("returns 204-style response with no error when close matches producer tuple", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 2, seq: 5 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           tail_offset: 200,
           closed_by_producer_id: "p1",
@@ -239,9 +194,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("does not modify storage for idempotent close", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           closed_by_producer_id: "p1",
           closed_by_epoch: 1,
@@ -262,9 +217,9 @@ describe("closeStreamOnly", () => {
 
   describe("with producer — conflict (different producer tuple)", () => {
     it("returns error 409 when producer id does not match", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p2", epoch: 2, seq: 5 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           tail_offset: 100,
           closed_by_producer_id: "p1",
@@ -281,9 +236,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("returns error 409 when producer epoch does not match", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 3, seq: 5 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           closed_by_producer_id: "p1",
           closed_by_epoch: 2,
@@ -299,9 +254,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("returns error 409 when producer seq does not match", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 2, seq: 6 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           closed_by_producer_id: "p1",
           closed_by_epoch: 2,
@@ -317,9 +272,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("does not modify storage on conflict", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "different", epoch: 1, seq: 0 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           closed_by_producer_id: "original",
           closed_by_epoch: 1,
@@ -336,9 +291,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("error response includes Stream-Closed and Stream-Next-Offset headers", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p2", epoch: 1, seq: 0 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           tail_offset: 50,
           closed_by_producer_id: "p1",
@@ -360,9 +315,9 @@ describe("closeStreamOnly", () => {
 
   describe("with producer — closing an open stream", () => {
     it("closes the stream with producer info in storage", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
-        const meta = baseStreamMeta({ closed: 0 });
+        const meta = closeBaseMeta({ closed: 0 });
         await seedStream(storage, meta);
 
         await closeStreamOnly(storage, meta, producer);
@@ -377,9 +332,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("upserts the producer in storage", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 2, seq: 7 };
-        const meta = baseStreamMeta({ closed: 0, tail_offset: 500 });
+        const meta = closeBaseMeta({ closed: 0, tail_offset: 500 });
         await seedStream(storage, meta);
 
         await closeStreamOnly(storage, meta, producer);
@@ -393,9 +348,9 @@ describe("closeStreamOnly", () => {
     });
 
     it("returns headers with Producer-Epoch and Producer-Seq", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 4, seq: 10 };
-        const meta = baseStreamMeta({ closed: 0 });
+        const meta = closeBaseMeta({ closed: 0 });
         await seedStream(storage, meta);
 
         const result = await closeStreamOnly(storage, meta, producer);
@@ -412,9 +367,9 @@ describe("closeStreamOnly", () => {
 
   describe("with producer — stream closed without producer tracking", () => {
     it("returns 409 when stream is closed and no closed_by fields", async () => {
-      await withStorage(async (storage) => {
+      await withStorage("close-test", async (storage) => {
         const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
-        const meta = baseStreamMeta({
+        const meta = closeBaseMeta({
           closed: 1,
           closed_by_producer_id: null,
           closed_by_epoch: null,

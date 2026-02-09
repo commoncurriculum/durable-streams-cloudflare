@@ -2,9 +2,7 @@
   "extends": "../../tsconfig.build.json",
   "compilerOptions": {
     "types": ["@cloudflare/workers-types/2023-07-01"],
-    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
     "rootDir": "src",
     "outDir": "dist"
   },

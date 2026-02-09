@@ -41,7 +41,7 @@ Follow session creation from request to SubscriptionDO
 
 <<< @/../src/http/create_worker.ts#synced-to-docs:middleware ts
 
-CORS is configurable via `CORS_ORIGINS` (single origin, comma-separated list, or `*`). Auth middleware calls `parseRoute()` then `config.authorize()` if a route matched — `/health` is always skipped. HTTP metrics record every request.
+CORS is per-project, resolved from `REGISTRY` KV (`corsOrigins` array). Non-project routes (`/health`) get no CORS headers. Auth middleware calls `parseRoute()` then `config.authorize()` if a route matched — `/health` is always skipped. HTTP metrics record every request.
 
 ---
 

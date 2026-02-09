@@ -22,7 +22,7 @@ dataset = "durable_streams_metrics"
 # Replace with your actual KV namespace ID from: wrangler kv namespace create REGISTRY
 [[kv_namespaces]]
 binding = "REGISTRY"
-id = "project-keys"
+id = "registry"
 
 [vars]
 # SEGMENT_MAX_MESSAGES = "1000"

@@ -2,11 +2,16 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { execSync } from "node:child_process";
 import { once } from "node:events";
+import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 
 const ROOT = path.resolve(__dirname, "..");
 const CORE_ROOT = path.resolve(__dirname, "../../core");
+
+// Unique worker name avoids collisions with core's own implementation tests
+// when pnpm -r run test executes packages in parallel.
+const CORE_WORKER_NAME = "ds-admin-test-core";
 
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -49,7 +54,16 @@ describe("admin-core integration", () => {
     // Build the admin worker
     execSync("pnpm exec vite build", { cwd: ROOT, stdio: "pipe" });
 
-    // Start core worker
+    // Patch the built wrangler.json so the CORE service binding targets our
+    // uniquely-named core worker instead of the default "durable-streams".
+    const wranglerJsonPath = path.join(ROOT, "dist/server/wrangler.json");
+    const wranglerJson = JSON.parse(fs.readFileSync(wranglerJsonPath, "utf-8"));
+    wranglerJson.services = wranglerJson.services.map((s: { binding: string; service: string }) =>
+      s.binding === "CORE" ? { ...s, service: CORE_WORKER_NAME } : s,
+    );
+    fs.writeFileSync(wranglerJsonPath, JSON.stringify(wranglerJson));
+
+    // Start core worker with the unique name
     const corePort = await getAvailablePort();
     coreUrl = `http://localhost:${corePort}`;
     coreProc = spawn(
@@ -60,12 +74,13 @@ describe("admin-core integration", () => {
         "--inspector-port", "0",
         "--show-interactive-dev-session=false",
         "--config", "wrangler.test.toml",
+        "--name", CORE_WORKER_NAME,
       ],
       { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
     );
     await waitForReady(coreUrl);
 
-    // Start admin worker (built output, wrangler resolves CORE service binding to running core)
+    // Start admin worker (service binding targets CORE_WORKER_NAME)
     const adminPort = await getAvailablePort();
     adminUrl = `http://localhost:${adminPort}`;
     adminProc = spawn(
@@ -210,20 +225,15 @@ describe("admin-core integration", () => {
     expect(sseRes.status).toBe(200);
     expect(sseRes.headers.get("content-type")).toContain("text/event-stream");
 
-    // Append a message while SSE is connected
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ live: "event" }),
-    });
-
-    // Read from the SSE stream
+    // Wait for the initial control event before appending — this proves
+    // the SSE connection is established and ready to receive push events.
     const reader = sseRes.body!.getReader();
     const decoder = new TextDecoder();
     let collected = "";
-    const readDeadline = Date.now() + 10_000;
+    const readDeadline = Date.now() + 15_000;
 
-    while (Date.now() < readDeadline) {
+    // Phase 1: wait for initial control event (upToDate)
+    while (Date.now() < readDeadline && !collected.includes("upToDate")) {
       const { value, done } = await Promise.race([
         reader.read(),
         new Promise<{ value: undefined; done: true }>((r) =>
@@ -232,12 +242,30 @@ describe("admin-core integration", () => {
       ]);
       if (done && Date.now() >= readDeadline) break;
       if (value) collected += decoder.decode(value, { stream: true });
-      if (collected.includes("live")) break;
+    }
+
+    // Append a message now that SSE is connected and listening
+    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ live: "event" }),
+    });
+
+    // Phase 2: read until we see the "live" data event
+    while (Date.now() < readDeadline && !collected.includes("live")) {
+      const { value, done } = await Promise.race([
+        reader.read(),
+        new Promise<{ value: undefined; done: true }>((r) =>
+          setTimeout(() => r({ value: undefined, done: true }), 500),
+        ),
+      ]);
+      if (done && Date.now() >= readDeadline) break;
+      if (value) collected += decoder.decode(value, { stream: true });
     }
 
     controller.abort();
     expect(collected).toContain("live");
-  }, 15_000);
+  }, 20_000);
 
   // ── Read messages from a stream ──
 

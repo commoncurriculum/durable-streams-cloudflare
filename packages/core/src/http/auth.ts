@@ -8,7 +8,7 @@ export type AuthResult = { ok: true } | { ok: false; response: Response };
 
 export type ReadAuthResult = AuthResult;
 
-export type ProjectConfig = { signingSecrets: string[] };
+export type ProjectConfig = { signingSecrets: string[]; corsOrigins?: string[] };
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -72,14 +72,20 @@ export async function lookupProjectConfig(
   // New format: signingSecrets array
   if (Array.isArray(record.signingSecrets)) {
     const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets };
+    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
     return null;
   }
   // Legacy format: single signingSecret string
   if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret] };
+    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
   }
   return null;
+}
+
+function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: string[] } {
+  if (!Array.isArray(record.corsOrigins)) return {};
+  const origins = record.corsOrigins.filter((o): o is string => typeof o === "string" && o.length > 0);
+  return origins.length > 0 ? { corsOrigins: origins } : {};
 }
 
 /**

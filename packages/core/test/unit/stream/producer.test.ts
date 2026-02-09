@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { env, runInDurableObject } from "cloudflare:test";
 import {
   parseProducerHeaders,
   evaluateProducer,
   type ProducerInput,
 } from "../../../src/stream/producer";
-import { DoSqliteStorage } from "../../../src/storage/queries";
-import type { ProducerState } from "../../../src/storage/types";
+import {
+  STREAM_ID,
+  baseProducerState,
+  withStorage,
+  seedProducer,
+} from "../helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -14,43 +17,6 @@ import type { ProducerState } from "../../../src/storage/types";
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request("https://example.com/stream", { headers });
-}
-
-function baseProducerState(overrides: Partial<ProducerState> = {}): ProducerState {
-  return {
-    producer_id: "p1",
-    epoch: 1,
-    last_seq: 5,
-    last_offset: 100,
-    last_updated: Date.now(),
-    ...overrides,
-  };
-}
-
-const STREAM_ID = "test-stream";
-
-/**
- * Run test logic inside a fresh Durable Object with real DoSqliteStorage.
- * The DO's schema is already initialized by the constructor.
- */
-async function withStorage(fn: (storage: DoSqliteStorage) => Promise<void>): Promise<void> {
-  const id = env.STREAMS.idFromName(`producer-test-${crypto.randomUUID()}`);
-  const stub = env.STREAMS.get(id);
-  await runInDurableObject(stub, async (instance) => {
-    const sql = (instance as unknown as { ctx: DurableObjectState }).ctx.storage.sql;
-    const storage = new DoSqliteStorage(sql);
-    await fn(storage);
-  });
-}
-
-/** Insert a producer record into real storage. */
-async function seedProducer(storage: DoSqliteStorage, state: ProducerState): Promise<void> {
-  await storage.upsertProducer(
-    STREAM_ID,
-    { id: state.producer_id, epoch: state.epoch, seq: state.last_seq },
-    state.last_offset,
-    state.last_updated ?? Date.now(),
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +239,7 @@ describe("parseProducerHeaders", () => {
 
 describe("evaluateProducer", () => {
   it("returns ok with null state when no existing producer and seq=0", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
 
       const result = await evaluateProducer(storage, STREAM_ID, producer);
@@ -286,7 +252,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns error 400 when no existing producer and seq != 0", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
 
       const result = await evaluateProducer(storage, STREAM_ID, producer);
@@ -299,7 +265,7 @@ describe("evaluateProducer", () => {
   });
 
   it("deletes expired producer and treats as new (seq=0 succeeds)", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
       const expired = baseProducerState({ last_updated: eightDaysAgo });
       await seedProducer(storage, expired);
@@ -319,7 +285,7 @@ describe("evaluateProducer", () => {
   });
 
   it("deletes expired producer and rejects seq != 0", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
       const expired = baseProducerState({ last_updated: eightDaysAgo });
       await seedProducer(storage, expired);
@@ -339,7 +305,7 @@ describe("evaluateProducer", () => {
   });
 
   it("does not treat non-expired producer as expired", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
       const existing = baseProducerState({ last_updated: sixDaysAgo, last_seq: 5 });
       await seedProducer(storage, existing);
@@ -360,7 +326,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns error 403 when epoch < existing epoch", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 5 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 3, seq: 0 };
@@ -376,7 +342,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns ok when epoch > existing epoch and seq=0 (epoch reset)", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 2, last_seq: 10 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 5, seq: 0 };
@@ -392,7 +358,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns error 400 when epoch > existing epoch and seq != 0", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 2, last_seq: 10 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 5, seq: 3 };
@@ -407,7 +373,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns duplicate when same epoch and seq <= existing last_seq", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 1, last_seq: 5 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
@@ -422,7 +388,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns duplicate when same epoch and seq equals existing last_seq", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 1, last_seq: 5 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 5 };
@@ -437,7 +403,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns ok when same epoch and seq = last_seq + 1 (next expected)", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 1, last_seq: 5 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 6 };
@@ -453,7 +419,7 @@ describe("evaluateProducer", () => {
   });
 
   it("returns error 409 with gap headers when same epoch and seq > last_seq + 1", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ epoch: 1, last_seq: 5 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 10 };
@@ -470,7 +436,7 @@ describe("evaluateProducer", () => {
   });
 
   it("handles producer with null last_updated (no expiry check)", async () => {
-    await withStorage(async (storage) => {
+    await withStorage("producer-test", async (storage) => {
       const existing = baseProducerState({ last_updated: null, last_seq: 3 });
       await seedProducer(storage, existing);
       const producer: ProducerInput = { id: "p1", epoch: 1, seq: 4 };

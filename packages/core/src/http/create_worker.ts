@@ -6,7 +6,8 @@ import {
 import { Timing, attachTiming } from "../protocol/timing";
 import { logError, logWarn } from "../log";
 import { applyCorsHeaders } from "./hono";
-import type { AuthorizeMutation, AuthorizeRead } from "./auth";
+import type { AuthorizeMutation, AuthorizeRead, ProjectConfig } from "./auth";
+import { lookupProjectConfig } from "./auth";
 import type { StreamDO } from "./durable_object";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
@@ -26,7 +27,6 @@ export type BaseEnv = {
    * SECURITY: Must use private ACL — contains JWT signing secrets.
    */
   REGISTRY: KVNamespace;
-  CORS_ORIGINS?: string;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -45,26 +45,44 @@ export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const DEFAULT_PROJECT_ID = "_default";
 
 /**
- * Resolve the CORS origin for a request.
- * - If CORS_ORIGINS is not set or "*", returns "*".
- * - If CORS_ORIGINS is a comma-separated list, returns the request's Origin
- *   header if it matches, otherwise returns the first configured origin.
+ * Resolve the CORS origin for a request from per-project config.
+ * Returns null (no CORS headers) when no corsOrigins are configured.
+ * Returns "*" when corsOrigins includes "*".
+ * Returns the matching origin when the request Origin matches a configured origin.
+ * Returns the first configured origin when no match.
  */
-function resolveCorsOrigin(corsOrigins: string | undefined, requestOrigin: string | null): string {
-  if (!corsOrigins || corsOrigins === "*") return "*";
-  const origins = corsOrigins.split(",").map((o) => o.trim()).filter(Boolean);
-  if (origins.length === 0) return "*";
-  if (requestOrigin && origins.includes(requestOrigin)) return requestOrigin;
-  return origins[0];
+function resolveProjectCorsOrigin(corsOrigins: string[] | undefined, requestOrigin: string | null): string | null {
+  if (!corsOrigins || corsOrigins.length === 0) return null;
+  if (corsOrigins.includes("*")) return "*";
+  if (requestOrigin && corsOrigins.includes(requestOrigin)) return requestOrigin;
+  return corsOrigins[0];
 }
 
-function corsError(status: number, message: string, origin?: string): Response {
-  const headers = new Headers({ "Cache-Control": "no-store" });
-  applyCorsHeaders(headers, origin);
-  return new Response(message, { status, headers });
+/**
+ * Look up the CORS origin for a project by extracting projectId from a URL path
+ * and reading the project config from KV.
+ */
+async function lookupCorsOriginForPath(
+  kv: KVNamespace | undefined,
+  pathname: string,
+  requestOrigin: string | null,
+): Promise<string | null> {
+  if (!kv) return null;
+  const pathMatch = STREAM_PATH_RE.exec(pathname);
+  const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(pathname) : null;
+  if (!pathMatch && !legacyMatch) return null;
+  let projectId: string;
+  try {
+    projectId = pathMatch ? decodeURIComponent(pathMatch[1]) : DEFAULT_PROJECT_ID;
+  } catch {
+    return null;
+  }
+  if (!projectId || !PROJECT_ID_PATTERN.test(projectId)) return null;
+  const config = await lookupProjectConfig(kv, projectId);
+  return resolveProjectCorsOrigin(config?.corsOrigins, requestOrigin);
 }
 
-function wrapAuthError(response: Response, origin?: string): Response {
+function wrapAuthError(response: Response, origin: string | null): Response {
   const headers = new Headers(response.headers);
   applyCorsHeaders(headers, origin);
   if (!headers.has("Cache-Control")) {
@@ -106,7 +124,7 @@ async function bridgeSseViaWebSocket(
   doKey: string,
   url: URL,
   _request: Request,
-  corsOrigin: string,
+  corsOrigin: string | null,
   timing: Timing | null,
 ): Promise<Response> {
   // Build the internal WS upgrade request to the DO.
@@ -257,18 +275,21 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const timingEnabled =
         env.DEBUG_TIMING === "1" || request.headers.get("X-Debug-Timing") === "1";
       const timing = timingEnabled ? new Timing() : null;
-      const corsOrigin = resolveCorsOrigin(env.CORS_ORIGINS, request.headers.get("Origin"));
 
+      // Non-project routes: no CORS headers (secure default)
       if (request.method === "OPTIONS") {
+        const corsOrigin = await lookupCorsOriginForPath(
+          env.REGISTRY,
+          url.pathname,
+          request.headers.get("Origin"),
+        );
         const headers = new Headers();
         applyCorsHeaders(headers, corsOrigin);
         return new Response(null, { status: 204, headers });
       }
 
       if (url.pathname === "/health") {
-        const headers = new Headers({ "Cache-Control": "no-store" });
-        applyCorsHeaders(headers, corsOrigin);
-        return new Response("ok", { status: 200, headers });
+        return new Response("ok", { status: 200, headers: { "Cache-Control": "no-store" } });
       }
 
       // #region docs-extract-stream-id
@@ -277,7 +298,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       const pathMatch = STREAM_PATH_RE.exec(url.pathname);
       const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(url.pathname) : null;
       if (!pathMatch && !legacyMatch) {
-        return corsError(404, "not found", corsOrigin);
+        return new Response("not found", { status: 404, headers: { "Cache-Control": "no-store" } });
       }
 
       let projectId: string;
@@ -291,18 +312,32 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           streamId = decodeURIComponent(legacyMatch![1]);
         }
       } catch (err) {
-        return corsError(400, err instanceof Error ? err.message : "malformed stream id", corsOrigin);
+        return new Response(
+          err instanceof Error ? err.message : "malformed stream id",
+          { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
       }
       if (!projectId || !streamId) {
-        return corsError(400, "missing project or stream id", corsOrigin);
+        return new Response("missing project or stream id", { status: 400, headers: { "Cache-Control": "no-store" } });
       }
       if (!PROJECT_ID_PATTERN.test(projectId)) {
-        return corsError(400, "invalid project id", corsOrigin);
+        return new Response("invalid project id", { status: 400, headers: { "Cache-Control": "no-store" } });
       }
 
       // DO key combines project + stream for isolation
       const doKey = `${projectId}/${streamId}`;
       // #endregion docs-extract-stream-id
+
+      // Resolve per-project CORS from KV config.
+      // Unconfigured projects (no corsOrigins in KV): no CORS headers.
+      let projectConfig: ProjectConfig | null = null;
+      if (env.REGISTRY) {
+        projectConfig = await lookupProjectConfig(env.REGISTRY, projectId);
+      }
+      const corsOrigin = resolveProjectCorsOrigin(
+        projectConfig?.corsOrigins,
+        request.headers.get("Origin"),
+      );
 
       const method = request.method.toUpperCase();
       const isStreamRead = method === "GET" || method === "HEAD";
