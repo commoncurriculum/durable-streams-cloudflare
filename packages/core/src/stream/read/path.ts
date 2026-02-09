@@ -15,6 +15,8 @@ import type { SegmentRecord, StreamMeta, StreamStorage } from "../../storage/typ
 import type { StreamEnv } from "../../http/router";
 
 const COALESCE_CACHE_MS = 100;
+const MAX_RECENT_READS = 1000;
+const MAX_IN_FLIGHT_READS = 1000;
 
 type ReadStats = { internalReads: number };
 
@@ -58,23 +60,28 @@ export class ReadPath {
     const key = this.readKey(streamId, meta, offset, maxChunkBytes);
     const cached = this.recentReads.get(key);
     const now = Date.now();
-    if (cached && cached.expiresAt > now) {
-      return cached.result;
+    if (cached) {
+      if (cached.expiresAt > now) return cached.result;
+      this.recentReads.delete(key);
     }
 
-    const existing = this.inFlightReads.get(key);
+    const existing = this.inFlightReads.size < MAX_IN_FLIGHT_READS
+      ? this.inFlightReads.get(key)
+      : undefined;
     if (existing) return await existing;
 
     const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes, timing).then(
       (result) => {
-        if (!result.error) {
+        if (!result.error && this.recentReads.size < MAX_RECENT_READS) {
           this.recentReads.set(key, { result, expiresAt: Date.now() + COALESCE_CACHE_MS });
         }
         return result;
       },
     );
 
-    this.inFlightReads.set(key, pending);
+    if (this.inFlightReads.size < MAX_IN_FLIGHT_READS) {
+      this.inFlightReads.set(key, pending);
+    }
 
     try {
       return await pending;

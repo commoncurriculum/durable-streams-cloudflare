@@ -36,8 +36,8 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-026 | Pin devDependency versions | all | P2 | S | -- | **DONE** |
 | FIX-027 | Standardize tsconfig across packages | all | P2 | M | -- | TODO |
 | FIX-028 | Analytics SQL query builder helper | subscription, admin-* | P2 | M | -- | TODO |
-| FIX-029 | ReadPath in-flight caches bounded | core | P2 | M | -- | TODO |
-| FIX-030 | inFlight Map bounded | core | P2 | M | -- | TODO |
+| FIX-029 | ReadPath in-flight caches bounded | core | P2 | M | -- | **DONE** |
+| FIX-030 | inFlight Map bounded | core | P2 | M | -- | **DONE** |
 | FIX-031 | Content-type parameter handling test | core | P2 | S | -- | **DONE** |
 | FIX-032 | Stream-Seq semantics documented | core | P2 | S | -- | **DONE** |
 | FIX-033 | Producer TTL documented | core | P2 | S | -- | **DONE** |
@@ -45,7 +45,7 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | TODO |
 | FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | TODO |
 | FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | TODO |
-| FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | TODO |
+| FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | **DONE** |
 | FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | TODO |
 | FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | TODO |
 | FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | **DONE** |

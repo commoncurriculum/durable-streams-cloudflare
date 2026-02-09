@@ -228,6 +228,7 @@ type InFlightResult = {
 // arriving just after the winner resolves still get a HIT without
 // waiting for caches.default.put() to complete.
 const COALESCE_LINGER_MS = 200;
+const MAX_IN_FLIGHT = 100_000;
 
 // ============================================================================
 // Factory
@@ -415,7 +416,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // requests can coalesce on our result instead of hitting the DO.
       let resolveInFlight: ((r: InFlightResult) => void) | undefined;
       let rejectInFlight: ((e: unknown) => void) | undefined;
-      if (cacheStatus === "MISS" && cacheUrl && !inFlight.has(cacheUrl)) {
+      if (cacheStatus === "MISS" && cacheUrl && !inFlight.has(cacheUrl) && inFlight.size < MAX_IN_FLIGHT) {
         inFlight.set(
           cacheUrl,
           new Promise<InFlightResult>((resolve, reject) => {

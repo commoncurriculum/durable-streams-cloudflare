@@ -9,6 +9,14 @@ import {
 
 type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
 
+type SessionData = {
+  sessionId?: string;
+  session_id?: string;
+  sessionStreamPath?: string;
+  session_stream_path?: string;
+  subscriptions?: { streamId?: string; stream_id?: string }[];
+};
+
 const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
   { value: "subscribe", label: "Subscribe" },
   { value: "unsubscribe", label: "Unsub" },
@@ -133,11 +141,10 @@ function SessionDetailPage() {
     );
   }
 
-  const d = data as Record<string, unknown>;
-  const sessionId = (d.sessionId || d.session_id || "\u2014") as string;
-  const sessionStreamPath = (d.sessionStreamPath || d.session_stream_path || "\u2014") as string;
-  const subscriptions: { streamId?: string; stream_id?: string }[] =
-    (d.subscriptions as { streamId?: string; stream_id?: string }[]) ?? [];
+  const d = data as SessionData;
+  const sessionId = d.sessionId || d.session_id || "\u2014";
+  const sessionStreamPath = d.sessionStreamPath || d.session_stream_path || "\u2014";
+  const subscriptions = d.subscriptions ?? [];
 
   return (
     <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:grid-cols-2">
