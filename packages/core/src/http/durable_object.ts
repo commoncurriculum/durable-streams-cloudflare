@@ -65,8 +65,8 @@ export class StreamDO extends DurableObject<StreamEnv> {
       } else {
         return new Response("not found", { status: 404 });
       }
-    } catch {
-      return new Response("malformed stream id", { status: 400 });
+    } catch (err) {
+      return new Response(err instanceof Error ? err.message : "malformed stream id", { status: 400 });
     }
     const doKey = `${projectId}/${streamId}`;
     return this.routeStreamRequest(doKey, false, request);

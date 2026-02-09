@@ -283,8 +283,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           projectId = DEFAULT_PROJECT_ID;
           streamId = decodeURIComponent(legacyMatch![1]);
         }
-      } catch {
-        return corsError(400, "malformed stream id", corsOrigin);
+      } catch (err) {
+        return corsError(400, err instanceof Error ? err.message : "malformed stream id", corsOrigin);
       }
       if (!projectId || !streamId) {
         return corsError(400, "missing project or stream id", corsOrigin);

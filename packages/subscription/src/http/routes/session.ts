@@ -27,6 +27,6 @@ sessionRoutes.post("/session/:sessionId/touch", async (c) => {
     return c.json(await touchSession(c.env, projectId, sessionId));
   } catch (err) {
     logError({ projectId, sessionId, component: "touch-session" }, "touch session failed", err);
-    return c.json({ error: "Session not found" }, 404);
+    return c.json({ error: err instanceof Error ? err.message : "Session not found" }, 404);
   }
 });
