@@ -55,6 +55,6 @@ publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParam
   } catch (err) {
     logError({ projectId, streamId, component: "publish" }, "publish failed", err);
     metrics.publishError(streamId, "exception", Date.now() - start);
-    return c.json({ error: "Failed to publish" }, 500);
+    return c.json({ error: err instanceof Error ? err.message : "Failed to publish" }, 500);
   }
 });

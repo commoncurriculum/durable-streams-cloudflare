@@ -78,14 +78,14 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     return stub.routeStreamRequest(doKey, false, request);
   }
 
-  async headStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
+  async headStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null; contentType: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey, false,
       new Request("https://internal/v1/stream", { method: "HEAD" }),
     );
     const body = response.ok ? null : await response.text();
-    return { ok: response.ok, status: response.status, body };
+    return { ok: response.ok, status: response.status, body, contentType: response.headers.get("Content-Type") };
   }
 
   async putStream(

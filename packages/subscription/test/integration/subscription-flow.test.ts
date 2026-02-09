@@ -29,6 +29,9 @@ describe("subscription flow", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    // Create source stream first (subscribe looks up its content type)
+    await core.createStream(streamId);
+
     // Subscribe creates session stream
     const res = await subs.subscribe(sessionId, streamId);
     expect(res.status).toBe(200);
@@ -46,6 +49,7 @@ describe("subscription flow", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Get session info
@@ -288,6 +292,7 @@ describe("session lifecycle", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Touch session
@@ -303,6 +308,7 @@ describe("session lifecycle", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Verify exists

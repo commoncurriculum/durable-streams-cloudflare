@@ -42,7 +42,7 @@ subscribeRoutes.post("/subscribe", arktypeValidator("json", subscribeSchema), as
     return c.json(await subscribe(c.env, projectId, streamId, sessionId));
   } catch (err) {
     logError({ projectId, streamId, sessionId, component: "subscribe" }, "subscribe failed", err);
-    return c.json({ error: "Failed to subscribe" }, 500);
+    return c.json({ error: err instanceof Error ? err.message : "Failed to subscribe" }, 500);
   }
 });
 
@@ -53,7 +53,7 @@ subscribeRoutes.delete("/unsubscribe", arktypeValidator("json", unsubscribeSchem
     return c.json(await unsubscribe(c.env, projectId, streamId, sessionId));
   } catch (err) {
     logError({ projectId, streamId, sessionId, component: "unsubscribe" }, "unsubscribe failed", err);
-    return c.json({ error: "Failed to remove subscription" }, 500);
+    return c.json({ error: err instanceof Error ? err.message : "Failed to remove subscription" }, 500);
   }
 });
 
@@ -67,6 +67,6 @@ subscribeRoutes.delete("/session/:sessionId", async (c) => {
     return c.json(await deleteSession(c.env, projectId, sessionId));
   } catch (err) {
     logError({ projectId, sessionId, component: "delete-session" }, "delete session failed", err);
-    return c.json({ error: "Failed to delete session stream" }, 500);
+    return c.json({ error: err instanceof Error ? err.message : "Failed to delete session stream" }, 500);
   }
 });

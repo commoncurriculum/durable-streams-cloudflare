@@ -27,7 +27,8 @@ describe("resilience", () => {
       const sessionId = uniqueSessionId();
       const streamId = uniqueStreamId();
 
-      // Subscribe
+      // Create source stream and subscribe
+      await core.createStream(streamId);
       await subs.subscribe(sessionId, streamId);
 
       // Verify session stream exists
@@ -181,7 +182,8 @@ describe("resilience", () => {
       const sessionId = uniqueSessionId();
       const streamId = uniqueStreamId();
 
-      // Create and subscribe
+      // Create source stream and subscribe
+      await core.createStream(streamId);
       await subs.subscribe(sessionId, streamId);
 
       // Verify initial state
@@ -243,8 +245,10 @@ describe("resilience", () => {
       const sessionId = uniqueSessionId();
       const streamId = uniqueStreamId();
 
-      // Create session but don't subscribe
-      await subs.subscribe(sessionId, uniqueStreamId("other"));
+      // Create session but don't subscribe to the target stream
+      const otherStream = uniqueStreamId("other");
+      await core.createStream(otherStream);
+      await subs.subscribe(sessionId, otherStream);
 
       // Unsubscribe from a stream we're not subscribed to
       const res = await subs.unsubscribe(sessionId, streamId);

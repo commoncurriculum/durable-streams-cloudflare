@@ -29,6 +29,7 @@ describe("cleanup integration", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Session stream should exist in core
@@ -40,7 +41,8 @@ describe("cleanup integration", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
-    // Create subscription
+    // Create source stream and subscription
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Verify stream exists
@@ -81,6 +83,7 @@ describe("cleanup integration", () => {
     const sessionId = uniqueSessionId();
     const streamId = uniqueStreamId();
 
+    await core.createStream(streamId);
     await subs.subscribe(sessionId, streamId);
 
     // Touch should succeed
