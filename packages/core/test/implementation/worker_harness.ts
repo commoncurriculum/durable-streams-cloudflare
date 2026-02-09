@@ -48,6 +48,8 @@ export async function startWorker(options?: {
   persistDir?: string;
   vars?: Record<string, string>;
   useProductionAuth?: boolean;
+  /** Custom wrangler config file (relative to packages/core). Overrides useProductionAuth. */
+  configFile?: string;
 }): Promise<WorkerHandle> {
   const port = options?.port ?? (await getAvailablePort());
   const persistDir = options?.persistDir ?? (await createPersistDir());
@@ -60,7 +62,10 @@ export async function startWorker(options?: {
 
   // Use wrangler.test.toml (auth-free worker) by default.
   // When useProductionAuth is true, use production wrangler.toml (has JWT auth).
-  const configArgs = options?.useProductionAuth ? [] : ["--config", "wrangler.test.toml"];
+  // When configFile is specified, use that config file directly.
+  const configArgs = options?.configFile
+    ? ["--config", options.configFile]
+    : options?.useProductionAuth ? [] : ["--config", "wrangler.test.toml"];
 
   const child = spawn(
     "pnpm",

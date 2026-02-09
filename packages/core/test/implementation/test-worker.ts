@@ -66,11 +66,25 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
       const ok = await stub.testSetProducerAge(streamId, payload.producerId, payload.lastUpdated);
       return ok ? new Response(null, { status: 204 }) : new Response("not found", { status: 404 });
     }
+    if (action === "rotate-reader-key") {
+      const result = await this.rotateReaderKey(doKey);
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (action === "truncate-latest") {
       const ok = await stub.testTruncateLatestSegment(streamId);
       return ok ? new Response(null, { status: 204 }) : new Response("failed", { status: 400 });
     }
     return new Response("unknown action", { status: 400 });
+  }
+
+  async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
+    const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;
+    const existing = await this.env.REGISTRY.get(doKey, "json") as Record<string, unknown> | null;
+    await this.env.REGISTRY.put(doKey, JSON.stringify({ ...existing, readerKey }));
+    return { readerKey };
   }
 
   async routeRequest(doKey: string, request: Request): Promise<Response> {

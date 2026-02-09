@@ -12,6 +12,7 @@ export const HEADER_PRODUCER_EXPECTED_SEQ = "Producer-Expected-Seq";
 export const HEADER_PRODUCER_RECEIVED_SEQ = "Producer-Received-Seq";
 export const HEADER_SSE_DATA_ENCODING = "Stream-SSE-Data-Encoding";
 export const HEADER_STREAM_WRITE_TIMESTAMP = "Stream-Write-Timestamp";
+export const HEADER_STREAM_READER_KEY = "Stream-Reader-Key";
 
 export function baseHeaders(extra: Record<string, string> = {}): Headers {
   const headers = new Headers(extra);

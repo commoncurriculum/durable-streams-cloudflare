@@ -1,5 +1,6 @@
 import {
   HEADER_SSE_DATA_ENCODING,
+  HEADER_STREAM_READER_KEY,
   HEADER_STREAM_UP_TO_DATE,
 } from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
@@ -76,17 +77,22 @@ function wrapAuthError(response: Response, origin?: string): Response {
   });
 }
 
+type StreamMeta = { public: boolean; readerKey?: string };
+
 /**
- * Check if a stream is marked as public in KV.
- * KV key: `projectId/streamId`, value: JSON with `{ public, content_type, created_at }`.
+ * Look up stream metadata from KV.
+ * KV key: `projectId/streamId`, value: JSON with `{ public, content_type, created_at, readerKey? }`.
+ * Returns null when the KV binding is missing or the key doesn't exist.
  */
-async function isStreamPublic(kv: KVNamespace | undefined, doKey: string): Promise<boolean> {
-  if (!kv) return false;
+async function getStreamMeta(kv: KVNamespace | undefined, doKey: string): Promise<StreamMeta | null> {
+  if (!kv) return null;
   const value = await kv.get(doKey, "json");
-  if (value && typeof value === "object" && (value as Record<string, unknown>).public === true) {
-    return true;
-  }
-  return false;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  return {
+    public: record.public === true,
+    readerKey: typeof record.readerKey === "string" ? record.readerKey : undefined,
+  };
 }
 
 // ============================================================================
@@ -304,9 +310,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       // #region docs-authorize-request
       // Auth callbacks receive doKey (projectId/streamId) so they can check project scope.
       // For reads, public streams skip auth entirely (checked via KV before auth).
-      if (isStreamRead && config?.authorizeRead) {
-        const pub = await isStreamPublic(env.REGISTRY, doKey);
-        if (!pub) {
+      // Stream metadata (including readerKey) is used later for HEAD headers and cache guards.
+      let streamMeta: StreamMeta | null = null;
+      if (isStreamRead) {
+        streamMeta = await getStreamMeta(env.REGISTRY, doKey);
+        if (config?.authorizeRead && !streamMeta?.public) {
           const readAuth = await config.authorizeRead(request, doKey, env, timing);
           if (!readAuth.ok) return wrapAuthError(readAuth.response, corsOrigin);
         }
@@ -458,13 +466,31 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         headers: responseHeaders,
       });
 
+      // HEAD responses: include reader key so clients can discover it.
+      // HEAD is always no-store, so this always hits the worker.
+      if (method === "HEAD" && wrapped.ok && streamMeta?.readerKey) {
+        wrapped.headers.set(HEADER_STREAM_READER_KEY, streamMeta.readerKey);
+      }
+
       // On successful stream creation, write metadata to KV for edge lookups
       if (method === "PUT" && wrapped.status === 201 && env.REGISTRY) {
-        const kvMeta = {
-          public: url.searchParams.get("public") === "true",
+        const isPublic = url.searchParams.get("public") === "true";
+        // Generate a reader key for auth-required, non-public streams.
+        // The reader key adds an unguessable component to the CDN cache key
+        // so unauthorized clients can't match cached entries.
+        // Skip when no authorizeRead is configured (no auth = nothing to protect).
+        const readerKey = !isPublic && config?.authorizeRead
+          ? `rk_${crypto.randomUUID().replace(/-/g, "")}`
+          : undefined;
+        const kvMeta: Record<string, unknown> = {
+          public: isPublic,
           content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
           created_at: Date.now(),
         };
+        if (readerKey) {
+          kvMeta.readerKey = readerKey;
+          wrapped.headers.set(HEADER_STREAM_READER_KEY, readerKey);
+        }
         ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify(kvMeta)));
       }
 
@@ -480,7 +506,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       if (cacheable && wrapped.status === 200) {
         const cc = wrapped.headers.get("Cache-Control") ?? "";
         const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
-        if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
+        // Don't cache responses at bare URLs for streams with a reader key.
+        // Without this guard, an authenticated client without ?rk would populate
+        // a cache entry at a guessable URL that anyone could then hit.
+        const hasReaderKey = streamMeta?.readerKey;
+        const urlHasRk = url.searchParams.has("rk");
+        if (!cc.includes("no-store") && (!atTail || isLongPoll) && !(hasReaderKey && !urlHasRk)) {
           ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
           storedInCache = true;
         }

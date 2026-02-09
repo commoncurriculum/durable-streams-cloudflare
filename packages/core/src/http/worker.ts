@@ -108,6 +108,14 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     return { ok: response.ok, status: response.status, body };
   }
 
+  // RPC: rotate the reader key for a stream (invalidates all CDN-cached entries)
+  async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
+    const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;
+    const existing = await this.env.REGISTRY.get(doKey, "json") as Record<string, unknown> | null;
+    await this.env.REGISTRY.put(doKey, JSON.stringify({ ...existing, readerKey }));
+    return { readerKey };
+  }
+
   // RPC: delete a stream
   async deleteStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
