@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ZERO_OFFSET } from "../../src/protocol/offsets";
-import { createClient, delay, uniqueStreamId } from "./helpers";
+import { createClient, delay, uniqueStreamId, waitForCacheHit } from "./helpers";
 
-// Small delay to allow ctx.waitUntil(cache.put()) to complete before
-// the next request. The cache store is fire-and-forget via waitUntil,
-// so without a brief pause the second request may arrive before the
-// entry is written.
+// Small delay for negative cache tests: long enough for a cache write
+// (fire-and-forget via waitUntil) to settle if it were going to happen.
 const CACHE_SETTLE_MS = 100;
 
 describe("edge cache", () => {
@@ -34,9 +32,7 @@ describe("edge cache", () => {
       expect(first.headers.get("X-Cache")).toBe("MISS");
       await first.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       await second.arrayBuffer();
@@ -82,9 +78,7 @@ describe("edge cache", () => {
       expect(first.headers.get("Stream-Up-To-Date")).toBe("true");
       await first.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       expect(second.headers.get("Stream-Up-To-Date")).toBe("true");
@@ -247,9 +241,7 @@ describe("edge cache", () => {
       expect(first.headers.get("X-Cache")).toBe("MISS");
       const body1 = await first.text();
 
-      await delay(CACHE_SETTLE_MS);
-
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       const body2 = await second.text();
@@ -277,10 +269,8 @@ describe("edge cache", () => {
       expect(etag).toBeTruthy();
       await first.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
       // Second GET — cache hit
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       await second.arrayBuffer();
@@ -387,9 +377,7 @@ describe("edge cache", () => {
       expect(first.headers.get("X-Cache")).toBe("MISS");
       await first.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       await second.arrayBuffer();
@@ -418,10 +406,8 @@ describe("edge cache", () => {
       expect(first.headers.get("X-Cache")).toBe("MISS");
       await first.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
       // Second GET — cache hit
-      const second = await fetch(url);
+      const second = await waitForCacheHit(url);
       expect(second.status).toBe(200);
       expect(second.headers.get("X-Cache")).toBe("HIT");
       await second.arrayBuffer();
@@ -434,10 +420,8 @@ describe("edge cache", () => {
       expect(third.headers.get("X-Cache")).toBe("BYPASS");
       await third.arrayBuffer();
 
-      await delay(CACHE_SETTLE_MS);
-
       // Fourth GET without special headers — cache still populated
-      const fourth = await fetch(url);
+      const fourth = await waitForCacheHit(url);
       expect(fourth.status).toBe(200);
       expect(fourth.headers.get("X-Cache")).toBe("HIT");
       await fourth.arrayBuffer();

@@ -83,7 +83,9 @@ export async function handlePut(
     if (parsed.kind === "error") return parsed.response;
 
     // 3. Validate against existing stream
+    const doneGetStream = ctx.timing?.start("do.getStream");
     const existing = await ctx.getStream(streamId);
+    doneGetStream?.();
     const validated = validatePutInput(parsed.value, existing);
     if (validated.kind === "error") return validated.response;
 
@@ -127,7 +129,9 @@ export async function handlePost(
     }
 
     // 1. Validate stream exists
+    const doneGetStream = ctx.timing?.start("do.getStream");
     const meta = await ctx.getStream(streamId);
+    doneGetStream?.();
     const streamResult = validateStreamExists(meta);
     if (streamResult.kind === "error") return streamResult.response;
 
@@ -210,6 +214,7 @@ export async function handlePost(
     ctx.longPoll.notify(result.value.newTailOffset, LONGPOLL_STAGGER_MS);
 
     const writeTimestamp = Date.now();
+    const doneBroadcast = ctx.timing?.start("do.broadcast");
 
     if (validated.value.kind === "close_only") {
       await broadcastSseControl(
@@ -250,6 +255,7 @@ export async function handlePost(
         writeTimestamp,
       );
     }
+    doneBroadcast?.();
 
     scheduleSegmentRotation(ctx, streamId, result.value);
 
@@ -279,7 +285,9 @@ export async function handlePost(
 // #region docs-handle-delete
 export async function handleDelete(ctx: StreamContext, streamId: string): Promise<Response> {
   return ctx.state.blockConcurrencyWhile(async () => {
+    const doneGetStream = ctx.timing?.start("do.getStream");
     const meta = await ctx.getStream(streamId);
+    doneGetStream?.();
     if (!meta) return errorResponse(404, "stream not found");
 
     const segments = ctx.env.R2 ? await ctx.storage.listSegments(streamId) : [];

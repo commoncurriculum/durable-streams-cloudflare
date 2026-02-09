@@ -83,7 +83,9 @@ export async function handleGet(
   request: Request,
   url: URL,
 ): Promise<Response> {
+  const doneGetStream = ctx.timing?.start("do.getStream");
   const meta = await ctx.getStream(streamId);
+  doneGetStream?.();
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens
@@ -170,7 +172,9 @@ export async function handleHead(
   ctx: StreamContext,
   streamId: string,
 ): Promise<Response> {
+  const doneGetStream = ctx.timing?.start("do.getStream");
   const meta = await ctx.getStream(streamId);
+  doneGetStream?.();
   if (!meta) return errorResponse(404, "stream not found");
 
   // Note: Read authorization is handled at the edge worker level via JWT tokens

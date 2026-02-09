@@ -89,6 +89,25 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Poll until the response has `X-Cache: HIT`, returning that response.
+ * Falls back to a final attempt after `timeoutMs` for clear test failure.
+ */
+export async function waitForCacheHit(
+  url: string,
+  opts?: RequestInit,
+  timeoutMs = 2000,
+): Promise<Response> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await fetch(url, opts);
+    if (res.headers.get("X-Cache") === "HIT") return res;
+    await res.arrayBuffer();
+    await delay(10);
+  }
+  return fetch(url, opts);
+}
+
 export async function waitForReaderDone(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   timeoutMs: number,
