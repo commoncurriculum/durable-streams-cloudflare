@@ -31,6 +31,10 @@ interface WorkerSummary {
   xCacheHeaders: Record<string, number>;
   /** Offset values this reader polled at, with count of requests per offset. */
   offsetPolls: Record<string, number>;
+  /** CDN PoP codes seen (from cf-ray header), with count. */
+  cfPops: Record<string, number>;
+  /** Per-offset cache status: { offset: { HIT: n, MISS: n, ... } } */
+  offsetCacheStatus: Record<string, Record<string, number>>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -90,6 +94,8 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   const cacheHeaders: Record<string, number> = {};
   const xCacheHeaders: Record<string, number> = {};
   const offsetPolls: Record<string, number> = {};
+  const cfPops: Record<string, number> = {};
+  const offsetCacheStatus: Record<string, Record<string, number>> = {};
   const latencySamples: number[] = [];
   const MAX_SAMPLES = 10_000;
   let latencyTotal = 0;
@@ -128,6 +134,22 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     xCacheHeaders[xCacheStatus] = (xCacheHeaders[xCacheStatus] ?? 0) + 1;
     const wt = res.headers.get("stream-write-timestamp");
     if (wt) lastWriteTimestamp = Number(wt);
+
+    // Track CDN PoP from cf-ray header (e.g. "abc123-EWR" → "EWR")
+    const cfRay = res.headers.get("cf-ray") ?? "";
+    const popMatch = cfRay.match(/-([A-Z]{3})$/);
+    if (popMatch) cfPops[popMatch[1]] = (cfPops[popMatch[1]] ?? 0) + 1;
+
+    // Track per-offset cache status (only for offsets we're actively polling)
+    try {
+      const reqUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const offset = new URL(reqUrl).searchParams.get("offset");
+      if (offset && offset !== "now") {
+        if (!offsetCacheStatus[offset]) offsetCacheStatus[offset] = {};
+        offsetCacheStatus[offset][cacheStatus] = (offsetCacheStatus[offset][cacheStatus] ?? 0) + 1;
+      }
+    } catch { /* skip */ }
+
     return res;
   };
 
@@ -215,6 +237,8 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     cacheHeaders,
     xCacheHeaders,
     offsetPolls,
+    cfPops,
+    offsetCacheStatus,
     deliveryLatency: {
       avg: eventsReceived > 0 ? Math.round(latencyTotal / eventsReceived) : 0,
       p50: Math.round(percentile(sorted, 50)),

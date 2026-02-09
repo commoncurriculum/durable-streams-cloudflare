@@ -18,7 +18,8 @@
  *       --clients 1000 --streams 1 --sse-ratio 0.5 --duration 300
  *
  * Options:
- *   --url              Core worker URL (omit to start local auth-free worker)
+ *   --url              Core worker URL for readers (CDN-proxied). Omit to start local auth-free worker.
+ *   --write-url        Direct Worker URL for writes (bypasses CDN proxy). Falls back to --url.
  *   --worker-url       Load test Worker URL. When provided, switches to distributed mode.
  *   --project-id       Project ID (default: "loadtest")
  *   --secret           Signing secret (omit for auth-free)
@@ -60,6 +61,7 @@ const { values: args } = parseArgs({
   args: rawArgs,
   options: {
     url: { type: "string" },
+    "write-url": { type: "string" },
     "worker-url": { type: "string" },
     "project-id": { type: "string", default: "loadtest" },
     secret: { type: "string" },
@@ -188,6 +190,8 @@ interface WorkerSummary {
   cacheHeaders: Record<string, number>;
   xCacheHeaders: Record<string, number>;
   offsetPolls: Record<string, number>;
+  cfPops?: Record<string, number>;
+  offsetCacheStatus?: Record<string, Record<string, number>>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -201,11 +205,14 @@ interface WorkerSummary {
 // Distributed mode
 // ============================================================================
 
-async function runDistributed(coreUrl: string) {
+async function runDistributed(coreUrl: string, writeUrl?: string) {
   const auth = await makeHeaders();
+  // Writers use writeUrl (direct to Worker, bypasses CDN proxy) when provided,
+  // otherwise fall back to coreUrl. Readers always use coreUrl (through CDN).
+  const writerBaseUrl = writeUrl ?? coreUrl;
 
   // ── Create streams on core via HTTP ───────────────────────────────
-  console.log(`\nCreating ${streamCount} streams on ${coreUrl}...`);
+  console.log(`\nCreating ${streamCount} streams on ${writerBaseUrl}...`);
   const streamIds: string[] = [];
   const durableStreams: DurableStream[] = [];
 
@@ -213,7 +220,7 @@ async function runDistributed(coreUrl: string) {
     const id = `loadtest-${Date.now()}-${i}`;
     streamIds.push(id);
     const ds = await DurableStream.create({
-      url: `${coreUrl}/v1/${projectId}/stream/${id}`,
+      url: `${writerBaseUrl}/v1/${projectId}/stream/${id}`,
       contentType: "application/json",
       headers: auth,
     });
@@ -254,6 +261,8 @@ async function runDistributed(coreUrl: string) {
   console.log(`\n${"═".repeat(70)}`);
   console.log(`DISTRIBUTED LOAD TEST: ${totalClients} workers → ${workerUrl}`);
   console.log(`  ${sseClients} SSE + ${longPollClients} long-poll across ${streamCount} streams`);
+  console.log(`  reads:  ${coreUrl}`);
+  if (writeUrl && writeUrl !== coreUrl) console.log(`  writes: ${writerBaseUrl} (direct, bypasses CDN proxy)`);
   console.log(`  write every ${writeIntervalMs}ms, ${durationSec}s duration, msg ~${msgSize}B`);
   console.log(`  ramp-up: ${rampUpSec}s`);
   console.log(`${"═".repeat(70)}\n`);
@@ -457,6 +466,59 @@ async function runDistributed(coreUrl: string) {
     console.log(`    (Higher values mean followers processed more write cycles.`);
     console.log(`     If workers on the same stream have very different counts,`);
     console.log(`     they are drifting apart in offset — fragmenting cache keys.)`);
+  }
+
+  // ── CDN PoP distribution ──────────────────────────────────────────
+  const mergedPops: Record<string, number> = {};
+  for (const s of summaries) {
+    if (s.cfPops) {
+      for (const [pop, count] of Object.entries(s.cfPops)) {
+        mergedPops[pop] = (mergedPops[pop] ?? 0) + count;
+      }
+    }
+  }
+  const popEntries = Object.entries(mergedPops).sort((a, b) => b[1] - a[1]);
+  if (popEntries.length > 0) {
+    const totalPopReqs = popEntries.reduce((sum, [, c]) => sum + c, 0);
+    console.log(`\n  CDN PoP DISTRIBUTION`);
+    for (const [pop, count] of popEntries) {
+      const pct = Math.round((count / totalPopReqs) * 100);
+      console.log(`    ${pop}: ${count} (${pct}%)`);
+    }
+    if (popEntries.length > 1) {
+      console.log(`    ⚠ ${popEntries.length} PoPs — each has its own cache, multiplying MISSes`);
+    }
+  }
+
+  // ── Per-offset MISS analysis ──────────────────────────────────────
+  // Merge per-offset cache status across all workers to see how many
+  // MISSes each offset generates across the fleet.
+  const globalOffsetCache: Record<string, Record<string, number>> = {};
+  for (const s of summaries) {
+    if (s.offsetCacheStatus) {
+      for (const [offset, statusMap] of Object.entries(s.offsetCacheStatus)) {
+        if (!globalOffsetCache[offset]) globalOffsetCache[offset] = {};
+        for (const [status, count] of Object.entries(statusMap)) {
+          globalOffsetCache[offset][status] = (globalOffsetCache[offset][status] ?? 0) + count;
+        }
+      }
+    }
+  }
+  const offsetEntries = Object.entries(globalOffsetCache);
+  if (offsetEntries.length > 0) {
+    const missesPerOffset = offsetEntries.map(([, m]) => m["MISS"] ?? 0).filter((n) => n > 0);
+    if (missesPerOffset.length > 0) {
+      const sorted = missesPerOffset.slice().sort((a, b) => a - b);
+      const avgMiss = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+      const p50 = sorted[Math.floor(sorted.length * 0.5)];
+      const p90 = sorted[Math.floor(sorted.length * 0.9)];
+      const maxMiss = sorted[sorted.length - 1];
+      console.log(`\n  MISSes PER OFFSET (across all ${summaries.length} workers)`);
+      console.log(`    offsets with MISSes: ${missesPerOffset.length}/${offsetEntries.length}`);
+      console.log(`    MISSes per offset: avg ${avgMiss.toFixed(1)}, p50 ${p50}, p90 ${p90}, max ${maxMiss}`);
+      console.log(`    (With perfect CDN coalescing, each offset should have exactly 1 MISS.`);
+      console.log(`     Higher values indicate multi-PoP fragmentation or coalescing failure.)`);
+    }
   }
 
   console.log("\n" + "═".repeat(70));
@@ -724,7 +786,7 @@ async function main() {
       console.error("Error: --worker-url requires --url (core must be deployed)");
       process.exit(1);
     }
-    await runDistributed(coreUrl);
+    await runDistributed(coreUrl, args["write-url"]);
     return;
   }
 
