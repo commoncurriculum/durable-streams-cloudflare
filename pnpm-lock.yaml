@@ -52,7 +52,7 @@ importers:
         specifier: ^1
         version: 1.23.1(vite@7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))(workerd@1.20260205.0)(wrangler@4.63.0(@cloudflare/workers-types@4.20260207.0))
       '@cloudflare/workers-types':
-        specifier: latest
+        specifier: ^4.20260207.0
         version: 4.20260207.0
       '@playwright/test':
         specifier: ^1
@@ -76,13 +76,13 @@ importers:
         specifier: ^4
         version: 4.1.18
       typescript:
-        specifier: latest
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^7
         version: 7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
-        specifier: latest
+        specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
         specifier: ^4.63.0
@@ -131,7 +131,7 @@ importers:
         specifier: ^1
         version: 1.23.1(vite@7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))(workerd@1.20260205.0)(wrangler@4.63.0(@cloudflare/workers-types@4.20260207.0))
       '@cloudflare/workers-types':
-        specifier: latest
+        specifier: ^4.20260207.0
         version: 4.20260207.0
       '@playwright/test':
         specifier: ^1
@@ -155,13 +155,13 @@ importers:
         specifier: ^4
         version: 4.1.18
       typescript:
-        specifier: latest
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^7
         version: 7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
-        specifier: latest
+        specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
         specifier: ^4.63.0
@@ -193,28 +193,28 @@ importers:
         version: 4.11.7
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: latest
+        specifier: ^4.20260207.0
         version: 4.20260207.0
       '@durable-streams/client':
         specifier: ^0.2.1
         version: 0.2.1
       '@durable-streams/server-conformance-tests':
-        specifier: latest
+        specifier: ^0.2.1
         version: 0.2.1(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       oxfmt:
-        specifier: latest
+        specifier: ^0.28.0
         version: 0.28.0
       oxlint:
-        specifier: latest
+        specifier: ^1.43.0
         version: 1.43.0
       typescript:
-        specifier: latest
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: latest
+        specifier: ^7.3.1
         version: 7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
-        specifier: latest
+        specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.1)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
         specifier: ^4.63.0
@@ -236,7 +236,7 @@ importers:
         version: 0.2.1
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: latest
+        specifier: ^4.20260207.0
         version: 4.20260207.0
       '@types/node':
         specifier: ^25.2.1
@@ -270,22 +270,22 @@ importers:
         specifier: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632
         version: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632(@cloudflare/workers-types@4.20260207.0)(@vitest/runner@4.1.0-beta.1)(@vitest/snapshot@4.1.0-beta.1)(vitest@4.1.0-beta.1(@types/node@25.2.1)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       '@cloudflare/workers-types':
-        specifier: latest
+        specifier: ^4.20260207.0
         version: 4.20260207.0
       '@types/node':
-        specifier: latest
+        specifier: ^25.2.1
         version: 25.2.1
       oxfmt:
-        specifier: latest
+        specifier: ^0.28.0
         version: 0.28.0
       oxlint:
-        specifier: latest
+        specifier: ^1.43.0
         version: 1.43.0
       typescript:
-        specifier: latest
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: latest
+        specifier: ^7.3.1
         version: 7.3.1(@types/node@25.2.1)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
         specifier: 4.1.0-beta.1

@@ -26,6 +26,8 @@ export type ProducerEval =
   | { kind: "error"; response: Response };
 // #endregion docs-producer-types
 
+/** Producer state expires after 7 days of inactivity. After expiry, the next
+ *  append from that producer must restart at seq=0. */
 const PRODUCER_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCER_ID_PATTERN = /^[a-zA-Z0-9_\-:.]{1,256}$/;
 

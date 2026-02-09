@@ -33,29 +33,29 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-023 | Document KV ACL requirement for REGISTRY | core, subscription | P1 | S | -- | **DONE** (8fbddb5) |
 | FIX-024 | Document CORS fallback behavior differences | core, subscription | P1 | S | FIX-001 | **DEFERRED** (blocked by FIX-001) |
 | FIX-025 | Add comments to fire-and-forget .catch patterns | core | P1 | S | -- | **DONE** (8fbddb5) |
-| FIX-026 | Pin devDependency versions | all | P2 | S | -- | TODO |
+| FIX-026 | Pin devDependency versions | all | P2 | S | -- | **DONE** |
 | FIX-027 | Standardize tsconfig across packages | all | P2 | M | -- | TODO |
 | FIX-028 | Analytics SQL query builder helper | subscription, admin-* | P2 | M | -- | TODO |
 | FIX-029 | ReadPath in-flight caches bounded | core | P2 | M | -- | TODO |
 | FIX-030 | inFlight Map bounded | core | P2 | M | -- | TODO |
-| FIX-031 | Content-type parameter handling test | core | P2 | S | -- | TODO |
-| FIX-032 | Stream-Seq semantics documented | core | P2 | S | -- | TODO |
-| FIX-033 | Producer TTL documented | core | P2 | S | -- | TODO |
-| FIX-034 | Conformance test timeout | core | P2 | S | -- | TODO |
+| FIX-031 | Content-type parameter handling test | core | P2 | S | -- | **DONE** |
+| FIX-032 | Stream-Seq semantics documented | core | P2 | S | -- | **DONE** |
+| FIX-033 | Producer TTL documented | core | P2 | S | -- | **DONE** |
+| FIX-034 | Conformance test timeout | core | P2 | S | -- | **DONE** |
 | FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | TODO |
 | FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | TODO |
 | FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | TODO |
 | FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | TODO |
 | FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | TODO |
 | FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | TODO |
-| FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | TODO |
+| FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | **DONE** |
 | FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | TODO |
 | FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | TODO |
 | FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | TODO |
 | FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | TODO |
 | FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | TODO |
 | FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | TODO |
-| FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | TODO |
+| FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | **DONE** |
 | FIX-049 | Surface actual error messages in all error responses | core, subscription | P2 | S-M | FIX-012 | **DONE** (a4c5e9d, d33904f) |
 
 ---

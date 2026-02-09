@@ -37,6 +37,7 @@ export type ProjectJwtClaims = {
 // JWT Helpers
 // ============================================================================
 
+/** Extract the bearer token from the Authorization header, or null if not present. */
 export function extractBearerToken(request: Request): string | null {
   const auth = request.headers.get("Authorization");
   if (!auth) return null;

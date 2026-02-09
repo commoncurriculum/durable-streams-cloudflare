@@ -42,14 +42,14 @@
     "@cloudflare/workers-types": ">=4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "latest",
+    "@cloudflare/workers-types": "^4.20260207.0",
     "@durable-streams/client": "^0.2.1",
-    "@durable-streams/server-conformance-tests": "latest",
-    "oxfmt": "latest",
-    "oxlint": "latest",
-    "typescript": "latest",
-    "vite": "latest",
-    "vitest": "latest",
+    "@durable-streams/server-conformance-tests": "^0.2.1",
+    "oxfmt": "^0.28.0",
+    "oxlint": "^1.43.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18",
     "wrangler": "^4.63.0"
   }
 }

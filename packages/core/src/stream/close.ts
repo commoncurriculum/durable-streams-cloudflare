@@ -24,6 +24,11 @@ export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string):
   return Response.json({ error: "stream is closed" }, { status: 409, headers });
 }
 
+/** Validate the Stream-Seq header against the stream's last known value.
+ *  Stream-Seq is an opaque, lexicographically-ordered string that clients use
+ *  for optimistic concurrency control on close operations. If the provided
+ *  Stream-Seq is <= the stream's last value, the request is rejected as a
+ *  stale regression (409). */
 export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): Result<null> {
   if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
     return { kind: "error", response: errorResponse(409, "Stream-Seq regression") };
