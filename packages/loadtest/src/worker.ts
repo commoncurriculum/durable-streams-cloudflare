@@ -28,6 +28,9 @@ interface WorkerSummary {
   errors: number;
   errorMessage?: string;
   cacheHeaders: Record<string, number>;
+  xCacheHeaders: Record<string, number>;
+  /** Offset values this reader polled at, with count of requests per offset. */
+  offsetPolls: Record<string, number>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -85,6 +88,8 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   let errors = 0;
   let errorMessage: string | undefined;
   const cacheHeaders: Record<string, number> = {};
+  const xCacheHeaders: Record<string, number> = {};
+  const offsetPolls: Record<string, number> = {};
   const latencySamples: number[] = [];
   const MAX_SAMPLES = 10_000;
   let latencyTotal = 0;
@@ -104,11 +109,23 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   // Track latest server-side write timestamp for clock-skew-free latency
   let lastWriteTimestamp = 0;
 
-  // Custom fetch that tracks cf-cache-status and Stream-Write-Timestamp headers
+  // Custom fetch that tracks cf-cache-status, x-cache, offset, and Stream-Write-Timestamp
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
+    // Extract offset from the request URL for drift tracking (H2)
+    try {
+      const reqUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const parsedUrl = new URL(reqUrl);
+      const offset = parsedUrl.searchParams.get("offset");
+      if (offset) {
+        offsetPolls[offset] = (offsetPolls[offset] ?? 0) + 1;
+      }
+    } catch { /* URL parse failed — skip offset tracking */ }
+
     const res = await globalThis.fetch(input, init);
     const cacheStatus = res.headers.get("cf-cache-status") ?? "(none)";
     cacheHeaders[cacheStatus] = (cacheHeaders[cacheStatus] ?? 0) + 1;
+    const xCacheStatus = res.headers.get("x-cache") ?? "(none)";
+    xCacheHeaders[xCacheStatus] = (xCacheHeaders[xCacheStatus] ?? 0) + 1;
     const wt = res.headers.get("stream-write-timestamp");
     if (wt) lastWriteTimestamp = Number(wt);
     return res;
@@ -196,6 +213,8 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     errors,
     errorMessage,
     cacheHeaders,
+    xCacheHeaders,
+    offsetPolls,
     deliveryLatency: {
       avg: eventsReceived > 0 ? Math.round(latencyTotal / eventsReceived) : 0,
       p50: Math.round(percentile(sorted, 50)),

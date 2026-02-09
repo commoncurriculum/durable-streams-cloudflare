@@ -186,6 +186,8 @@ interface WorkerSummary {
   errors: number;
   errorMessage?: string;
   cacheHeaders: Record<string, number>;
+  xCacheHeaders: Record<string, number>;
+  offsetPolls: Record<string, number>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -339,6 +341,23 @@ async function runDistributed(coreUrl: string) {
     }
   }
 
+  // Merge x-cache header counts
+  const mergedXCache: Record<string, number> = {};
+  for (const s of summaries) {
+    for (const [key, count] of Object.entries(s.xCacheHeaders ?? {})) {
+      mergedXCache[key] = (mergedXCache[key] ?? 0) + count;
+    }
+  }
+
+  // Aggregate offset polls for drift analysis (H2)
+  // Each worker reports which offsets it polled at. Count unique offsets per worker.
+  const offsetsPerWorker: number[] = [];
+  for (const s of summaries) {
+    if (s.offsetPolls) {
+      offsetsPerWorker.push(Object.keys(s.offsetPolls).length);
+    }
+  }
+
   // Aggregate latency (weighted average, take max of maxes)
   const allLatencies = summaries
     .filter((s) => s.eventsReceived > 0)
@@ -418,6 +437,28 @@ async function runDistributed(coreUrl: string) {
     console.log(`    (no cf-cache-status headers observed)`);
   }
 
+  console.log(`\n  X-CACHE (edge worker cache)`);
+  const totalXCacheEntries = Object.values(mergedXCache).reduce((a, b) => a + b, 0);
+  if (totalXCacheEntries > 0) {
+    for (const [header, count] of Object.entries(mergedXCache).sort((a, b) => b[1] - a[1])) {
+      const pct = Math.round((count / totalXCacheEntries) * 100);
+      console.log(`    ${header}: ${count} (${pct}%)`);
+    }
+  } else {
+    console.log(`    (no x-cache headers observed)`);
+  }
+
+  if (offsetsPerWorker.length > 0) {
+    const avgOffsets = offsetsPerWorker.reduce((a, b) => a + b, 0) / offsetsPerWorker.length;
+    const maxOffsets = Math.max(...offsetsPerWorker);
+    const minOffsets = Math.min(...offsetsPerWorker);
+    console.log(`\n  OFFSET DRIFT (H2 diagnostic)`);
+    console.log(`    unique offsets per worker: avg ${avgOffsets.toFixed(1)}, min ${minOffsets}, max ${maxOffsets}`);
+    console.log(`    (Higher values mean followers processed more write cycles.`);
+    console.log(`     If workers on the same stream have very different counts,`);
+    console.log(`     they are drifting apart in offset — fragmenting cache keys.)`);
+  }
+
   console.log("\n" + "═".repeat(70));
 }
 
@@ -428,12 +469,14 @@ async function runDistributed(coreUrl: string) {
 async function runLocal(coreUrl: string) {
   const auth = await makeHeaders();
 
-  // ── Custom fetch that tracks cf-cache-status headers ────────────────
+  // ── Custom fetch that tracks cf-cache-status and x-cache headers ────
   const cacheStats = createCacheStats();
+  const xCacheStats = createCacheStats();
 
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
     const res = await globalThis.fetch(input, init);
     recordCacheHeader(cacheStats, res.headers.get("cf-cache-status"));
+    recordCacheHeader(xCacheStats, res.headers.get("x-cache"));
     return res;
   };
 
@@ -651,6 +694,17 @@ async function runLocal(coreUrl: string) {
     }
   } else {
     console.log(`    (no cf-cache-status headers observed)`);
+  }
+
+  console.log(`\n  X-CACHE (edge worker cache)`);
+  const totalXCacheEntries = Object.values(xCacheStats.counts).reduce((a, b) => a + b, 0);
+  if (totalXCacheEntries > 0) {
+    for (const [header, count] of Object.entries(xCacheStats.counts).sort((a, b) => b[1] - a[1])) {
+      const pct = Math.round((count / totalXCacheEntries) * 100);
+      console.log(`    ${header}: ${count} (${pct}%)`);
+    }
+  } else {
+    console.log(`    (no x-cache headers observed)`);
   }
 
   console.log("\n" + "═".repeat(70));
