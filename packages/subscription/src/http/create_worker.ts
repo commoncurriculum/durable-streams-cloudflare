@@ -72,13 +72,13 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
         "Producer-Seq",
       ],
       exposeHeaders: [
-        "X-Fanout-Count",
-        "X-Fanout-Successes",
-        "X-Fanout-Failures",
-        "X-Fanout-Mode",
-        "X-Stream-Next-Offset",
-        "X-Stream-Up-To-Date",
-        "X-Stream-Closed",
+        "Stream-Fanout-Count",
+        "Stream-Fanout-Successes",
+        "Stream-Fanout-Failures",
+        "Stream-Fanout-Mode",
+        "Stream-Next-Offset",
+        "Stream-Up-To-Date",
+        "Stream-Closed",
       ],
     });
     return corsMiddleware(c, next);

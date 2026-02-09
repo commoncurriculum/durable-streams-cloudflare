@@ -225,7 +225,7 @@ When a session stream returns 404 during fanout, the subscriber is immediately r
 
 <<< @/../src/subscriptions/do.ts#synced-to-docs:publish-response ts
 
-`X-Fanout-Count`, `X-Fanout-Successes`, and `X-Fanout-Failures` headers let the publisher know exactly what happened.
+`Stream-Fanout-Count`, `Stream-Fanout-Successes`, and `Stream-Fanout-Failures` headers let the publisher know exactly what happened.
 
 ---
 
@@ -245,8 +245,8 @@ sequenceDiagram
     DO->>DO: Local SQLite query (subscribers)
     DO->>Core: Write to each session stream
     Core-->>DO: Results
-    DO-->>W: 200 + X-Fanout-* headers
-    W-->>P: 200 + X-Fanout-* headers
+    DO-->>W: 200 + Stream-Fanout-* headers
+    W-->>P: 200 + Stream-Fanout-* headers
 ```
 
 ---

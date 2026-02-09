@@ -180,7 +180,7 @@ describe("publish flow", () => {
     // Publish
     const res = await subs.publish(streamId, JSON.stringify({ fanout: true }));
     expect(res.status).toBe(204);
-    expect(res.headers.get("X-Fanout-Count")).toBe("5");
+    expect(res.headers.get("Stream-Fanout-Count")).toBe("5");
 
     // Wait for fanout
     await waitFor(async () => {

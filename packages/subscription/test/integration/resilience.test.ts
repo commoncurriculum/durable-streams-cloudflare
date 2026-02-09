@@ -132,7 +132,7 @@ describe("resilience", () => {
       // Publish a message
       const pubRes = await subs.publish(streamId, JSON.stringify({ multi: "test" }));
       expect(pubRes.ok).toBe(true);
-      expect(pubRes.headers.get("X-Fanout-Count")).toBe("20");
+      expect(pubRes.headers.get("Stream-Fanout-Count")).toBe("20");
 
       // Wait for all sessions to receive
       await waitFor(async () => {

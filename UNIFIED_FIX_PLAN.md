@@ -43,11 +43,11 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-033 | Producer TTL documented | core | P2 | S | -- | **DONE** |
 | FIX-034 | Conformance test timeout | core | P2 | S | -- | **DONE** |
 | FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | **DONE** |
-| FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | TODO |
+| FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | **SKIPPED** (tests use unique UUIDs; workers are ephemeral) |
 | FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | **DONE** |
 | FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | **DONE** |
 | FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | **DONE** (pattern is sound, already documented) |
-| FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | TODO |
+| FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | **DONE** |
 | FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | **DONE** |
 | FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | **DONE** |
 | FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | **DONE** |

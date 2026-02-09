@@ -43,13 +43,13 @@ publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParam
     }
 
     const headers = new Headers({ "Content-Type": "application/json" });
-    if (result.nextOffset) headers.set("X-Stream-Next-Offset", result.nextOffset);
-    if (result.upToDate) headers.set("X-Stream-Up-To-Date", result.upToDate);
-    if (result.streamClosed) headers.set("X-Stream-Closed", result.streamClosed);
-    headers.set("X-Fanout-Count", result.fanoutCount.toString());
-    headers.set("X-Fanout-Successes", result.fanoutSuccesses.toString());
-    headers.set("X-Fanout-Failures", result.fanoutFailures.toString());
-    headers.set("X-Fanout-Mode", result.fanoutMode);
+    if (result.nextOffset) headers.set("Stream-Next-Offset", result.nextOffset);
+    if (result.upToDate) headers.set("Stream-Up-To-Date", result.upToDate);
+    if (result.streamClosed) headers.set("Stream-Closed", result.streamClosed);
+    headers.set("Stream-Fanout-Count", result.fanoutCount.toString());
+    headers.set("Stream-Fanout-Successes", result.fanoutSuccesses.toString());
+    headers.set("Stream-Fanout-Failures", result.fanoutFailures.toString());
+    headers.set("Stream-Fanout-Mode", result.fanoutMode);
 
     return new Response(result.body, { status: result.status, headers });
   } catch (err) {

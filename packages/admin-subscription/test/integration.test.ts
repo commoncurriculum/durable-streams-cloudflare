@@ -257,7 +257,7 @@ describe("admin-subscription integration", () => {
         },
       );
       expect(res.status).toBe(204);
-      expect(res.headers.get("X-Fanout-Count")).toBe("1");
+      expect(res.headers.get("Stream-Fanout-Count")).toBe("1");
     });
 
     it("Tab 3: publishes to stream B", async () => {
@@ -270,7 +270,7 @@ describe("admin-subscription integration", () => {
         },
       );
       expect(res.status).toBe(204);
-      expect(res.headers.get("X-Fanout-Count")).toBe("1");
+      expect(res.headers.get("Stream-Fanout-Count")).toBe("1");
     });
 
     it("Tab 1: session stream contains messages from both publishers", async () => {

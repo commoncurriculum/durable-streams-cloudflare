@@ -80,8 +80,8 @@ describe("POST /publish/:streamId", () => {
 
       expect(res.status).toBeGreaterThanOrEqual(200);
       expect(res.status).toBeLessThan(300);
-      expect(res.headers.get("X-Fanout-Count")).toBe("0");
-      expect(res.headers.get("X-Fanout-Mode")).toBe("inline");
+      expect(res.headers.get("Stream-Fanout-Count")).toBe("0");
+      expect(res.headers.get("Stream-Fanout-Mode")).toBe("inline");
     });
 
     it("returns 404 when stream does not exist", async () => {
@@ -95,7 +95,7 @@ describe("POST /publish/:streamId", () => {
       expect(res.status).toBe(404);
     });
 
-    it("sets X-Stream-Next-Offset header on success", async () => {
+    it("sets Stream-Next-Offset header on success", async () => {
       const streamId = `stream-${crypto.randomUUID()}`;
       await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
@@ -107,7 +107,7 @@ describe("POST /publish/:streamId", () => {
       }, env);
 
       expect(res.status).toBeGreaterThanOrEqual(200);
-      expect(res.headers.get("X-Stream-Next-Offset")).not.toBeNull();
+      expect(res.headers.get("Stream-Next-Offset")).not.toBeNull();
     });
   });
 
