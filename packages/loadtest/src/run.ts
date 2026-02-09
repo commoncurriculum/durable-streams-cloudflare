@@ -186,6 +186,7 @@ interface WorkerSummary {
   errors: number;
   errorMessage?: string;
   cacheHeaders: Record<string, number>;
+  cdnCacheHeaders?: Record<string, number>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -335,6 +336,16 @@ async function runDistributed(coreUrl: string) {
     }
   }
 
+  // Merge cf-cache-status header counts
+  const mergedCdnCache: Record<string, number> = {};
+  for (const s of summaries) {
+    if (s.cdnCacheHeaders) {
+      for (const [key, count] of Object.entries(s.cdnCacheHeaders)) {
+        mergedCdnCache[key] = (mergedCdnCache[key] ?? 0) + count;
+      }
+    }
+  }
+
   // Aggregate latency (weighted average, take max of maxes)
   const allLatencies = summaries
     .filter((s) => s.eventsReceived > 0)
@@ -403,7 +414,7 @@ async function runDistributed(coreUrl: string) {
     console.log(`    avg: ${Math.round(aggAvg)}ms  p50: ${Math.round(aggP50)}ms  p90: ${Math.round(aggP90)}ms  p99: ${Math.round(aggP99)}ms  max: ${aggMax}ms`);
   }
 
-  console.log(`\n  X-CACHE HEADERS (aggregated)`);
+  console.log(`\n  X-CACHE HEADERS (Worker-level, aggregated)`);
   const totalCacheEntries = Object.values(mergedCache).reduce((a, b) => a + b, 0);
   if (totalCacheEntries > 0) {
     for (const [header, count] of Object.entries(mergedCache).sort((a, b) => b[1] - a[1])) {
@@ -412,6 +423,15 @@ async function runDistributed(coreUrl: string) {
     }
   } else {
     console.log(`    (no x-cache headers observed)`);
+  }
+
+  const totalCdnEntries = Object.values(mergedCdnCache).reduce((a, b) => a + b, 0);
+  if (totalCdnEntries > 0) {
+    console.log(`\n  CF-CACHE-STATUS (CDN-level, aggregated)`);
+    for (const [header, count] of Object.entries(mergedCdnCache).sort((a, b) => b[1] - a[1])) {
+      const pct = Math.round((count / totalCdnEntries) * 100);
+      console.log(`    ${header}: ${count} (${pct}%)`);
+    }
   }
 
   console.log("\n" + "═".repeat(70));
