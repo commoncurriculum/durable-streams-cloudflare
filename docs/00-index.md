@@ -1,33 +1,68 @@
-# Durable Streams on Cloudflare — Design Documentation
+# Durable Streams on Cloudflare -- Design Documentation
 
 Internal design notes organized chronologically. The central question: how to deliver real-time stream updates to many concurrent readers at acceptable cost on Cloudflare's platform.
 
+## Glossary
+
+| Term | Definition |
+|------|-----------|
+| **`read_seq`** | Segment generation counter. Increments each time the hot log is rotated to an R2 segment. Forms the first half of the offset encoding (`readSeq_byteOffset`). |
+| **Cursor rotation** | The mechanism by which the DO returns a new `Stream-Cursor` value with every long-poll response. The cursor is a query parameter in the URL, so each response naturally produces a different cache key for the next request, preventing stale cache loops. |
+| **Sentinel coalescing** | (Historical, removed.) A cross-isolate coordination mechanism where the first cache-miss isolate stores a short-lived marker in `caches.default` so later arrivals poll for the cached result instead of hitting the DO. Superseded by CDN request collapsing. |
+| **Colo / PoP** | Cloudflare datacenter (Point of Presence). Used interchangeably. Each colo has its own independent cache. |
+| **Isolate** | A V8 isolate -- the lightweight execution context in which a Cloudflare Worker runs. Each concurrent request typically gets its own isolate. In-memory state (Maps, variables) is NOT shared across isolates. |
+| **Store guard** | A conditional check in the edge worker that decides whether to call `cache.put()` for a given response. The current guard is: `status === 200 && !cc.includes("no-store") && (!atTail \|\| isLongPoll)`. |
+| **At-tail** | A read response where the client has reached the latest data in the stream. Indicated by the `Stream-Up-To-Date: true` header. |
+| **Mid-stream** | A read response where there is more data after the returned range. The client is catching up, not at the live edge. |
+
 ## Chapters
 
-1. **[Architecture](01-architecture.md)** — Core design: DO-per-stream, SQLite hot log, R2 cold segments, internal WebSocket bridge, Hibernation API.
+1. **[Architecture](01-architecture.md)** -- Core design: DO-per-stream, SQLite hot log, R2 cold segments, internal WebSocket bridge, Hibernation API.
 
-2. **[Cost Analysis and Design Drivers](02-cost-analysis.md)** — Cloudflare billing model, DO duration costs, transport cost comparison, CDN HIT = $0 insight, phase-by-phase cost evolution from $11,700/mo to $18/mo.
+2. **[Cost Analysis and Design Drivers](02-cost-analysis.md)** -- Cloudflare billing model, DO duration costs, transport cost comparison, CDN HIT = $0 insight, phase-by-phase cost evolution from $11,700/mo to $18/mo.
 
-3. **[Cache Research](03-cache-research.md)** — Early findings about Workers Cache API behavior: per-datacenter scope, custom domain requirement, Worker always executes.
+2a. **[Authentication](02a-authentication.md)** -- Per-project JWT auth (HS256), KV registry for signing secrets, scope enforcement, stream-scoped tokens, public stream bypass, custom auth callbacks.
 
-4. **[Cache Strategy Evolution (Phases 1–4)](04-cache-evolution.md)** — How caching strategy evolved from "cache everything" (broken) through "cache nothing" (correct but doesn't scale) to the current "cache immutable + long-poll at-tail" design.
+3. *(Merged into Chapter 4)* -- See [04-cache-evolution.md](04-cache-evolution.md).
 
-5. **[Current Cache Architecture](05-cache-architecture.md)** — Reference for the current edge cache: store guards, what gets cached, TTLs, ETag revalidation, DO-level read coalescing.
+4. **[Cache Research and Strategy Evolution (Phases 1-4)](04-cache-evolution.md)** -- Initial cache research findings (Workers always execute, cache is per-colo, custom domain required), then how caching evolved from "cache everything" (broken) through "cache nothing" (correct but doesn't scale) to the current "cache immutable + long-poll at-tail" design.
 
-6. **[Request Collapsing](06-request-collapsing.md)** — Making cache collapsing actually work: cursor rotation, sentinel coalescing (historical), DO stagger, WebSocket cache bridge (historical), loadtest results, key learnings.
+5. **[Current Cache Architecture](05-cache-architecture.md)** -- Authoritative reference for the current edge cache: store guards, what gets cached, TTLs, ETag revalidation, DO-level read coalescing. This is the single source of truth for cache policy.
 
-7. **[CDN MISS Investigation](07-cdn-miss-investigation.md)** — Production CDN testing results. Two root causes: nginx IPv6 failures (fixed) and Worker subrequest coalescing limitation (platform behavior). External clients get 98–99% HIT rate.
+6. **[Request Collapsing](06-request-collapsing.md)** -- Making cache collapsing actually work: cursor rotation, sentinel coalescing (historical), DO stagger, WebSocket cache bridge (historical), loadtest results, key learnings.
 
-8. **[Cache Test Coverage](08-cache-test-coverage.md)** — 29-item checklist mapping every cache behavior to a test that would break if the behavior changed.
+7. **[CDN MISS Investigation](07-cdn-miss-investigation.md)** -- Production CDN testing results. Two root causes: nginx IPv6 failures (fixed) and Worker subrequest coalescing limitation (platform behavior). External clients get 98-99% HIT rate.
 
-9. **[Subscription Design](09-subscription-design.md)** — Hot push / cold catch-up subscription layer. Per-tab sessions, durable offset pointers, queue-based fan-out, client implementation sketches.
+8. **[Cache Test Coverage](08-cache-test-coverage.md)** -- 29-item checklist mapping every cache behavior to a test that would break if the behavior changed.
 
-10. **[Fan-In Streams](10-fan-in-streams.md)** — Planned (not implemented). Multiplexes many source streams into one session stream for v2 scale.
+9. **[Subscription Architecture](09-subscription-design.md)** -- The implemented subscription layer: SubscriptionDO + SessionDO dual-DO model, publish and fan-out flow, circuit breaker, producer deduplication, queue consumer, Analytics Engine metrics, cron-based session cleanup.
 
-11. **[Upstream Cache Proposal Comparison](11-upstream-cache-comparison.md)** — Analysis of upstream caching proposals (#58, #60, #62) vs our Cloudflare-native implementation. What's already solved, what doesn't apply, what's optional.
+10. **[Fan-In Streams](10-fan-in-streams.md)** -- Planned (not implemented). Multiplexes many source streams into one session stream for v2 scale. See Chapter 9 for the currently implemented subscription system.
+
+11. **[Upstream Cache Proposal Comparison](11-upstream-cache-comparison.md)** -- Analysis of upstream caching proposals (#58, #60, #62) vs our Cloudflare-native implementation. What's already solved, what doesn't apply, what's optional.
 
 ## Reading Order
 
-For understanding the system end-to-end: 1 → 2 → 9 → 10.
+**End-to-end system understanding**: 1 -> 2 -> 2a -> 9
 
-For understanding the CDN caching story (the bulk of the investigation): 2 → 3 → 4 → 5 → 6 → 7 → 8.
+**CDN caching deep-dive** (the bulk of the investigation): 2 -> 4 -> 5 -> 6 -> 7 -> 8
+
+**Debugging a cache miss in production**: 5 -> 7 -> 8
+
+**Understanding cost implications**: 2
+
+**Adding a new cache behavior**: 5 -> 8 (coverage checklist)
+
+Most developers working on this codebase will need Chapters 1, 2, 5, and 9 at minimum. The cache chapters (4-8) are essential context since caching is in the main request path (`create_worker.ts`).
+
+## Other Packages
+
+These packages have their own READMEs and are not covered in the design chapters above:
+
+| Package | Purpose |
+|---------|---------|
+| `packages/loadtest/` | Distributed loadtest tooling — local and edge Worker modes, CDN diagnostic tool, Analytics Engine metrics. Referenced from Chapter 7. |
+| `packages/cli/` | Setup wizard for new projects — scaffolds Cloudflare resources (R2 buckets, KV namespaces) and deploys workers. |
+| `packages/admin-core/` | Admin dashboard for the core worker (TanStack Start app). Uses core's RPC interface via service bindings. |
+| `packages/admin-subscription/` | Admin dashboard for the subscription worker (TanStack Start app). Uses subscription's RPC interface via service bindings. |
+| `packages/proxy/` | Nginx reverse proxy configuration for CDN routing. See Chapter 2 (why the proxy exists) and Chapter 7 (IPv6 fix, elimination options). |

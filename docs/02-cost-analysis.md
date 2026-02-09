@@ -128,6 +128,83 @@ At 1–10 subscribers per stream (the actual use case for the text editor):
 - At $1/million rows written, this is ~$3/month at 1,000 messages/day with 100 average subscribers
 - Write amplification is not a cost concern at this subscriber count
 
+## Beyond Core: Full System Costs
+
+The cost model above focuses on the core worker. A full deployment includes additional cost-generating components.
+
+### Updated Pricing Reference
+
+| Resource | Rate | Notes |
+|----------|------|-------|
+| KV reads | $0.50/M | Both core and subscription read REGISTRY KV on every authenticated request |
+| KV writes | $5.00/M | Only on project registration (rare) |
+| R2 Class A ops (write) | $4.50/M | Segment rotation writes |
+| R2 Class B ops (read) | $0.36/M | Cold catch-up reads |
+| R2 storage | $0.015/GB-month | Segment data |
+| Queue messages | $0.40/M | Subscription fanout queue (if enabled) |
+| Analytics Engine writes | Free | Included in Workers Paid plan |
+| Cron triggers | $0.30/M | Subscription session cleanup (every 5 min) |
+
+### KV Read Costs (REGISTRY)
+
+Every authenticated request to either core or subscription reads the project's signing secret from the `REGISTRY` KV namespace. At $0.50/M reads, this adds a per-request baseline cost.
+
+At the 10K reader scenario (6.5B requests/month total, 99% CDN HIT rate):
+- 65M CDN MISSes reach the core Worker, each triggering a KV read = **$32.50/month**
+- This is the second-largest cost after Worker requests in the CDN-proxied model
+
+KV reads are cached within a single Worker invocation but not across invocations. There is no cross-request caching of registry lookups.
+
+### R2 Operation Costs
+
+Segment rotation writes each stream's hot log to R2 when thresholds are hit (default: 1000 messages or 4 MB). For a stream receiving 1 write/second:
+
+- ~86,400 messages/day / 1,000 per segment = ~86 rotations/day = ~2,580/month
+- Each rotation: 1 Class A write = $4.50/M → negligible at low stream counts
+- At 1,000 active streams: 2.58M rotations/month = **$11.61/month** in Class A ops
+- R2 storage depends on retention — at 100 KB per segment, 2,580 segments/month/stream = ~258 MB/month/stream
+
+Cold catch-up reads (Class B: $0.36/M) are only significant for streams with heavy historical read traffic.
+
+### Subscription Worker Costs
+
+The subscription layer (Chapter 9) introduces its own cost-generating components:
+
+| Component | Cost driver | Rate |
+|-----------|------------|------|
+| SubscriptionDO requests | One per publish (routes to per-stream DO) | $0.15/M |
+| SessionDO requests | One per subscribe/unsubscribe/touch/delete | $0.15/M |
+| Core RPC (fanout) | N `postStream` calls per publish (one per subscriber) | $0.15/M DO requests on core side |
+| Queue messages | If fanout exceeds `FANOUT_QUEUE_THRESHOLD`, messages are queued | $0.40/M |
+| Cron trigger | Session cleanup runs every 5 minutes (288/day) | $0.30/M invocations |
+| Analytics Engine | Writes a data point for every publish, fanout, subscribe, unsubscribe, session event, and HTTP request | Free on Workers Paid |
+
+**Fan-out cost amplification**: Each publish to a stream with N subscribers generates:
+- 1 SubscriptionDO request (read subscriber list)
+- 1 core `postStream` RPC per subscriber (N total) — each is a DO request on the core side
+- N SQLite row writes on core (one `ops` insert + one `stream_meta` update per session stream)
+
+At 100 subscribers and 1,000 publishes/day:
+- SubscriptionDO: 1,000 requests/day
+- Core DO (fanout): 100,000 requests/day = 3M/month = **$0.45/month**
+- SQLite writes: 200,000 rows/day = 6M/month = **$6.00/month**
+
+### SQLite Row Write Costs
+
+Each append to a stream writes 2 rows: one `ops` insert and one `stream_meta` update. At $1.00/M rows written:
+
+| Scenario | Writes/month | SQLite cost |
+|----------|-------------|-------------|
+| 1 stream, 1 write/sec | 5.2M rows | $5.20 |
+| 100 streams, 1 write/sec each | 520M rows | $520 |
+| + fanout to 10 subscribers each | 5.72B rows | $5,720 |
+
+Fan-out amplifies SQLite writes because each subscriber's session stream gets its own append. This is the most significant cost multiplier for high-subscriber-count deployments, though it only matters at scales well beyond the target use case (1-10 subscribers per stream for the text editor).
+
+### Analytics Engine
+
+Both core and subscription write data points to Analytics Engine for every operation. AE is free on the Workers Paid plan with no per-write charges. Write volume at scale could be substantial (every HTTP request, every append, every fanout write, every subscribe/unsubscribe, every session event), but this has no cost impact under current pricing.
+
 ## Key Takeaway
 
 The cost model drives the architecture:

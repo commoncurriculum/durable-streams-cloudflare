@@ -162,3 +162,27 @@ export default createSubscriptionWorker();
 ```
 
 Health check endpoints (`GET /health`) always bypass auth in both workers.
+
+## Auth × Edge Cache Interaction
+
+Auth runs **before** the edge cache. The flow in `create_worker.ts` is:
+
+```
+Request → parse path → auth check → cache lookup → DO
+```
+
+An unauthenticated request is rejected at the auth step and never reaches `caches.default.match()`. This means:
+
+1. User A authenticates (valid JWT), cache MISS → response fetched from DO, stored in `caches.default`.
+2. User B authenticates (different valid JWT, same project), same URL → cache HIT, served from cache.
+3. User C fails auth → 401/403, never sees cached data.
+
+This is correct: any valid reader of a stream gets the same immutable data at a given offset. The cache is a transparent acceleration layer behind the auth wall.
+
+### Cache Key Contains No Auth Info
+
+The cache key is the bare URL (`request.url`). No `Authorization` header, no token hash, no `Vary` header. This is intentional — varying the cache key by token would fragment the cache and destroy request collapsing (the core scaling mechanism: 1M readers → 1 DO hit per poll cycle).
+
+Responses carry `Cache-Control: public, max-age=60` (catch-up reads) or `public, max-age=20` (long-poll). The CDN can serve these cached responses to anyone who requests the URL — auth only runs in the worker, which the CDN can bypass on cache hits.
+
+See `docs/12-cdn-reader-key.md` for the design addressing this gap.

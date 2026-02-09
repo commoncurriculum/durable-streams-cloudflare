@@ -6,6 +6,15 @@ After the sentinel coalescing was removed in favor of Cloudflare's native CDN re
 
 When 50 Cloudflare edge Workers concurrently request the same cache key through a CDN-proxied URL, we observe ~9 MISSes per cache key instead of the expected 1. This inflates origin load by ~9x compared to theoretical optimal.
 
+## Key Takeaways
+
+- **Worker subrequests coalesce at ~80% vs ~99% for external clients.** When Cloudflare Workers call `fetch()` to a CDN-proxied URL, requests are distributed across ~9 internal cache nodes within the PoP, each independently sending a MISS to origin. External clients (browsers, `curl`, any non-Worker HTTP client) are consistently routed to the same cache node and coalesce at 98-99%+.
+- **This is a platform behavior, not a bug.** Large Cloudflare PoPs have multiple internal cache nodes. The routing differs between Worker subrequests and external client requests. There is no configuration change that can fix it.
+- **External clients are the production path and are unaffected.** Real end users (browsers, mobile apps) make external HTTP requests. The degraded coalescing only affects Worker-to-Worker communication, which is not the production read path.
+- **The nginx IPv6 issue was a separate operational problem (now fixed).** EKS nodes lacked IPv6 routing, causing nginx to fail when resolving AAAA records for the upstream Worker. Adding `resolver 1.1.1.1 ipv6=off` fixed catastrophic latency stalls and improved HIT rate from 65% to 79-83% for Worker subrequests.
+
+The rest of this chapter is the detailed investigation log supporting these findings.
+
 ## Setup
 
 ```
@@ -202,6 +211,10 @@ npx tsx src/run.ts \
   --clients 50 --streams 1 --sse-ratio 0 \
   --write-interval 200 --duration 30 --ramp-up 3
 ```
+
+## Loadtest Tooling
+
+The reproduction commands above use the distributed loadtest package at `packages/loadtest/`. See `packages/loadtest/README.md` for the full tooling: local mode, distributed mode (edge Workers), CDN diagnostic tool (`diagnose-cdn.ts`), Analytics Engine integration, and options reference. The README also documents the Worker subrequest coalescing caveat in detail.
 
 ## Relevant Code
 

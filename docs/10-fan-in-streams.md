@@ -2,6 +2,8 @@
 
 Status: **Planned (not implemented)**.
 
+> **Relationship to Chapter 9**: Chapter 9 documents the subscription system **as implemented**. This chapter describes a planned evolution that would change how clients consume their session streams -- from reading a flat session stream (current) to reading a multiplexed fan-in stream with per-source envelope events. The dual-DO model (SubscriptionDO + SessionDO) described in Chapter 9 would remain; the fan-in stream would change the data format and client consumption pattern. This chapter has not been updated to reflect the current implementation and some details (e.g., SQL schemas, API routes) may conflict with Chapter 9.
+
 Fan-in streams aggregate updates from many underlying streams into a single subscription stream per **session**. Clients open one SSE or long-poll connection to the fan-in stream and receive multiplexed events with the source stream id and offset.
 
 This is an application-level pattern built on top of Durable Streams. It is not part of the core protocol and is intended for v2 scale when clients subscribe to hundreds of feeds.

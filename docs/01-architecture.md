@@ -27,6 +27,41 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
                           └──────────────────────────────────────────────────┘
 ```
 
+### Deployed Request Path
+
+The diagram above shows the core protocol layer. In production, requests traverse additional infrastructure layers before reaching the edge worker:
+
+```
+                    CDN HIT ($0)
+                  ┌────────────────┐
+   Client ──────>│  Cloudflare CDN │──── cached response
+                  │  (PoP edge)    │
+                  └───────┬────────┘
+                          │ CDN MISS
+                          v
+                  ┌────────────────┐
+                  │  Nginx VPS     │     (Ch. 2: why the proxy exists)
+                  │  (reverse      │     (Ch. 7: IPv6 fix, elimination options)
+                  │   proxy)       │
+                  └───────┬────────┘
+                          │
+                          v
+                  ┌──────────────────────────────────────────────────┐
+                  │                   Edge Worker                    │
+                  │  Auth · CORS · Edge Cache · SSE Bridge · Route  │
+                  │  (Ch. 5: cache policy, Ch. 6: request collapsing)│
+                  └───────┬──────────────────────────────────────────┘
+                          │
+                          v
+                  ┌──────────────────────────────────────────────────┐
+                  │               StreamDO (per stream)              │
+                  │  SQLite hot log · R2 cold segments               │
+                  │  Hibernation API WebSockets (live readers)       │
+                  └──────────────────────────────────────────────────┘
+```
+
+CDN HITs cost $0 (no Worker execution) -- this is the key cost insight from Chapter 2. The VPS proxy exists because Cloudflare's CDN cannot directly proxy to a `*.workers.dev` domain. Chapter 7 documents the CDN coalescing behavior and potential proxy elimination via Workers Routes.
+
 ## Design Decisions
 
 - Offsets are **`readSeq_byteOffset` only**. The server accepts `-1` and `now` as **sentinel inputs** but never emits them.
@@ -84,6 +119,19 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
    - `204 No Content`
    - `Stream-Next-Offset` header
 5. Broadcast to all connected live readers (WebSocket, SSE, long-poll).
+
+## Producer Fencing and Idempotency
+
+Producer headers (`Producer-Id`, `Producer-Epoch`, `Producer-Seq`) enable exactly-once append semantics. The implementation (`packages/core/src/stream/producer.ts`) enforces ordering per producer:
+
+1. **New producer**: First append must have `seq=0`. The producer's epoch and sequence are recorded.
+2. **Stale epoch**: If the request's epoch is less than the stored epoch, the append is rejected with **403** and the current epoch is returned in `Producer-Epoch`.
+3. **New epoch**: If the request's epoch is greater than the stored epoch, the sequence must restart at 0. This allows a producer to "reset" after a crash or reconnect.
+4. **Sequence gap**: If `seq != last_seq + 1` (within the same epoch), the append is rejected with **409**. The response includes `Producer-Expected-Seq` and `Producer-Received-Seq` headers so the client can reconcile.
+5. **Duplicate detection**: If `seq <= last_seq` (same epoch), the append is treated as a duplicate and returns **204** idempotently with the original `Stream-Next-Offset`. No data is written.
+6. **TTL**: Producer state expires after 7 days of inactivity. After expiry, the next append from that producer must restart at `seq=0`.
+
+Producer IDs must match `^[a-zA-Z0-9_\-:.]{1,256}$`.
 
 ## Key Modules
 
@@ -273,6 +321,23 @@ For read-heavy workloads, this reduces DO duration billing by ~99% compared to h
 - **Persistent connections**: the internal WebSocket bridge maintains persistent connections at the edge while the DO sleeps.
 - **Micro-batching**: coalesce keystrokes into 5–20ms batches to reduce per-append overhead.
 - **Optimistic UI**: render local ops immediately; reconcile on ACK to mask network variance.
+
+## Inter-Service RPC Interface
+
+The `CoreWorker` class (`packages/core/src/http/worker.ts`) extends `WorkerEntrypoint` and exposes RPC methods used by the subscription worker and admin dashboards via Cloudflare service bindings. These bypass HTTP routing and auth — callers are trusted internal services.
+
+| Method | Signature | Returns | Description | Callers |
+|--------|-----------|---------|-------------|---------|
+| `headStream` | `(doKey: string)` | `{ ok, status, body, contentType }` | Check if a stream exists. Returns content type on success. | Subscription (subscribe: verifies source stream exists and gets content type) |
+| `putStream` | `(doKey: string, options: { contentType, expiresAt?, body? })` | `{ ok, status, body }` | Create or touch a stream. Sets content type and optional TTL. | Subscription (subscribe: creates session streams), Admin |
+| `deleteStream` | `(doKey: string)` | `{ ok, status, body }` | Delete a stream and all its data. | Subscription (session cleanup: deletes expired session streams), Admin |
+| `postStream` | `(doKey, payload, contentType, producerHeaders?)` | `{ ok, status, nextOffset, upToDate, streamClosed, body }` | Append to a stream. Supports producer fencing headers. | Subscription (fanout: writes copies to each subscriber's session stream) |
+| `readStream` | `(doKey: string, offset: string)` | `{ ok, status, body, nextOffset, upToDate, contentType }` | Read from a stream at a given offset. | Admin |
+| `routeRequest` | `(doKey: string, request: Request)` | `Response` | Route any request to a stream's DO without auth. For operations not covered by the typed methods above. | Admin (SSE proxy, arbitrary stream operations) |
+| `inspectStream` | `(doKey: string)` | `StreamIntrospection \| null` | Get stream metadata, stats, and producer state for debugging. | Admin |
+| `registerProject` | `(projectId: string, signingSecret: string)` | `void` | Write a project's JWT signing secret to the REGISTRY KV namespace. | Admin (project setup) |
+
+The subscription worker binds to core as `CORE` (see `packages/subscription/wrangler.toml`). Admin dashboards bind via their respective `wrangler.toml` service binding configurations.
 
 ## Project Registry (KV)
 

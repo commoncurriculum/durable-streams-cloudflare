@@ -10,11 +10,11 @@ The edge cache in `create_worker.ts` caches GET 200 responses for mid-stream rea
 
 An always-on `X-Cache` response header (`HIT`/`MISS`/`BYPASS`) was added to all cacheable GET responses, making cache behavior observable by tests and operators in any environment.
 
-The cache store guards:
+The cache store guards (see Chapter 5 for the authoritative cache policy reference):
 
 | Guard | What it excludes |
 |-------|-----------------|
-| `cacheable` (line 274) | SSE, debug requests, non-GET methods |
+| `cacheable` | SSE, debug requests, non-GET methods |
 | `wrapped.status === 200` | 204 timeout responses (prevents tight-retry loops) |
 | `!cc.includes("no-store")` | `offset=now` responses, expired streams |
 | `!atTail \|\| isLongPoll` | Plain GET at-tail responses (breaks read-after-write if cached) |
@@ -36,10 +36,11 @@ The DO handler (`packages/core/src/http/handlers/realtime.ts`, `handleLongPoll`)
 5. If the wait times out with no data, returns **204** (no content)
 
 All responses include:
-- `Stream-Next-Offset` — where to read next
-- `Stream-Cursor` — a rotated cursor for the next request
-- `Cache-Control: public, max-age=20` (`LONG_POLL_CACHE_SECONDS`)
+- `Stream-Next-Offset` -- where to read next
+- `Stream-Cursor` -- a rotated cursor for the next request
 - At-tail responses also include `Stream-Up-To-Date: true`
+
+200 responses include `Cache-Control: public, max-age=20`. 204 timeout responses include `Cache-Control: no-store`. See Chapter 5 for the full Cache-Control reference.
 
 The cursor rotates on every response. The client's next request uses the new cursor and new offset, producing a **different URL** — a naturally rotating cache key.
 
