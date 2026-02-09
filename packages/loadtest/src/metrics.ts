@@ -2,7 +2,7 @@
  * Metrics collection for load test runs.
  *
  * Tracks per-operation latency histograms (reservoir sampled)
- * and x-cache header distributions.
+ * and cf-cache-status header distributions.
  */
 
 export interface OpMetrics {

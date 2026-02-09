@@ -28,7 +28,6 @@ interface WorkerSummary {
   errors: number;
   errorMessage?: string;
   cacheHeaders: Record<string, number>;
-  cdnCacheHeaders: Record<string, number>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -86,7 +85,6 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   let errors = 0;
   let errorMessage: string | undefined;
   const cacheHeaders: Record<string, number> = {};
-  const cdnCacheHeaders: Record<string, number> = {};
   const latencySamples: number[] = [];
   const MAX_SAMPLES = 10_000;
   let latencyTotal = 0;
@@ -103,20 +101,14 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     }
   }
 
-  function recordCache(value: string | null) {
-    const key = value ?? "(none)";
-    cacheHeaders[key] = (cacheHeaders[key] ?? 0) + 1;
-  }
-
   // Track latest server-side write timestamp for clock-skew-free latency
   let lastWriteTimestamp = 0;
 
-  // Custom fetch that tracks x-cache, cf-cache-status, and Stream-Write-Timestamp headers
+  // Custom fetch that tracks cf-cache-status and Stream-Write-Timestamp headers
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
     const res = await globalThis.fetch(input, init);
-    recordCache(res.headers.get("x-cache"));
-    const cdnStatus = res.headers.get("cf-cache-status") ?? "(none)";
-    cdnCacheHeaders[cdnStatus] = (cdnCacheHeaders[cdnStatus] ?? 0) + 1;
+    const cacheStatus = res.headers.get("cf-cache-status") ?? "(none)";
+    cacheHeaders[cacheStatus] = (cacheHeaders[cacheStatus] ?? 0) + 1;
     const wt = res.headers.get("stream-write-timestamp");
     if (wt) lastWriteTimestamp = Number(wt);
     return res;
@@ -165,7 +157,7 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
         }
       }
 
-      // Find the most recent x-cache value seen by trackingFetch
+      // Find the most common cf-cache-status value seen by trackingFetch
       const lastCache = Object.keys(cacheHeaders).sort(
         (a, b) => (cacheHeaders[b] ?? 0) - (cacheHeaders[a] ?? 0),
       )[0] ?? "(none)";
@@ -204,7 +196,6 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
     errors,
     errorMessage,
     cacheHeaders,
-    cdnCacheHeaders,
     deliveryLatency: {
       avg: eventsReceived > 0 ? Math.round(latencyTotal / eventsReceived) : 0,
       p50: Math.round(percentile(sorted, 50)),

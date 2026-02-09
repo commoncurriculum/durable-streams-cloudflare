@@ -186,7 +186,6 @@ interface WorkerSummary {
   errors: number;
   errorMessage?: string;
   cacheHeaders: Record<string, number>;
-  cdnCacheHeaders?: Record<string, number>;
   deliveryLatency: {
     avg: number;
     p50: number;
@@ -328,21 +327,11 @@ async function runDistributed(coreUrl: string) {
   const totalBatches = summaries.reduce((sum, s) => sum + s.batches, 0);
   const totalErrors = summaries.reduce((sum, s) => sum + s.errors, 0);
 
-  // Merge x-cache header counts
+  // Merge cf-cache-status header counts
   const mergedCache: Record<string, number> = {};
   for (const s of summaries) {
     for (const [key, count] of Object.entries(s.cacheHeaders)) {
       mergedCache[key] = (mergedCache[key] ?? 0) + count;
-    }
-  }
-
-  // Merge cf-cache-status header counts
-  const mergedCdnCache: Record<string, number> = {};
-  for (const s of summaries) {
-    if (s.cdnCacheHeaders) {
-      for (const [key, count] of Object.entries(s.cdnCacheHeaders)) {
-        mergedCdnCache[key] = (mergedCdnCache[key] ?? 0) + count;
-      }
     }
   }
 
@@ -414,7 +403,7 @@ async function runDistributed(coreUrl: string) {
     console.log(`    avg: ${Math.round(aggAvg)}ms  p50: ${Math.round(aggP50)}ms  p90: ${Math.round(aggP90)}ms  p99: ${Math.round(aggP99)}ms  max: ${aggMax}ms`);
   }
 
-  console.log(`\n  X-CACHE HEADERS (Worker-level, aggregated)`);
+  console.log(`\n  CF-CACHE-STATUS`);
   const totalCacheEntries = Object.values(mergedCache).reduce((a, b) => a + b, 0);
   if (totalCacheEntries > 0) {
     for (const [header, count] of Object.entries(mergedCache).sort((a, b) => b[1] - a[1])) {
@@ -422,16 +411,7 @@ async function runDistributed(coreUrl: string) {
       console.log(`    ${header}: ${count} (${pct}%)`);
     }
   } else {
-    console.log(`    (no x-cache headers observed)`);
-  }
-
-  const totalCdnEntries = Object.values(mergedCdnCache).reduce((a, b) => a + b, 0);
-  if (totalCdnEntries > 0) {
-    console.log(`\n  CF-CACHE-STATUS (CDN-level, aggregated)`);
-    for (const [header, count] of Object.entries(mergedCdnCache).sort((a, b) => b[1] - a[1])) {
-      const pct = Math.round((count / totalCdnEntries) * 100);
-      console.log(`    ${header}: ${count} (${pct}%)`);
-    }
+    console.log(`    (no cf-cache-status headers observed)`);
   }
 
   console.log("\n" + "═".repeat(70));
@@ -444,12 +424,12 @@ async function runDistributed(coreUrl: string) {
 async function runLocal(coreUrl: string) {
   const auth = await makeHeaders();
 
-  // ── Custom fetch that tracks x-cache headers ────────────────────────
+  // ── Custom fetch that tracks cf-cache-status headers ────────────────
   const cacheStats = createCacheStats();
 
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
     const res = await globalThis.fetch(input, init);
-    recordCacheHeader(cacheStats, res.headers.get("x-cache"));
+    recordCacheHeader(cacheStats, res.headers.get("cf-cache-status"));
     return res;
   };
 
@@ -658,7 +638,7 @@ async function runLocal(coreUrl: string) {
     console.log(`    latency: avg ${ds.avgMs}ms  p50: ${ds.p50Ms}ms  p90: ${ds.p90Ms}ms  p99: ${ds.p99Ms}ms  max: ${ds.maxMs}ms`);
   }
 
-  console.log(`\n  X-CACHE HEADERS`);
+  console.log(`\n  CF-CACHE-STATUS`);
   const totalCacheEntries = Object.values(cacheStats.counts).reduce((a, b) => a + b, 0);
   if (totalCacheEntries > 0) {
     for (const [header, count] of Object.entries(cacheStats.counts).sort((a, b) => b[1] - a[1])) {
@@ -666,7 +646,7 @@ async function runLocal(coreUrl: string) {
       console.log(`    ${header}: ${count} (${pct}%)`);
     }
   } else {
-    console.log(`    (no x-cache headers observed)`);
+    console.log(`    (no cf-cache-status headers observed)`);
   }
 
   console.log("\n" + "═".repeat(70));
