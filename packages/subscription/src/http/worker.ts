@@ -46,9 +46,9 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
     projectId: string,
     streamId: string,
     sessionId: string,
-    contentType?: string,
+    _contentType?: string,
   ): Promise<SubscribeResult> {
-    return subscribe(this.env, projectId, streamId, sessionId, contentType);
+    return subscribe(this.env, projectId, streamId, sessionId);
   }
 
   async adminUnsubscribe(

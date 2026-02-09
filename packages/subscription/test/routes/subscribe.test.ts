@@ -76,6 +76,9 @@ describe("POST /subscribe", () => {
       const sessionId = crypto.randomUUID();
       const streamId = `stream-${crypto.randomUUID()}`;
 
+      // Create source stream so subscribe's headStream check succeeds
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
       const app = await createTestApp();
       const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
         method: "POST",
@@ -100,8 +103,11 @@ describe("POST /subscribe", () => {
       const sessionId = crypto.randomUUID();
       const streamId = `stream-${crypto.randomUUID()}`;
 
+      // Create source stream so subscribe's headStream check succeeds
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
       // Pre-create session stream
-      await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
       const app = await createTestApp();
       const res = await app.request(`/v1/${PROJECT_ID}/subscribe`, {
@@ -121,6 +127,9 @@ describe("DELETE /unsubscribe", () => {
   it("unsubscribes successfully", async () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
+
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
     // Subscribe first
     const app = await createTestApp();
@@ -174,7 +183,7 @@ describe("DELETE /session/:sessionId", () => {
     const sessionId = crypto.randomUUID();
 
     // Create session first
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const app = await createTestApp();
     const res = await app.request(`/v1/${PROJECT_ID}/session/${sessionId}`, {

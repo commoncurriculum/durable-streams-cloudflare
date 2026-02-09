@@ -98,12 +98,12 @@ describe("SubscriptionDO", () => {
 
     it("should write to core and fanout to subscribers with inline mode", async () => {
       // Create source stream and session streams in core
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const sessionId1 = crypto.randomUUID();
       const sessionId2 = crypto.randomUUID();
-      await env.CORE.putStream(`${PROJECT_ID}/${sessionId1}`, { contentType: "application/octet-stream" });
-      await env.CORE.putStream(`${PROJECT_ID}/${sessionId2}`, { contentType: "application/octet-stream" });
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId1}`, { contentType: "application/json" });
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId2}`, { contentType: "application/json" });
 
       await stub.addSubscriber(sessionId1);
       await stub.addSubscriber(sessionId2);
@@ -122,7 +122,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should handle publish with no subscribers", async () => {
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const result = await publishInDO(
         stub, PROJECT_ID, streamId,
@@ -138,7 +138,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should forward producer headers to core", async () => {
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const result = await publishInDO(
         stub, PROJECT_ID, streamId,
@@ -162,13 +162,13 @@ describe("SubscriptionDO", () => {
     });
 
     it("should remove stale subscriber when fanout returns 404", async () => {
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const activeSession = crypto.randomUUID();
       const staleSession = crypto.randomUUID();
 
       // Only create the active session stream (octet-stream matches fanout content type)
-      await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "application/octet-stream" });
+      await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "application/json" });
 
       await stub.addSubscriber(activeSession);
       await stub.addSubscriber(staleSession);
@@ -194,7 +194,7 @@ describe("SubscriptionDO", () => {
     });
 
     it("should set nextOffset from core write", async () => {
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const result = await publishInDO(
         stub, PROJECT_ID, streamId,

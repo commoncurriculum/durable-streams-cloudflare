@@ -1,19 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { sendSessionAction } from "../lib/analytics";
-import { useStreamMeta } from "../lib/queries";
 import { TextField } from "../components/ui/text-field";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/field";
 import { Input } from "react-aria-components";
-
-const CONTENT_TYPES = [
-  "application/json",
-  "text/plain",
-  "application/octet-stream",
-  "text/html",
-];
 
 export const Route = createFileRoute("/projects/$projectId/publish")({
   component: PublishPage,
@@ -22,22 +14,12 @@ export const Route = createFileRoute("/projects/$projectId/publish")({
 function PublishPage() {
   const { projectId } = Route.useParams();
   const [streamId, setStreamId] = useState("");
-  const [contentType, setContentType] = useState("application/json");
   const [body, setBody] = useState('{"hello":"world"}');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
-
-  const debouncedStreamId = useDebounced(streamId.trim(), 500);
-  const { data: streamMeta } = useStreamMeta(projectId, debouncedStreamId);
-
-  useEffect(() => {
-    if (streamMeta?.content_type) {
-      setContentType(streamMeta.content_type);
-    }
-  }, [streamMeta?.content_type]);
 
   const handleSend = useCallback(async () => {
     if (!streamId.trim()) return;
@@ -53,7 +35,7 @@ function PublishPage() {
             projectId,
             streamId: streamId.trim(),
             body,
-            contentType,
+            contentType: "application/json",
           },
         });
         setResult({
@@ -71,7 +53,7 @@ function PublishPage() {
       }
     }
     setSending(false);
-  }, [projectId, streamId, body, contentType]);
+  }, [projectId, streamId, body]);
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
@@ -85,29 +67,8 @@ function PublishPage() {
         />
       </TextField>
 
-      <div className="space-y-2">
-        <label
-          htmlFor="content-type-select"
-          className="text-sm font-medium text-fg"
-        >
-          Content Type
-        </label>
-        <select
-          id="content-type-select"
-          value={contentType}
-          onChange={(e) => setContentType(e.target.value)}
-          className="block w-full rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm text-fg outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20"
-        >
-          {CONTENT_TYPES.map((ct) => (
-            <option key={ct} value={ct}>
-              {ct}
-            </option>
-          ))}
-        </select>
-      </div>
-
       <TextField value={body} onChange={setBody}>
-        <Label>Message Body</Label>
+        <Label>Message Body (JSON)</Label>
         <Textarea rows={4} className="mt-2 font-mono" />
       </TextField>
 
@@ -133,13 +94,4 @@ function PublishPage() {
       )}
     </div>
   );
-}
-
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
 }

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `ctfanout-${Date.now()}`;
-const STREAM_ID = "text-stream";
+const STREAM_ID = "json-stream";
 
 let sessionId: string;
 
@@ -41,7 +41,7 @@ test.beforeAll(async ({ browser }) => {
   await page.close();
 });
 
-test("text/plain publish fans out to subscribed session", async ({ browser }) => {
+test("JSON publish fans out to subscribed session", async ({ browser }) => {
   // ── Tab 1: subscribe to the stream ──
   const tab1 = await browser.newPage();
   await tab1.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
@@ -56,15 +56,13 @@ test("text/plain publish fans out to subscribed session", async ({ browser }) =>
     .first()
     .waitFor({ timeout: 10_000 });
 
-  // ── Tab 2: publish with text/plain ──
+  // ── Tab 2: publish with application/json ──
   const tab2 = await browser.newPage();
   await tab2.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/publish`);
   await tab2.waitForLoadState("networkidle");
 
   await tab2.locator('input[placeholder="my-stream"]').fill(STREAM_ID);
-  // Change content type to text/plain
-  await tab2.locator("#content-type-select").selectOption("text/plain");
-  await tab2.locator("textarea").fill("hello plain text");
+  await tab2.locator("textarea").fill('{"hello":"fanout test"}');
   await tab2.click('button:has-text("Send")');
 
   // Capture the full result message
@@ -75,7 +73,7 @@ test("text/plain publish fans out to subscribed session", async ({ browser }) =>
 
   // ── Back to Tab 1: verify the message arrived ──
   await expect(
-    tab1.locator('[class*="bg-zinc-800"]').filter({ hasText: "hello plain text" }).first(),
+    tab1.locator('[class*="bg-zinc-800"]').filter({ hasText: "fanout test" }).first(),
   ).toBeVisible({ timeout: 20_000 });
 
   await tab1.close();

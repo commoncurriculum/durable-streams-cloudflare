@@ -157,16 +157,13 @@ describe("admin-subscription integration", () => {
       expect(html).toContain(sessionId);
     });
 
-    it("publish page renders at project-scoped URL with content type", async () => {
+    it("publish page renders at project-scoped URL", async () => {
       const res = await fetch(`${adminUrl}/projects/${PROJECT_ID}/publish`);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Publish to Stream");
-      expect(html).toContain("Content Type");
       expect(html).toContain("Stream ID");
       expect(html).toContain("Message Body");
-      expect(html).toContain("application/json");
-      expect(html).toContain("text/plain");
     });
   });
 

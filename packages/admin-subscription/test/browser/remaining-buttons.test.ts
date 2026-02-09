@@ -187,21 +187,6 @@ test("Clear button clears the event log on session page", async ({ page }) => {
   await expect(page.getByText("Subscribe to a stream")).toBeVisible({ timeout: 5_000 });
 });
 
-// ── Content type dropdown on publish page ──
-
-test("content type dropdown changes on publish page", async ({ page }) => {
-  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/publish`);
-  await page.waitForLoadState("networkidle");
-
-  // Default should be application/json
-  const select = page.locator("#content-type-select");
-  await expect(select).toHaveValue("application/json");
-
-  // Change to text/plain
-  await select.selectOption("text/plain");
-  await expect(select).toHaveValue("text/plain");
-});
-
 // ── Delete action ──
 
 test("Delete action sends and shows confirmation", async ({ page }) => {

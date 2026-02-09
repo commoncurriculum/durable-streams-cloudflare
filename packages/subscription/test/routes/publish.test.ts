@@ -54,7 +54,7 @@ describe("POST /publish/:streamId", () => {
       const validIds = ["stream-123", "my_stream", "user:stream:1", "Stream.Name.123"];
       for (const id of validIds) {
         // Create stream first so publish doesn't 404
-        await env.CORE.putStream(`${PROJECT_ID}/${id}`);
+        await env.CORE.putStream(`${PROJECT_ID}/${id}`, { contentType: "application/json" });
 
         const response = await app.request(`/v1/${PROJECT_ID}/publish/${encodeURIComponent(id)}`, {
           method: "POST",
@@ -69,7 +69,7 @@ describe("POST /publish/:streamId", () => {
   describe("publish flow", () => {
     it("publishes to an existing stream and returns success", async () => {
       const streamId = `stream-${crypto.randomUUID()}`;
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const app = await createTestApp();
       const res = await app.request(`/v1/${PROJECT_ID}/publish/${streamId}`, {
@@ -97,7 +97,7 @@ describe("POST /publish/:streamId", () => {
 
     it("sets X-Stream-Next-Offset header on success", async () => {
       const streamId = `stream-${crypto.randomUUID()}`;
-      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const app = await createTestApp();
       const res = await app.request(`/v1/${PROJECT_ID}/publish/${streamId}`, {

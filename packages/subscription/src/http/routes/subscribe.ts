@@ -36,9 +36,9 @@ export const subscribeRoutes = new Hono<{ Bindings: AppEnv }>();
 
 subscribeRoutes.post("/subscribe", arktypeValidator("json", subscribeSchema), async (c) => {
   const projectId = c.req.param("project")!;
-  const { sessionId, streamId, contentType } = c.req.valid("json");
+  const { sessionId, streamId } = c.req.valid("json");
   try {
-    return c.json(await subscribe(c.env, projectId, streamId, sessionId, contentType ?? "application/json"));
+    return c.json(await subscribe(c.env, projectId, streamId, sessionId));
   } catch {
     return c.json({ error: "Failed to subscribe" }, 500);
   }

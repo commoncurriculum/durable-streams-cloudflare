@@ -24,7 +24,7 @@ describe("GET /session/:sessionId", () => {
 
   it("returns session info when session exists", async () => {
     const sessionId = crypto.randomUUID();
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const app = await createTestApp();
     const res = await app.request(`/v1/${PROJECT_ID}/session/${sessionId}`, {}, env);
@@ -59,7 +59,7 @@ describe("POST /session/:sessionId/touch", () => {
 
   it("succeeds when session already exists", async () => {
     const sessionId = crypto.randomUUID();
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const app = await createTestApp();
     const res = await app.request(

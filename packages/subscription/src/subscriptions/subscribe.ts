@@ -9,7 +9,6 @@ export async function subscribe(
   projectId: string,
   streamId: string,
   sessionId: string,
-  _contentType = "application/json",
 ): Promise<SubscribeResult> {
   const start = Date.now();
   const metrics = createMetrics(env.METRICS);
@@ -18,15 +17,34 @@ export async function subscribe(
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  // 1. Create/touch session stream in core (project-scoped)
+  // 0. Look up the source stream's content type so the session stream matches
+  const sourceDoKey = `${projectId}/${streamId}`;
+  const sourceHead = await env.CORE.headStream(sourceDoKey);
+  if (!sourceHead.ok) {
+    throw new Error(`Source stream not found: ${sourceDoKey} (status: ${sourceHead.status})`);
+  }
+  const contentType = sourceHead.contentType ?? "application/json";
+
+  // 1. Create/touch session stream in core with the same content type
   const sessionDoKey = `${projectId}/${sessionId}`;
-  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt, contentType: "application/octet-stream" });
+  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt, contentType });
 
   const isNewSession = coreResponse.ok;
   // #endregion synced-to-docs:create-session-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
     throw new Error(`Failed to create session stream: ${coreResponse.body} (status: ${coreResponse.status})`);
+  }
+
+  // If session stream already exists, verify content type matches
+  if (coreResponse.status === 409) {
+    const sessionHead = await env.CORE.headStream(sessionDoKey);
+    if (sessionHead.ok && sessionHead.contentType && sessionHead.contentType !== contentType) {
+      throw new Error(
+        `Content type mismatch: session stream is ${sessionHead.contentType} but source stream ${streamId} is ${contentType}. ` +
+        `A session can only subscribe to streams of the same content type.`,
+      );
+    }
   }
 
   // #region synced-to-docs:add-subscription-to-do

@@ -1,6 +1,6 @@
 export interface CoreService {
   routeRequest(doKey: string, request: Request): Promise<Response>;
-  putStream(doKey: string, options?: { contentType?: string }): Promise<{ ok: boolean; status: number; body: string | null }>;
+  putStream(doKey: string, options: { contentType: string }): Promise<{ ok: boolean; status: number; body: string | null }>;
   registerProject(projectId: string, signingSecret: string): Promise<void>;
 }
 

@@ -14,7 +14,7 @@ describe("getSession", () => {
 
   it("returns session info when session exists", async () => {
     // Create the session stream first
-    await env.CORE.putStream(`${PROJECT_ID}/${SESSION_ID}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${SESSION_ID}`, { contentType: "application/json" });
 
     const { getSession } = await import("../src/session");
     const result = await getSession(env as never, PROJECT_ID, SESSION_ID);
@@ -29,6 +29,9 @@ describe("getSession", () => {
   it("includes subscriptions after subscribing", async () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
+
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     await subscribe(env as never, PROJECT_ID, streamId, sessionId);
@@ -45,6 +48,9 @@ describe("getSession", () => {
   it("removes subscription from getSession after unsubscribing", async () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
+
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     const { unsubscribe } = await import("../src/subscriptions/unsubscribe");
@@ -72,7 +78,7 @@ describe("touchSession", () => {
 
   it("succeeds when session already exists", async () => {
     const sessionId = crypto.randomUUID();
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const { touchSession } = await import("../src/session");
     const result = await touchSession(env as never, PROJECT_ID, sessionId);
@@ -94,7 +100,7 @@ describe("touchSession", () => {
 describe("deleteSession", () => {
   it("deletes an existing session", async () => {
     const sessionId = crypto.randomUUID();
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const { deleteSession } = await import("../src/session");
     const result = await deleteSession(env as never, PROJECT_ID, sessionId);

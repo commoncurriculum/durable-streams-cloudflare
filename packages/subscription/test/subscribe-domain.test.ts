@@ -8,6 +8,9 @@ describe("subscribe", () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
 
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
     const { subscribe } = await import("../src/subscriptions/subscribe");
     const result = await subscribe(env as never, PROJECT_ID, streamId, sessionId);
 
@@ -21,8 +24,11 @@ describe("subscribe", () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
 
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
     // Pre-create the session stream
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const { subscribe } = await import("../src/subscriptions/subscribe");
     const result = await subscribe(env as never, PROJECT_ID, streamId, sessionId);
@@ -33,6 +39,9 @@ describe("subscribe", () => {
   it("DO failure triggers rollback for new session", async () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
+
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
     // Create a DO stub that throws on addSubscriber
     const mockAddSubscriber = vi.fn().mockRejectedValueOnce(new Error("DO error"));
@@ -56,8 +65,11 @@ describe("subscribe", () => {
     const sessionId = crypto.randomUUID();
     const streamId = `stream-${crypto.randomUUID()}`;
 
+    // Create source stream so subscribe's headStream check succeeds
+    await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
     // Pre-create session so it already exists
-    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`);
+    await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/json" });
 
     const mockAddSubscriber = vi.fn().mockRejectedValueOnce(new Error("DO error"));
     const failEnv = {
