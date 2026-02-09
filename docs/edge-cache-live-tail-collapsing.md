@@ -166,6 +166,8 @@ The edge ETag revalidation does simple string equality. RFC 7232 allows comma-se
 
 ## Cross-Isolate Sentinel Coalescing
 
+> **Removed.** Sentinel coalescing (L3) and the background WebSocket cache bridge were removed from the codebase — superseded by CDN request collapsing (Cloudflare CDN coalesces concurrent cache MISSes into a single origin request per colo, making the sentinel redundant). The last commit containing sentinel code as an opt-in module is [`f99e80a`](../../commit/f99e80a). The section below is retained as a design reference.
+
 ### Problem
 
 The theoretical design (above) assumes that when 1,000 clients poll at the same offset+cursor, the first request populates the cache and the remaining 999 get cache HITs. In practice, Cloudflare Workers run **one isolate per concurrent request**. Each isolate has its own memory — in-memory dedup (Maps, Promises) cannot coalesce across isolates.
@@ -300,6 +302,8 @@ Edge pre-warming shows no measurable improvement in either scenario — the pre-
 ---
 
 ## WebSocket Cache Bridge
+
+> **Removed.** See note above — the WS cache bridge was part of the sentinel infrastructure and was removed alongside it. Last commit with this code: [`f99e80a`](../../commit/f99e80a).
 
 ### Problem with Previous Approaches
 

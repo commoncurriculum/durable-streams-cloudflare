@@ -8,7 +8,7 @@ import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
-import { initSentinel, type SentinelContext } from "./sentinel";
+
 
 // ============================================================================
 // Types
@@ -26,8 +26,7 @@ export type BaseEnv = {
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
   authorizeMutation?: AuthorizeMutation<E>;
   authorizeRead?: AuthorizeRead<E>;
-  /** Enable cross-isolate sentinel coalescing + WS bridge. Only useful without a CDN. */
-  edgeCoalescing?: boolean;
+
 };
 
 // ============================================================================
@@ -402,24 +401,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         return bridgeSseViaWebSocket(stub, doKey, url, request, corsOrigin, timing);
       }
 
-      // ================================================================
-      // Cross-isolate sentinel coalescing (optional, via Cache API)
-      // ================================================================
-      const sentinelEnabled = !!(config?.edgeCoalescing && cacheStatus === "MISS" && cacheUrl && isLongPoll);
-      let sentinel: SentinelContext | undefined;
-      if (sentinelEnabled) {
-        sentinel = await initSentinel(cacheUrl, ctx);
-        if (sentinel.earlyResponse) {
-          const h = new Headers(sentinel.earlyResponse.headers);
-          h.set("X-Cache", "HIT");
-          applyCorsHeaders(h, corsOrigin);
-          return attachTiming(
-            new Response(sentinel.earlyResponse.body, { status: sentinel.earlyResponse.status, headers: h }),
-            timing,
-          );
-        }
-      }
-
       // Register as the in-flight winner for this URL so concurrent
       // requests can coalesce on our result instead of hitting the DO.
       let resolveInFlight: ((r: InFlightResult) => void) | undefined;
@@ -446,7 +427,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           doneOrigin?.();
         }
       } catch (err) {
-        if (sentinelEnabled) sentinel!.cleanup();
         if (rejectInFlight && cacheUrl) {
           rejectInFlight(err);
           inFlight.delete(cacheUrl);
@@ -489,15 +469,10 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const cc = wrapped.headers.get("Cache-Control") ?? "";
         const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
         if (!cc.includes("no-store") && (!atTail || isLongPoll)) {
-          if (sentinelEnabled) {
-            await sentinel!.cacheStore(cacheUrl!, wrapped.clone());
-          } else {
-            ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
-          }
+          ctx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
           storedInCache = true;
         }
       }
-      if (sentinelEnabled) sentinel!.complete(storedInCache, wrapped, stub, doKey, url);
 
       // Resolve the in-flight promise so coalesced waiters get the result.
       // Headers are captured from the DO response (before CORS) so each
