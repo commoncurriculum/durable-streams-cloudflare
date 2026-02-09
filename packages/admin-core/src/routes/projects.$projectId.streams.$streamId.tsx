@@ -4,6 +4,57 @@ import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analyti
 import { formatBytes, relTime } from "../lib/formatters";
 import { useSSE, type SseEvent } from "../hooks/use-sse";
 
+type StreamMeta = {
+  stream_id: string;
+  content_type: string;
+  closed: number;
+  tail_offset: number;
+  read_seq: number;
+  segment_start: number;
+  segment_messages: number;
+  segment_bytes: number;
+  last_stream_seq: string | null;
+  ttl_seconds: number | null;
+  expires_at: number | null;
+  created_at: number;
+  closed_at: number | null;
+  closed_by_producer_id: string | null;
+  closed_by_epoch: number | null;
+  closed_by_seq: number | null;
+};
+
+type SegmentRecord = {
+  read_seq: number;
+  start_offset: number;
+  end_offset: number;
+  size_bytes: number;
+  message_count: number;
+  created_at: number;
+};
+
+type ProducerRecord = {
+  producer_id: string;
+  epoch: number;
+  last_seq: number;
+  last_offset: number;
+  last_updated: number | null;
+};
+
+type StreamInspectData = {
+  meta: StreamMeta;
+  ops: { messageCount: number; sizeBytes: number };
+  segments: SegmentRecord[];
+  producers: ProducerRecord[];
+  sseClientCount: number;
+  longPollWaiterCount: number;
+};
+
+type StreamMessagesResult = {
+  messages: unknown[];
+  nextOffset: string | null;
+  upToDate: boolean;
+};
+
 export const Route = createFileRoute(
   "/projects/$projectId/streams/$streamId",
 )({
@@ -28,7 +79,7 @@ function StreamDetailPage() {
     return <CreateStreamForm projectId={projectId} streamId={streamId} doKey={doKey} />;
   }
 
-  return <StreamConsole projectId={projectId} streamId={streamId} doKey={doKey} data={data} />;
+  return <StreamConsole projectId={projectId} streamId={streamId} doKey={doKey} data={data as StreamInspectData} />;
 }
 
 /* ─── State A: Stream not found ─── */
@@ -148,14 +199,9 @@ function StreamConsole({
   projectId: string;
   streamId: string;
   doKey: string;
-  data: unknown;
+  data: StreamInspectData;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const d = data as any;
-  const m = d.meta;
-  const ops = d.ops;
-  const segments = d.segments ?? [];
-  const producers = d.producers ?? [];
+  const { meta: m, ops, segments, producers } = data;
 
   const sseUrl = `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(streamId)}?live=sse&offset=now`;
   const { status: sseStatus, events, addEvent, clearEvents } = useSSE(sseUrl);
@@ -204,8 +250,8 @@ function StreamConsole({
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-4">
         <h2 className="font-mono text-lg font-semibold text-blue-400">{streamId}</h2>
-        <RealtimeBadge label="SSE Clients" count={d.sseClientCount} color="cyan" />
-        <RealtimeBadge label="Long-Poll Waiters" count={d.longPollWaiterCount} color="blue" />
+        <RealtimeBadge label="SSE Clients" count={data.sseClientCount} color="cyan" />
+        <RealtimeBadge label="Long-Poll Waiters" count={data.longPollWaiterCount} color="blue" />
         <SseStatusBadge status={sseStatus} />
       </div>
 
@@ -267,8 +313,7 @@ function StreamConsole({
                   </tr>
                 </thead>
                 <tbody>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {segments.map((s: any) => (
+                    {segments.map((s) => (
                     <tr
                       key={s.read_seq}
                       className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
@@ -305,8 +350,7 @@ function StreamConsole({
                   </tr>
                 </thead>
                 <tbody>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {producers.map((p: any) => (
+                  {producers.map((p) => (
                     <tr
                       key={p.producer_id}
                       className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
@@ -448,9 +492,8 @@ function EventLog({
   const fetchEarlier = useCallback(async () => {
     setFetching(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = (await getStreamMessages({ data: doKey })) as any;
-      const msgs: unknown[] = result?.messages ?? [];
+      const result = (await getStreamMessages({ data: doKey })) as StreamMessagesResult;
+      const msgs = result?.messages ?? [];
       if (msgs.length === 0) {
         addEvent("control", "No earlier messages found");
       } else {

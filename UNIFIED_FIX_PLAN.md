@@ -44,17 +44,17 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-034 | Conformance test timeout | core | P2 | S | -- | **DONE** |
 | FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | TODO |
 | FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | TODO |
-| FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | TODO |
+| FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | **DONE** |
 | FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | **DONE** |
-| FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | TODO |
+| FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | **DONE** (pattern is sound, already documented) |
 | FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | TODO |
 | FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | **DONE** |
-| FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | TODO |
+| FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | **DONE** |
 | FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | TODO |
 | FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | TODO |
-| FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | TODO |
+| FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | **DONE** (FIX-008 skip in CLAUDE.md already documents this) |
 | FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | TODO |
-| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | TODO |
+| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | **SKIPPED** (requires mocking queue, deferred) |
 | FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | **DONE** |
 | FIX-049 | Surface actual error messages in all error responses | core, subscription | P2 | S-M | FIX-012 | **DONE** (a4c5e9d, d33904f) |
 

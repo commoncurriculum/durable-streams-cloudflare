@@ -10,7 +10,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
-import { logError, logWarn } from "../log";
+import { logError, logInfo, logWarn } from "../log";
 import { bufferToBase64 } from "../util/base64";
 import {
   FANOUT_QUEUE_THRESHOLD,
@@ -244,6 +244,11 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       if (fanoutMode === "inline") {
         const latencyMs = Date.now() - start;
         metrics.fanout({ streamId, subscribers: subscribers.length, success: successCount, failures: failureCount, latencyMs });
+        if (failureCount > 0) {
+          logWarn({ streamId, subscribers: subscribers.length, successes: successCount, failures: failureCount, latencyMs, component: "fanout" }, "inline fanout completed with failures");
+        }
+      } else if (fanoutMode === "circuit-open") {
+        logWarn({ streamId, subscribers: subscribers.length, component: "fanout" }, "fanout skipped: circuit breaker open");
       }
     }
 
@@ -307,6 +312,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     if (this.consecutiveFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
       this.circuitState = "open";
+      logInfo({ consecutiveFailures: this.consecutiveFailures, component: "circuit-breaker" }, "circuit breaker opened");
     }
   }
 

@@ -205,6 +205,7 @@ describe("SubscriptionDO", () => {
       expect(result.status).toBeLessThan(300);
       expect(result.nextOffset).not.toBeNull();
     });
+
   });
 
 });
