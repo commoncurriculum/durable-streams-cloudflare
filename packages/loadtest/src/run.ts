@@ -265,7 +265,12 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
   if (writeUrl && writeUrl !== coreUrl) console.log(`  writes: ${writerBaseUrl} (direct, bypasses CDN proxy)`);
   console.log(`  write every ${writeIntervalMs}ms, ${durationSec}s duration, msg ~${msgSize}B`);
   console.log(`  ramp-up: ${rampUpSec}s`);
-  console.log(`${"═".repeat(70)}\n`);
+  console.log(`${"═".repeat(70)}`);
+  console.log(`\n  NOTE: CF-CACHE-STATUS numbers from distributed mode are NOT`);
+  console.log(`  production-representative. CF Worker subrequests do not coalesce`);
+  console.log(`  at the CDN level (~10 MISSes/key vs 1 for real clients).`);
+  console.log(`  For production-representative CDN numbers, run diagnose-cdn.ts`);
+  console.log(`  from an external machine. See packages/loadtest/README.md.\n`);
 
   let completed = 0;
   let failed = 0;
@@ -435,7 +440,7 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
     console.log(`    avg: ${Math.round(aggAvg)}ms  p50: ${Math.round(aggP50)}ms  p90: ${Math.round(aggP90)}ms  p99: ${Math.round(aggP99)}ms  max: ${aggMax}ms`);
   }
 
-  console.log(`\n  CF-CACHE-STATUS`);
+  console.log(`\n  CF-CACHE-STATUS (not production-representative — see note above)`);
   const totalCacheEntries = Object.values(mergedCache).reduce((a, b) => a + b, 0);
   if (totalCacheEntries > 0) {
     for (const [header, count] of Object.entries(mergedCache).sort((a, b) => b[1] - a[1])) {
