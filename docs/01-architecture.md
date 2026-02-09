@@ -336,6 +336,8 @@ The `CoreWorker` class (`packages/core/src/http/worker.ts`) extends `WorkerEntry
 | `routeRequest` | `(doKey: string, request: Request)` | `Response` | Route any request to a stream's DO without auth. For operations not covered by the typed methods above. | Admin (SSE proxy, arbitrary stream operations) |
 | `inspectStream` | `(doKey: string)` | `StreamIntrospection \| null` | Get stream metadata, stats, and producer state for debugging. | Admin |
 | `registerProject` | `(projectId: string, signingSecret: string)` | `void` | Write a project's JWT signing secret to the REGISTRY KV namespace. | Admin (project setup) |
+| `addSigningKey` | `(projectId: string, newSecret: string)` | `{ keyCount }` | Prepend a new signing key (becomes primary). Enables zero-downtime key rotation. | Admin (key rotation) |
+| `removeSigningKey` | `(projectId: string, secretToRemove: string)` | `{ keyCount }` | Remove a signing key. Refuses to remove the last key. | Admin (key rotation) |
 
 The subscription worker binds to core as `CORE` (see `packages/subscription/wrangler.toml`). Admin dashboards bind via their respective `wrangler.toml` service binding configurations.
 

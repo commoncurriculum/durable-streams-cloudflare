@@ -1,7 +1,8 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { type } from "arktype";
 import { createStreamWorker } from "./create_worker";
-import { projectJwtAuth } from "./auth";
+import { projectJwtAuth, lookupProjectConfig } from "./auth";
+import type { ProjectConfig } from "./auth";
 import { StreamDO } from "./durable_object";
 import type { StreamIntrospection } from "./durable_object";
 import type { BaseEnv } from "./create_worker";
@@ -33,7 +34,26 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: register a project's signing secret in core's REGISTRY KV
   // Called by admin workers so core can verify JWTs for browser SSE connections
   async registerProject(projectId: string, signingSecret: string): Promise<void> {
-    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecret }));
+    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: [signingSecret] }));
+  }
+
+  // RPC: add a signing key to a project (prepended as new primary)
+  async addSigningKey(projectId: string, newSecret: string): Promise<{ keyCount: number }> {
+    const config = await lookupProjectConfig(this.env.REGISTRY, projectId);
+    const secrets = config ? config.signingSecrets : [];
+    secrets.unshift(newSecret);
+    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: secrets }));
+    return { keyCount: secrets.length };
+  }
+
+  // RPC: remove a signing key from a project (refuses to remove the last key)
+  async removeSigningKey(projectId: string, secretToRemove: string): Promise<{ keyCount: number }> {
+    const config = await lookupProjectConfig(this.env.REGISTRY, projectId);
+    if (!config) throw new Error(`Project "${projectId}" not found`);
+    const filtered = config.signingSecrets.filter((s) => s !== secretToRemove);
+    if (filtered.length === 0) throw new Error("Cannot remove the last signing key");
+    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: filtered }));
+    return { keyCount: filtered.length };
   }
 
   // RPC: stream inspection (replaces /admin HTTP endpoint)
@@ -167,5 +187,6 @@ export type {
   AuthorizeRead,
   ProjectJwtEnv,
   ProjectJwtClaims,
+  ProjectConfig,
 } from "./auth";
 export type { BaseEnv, StreamWorkerConfig } from "./create_worker";

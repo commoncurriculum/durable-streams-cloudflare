@@ -196,7 +196,7 @@ export const createProject = createServerFn({ method: "POST" })
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(projectId, JSON.stringify({ signingSecret: secret }));
+    await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
     // Also register in core's KV so core can verify JWTs for browser SSE connections
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (core) {
@@ -376,9 +376,12 @@ export const mintStreamToken = createServerFn({ method: "GET" })
     if (!kv) throw new Error("REGISTRY KV namespace is not configured");
 
     const config = (await kv.get(projectId, "json")) as {
+      signingSecrets?: string[];
       signingSecret?: string;
     } | null;
-    if (!config?.signingSecret) {
+    // Support new array format with legacy fallback
+    const primarySecret = config?.signingSecrets?.[0] ?? config?.signingSecret;
+    if (!primarySecret) {
       throw new Error(`No signing secret found for project "${projectId}"`);
     }
 
@@ -386,7 +389,7 @@ export const mintStreamToken = createServerFn({ method: "GET" })
     const expiresAt = now + 300; // 5 minutes
     const token = await mintJwt(
       { sub: projectId, scope: "read", iat: now, exp: expiresAt },
-      config.signingSecret,
+      primarySecret,
     );
 
     return { token, expiresAt };

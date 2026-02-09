@@ -30,12 +30,26 @@ The `alg` header must be `HS256`. No other algorithms are accepted.
 The `REGISTRY` KV namespace stores per-project configuration. Each key is a project ID, each value is a JSON object:
 
 ```json
-{ "signingSecret": "your-secret-here" }
+{ "signingSecrets": ["primary-key", "old-key-during-rotation"] }
 ```
 
-Both core and subscription workers bind to the same `REGISTRY` namespace. Every authenticated request performs one KV read to look up the signing secret. KV reads are cached at the edge by Cloudflare.
+`signingSecrets[0]` is the **primary key** used for minting new JWTs. All keys in the array are tried during verification (short-circuit on first match), enabling zero-downtime key rotation.
+
+The legacy single-key format `{ "signingSecret": "..." }` is still readable — `lookupProjectConfig` normalizes it to an array on read. New writes always use the array format.
+
+Both core and subscription workers bind to the same `REGISTRY` namespace. Every authenticated request performs one KV read to look up the signing secrets. KV reads are cached at the edge by Cloudflare.
 
 Projects are registered via the core worker's RPC method `registerProject(projectId, signingSecret)`, which writes the KV entry.
+
+## Key Rotation
+
+To rotate a project's signing secret with zero downtime:
+
+1. **Add the new key**: Call `addSigningKey(projectId, newSecret)`. This prepends the new key as primary. Both old and new keys are now valid.
+2. **Wait for token expiry**: Allow all in-flight JWTs signed with the old key to expire (depends on your token TTL — typically 1 hour).
+3. **Remove the old key**: Call `removeSigningKey(projectId, oldSecret)`. Only the new key remains.
+
+The `addSigningKey` and `removeSigningKey` RPC methods are available on `CoreWorker`. `removeSigningKey` refuses to remove the last key — at least one signing secret must always exist.
 
 ## Core Worker Auth
 

@@ -188,7 +188,7 @@ export const createProject = createServerFn({ method: "POST" })
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(projectId, JSON.stringify({ signingSecret: secret }));
+    await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
     return { ok: true, signingSecret: secret };
   });
 

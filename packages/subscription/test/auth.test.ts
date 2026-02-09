@@ -171,7 +171,7 @@ describe("projectJwtAuth", () => {
   const deleteRoute: SubscriptionRoute = { action: "deleteSession", project: PROJECT, sessionId: "sess-1" };
 
   beforeEach(async () => {
-    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecret: SECRET }));
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [SECRET] }));
   });
 
   it("rejects with 500 when REGISTRY not configured", async () => {
@@ -298,6 +298,55 @@ describe("projectJwtAuth", () => {
   it("ignores stream_id on session routes (no streamId in route)", async () => {
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "any-stream" }), SECRET);
     const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: env.REGISTRY });
+    expect(result).toEqual({ ok: true });
+  });
+});
+
+// ============================================================================
+// Key Rotation
+// ============================================================================
+
+const OLD_SECRET = "old-signing-secret-for-rotation";
+const NEW_SECRET = "new-signing-secret-for-rotation";
+
+describe("projectJwtAuth - key rotation", () => {
+  const auth = projectJwtAuth();
+  const publishRoute: SubscriptionRoute = { action: "publish", project: PROJECT, streamId: "s" };
+  const subscribeRoute: SubscriptionRoute = { action: "subscribe", project: PROJECT, streamId: "s", sessionId: "sess-1" };
+
+  it("allows old key during rotation", async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims(), OLD_SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("allows new primary key", async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims(), NEW_SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("rejects unknown key", async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims(), "totally-unknown-secret");
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
+    expect(result).toHaveProperty("ok", false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+
+  it("works with legacy format", async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecret: SECRET }));
+    const token = await createTestJwt(validClaims(), SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("allows old key for read-scope action", async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims({ scope: "read" }), OLD_SECRET);
+    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 });

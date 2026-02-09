@@ -14,6 +14,8 @@ export type AuthorizeSubscription<E = unknown> = (
   env: E,
 ) => SubscriptionAuthResult | Promise<SubscriptionAuthResult>;
 
+export type ProjectConfig = { signingSecrets: string[] };
+
 export type ProjectJwtEnv = {
   /**
    * KV namespace storing per-project signing secrets.
@@ -138,10 +140,19 @@ type ProjectJwtClaims = {
 async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
-): Promise<{ signingSecret: string } | null> {
+): Promise<ProjectConfig | null> {
   const value = await kv.get(projectId, "json");
-  if (value && typeof value === "object" && "signingSecret" in (value as Record<string, unknown>)) {
-    return value as { signingSecret: string };
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  // New format: signingSecrets array
+  if (Array.isArray(record.signingSecrets)) {
+    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
+    if (secrets.length > 0) return { signingSecrets: secrets };
+    return null;
+  }
+  // Legacy format: single signingSecret string
+  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
+    return { signingSecrets: [record.signingSecret] };
   }
   return null;
 }
@@ -191,6 +202,17 @@ async function verifyProjectJwt(
   }
 }
 
+async function verifyProjectJwtMultiKey(
+  token: string,
+  config: ProjectConfig,
+): Promise<ProjectJwtClaims | null> {
+  for (const secret of config.signingSecrets) {
+    const claims = await verifyProjectJwt(token, secret);
+    if (claims) return claims;
+  }
+  return null;
+}
+
 // ============================================================================
 // Per-Project JWT Auth for Subscriptions
 // ============================================================================
@@ -222,7 +244,7 @@ export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
 
-    const claims = await verifyProjectJwt(token, config.signingSecret);
+    const claims = await verifyProjectJwtMultiKey(token, config);
     if (!claims) {
       return { ok: false, response: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }

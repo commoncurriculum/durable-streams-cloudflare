@@ -111,7 +111,7 @@ export async function createProject() {
   const spinner = p.spinner();
   spinner.start("Creating project in KV");
 
-  const value = JSON.stringify({ signingSecret });
+  const value = JSON.stringify({ signingSecrets: [signingSecret] });
   // Escape single quotes for safe shell interpolation: replace ' with '\''
   const escapedValue = value.replace(/'/g, "'\\''");
   const result = runMayFail(

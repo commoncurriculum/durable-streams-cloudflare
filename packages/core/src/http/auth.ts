@@ -8,6 +8,8 @@ export type AuthResult = { ok: true } | { ok: false; response: Response };
 
 export type ReadAuthResult = AuthResult;
 
+export type ProjectConfig = { signingSecrets: string[] };
+
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
   streamId: string,
@@ -58,15 +60,24 @@ function base64UrlDecode(input: string): Uint8Array {
 
 /**
  * Look up the project config from KV.
- * KV key IS the projectId, value is `{ signingSecret: string }`.
+ * Normalizes both legacy `{ signingSecret: "..." }` and new `{ signingSecrets: [...] }` formats.
  */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
-): Promise<{ signingSecret: string } | null> {
+): Promise<ProjectConfig | null> {
   const value = await kv.get(projectId, "json");
-  if (value && typeof value === "object" && "signingSecret" in (value as Record<string, unknown>)) {
-    return value as { signingSecret: string };
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  // New format: signingSecrets array
+  if (Array.isArray(record.signingSecrets)) {
+    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
+    if (secrets.length > 0) return { signingSecrets: secrets };
+    return null;
+  }
+  // Legacy format: single signingSecret string
+  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
+    return { signingSecrets: [record.signingSecret] };
   }
   return null;
 }
@@ -136,6 +147,21 @@ export async function verifyProjectJwt(
   }
 }
 
+/**
+ * Try verifying the JWT against each signing secret in the config.
+ * Returns the first successful verification or null if none match.
+ */
+export async function verifyProjectJwtMultiKey(
+  token: string,
+  config: ProjectConfig,
+): Promise<ProjectJwtClaims | null> {
+  for (const secret of config.signingSecrets) {
+    const claims = await verifyProjectJwt(token, secret);
+    if (claims) return claims;
+  }
+  return null;
+}
+
 // ============================================================================
 // Per-Project JWT Auth
 // ============================================================================
@@ -179,7 +205,7 @@ export function projectJwtAuth(): {
         return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
 
-      const claims = await verifyProjectJwt(token, config.signingSecret);
+      const claims = await verifyProjectJwtMultiKey(token, config);
       if (!claims) {
         return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
@@ -225,7 +251,7 @@ export function projectJwtAuth(): {
         return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }
 
-      const claims = await verifyProjectJwt(token, config.signingSecret);
+      const claims = await verifyProjectJwtMultiKey(token, config);
       if (!claims) {
         return { ok: false, response: new Response("unauthorized", { status: 401 }) };
       }

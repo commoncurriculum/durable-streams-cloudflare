@@ -772,7 +772,7 @@ export async function setup() {
       const kvSpinner2 = p.spinner();
       kvSpinner2.start("Creating project in KV");
 
-      const value = JSON.stringify({ signingSecret });
+      const value = JSON.stringify({ signingSecrets: [signingSecret] });
       const escapedValue = value.replace(/'/g, "'\\''");
       const kvWriteResult = runMayFail(
         `${wranglerCmd} kv key put --namespace-id="${kvNamespaceId}" "${projectName}" '${escapedValue}'`,

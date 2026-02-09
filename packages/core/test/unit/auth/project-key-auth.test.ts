@@ -4,9 +4,11 @@ import {
   projectJwtAuth,
   extractBearerToken,
   verifyProjectJwt,
+  verifyProjectJwtMultiKey,
   lookupProjectConfig,
   decodeJwtPayloadUnsafe,
 } from "../../../src/http/auth";
+import type { ProjectConfig } from "../../../src/http/auth";
 
 // ============================================================================
 // JWT Test Helpers
@@ -143,17 +145,32 @@ describe("verifyProjectJwt", () => {
 });
 
 describe("lookupProjectConfig", () => {
-  beforeEach(async () => {
-    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+  it("reads legacy signingSecret format and normalizes to array", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [SECRET] }));
+    const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
+    expect(config).toEqual({ signingSecrets: [SECRET] });
   });
 
-  it("returns config when project exists", async () => {
+  it("reads new signingSecrets array format", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: ["key-a", "key-b"] }));
     const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
-    expect(config).toEqual({ signingSecret: SECRET });
+    expect(config).toEqual({ signingSecrets: ["key-a", "key-b"] });
   });
 
   it("returns null when project does not exist", async () => {
     await env.REGISTRY.delete(PROJECT_ID);
+    const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
+    expect(config).toBeNull();
+  });
+
+  it("returns null for empty signingSecrets array", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [] }));
+    const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
+    expect(config).toBeNull();
+  });
+
+  it("returns null for invalid value", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ unrelated: true }));
     const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
     expect(config).toBeNull();
   });
@@ -163,7 +180,7 @@ describe("projectJwtAuth - authorizeMutation", () => {
   const { authorizeMutation } = projectJwtAuth();
 
   beforeEach(async () => {
-    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [SECRET] }));
   });
 
   it("rejects with 500 when REGISTRY not configured", async () => {
@@ -232,7 +249,7 @@ describe("projectJwtAuth - authorizeRead", () => {
   const { authorizeRead } = projectJwtAuth();
 
   beforeEach(async () => {
-    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [SECRET] }));
   });
 
   it("rejects with 500 when REGISTRY not configured", async () => {
@@ -283,5 +300,76 @@ describe("projectJwtAuth - authorizeRead", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(403);
     }
+  });
+});
+
+// ============================================================================
+// Multi-Key Verification
+// ============================================================================
+
+const OLD_SECRET = "old-signing-secret-for-rotation";
+const NEW_SECRET = "new-signing-secret-for-rotation";
+
+describe("verifyProjectJwtMultiKey", () => {
+  it("verifies against primary key", async () => {
+    const config: ProjectConfig = { signingSecrets: [NEW_SECRET, OLD_SECRET] };
+    const token = await createTestJwt(validClaims(), NEW_SECRET);
+    const claims = await verifyProjectJwtMultiKey(token, config);
+    expect(claims).not.toBeNull();
+    expect(claims!.sub).toBe(PROJECT_ID);
+  });
+
+  it("verifies against rotated old key", async () => {
+    const config: ProjectConfig = { signingSecrets: [NEW_SECRET, OLD_SECRET] };
+    const token = await createTestJwt(validClaims(), OLD_SECRET);
+    const claims = await verifyProjectJwtMultiKey(token, config);
+    expect(claims).not.toBeNull();
+    expect(claims!.sub).toBe(PROJECT_ID);
+  });
+
+  it("rejects unknown key", async () => {
+    const config: ProjectConfig = { signingSecrets: [NEW_SECRET, OLD_SECRET] };
+    const token = await createTestJwt(validClaims(), "totally-unknown-secret");
+    const claims = await verifyProjectJwtMultiKey(token, config);
+    expect(claims).toBeNull();
+  });
+});
+
+describe("projectJwtAuth - key rotation", () => {
+  const { authorizeMutation, authorizeRead } = projectJwtAuth();
+
+  it("allows old key during rotation (authorizeMutation)", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims(), OLD_SECRET);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("allows new primary key (authorizeMutation)", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims(), NEW_SECRET);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("allows old key during rotation (authorizeRead)", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));
+    const token = await createTestJwt(validClaims({ scope: "read" }), OLD_SECRET);
+    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
+    expect(result).toHaveProperty("ok", true);
+  });
+
+  it("works with legacy format (authorizeMutation)", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+    const token = await createTestJwt(validClaims(), SECRET);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("works with legacy format (authorizeRead)", async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+    const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
+    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
+    expect(result).toHaveProperty("ok", true);
   });
 });
