@@ -33,6 +33,10 @@ export function hasContentType<T extends { contentType: string | null }>(
 
 /**
  * Validate content-type matches the stream's content-type.
+ * The stream's stored content-type is normalized (parameters like charset stripped,
+ * lowercased) before comparison. The request content-type is already normalized
+ * by parsePostInput. This means `application/json; charset=utf-8` and
+ * `application/json` are treated as equivalent.
  */
 export function validateContentTypeMatch(
   requestContentType: string,

@@ -6,57 +6,57 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 
 ## Summary Table
 
-| ID | Title | Package | Priority | Effort | Dependencies | Sources |
-|----|-------|---------|----------|--------|--------------|---------|
-| FIX-001 | Remove wildcard CORS default | core, subscription | P0 | S-M | -- | Review 3 (SEC-1) |
-| FIX-002 | Segment rotation non-atomic | core | P0 | S | -- | Review 2 (CORE-5) |
-| FIX-003 | SSE broadcast is sequential | core | P1 | M | -- | Review 2 (CORE-6) |
-| FIX-004 | DO storage quota enforcement | core | P1 | M | -- | Review 2 (CORE-16) |
-| FIX-005 | Fanout without backpressure / circuit breaker | subscription | P0 | M-L | -- | Review 2 (SUB-5) |
-| FIX-006 | Add NaN guards after parseInt on env vars | subscription | P1 | S | -- | Review 1 (SUB-1) |
-| FIX-007 | Producer ID pattern validation | core | P0 | S | -- | Review 3 (SEC-2) |
-| FIX-008 | Replace GitHub PR preview dependency | subscription | P0 | S | -- | Review 3 (SEC-3) |
-| FIX-009 | Extract shared JWT and auth logic | core, subscription | P1 | M | -- | Review 3 (AUTH-1) |
-| FIX-010 | Add stream_id claim to subscription JWT | subscription | P1 | S | FIX-009 | Review 3 (AUTH-3) |
-| FIX-011 | Structured logging with context | core, subscription | P1 | L | -- | Review 2, 3 |
-| FIX-012 | Standardize error response format to JSON | core | P1 | M | -- | Review 3 (CQ-1) |
-| FIX-013 | Fix wrangler test config compatibility_date | subscription | P1 | S | -- | Review 1 |
-| FIX-014 | KV cleanup retry on stream deletion | core | P1 | S-M | -- | Review 2 (CORE-7) |
-| FIX-015 | R2 segment deletion error handling | core | P1 | M | -- | Review 2 (CORE-8) |
-| FIX-016 | SSE clients Map bounded | core | P1 | M | -- | Review 2 (CORE-9) |
-| FIX-017 | LongPollQueue waiters bounded | core | P1 | S | -- | Review 2 (CORE-10) |
-| FIX-018 | WebSocket broadcast error logging | core | P1 | S | FIX-011 | Review 1 |
-| FIX-019 | Auth route parsing — exact match | subscription | P0 | S | -- | Review 2 (SUB-6) |
-| FIX-020 | Cleanup batch concurrency limit | subscription | P1 | M | -- | Review 2 (SUB-7) |
-| FIX-021 | URL parameter validation on DELETE routes | subscription | P1 | S | -- | Review 1 (SUB-2) |
-| FIX-022 | Metrics/logging for subscribe rollback failures | subscription | P1 | M | FIX-011 | Review 1 (SUB-3) |
-| FIX-023 | Document KV ACL requirement for REGISTRY | core, subscription | P1 | S | -- | Review 3 (AUTH-2) |
-| FIX-024 | Document CORS fallback behavior differences | core, subscription | P1 | S | FIX-001 | Review 3 (AUTH-4) |
-| FIX-025 | Add comments to fire-and-forget .catch patterns | core | P1 | S | -- | Review 3 (CQ-2) |
-| FIX-026 | Pin devDependency versions | all | P2 | S | -- | Review 3 (CQ-4) |
-| FIX-027 | Standardize tsconfig across packages | all | P2 | M | -- | Review 3 (CQ-5) |
-| FIX-028 | Analytics SQL query builder helper | subscription, admin-* | P2 | M | -- | Review 1, 3 |
-| FIX-029 | ReadPath in-flight caches bounded | core | P2 | M | -- | Review 2 |
-| FIX-030 | inFlight Map bounded | core | P2 | M | -- | Review 2 |
-| FIX-031 | Content-type parameter handling test | core | P2 | S | -- | Review 2 |
-| FIX-032 | Stream-Seq semantics documented | core | P2 | S | -- | Review 2 |
-| FIX-033 | Producer TTL documented | core | P2 | S | -- | Review 2 |
-| FIX-034 | Conformance test timeout | core | P2 | S | -- | Review 1 |
-| FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | Review 1 |
-| FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | Review 1 |
-| FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | Review 1 |
-| FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | Review 1 |
-| FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | Review 1 |
-| FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | Review 2 |
-| FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | Review 2 |
-| FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | Review 2 |
-| FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | Review 2 |
-| FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | Review 2 |
-| FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | Review 2 |
-| FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | Review 3 |
-| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | Review 3 |
-| FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | Review 3 |
-| FIX-049 | Surface actual error messages in all error responses | core, subscription | P2 | S-M | FIX-012 | Session fix |
+| ID | Title | Package | Priority | Effort | Dependencies | Status |
+|----|-------|---------|----------|--------|--------------|--------|
+| FIX-001 | Remove wildcard CORS default | core, subscription | P0 | S-M | -- | **DEFERRED** (user wants per-project KV CORS) |
+| FIX-002 | Segment rotation non-atomic | core | P0 | S | -- | **DONE** (8fbddb5) |
+| FIX-003 | SSE broadcast is sequential | core | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-004 | DO storage quota enforcement | core | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-005 | Fanout without backpressure / circuit breaker | subscription | P0 | M-L | -- | **DONE** (8fbddb5) |
+| FIX-006 | Add NaN guards after parseInt on env vars | subscription | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-007 | Producer ID pattern validation | core | P0 | S | -- | **DONE** (8fbddb5) |
+| FIX-008 | Replace GitHub PR preview dependency | subscription | P0 | S | -- | **SKIPPED** (no stable vitest 4 support) |
+| FIX-009 | Extract shared JWT and auth logic | core, subscription | P1 | M | -- | **SKIPPED** (user: too much work for little gain) |
+| FIX-010 | Add stream_id claim to subscription JWT | subscription | P1 | S | FIX-009 | **DONE** (8fbddb5) |
+| FIX-011 | Structured logging with context | core, subscription | P1 | L | -- | **DONE** (8fbddb5) |
+| FIX-012 | Standardize error response format to JSON | core | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-013 | Fix wrangler test config compatibility_date | subscription | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-014 | KV cleanup retry on stream deletion | core | P1 | S-M | -- | **DONE** (8fbddb5) |
+| FIX-015 | R2 segment deletion error handling | core | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-016 | SSE clients Map bounded | core | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-017 | LongPollQueue waiters bounded | core | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-018 | WebSocket broadcast error logging | core | P1 | S | FIX-011 | **DONE** (8fbddb5) |
+| FIX-019 | Auth route parsing — exact match | subscription | P0 | S | -- | **DONE** (8fbddb5) |
+| FIX-020 | Cleanup batch concurrency limit | subscription | P1 | M | -- | **DONE** (8fbddb5) |
+| FIX-021 | URL parameter validation on DELETE routes | subscription | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-022 | Metrics/logging for subscribe rollback failures | subscription | P1 | M | FIX-011 | **DONE** (8fbddb5) |
+| FIX-023 | Document KV ACL requirement for REGISTRY | core, subscription | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-024 | Document CORS fallback behavior differences | core, subscription | P1 | S | FIX-001 | **DEFERRED** (blocked by FIX-001) |
+| FIX-025 | Add comments to fire-and-forget .catch patterns | core | P1 | S | -- | **DONE** (8fbddb5) |
+| FIX-026 | Pin devDependency versions | all | P2 | S | -- | TODO |
+| FIX-027 | Standardize tsconfig across packages | all | P2 | M | -- | TODO |
+| FIX-028 | Analytics SQL query builder helper | subscription, admin-* | P2 | M | -- | TODO |
+| FIX-029 | ReadPath in-flight caches bounded | core | P2 | M | -- | TODO |
+| FIX-030 | inFlight Map bounded | core | P2 | M | -- | TODO |
+| FIX-031 | Content-type parameter handling test | core | P2 | S | -- | TODO |
+| FIX-032 | Stream-Seq semantics documented | core | P2 | S | -- | TODO |
+| FIX-033 | Producer TTL documented | core | P2 | S | -- | TODO |
+| FIX-034 | Conformance test timeout | core | P2 | S | -- | TODO |
+| FIX-035 | Replace hardcoded CACHE_SETTLE_MS with poll | core | P2 | M | -- | TODO |
+| FIX-036 | Per-test stream cleanup in subscription tests | subscription | P2 | M | -- | TODO |
+| FIX-037 | Replace `any` casts with TS interfaces (admin-core) | admin-core | P2 | M | -- | TODO |
+| FIX-038 | Replace `Record<string, unknown>` cast with TS interface (admin-sub) | admin-subscription | P2 | S | -- | TODO |
+| FIX-039 | Review React hook dependency / tokenRef pattern | admin-subscription | P2 | M | -- | TODO |
+| FIX-040 | Subscription response headers non-standard | subscription | P2 | S | -- | TODO |
+| FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | TODO |
+| FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | TODO |
+| FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | TODO |
+| FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | TODO |
+| FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | TODO |
+| FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | TODO |
+| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | TODO |
+| FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | TODO |
+| FIX-049 | Surface actual error messages in all error responses | core, subscription | P2 | S-M | FIX-012 | **DONE** (a4c5e9d, d33904f) |
 
 ---
 

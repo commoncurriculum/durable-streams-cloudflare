@@ -131,11 +131,25 @@ describe("validateContentTypeMatch", () => {
     }
   });
 
-  it("normalizes content types for comparison", () => {
-    // Both should normalize to "application/json"
+  it("normalizes stream content type with charset parameter", () => {
+    // Stream stored with charset, request without — both normalize to "application/json"
     const result = validateContentTypeMatch("application/json", "application/json; charset=utf-8");
-    // The stream's content type is already normalized when stored
     expect(result.kind).toBe("ok");
+  });
+
+  it("normalizes stream content type with multiple parameters", () => {
+    const result = validateContentTypeMatch("text/plain", "text/plain; charset=utf-8; boundary=something");
+    expect(result.kind).toBe("ok");
+  });
+
+  it("normalizes case differences", () => {
+    const result = validateContentTypeMatch("application/json", "Application/JSON");
+    expect(result.kind).toBe("ok");
+  });
+
+  it("rejects genuinely different types even with parameters stripped", () => {
+    const result = validateContentTypeMatch("text/plain", "application/json; charset=utf-8");
+    expect(result.kind).toBe("error");
   });
 });
 
