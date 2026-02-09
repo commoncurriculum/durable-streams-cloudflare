@@ -1,0 +1,164 @@
+# Chapter 2a: Authentication
+
+Both the core and subscription workers implement per-project JWT authentication using HMAC-SHA256 signing secrets stored in a KV namespace. Auth is optional -- both workers can run without it -- but is required for any multi-tenant or production deployment.
+
+## Architecture
+
+```
+Client ── Bearer <JWT> ──> Worker ── KV lookup (REGISTRY) ──> Verify signature ──> Route
+```
+
+1. Client sends a JWT in the `Authorization: Bearer <token>` header.
+2. Worker extracts the project ID from the request path (`/v1/:projectId/...`).
+3. Worker looks up the project's signing secret from the `REGISTRY` KV namespace (key = project ID, value = `{ signingSecret: "..." }`).
+4. Worker verifies the JWT signature (HS256) and validates claims.
+5. On success, the request proceeds. On failure, 401 or 403.
+
+## JWT Claims
+
+| Claim | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sub` | string | Yes | Project ID. Must match the project segment in the URL. |
+| `scope` | `"write"` or `"read"` | Yes | Access scope. |
+| `exp` | number | Yes | Expiration time (Unix timestamp in seconds). |
+| `stream_id` | string | No | Optional. Restricts the token to a specific stream. |
+
+The `alg` header must be `HS256`. No other algorithms are accepted.
+
+## KV Registry
+
+The `REGISTRY` KV namespace stores per-project configuration. Each key is a project ID, each value is a JSON object:
+
+```json
+{ "signingSecret": "your-secret-here" }
+```
+
+Both core and subscription workers bind to the same `REGISTRY` namespace. Every authenticated request performs one KV read to look up the signing secret. KV reads are cached at the edge by Cloudflare.
+
+Projects are registered via the core worker's RPC method `registerProject(projectId, signingSecret)`, which writes the KV entry.
+
+## Core Worker Auth
+
+The core worker uses two separate auth callbacks -- one for mutations, one for reads:
+
+```ts
+import { createStreamWorker, projectJwtAuth } from "@durable-streams-cloudflare/core";
+
+const { authorizeMutation, authorizeRead } = projectJwtAuth();
+export default createStreamWorker({ authorizeMutation, authorizeRead });
+```
+
+### Scope Enforcement
+
+| Operation | Required scope |
+|-----------|---------------|
+| `PUT` (create stream) | `write` |
+| `POST` (append) | `write` |
+| `DELETE` (delete stream) | `write` |
+| `GET` / `HEAD` (read) | `read` or `write` |
+| `GET ?live=sse` (SSE) | `read` or `write` |
+| `GET ?live=long-poll` (long-poll) | `read` or `write` |
+
+### Stream-Scoped Tokens
+
+If the JWT contains a `stream_id` claim, core's read auth verifies that `stream_id` matches the stream portion of the request path. This restricts the token to a single stream -- useful for granting clients read access to one stream without access to others in the same project.
+
+Mutation auth does not check `stream_id` (mutations already require `write` scope).
+
+### Public Stream Bypass
+
+Core supports public streams via a `public` column on the `stream_meta` table (added via migration). When a stream is marked public, read auth is bypassed -- no JWT required for reads. Writes still require auth. The public flag is set during stream creation and stored in KV metadata.
+
+## Subscription Worker Auth
+
+The subscription worker uses a single auth callback with action-based scope mapping:
+
+```ts
+import { createSubscriptionWorker, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
+
+export default createSubscriptionWorker({ authorize: projectJwtAuth() });
+```
+
+### Scope Enforcement
+
+| Action | Required scope |
+|--------|---------------|
+| `publish` | `write` |
+| `unsubscribe` | `write` |
+| `deleteSession` | `write` |
+| `subscribe` | `read` or `write` |
+| `getSession` | `read` or `write` |
+| `touchSession` | `read` or `write` |
+
+The subscription auth also checks that `claims.sub === route.project` (the JWT's subject must match the project in the URL) and validates the optional `stream_id` claim against the stream in the route (if applicable).
+
+### Custom Auth
+
+Both workers support custom auth callbacks for non-JWT authentication:
+
+```ts
+// Core: separate callbacks for mutations and reads
+createStreamWorker({
+  authorizeMutation: async (request, doKey, env, timing) => { ... },
+  authorizeRead: async (request, doKey, env, timing) => { ... },
+});
+
+// Subscription: single callback with route context
+createSubscriptionWorker({
+  authorize: async (request, route, env) => { ... },
+});
+```
+
+The subscription `route` parameter is a discriminated union providing the parsed action, project, and IDs (see Chapter 9 for the full `SubscriptionRoute` type).
+
+## Minting JWTs
+
+To mint a JWT for a client, sign it with the project's signing secret using HS256:
+
+```ts
+// Node.js example (jose library)
+import * as jose from "jose";
+
+const secret = new TextEncoder().encode("your-project-signing-secret");
+const token = await new jose.SignJWT({
+  sub: "my-project",
+  scope: "read",
+})
+  .setProtectedHeader({ alg: "HS256" })
+  .setExpirationTime("1h")
+  .sign(secret);
+```
+
+For stream-scoped tokens, add the `stream_id` claim:
+
+```ts
+const token = await new jose.SignJWT({
+  sub: "my-project",
+  scope: "read",
+  stream_id: "chat-room-1",
+})
+  .setProtectedHeader({ alg: "HS256" })
+  .setExpirationTime("1h")
+  .sign(secret);
+```
+
+## SSE Auth Note
+
+`EventSource` cannot set custom headers. For SSE connections, use:
+- **Cookie auth** (if the Worker is on the same domain)
+- **Short-lived signed token in the query string** (e.g., `?token=<jwt>`)
+- **`fetch()` streaming** or **WebSocket** if you need header-based auth
+
+## No Auth Mode
+
+Both workers can run without auth for development or single-tenant deployments:
+
+```ts
+// Core: omit auth callbacks
+export default createStreamWorker();
+
+// Subscription: omit authorize
+export default createSubscriptionWorker();
+```
+
+Health check endpoints (`GET /health`) always bypass auth in both workers.

@@ -1,4 +1,10 @@
-# Architecture
+# Chapter 1: Architecture
+
+Durable Streams on Cloudflare — low-latency, consistent writes suitable for a real-time text editor.
+
+## Core Principle
+
+Object storage is **not** in the ACK path. The ACK path is **Durable Object + SQLite** — a single transaction, a single region.
 
 ## Overview
 
@@ -21,12 +27,21 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
                           └──────────────────────────────────────────────────┘
 ```
 
+## Design Decisions
+
+- Offsets are **`readSeq_byteOffset` only**. The server accepts `-1` and `now` as **sentinel inputs** but never emits them.
+- No cross-segment stitching within a single GET.
+- Segment rotation triggers on **message count or byte size**.
+- No external database dependencies in the hot path.
+- Per-stream Durable Objects with SQLite for hot log + metadata.
+- R2 segments for cold history and CDN-friendly catch-up reads.
+
 ## Request Flow
 
 ### Writes (PUT / POST / DELETE)
 
 1. Edge worker (`create_worker.ts`) validates auth, applies CORS, and routes to the stream's DO via `stub.routeStreamRequest()`.
-2. StreamDO runs the handler inside `blockConcurrencyWhile()` for single-writer ordering.
+2. StreamDO routes to the appropriate write handler (`handlePut`, `handlePost`, or `handleDelete` in `write.ts`), each of which runs inside `blockConcurrencyWhile()` for single-writer ordering. Read handlers run concurrently — only writes are serialized.
 3. SQLite transaction: assign offsets, insert ops, update metadata. ACK only after commit.
 4. Broadcast to all connected live readers (WebSocket, SSE, long-poll).
 5. Schedule segment rotation to R2 if thresholds are exceeded.
@@ -52,6 +67,24 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
 3. If at tail, park the request in a `LongPollQueue` with a timeout.
 4. When a write arrives (or timeout fires), resolve the parked request.
 
+## Append Flow (POST)
+
+1. Edge worker routes request to the stream's DO.
+2. DO validates:
+   - `Content-Type` required unless close-only.
+   - `Stream-Closed: true` semantics.
+   - Producer headers all-or-none.
+3. SQLite transaction:
+   - Reject if closed (409).
+   - Validate producer epoch/seq.
+   - Assign `start_offset` and `end_offset`.
+   - Insert `ops` row.
+   - Update `stream_meta` (tail offset, segment counters, producer state).
+4. ACK only after commit:
+   - `204 No Content`
+   - `Stream-Next-Offset` header
+5. Broadcast to all connected live readers (WebSocket, SSE, long-poll).
+
 ## Key Modules
 
 ### Edge Layer (`src/http/`)
@@ -62,7 +95,7 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
 | `worker.ts` | `WorkerEntrypoint` subclass — HTTP entry point + RPC methods for service bindings |
 | `durable_object.ts` | `StreamDO` class — storage wiring, `StreamContext` construction, Hibernation API handlers, `blockConcurrencyWhile` |
 | `router.ts` | Method dispatch (`PUT`/`POST`/`GET`/`HEAD`/`DELETE`) + `StreamContext` type |
-| `hono.ts` | CORS helpers |
+| `hono.ts` | CORS helpers (`applyCorsHeaders`). Historical name — core does not use Hono for routing. |
 | `handlers/read.ts` | `GET`/`HEAD` — offset resolution, cache headers, ETag, WebSocket upgrade (`?live=ws-internal`) |
 | `handlers/write.ts` | `PUT`/`POST`/`DELETE` — validation, execution, broadcast to all transports |
 | `handlers/realtime.ts` | Long-poll (`LongPollQueue`), SSE (`SseState`), WebSocket bridge (`WsAttachment`), broadcast functions |
@@ -79,7 +112,7 @@ A single Cloudflare Worker routes all traffic to a **Durable Object per stream**
 | `rotate.ts` | Flush hot ops to R2, advance `read_seq` |
 | `offsets.ts` | Offset parsing/validation, `Stream-Next-Offset` encoding |
 | `close.ts` | Close-only semantics |
-| `content_strategy.ts` | JSON vs binary serialization |
+| `../protocol/headers.ts` | JSON vs binary content type detection (`isJsonContentType`, `isTextual`) |
 | `shared.ts` | Content-Length / body size validation |
 
 ### Storage (`src/storage/`)
@@ -98,10 +131,70 @@ Headers, offsets, cursors, JSON helpers, limits, timing (`Server-Timing` instrum
 
 | Table | Contents |
 |-------|----------|
-| `stream_meta` | Content type, tail offset, TTL/expiry, closed state, segment counters |
+| `stream_meta` | Content type, tail offset, TTL/expiry, closed state, segment counters, public flag |
 | `ops` | Append log — offset, payload, seq, producer info |
 | `producers` | Producer id → epoch/seq tracking, last offset, last updated |
 | `segments` | R2 segment records — start/end offsets, read_seq, R2 key, size |
+
+```sql
+CREATE TABLE stream_meta (
+  stream_id TEXT PRIMARY KEY,
+  content_type TEXT NOT NULL,
+  closed INTEGER NOT NULL DEFAULT 0,
+  tail_offset INTEGER NOT NULL DEFAULT 0,
+  read_seq INTEGER NOT NULL DEFAULT 0,
+  segment_start INTEGER NOT NULL DEFAULT 0,
+  segment_messages INTEGER NOT NULL DEFAULT 0,
+  segment_bytes INTEGER NOT NULL DEFAULT 0,
+  last_stream_seq TEXT,
+  ttl_seconds INTEGER,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL,
+  closed_at INTEGER,
+  closed_by_producer_id TEXT,
+  closed_by_epoch INTEGER,
+  closed_by_seq INTEGER,
+  public INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE producers (
+  producer_id TEXT PRIMARY KEY,
+  epoch INTEGER NOT NULL,
+  last_seq INTEGER NOT NULL,
+  last_offset INTEGER NOT NULL,
+  last_updated INTEGER
+);
+
+CREATE TABLE ops (
+  start_offset INTEGER PRIMARY KEY,
+  end_offset INTEGER NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  stream_seq TEXT,
+  producer_id TEXT,
+  producer_epoch INTEGER,
+  producer_seq INTEGER,
+  body BLOB NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE segments (
+  read_seq INTEGER PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  start_offset INTEGER NOT NULL,
+  end_offset INTEGER NOT NULL,
+  content_type TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  size_bytes INTEGER NOT NULL,
+  message_count INTEGER NOT NULL
+);
+```
+
+## Offset Encoding
+
+- Offsets are fixed-width decimal `readSeq_byteOffset`.
+- `readSeq` increments when a segment is rotated to R2; `byteOffset` resets per segment.
+- JSON streams increment offsets by **message count**; non-JSON streams by **byte length**.
 
 ## Cold Storage / Segment Rotation
 
@@ -157,7 +250,7 @@ type WsAttachment = {
 
 ### Long-Poll
 
-Long-poll requests park at the DO in a `LongPollQueue` with a timeout. Responses include protocol-correct `Cache-Control: public, max-age=20` headers. DO-level in-flight coalescing and a recent-read cache (100ms TTL, auto-invalidated by `meta.tail_offset`) deduplicate concurrent requests.
+Long-poll requests park at the DO in a `LongPollQueue` with a timeout. 200 responses include `Cache-Control: public, max-age=20`; 204 timeout responses include `Cache-Control: no-store`. DO-level in-flight coalescing and a recent-read cache (100ms TTL, auto-invalidated by `meta.tail_offset`) deduplicate concurrent requests.
 
 ### DO Hibernation
 
@@ -169,6 +262,18 @@ The Hibernation API lets the DO sleep while holding WebSocket connections. Cloud
 
 After processing, if only hibernatable WebSocket connections remain (no active HTTP requests, no timers, no in-flight fetches), the DO returns to hibernation immediately.
 
-## Registry Stream
+For read-heavy workloads, this reduces DO duration billing by ~99% compared to holding SSE connections directly on the DO.
 
-The worker emits create/delete events to a system stream (`__registry__`) for clients that need discovery or monitoring.
+## Latency Target (50ms)
+
+~50ms end-to-end (server → client) is achievable when clients are geographically close to the DO. For global users, design for **per-region** 50ms rather than global 50ms.
+
+- **Per-document locality**: pin each document to a primary region.
+- **Single round-trip in the hot path**: exactly one DO SQLite transaction — no cross-region calls.
+- **Persistent connections**: the internal WebSocket bridge maintains persistent connections at the edge while the DO sleeps.
+- **Micro-batching**: coalesce keystrokes into 5–20ms batches to reduce per-append overhead.
+- **Optimistic UI**: render local ops immediately; reconcile on ACK to mask network variance.
+
+## Project Registry (KV)
+
+The `REGISTRY` KV namespace stores per-project signing secrets for JWT authentication. Both the core and subscription workers bind to the same namespace. See Chapter 2a (Authentication) for details.

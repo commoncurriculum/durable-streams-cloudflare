@@ -20,9 +20,13 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 
 ## Where to Find Things
 
-- **Architecture**: `docs/cloudflare-architecture.md` has the core module map, data model, and request flow
-- **CDN caching**: `docs/cdn-cache-flow.md`
-- **Design docs**: everything in `docs/` is internal design notes
+- **Design docs**: `docs/00-index.md` is the table of contents for all design documentation (10 chapters)
+- **Architecture**: `docs/01-architecture.md` — core module map, data model, request flow
+- **Cost analysis**: `docs/02-cost-analysis.md` — billing model, cost-driven design decisions
+- **CDN caching**: `docs/05-cache-architecture.md` (current design), `docs/04-cache-evolution.md` (history)
+- **Request collapsing**: `docs/06-request-collapsing.md` — sentinel coalescing, loadtest results
+- **CDN investigation**: `docs/07-cdn-miss-investigation.md` — production CDN testing, nginx IPv6 fix
+- **Subscription design**: `docs/09-subscription-design.md` — hot push / cold catch-up
 - **API endpoints**: each package README documents its routes
 - **Auth patterns**: each package README has auth examples
 - **Env vars and wrangler bindings**: each package's `wrangler.toml` and README
@@ -40,7 +44,7 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 
 ## Critical Design Constraints
 
-- **Edge request collapsing is a CORE design goal.** The entire point of the edge cache layer (`caches.default` in `create_worker.ts`) is to collapse concurrent reads at the same stream position into a single DO round-trip. Without this, the system cannot scale fan-out reads — 1M followers of a stream means 1M hits to the Durable Object, which is unacceptable. Any change to the edge cache must preserve (or improve) collapsing for live tail long-poll reads. See `docs/edge-cache-live-tail-collapsing.md` for the current status and required fix.
+- **Edge request collapsing is a CORE design goal.** The entire point of the edge cache layer (`caches.default` in `create_worker.ts`) is to collapse concurrent reads at the same stream position into a single DO round-trip. Without this, the system cannot scale fan-out reads — 1M followers of a stream means 1M hits to the Durable Object, which is unacceptable. Any change to the edge cache must preserve (or improve) collapsing for live tail long-poll reads. See `docs/06-request-collapsing.md` for the full design and `docs/07-cdn-miss-investigation.md` for production CDN testing results.
 
 ## Key Conventions
 

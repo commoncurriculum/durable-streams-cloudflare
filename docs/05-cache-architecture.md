@@ -1,4 +1,6 @@
-# CDN Cache Architecture
+# Chapter 5: Current Cache Architecture
+
+The result of the Phase 1–4 evolution. This is the reference for what the edge cache does today.
 
 ## Edge Worker
 
@@ -105,7 +107,7 @@ The DO sets protocol-correct `Cache-Control` headers on all read responses:
 | HEAD | `no-store` | Metadata-only, always fresh |
 | `?offset=now` | `no-store` | Cursor bootstrap, must be fresh |
 | Long-poll 200 | `public, max-age=20` | Short client TTL |
-| Long-poll 204 (timeout) | `public, max-age=20` | Not cached at edge (excluded by status check) |
+| Long-poll 204 (timeout) | `no-store` | Not cached at edge (excluded by status check); `no-store` prevents client-side caching too |
 | SSE | `no-cache` | Real-time streaming |
 
 ## DO-Level Deduplication

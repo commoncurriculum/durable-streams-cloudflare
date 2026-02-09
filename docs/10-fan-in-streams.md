@@ -1,16 +1,10 @@
-# Fan-In Subscription Streams (Planned, Session-Centered)
+# Chapter 10: Fan-In Subscription Streams (Planned)
 
-## Overview
 Status: **Planned (not implemented)**.
 
-Fan-in streams aggregate updates from many underlying streams into a single
-subscription stream per **session**. Clients open one SSE or long-poll
-connection to the fan-in stream and receive multiplexed events with the source
-stream id and offset.
+Fan-in streams aggregate updates from many underlying streams into a single subscription stream per **session**. Clients open one SSE or long-poll connection to the fan-in stream and receive multiplexed events with the source stream id and offset.
 
-This is an application-level pattern built on top of Durable Streams. It is not
-part of the core protocol and is intended for v2 scale when clients subscribe to
-hundreds of feeds.
+This is an application-level pattern built on top of Durable Streams. It is not part of the core protocol and is intended for v2 scale when clients subscribe to hundreds of feeds.
 
 ## Goals
 - Reduce client connections by multiplexing many streams into one.
@@ -25,15 +19,11 @@ hundreds of feeds.
 
 ## Core Concepts
 - **Subject**: a session. The session id is the subscription identity.
-- **Fan-in stream**: a Durable Stream at `subscriptions/<sessionId>` that carries
-  envelope events.
-- **Session DO**: the fan-in stream DO for a given session; stores the session's
-  subscription list.
+- **Fan-in stream**: a Durable Stream at `subscriptions/<sessionId>` that carries envelope events.
+- **Session DO**: the fan-in stream DO for a given session; stores the session's subscription list.
 - **Stream DO**: the source stream's DO; stores the stream's subscriber list.
-- **Envelope events**: JSON messages containing source stream id, source offset,
-  event type, and payload.
-- **Fan-out writer**: process that appends envelope events into session fan-in
-  streams.
+- **Envelope events**: JSON messages containing source stream id, source offset, event type, and payload.
+- **Fan-out writer**: process that appends envelope events into session fan-in streams.
 
 ## Data Model (Per-DO SQLite)
 
@@ -45,8 +35,7 @@ CREATE TABLE stream_subscribers (
 );
 ```
 
-Maintain a subscriber count on the stream meta row to avoid counting on every
-append:
+Maintain a subscriber count on the stream meta row to avoid counting on every append:
 ```sql
 ALTER TABLE stream_meta ADD COLUMN subscriber_count INTEGER NOT NULL DEFAULT 0;
 ```
@@ -67,22 +56,19 @@ Request body:
 ```json
 { "sessionId": "sess-123", "streamId": "doc-abc" }
 ```
-Behavior: authenticate, authorize, route to session DO
-`subscriptions/<sessionId>` to subscribe.
+Behavior: authenticate, authorize, route to session DO `subscriptions/<sessionId>` to subscribe.
 
 2. `DELETE /v1/subscriptions`
 Request body:
 ```json
 { "sessionId": "sess-123", "streamId": "doc-abc" }
 ```
-Behavior: authenticate, authorize, route to session DO
-`subscriptions/<sessionId>` to unsubscribe.
+Behavior: authenticate, authorize, route to session DO `subscriptions/<sessionId>` to unsubscribe.
 
 3. `GET /v1/subscriptions/{sessionId}`
 Returns the list of subscribed `streamId`s from the session DO.
 
-All stream reads/writes still use the core stream endpoint:
-`/v1/stream/<stream-id>`.
+All stream reads/writes still use the core stream endpoint: `/v1/stream/<stream-id>`.
 
 ## Internal DO-to-DO Calls (Subscription Updates)
 The session DO updates the stream DO subscriber list via trusted internal calls:
@@ -92,13 +78,13 @@ The session DO updates the stream DO subscriber list via trusted internal calls:
 These are internal-only routes (not public).
 
 ## Subscribe / Unsubscribe Flow
+
 ### Subscribe
 1. Session DO verifies auth/session ownership and stream ACL.
 2. Session DO calls stream DO to add `sessionId` to `stream_subscribers`.
 3. On success, session DO inserts `streamId` into `session_subscriptions`.
 4. If stream DO update fails: fail the request (no local write).
-5. If local write fails after stream DO success: attempt rollback by removing
-   the subscriber from stream DO; if rollback fails, record a repair log TODO.
+5. If local write fails after stream DO success: attempt rollback by removing the subscriber from stream DO; if rollback fails, record a repair log TODO.
 
 ### Unsubscribe
 1. Session DO calls stream DO to remove `sessionId` from `stream_subscribers`.
@@ -107,12 +93,10 @@ These are internal-only routes (not public).
 
 ## Fan-Out Path (Per-Stream Gating)
 On append to a stream DO, use `subscriber_count` to choose a fan-out path:
-- `subscriber_count <= 200`: inline append envelope events to each session's
-  fan-in stream.
+- `subscriber_count <= 200`: inline append envelope events to each session's fan-in stream.
 - `subscriber_count > 200`: enqueue fan-out tasks (planned/optional queue).
 
-Queue path (future): enqueue `{ sessionId, streamId, offset, type, payload }`
-per subscriber and let a consumer append to session fan-in streams.
+Queue path (future): enqueue `{ sessionId, streamId, offset, type, payload }` per subscriber and let a consumer append to session fan-in streams.
 
 ## Envelope Event Format
 Each message in the fan-in stream is JSON:
@@ -134,11 +118,10 @@ Client opens one stream for the session:
 GET /v1/stream/subscriptions/sess-123?offset=now&live=sse
 ```
 
-SSE auth note: `EventSource` cannot set custom headers, so use cookie auth or a
-short-lived signed token in the query string.
+SSE auth note: `EventSource` cannot set custom headers, so use cookie auth or a short-lived signed token in the query string.
 
 ## Message Matching (TBD)
-Does a message match a subscription? Not implemented yet. Stub:
+Not implemented yet. Stub:
 ```ts
 function matchSubscription(message, subscriptionRule): boolean
 ```
@@ -155,13 +138,11 @@ TODOs:
 ## Offset Semantics
 - The fan-in stream has its own offsets independent of source streams.
 - Source stream offsets are carried inside the envelope.
-- Clients resume fan-in using the fan-in offset; clients can also resume a
-  source stream using the embedded offset if needed.
+- Clients resume fan-in using the fan-in offset; clients can also resume a source stream using the embedded offset if needed.
 
 ## Failure Handling
 - Fan-out should be idempotent where possible. Duplicate deliveries are allowed.
-- Queue consumers should retry on failure. Duplicate writes are acceptable if
-  clients dedupe on `{stream, offset}`.
+- Queue consumers should retry on failure. Duplicate writes are acceptable if clients dedupe on `{stream, offset}`.
 - If fan-out falls behind, clients still have source streams for full replay.
 
 ## Implementation Notes
