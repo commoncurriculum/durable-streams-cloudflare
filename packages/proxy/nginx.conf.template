@@ -1,0 +1,41 @@
+server {
+    listen 80;
+    server_name ${SERVER_NAME};
+
+    # Use Cloudflare DNS, IPv4 only. The ipv6=off flag prevents nginx from
+    # resolving AAAA records for the upstream. Without it, nginx round-robins
+    # across IPv4 and IPv6 addresses; on EKS (no IPv6 routing), IPv6 attempts
+    # fail with "Network unreachable" and Cloudflare sees origin errors.
+    # The variable in proxy_pass ($upstream) is required — nginx only uses
+    # the resolver directive for dynamic (variable-based) upstreams.
+    resolver 1.1.1.1 ipv6=off valid=30s;
+
+    location / {
+        set $upstream https://${ORIGIN_HOST};
+        proxy_pass $upstream;
+        proxy_set_header Host ${ORIGIN_HOST};
+        proxy_ssl_server_name on;
+        proxy_ssl_name ${ORIGIN_HOST};
+
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Must exceed DO long-poll timeout (4s)
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 10s;
+
+        # Don't buffer — important for long-poll
+        proxy_buffering off;
+
+        # Pass through all response headers from Worker
+        proxy_pass_header Cache-Control;
+        proxy_pass_header ETag;
+        proxy_pass_header Stream-Next-Offset;
+        proxy_pass_header Stream-Cursor;
+        proxy_pass_header Stream-Up-To-Date;
+        proxy_pass_header Stream-Closed;
+        proxy_pass_header Stream-Write-Timestamp;
+    }
+}
