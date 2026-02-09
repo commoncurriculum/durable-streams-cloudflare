@@ -81,7 +81,7 @@ test("project selector dropdown navigates to selected project", async ({ page })
   // Wait for the project option to be available in the dropdown (options are hidden elements)
   await page.waitForFunction(
     (id) => {
-      const select = document.querySelector("#project-select") as HTMLSelectElement;
+      const select = document.querySelector("#project-select") as unknown as HTMLSelectElement;
       return select && Array.from(select.options).some((o) => o.value === id);
     },
     PROJECT_ID,

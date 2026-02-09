@@ -22,10 +22,15 @@ publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParam
   const streamId = c.req.param("streamId");
   const metrics = createMetrics(c.env.METRICS);
 
+  const contentType = c.req.header("Content-Type");
+  if (!contentType) {
+    return c.json({ error: "Content-Type header is required" }, 400);
+  }
+
   try {
     const result = await publish(c.env, projectId, streamId, {
       payload: await c.req.arrayBuffer(),
-      contentType: c.req.header("Content-Type") ?? "application/json",
+      contentType,
       producerId: c.req.header("Producer-Id") ?? undefined,
       producerEpoch: c.req.header("Producer-Epoch") ?? undefined,
       producerSeq: c.req.header("Producer-Seq") ?? undefined,

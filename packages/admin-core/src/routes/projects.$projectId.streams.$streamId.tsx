@@ -43,7 +43,7 @@ function CreateStreamForm({
   doKey: string;
 }) {
   const router = useRouter();
-  const [contentType, setContentType] = useState("application/json");
+  const contentType = "application/json";
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,15 +97,9 @@ function CreateStreamForm({
         <div className="mt-5 max-w-lg space-y-4">
           <div>
             <FormLabel>Content Type</FormLabel>
-            <select
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
-            >
-              <option value="application/json">application/json</option>
-              <option value="text/plain">text/plain</option>
-              <option value="application/octet-stream">application/octet-stream</option>
-            </select>
+            <div className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100">
+              {contentType}
+            </div>
           </div>
 
           <div>

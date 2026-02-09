@@ -78,7 +78,7 @@ export function parsePutInput(raw: RawPutInput, now: number): Result<ParsedPutIn
   let bodyBytes = raw.bodyBytes;
   if (
     bodyBytes.length > 0 &&
-    isJsonContentType(raw.contentTypeHeader ?? "application/octet-stream")
+    raw.contentTypeHeader != null && isJsonContentType(raw.contentTypeHeader)
   ) {
     const text = new TextDecoder().decode(bodyBytes);
     try {

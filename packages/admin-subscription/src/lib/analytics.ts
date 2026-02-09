@@ -269,7 +269,10 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         if (!data.streamId) {
           throw new Error("publish requires streamId");
         }
-        const contentType = data.contentType ?? "application/json";
+        if (!data.contentType) {
+          throw new Error("publish requires contentType");
+        }
+        const contentType = data.contentType;
         // Ensure the stream exists on core (PUT is idempotent — creates or no-ops)
         const core = (env as Record<string, unknown>).CORE as CoreService;
         const doKey = `${data.projectId}/${data.streamId}`;

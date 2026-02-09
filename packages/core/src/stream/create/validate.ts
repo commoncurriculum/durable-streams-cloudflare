@@ -40,8 +40,11 @@ export function validateIdempotentPut(
 export function validateNewStream(
   input: ParsedPutInput,
 ): Result<ValidatedPutInput> {
-  // For new streams, content-type defaults to application/octet-stream
-  const contentType = input.contentType ?? "application/octet-stream";
+  // Content-type is required for new streams
+  if (!input.contentType) {
+    return { kind: "error", response: errorResponse(400, "Content-Type header is required") };
+  }
+  const contentType = input.contentType;
 
   return {
     kind: "ok",

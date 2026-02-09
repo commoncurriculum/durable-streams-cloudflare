@@ -127,7 +127,10 @@ export const sendTestAction = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService;
 
-    const contentType = data.contentType ?? "application/json";
+    if (!data.contentType) {
+      throw new Error("contentType is required");
+    }
+    const contentType = data.contentType;
     const bodyBytes = new TextEncoder().encode(data.body);
 
     if (data.action === "create") {

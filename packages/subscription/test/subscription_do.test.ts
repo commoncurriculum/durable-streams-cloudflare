@@ -167,7 +167,7 @@ describe("SubscriptionDO", () => {
       const activeSession = crypto.randomUUID();
       const staleSession = crypto.randomUUID();
 
-      // Only create the active session stream (octet-stream matches fanout content type)
+      // Only create the active session stream — stale session will 404 on fanout
       await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "application/json" });
 
       await stub.addSubscriber(activeSession);

@@ -145,17 +145,11 @@ describe("validatePutInput (new stream)", () => {
     }
   });
 
-  it("defaults content-type to application/octet-stream for new stream", () => {
+  it("errors when content-type is missing for new stream", () => {
     const input = baseParsedInput({ contentType: null });
 
     const result = validatePutInput(input, null);
 
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.value.kind).toBe("create");
-      if (result.value.kind === "create") {
-        expect(result.value.contentType).toBe("application/octet-stream");
-      }
-    }
+    expect(result.kind).toBe("error");
   });
 });

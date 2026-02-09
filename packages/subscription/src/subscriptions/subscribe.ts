@@ -12,8 +12,11 @@ export async function subscribe(
 ): Promise<SubscribeResult> {
   const start = Date.now();
   const metrics = createMetrics(env.METRICS);
-  const ttlSeconds = env.SESSION_TTL_SECONDS
+  const parsed = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
+    : undefined;
+  const ttlSeconds = parsed !== undefined && Number.isFinite(parsed) && parsed > 0
+    ? parsed
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
@@ -23,7 +26,10 @@ export async function subscribe(
   if (!sourceHead.ok) {
     throw new Error(`Source stream not found: ${sourceDoKey} (status: ${sourceHead.status})`);
   }
-  const contentType = sourceHead.contentType ?? "application/json";
+  if (!sourceHead.contentType) {
+    throw new Error(`Source stream ${sourceDoKey} has no content type`);
+  }
+  const contentType = sourceHead.contentType;
 
   // 1. Create/touch session stream in core with the same content type
   const sessionDoKey = `${projectId}/${sessionId}`;
