@@ -253,6 +253,7 @@ async function runDistributed(coreUrl: string) {
   console.log(`DISTRIBUTED LOAD TEST: ${totalClients} workers → ${workerUrl}`);
   console.log(`  ${sseClients} SSE + ${longPollClients} long-poll across ${streamCount} streams`);
   console.log(`  write every ${writeIntervalMs}ms, ${durationSec}s duration, msg ~${msgSize}B`);
+  console.log(`  ramp-up: ${rampUpSec}s`);
   console.log(`${"═".repeat(70)}\n`);
 
   let completed = 0;
@@ -272,6 +273,7 @@ async function runDistributed(coreUrl: string) {
   }, 2000);
 
   const workerRequests: Promise<void>[] = [];
+  const rampDelayMs = (rampUpSec * 1000) / Math.max(totalClients, 1);
 
   for (let i = 0; i < totalClients; i++) {
     const streamIdx = i % streamCount;
@@ -279,12 +281,14 @@ async function runDistributed(coreUrl: string) {
 
     workerRequests.push(
       (async () => {
+        await sleep(i * rampDelayMs);
+
         const config = {
           coreUrl,
           projectId,
           streamId: streamIds[streamIdx],
           mode,
-          durationSec,
+          durationSec: Math.max(1, durationSec - Math.round((i * rampDelayMs) / 1000)),
           authToken: readToken,
           msgSize,
         };
