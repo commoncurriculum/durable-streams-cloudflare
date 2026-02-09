@@ -206,6 +206,36 @@ describe("SubscriptionDO", () => {
       expect(result.nextOffset).not.toBeNull();
     });
 
+    it("should use queued fanout when subscribers exceed threshold and queue is available", async () => {
+      await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
+
+      const sessionId1 = crypto.randomUUID();
+      const sessionId2 = crypto.randomUUID();
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId1}`, { contentType: "application/json" });
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId2}`, { contentType: "application/json" });
+      await stub.addSubscriber(sessionId1);
+      await stub.addSubscriber(sessionId2);
+
+      const result = await runInDurableObject(stub, async (instance) => {
+        const do_ = instance as unknown as import("../src/subscriptions/do").SubscriptionDO;
+        const doEnv = (do_ as unknown as { env: Record<string, unknown> }).env;
+
+        // Set threshold to 1 so 2 subscribers (> 1) triggers the queue path
+        doEnv.FANOUT_QUEUE_THRESHOLD = "1";
+
+        const buf = new TextEncoder().encode(JSON.stringify({ msg: "queued" })).buffer as ArrayBuffer;
+        return do_.publish(PROJECT_ID, streamId, { payload: buf, contentType: "application/json" });
+      });
+
+      expect(result.status).toBeGreaterThanOrEqual(200);
+      expect(result.status).toBeLessThan(300);
+      expect(result.fanoutCount).toBe(2);
+      // Queued mode: source write succeeds, fanout is async via queue
+      expect(result.fanoutMode).toBe("queued");
+      expect(result.fanoutSuccesses).toBe(0); // queued, not counted inline
+      expect(result.fanoutFailures).toBe(0);
+    });
+
   });
 
 });

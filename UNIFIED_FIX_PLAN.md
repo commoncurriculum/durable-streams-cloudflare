@@ -54,7 +54,7 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | TODO |
 | FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | **DONE** (FIX-008 skip in CLAUDE.md already documents this) |
 | FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | TODO |
-| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | **SKIPPED** (requires mocking queue, deferred) |
+| FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | **DONE** |
 | FIX-048 | Document or remove extractBearerToken export | core | P2 | S | -- | **DONE** |
 | FIX-049 | Surface actual error messages in all error responses | core, subscription | P2 | S-M | FIX-012 | **DONE** (a4c5e9d, d33904f) |
 
