@@ -20,7 +20,7 @@ export async function subscribe(
 
   // 1. Create/touch session stream in core (project-scoped)
   const sessionDoKey = `${projectId}/${sessionId}`;
-  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt });
+  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt, contentType: "application/octet-stream" });
 
   const isNewSession = coreResponse.ok;
   // #endregion synced-to-docs:create-session-stream

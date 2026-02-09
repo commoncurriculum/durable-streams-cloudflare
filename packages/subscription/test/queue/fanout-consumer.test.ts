@@ -28,8 +28,8 @@ describe("handleFanoutQueue", () => {
     const s2 = crypto.randomUUID();
 
     // Create session streams with matching content type so fanout succeeds
-    await env.CORE.putStream(`${PROJECT_ID}/${s1}`, { contentType: "text/plain" });
-    await env.CORE.putStream(`${PROJECT_ID}/${s2}`, { contentType: "text/plain" });
+    await env.CORE.putStream(`${PROJECT_ID}/${s1}`, { contentType: "application/octet-stream" });
+    await env.CORE.putStream(`${PROJECT_ID}/${s2}`, { contentType: "application/octet-stream" });
 
     const msg = createMessage({
       projectId: PROJECT_ID,
@@ -54,7 +54,7 @@ describe("handleFanoutQueue", () => {
     const staleSession = crypto.randomUUID();
 
     // Only create the active session stream with matching content type
-    await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "text/plain" });
+    await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "application/octet-stream" });
     // staleSession stream does NOT exist — will 404
 
     // Add both as subscribers to the DO
@@ -143,8 +143,8 @@ describe("handleFanoutQueue", () => {
   it("processes multiple messages in a batch", async () => {
     const s1 = crypto.randomUUID();
     const s2 = crypto.randomUUID();
-    await env.CORE.putStream(`${PROJECT_ID}/${s1}`, { contentType: "text/plain" });
-    await env.CORE.putStream(`${PROJECT_ID}/${s2}`, { contentType: "text/plain" });
+    await env.CORE.putStream(`${PROJECT_ID}/${s1}`, { contentType: "application/octet-stream" });
+    await env.CORE.putStream(`${PROJECT_ID}/${s2}`, { contentType: "application/octet-stream" });
 
     const msg1 = createMessage({
       projectId: PROJECT_ID,

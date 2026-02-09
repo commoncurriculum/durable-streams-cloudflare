@@ -30,7 +30,7 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   const doKey = `${projectId}/${sessionId}`;
-  const result = await env.CORE.putStream(doKey, { expiresAt });
+  const result = await env.CORE.putStream(doKey, { expiresAt, contentType: "application/octet-stream" });
 
   if (!result.ok && result.status !== 409) {
     throw new Error(`Failed to touch session: ${result.body} (status: ${result.status})`);

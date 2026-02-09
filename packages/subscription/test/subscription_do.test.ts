@@ -102,8 +102,8 @@ describe("SubscriptionDO", () => {
 
       const sessionId1 = crypto.randomUUID();
       const sessionId2 = crypto.randomUUID();
-      await env.CORE.putStream(`${PROJECT_ID}/${sessionId1}`);
-      await env.CORE.putStream(`${PROJECT_ID}/${sessionId2}`);
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId1}`, { contentType: "application/octet-stream" });
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId2}`, { contentType: "application/octet-stream" });
 
       await stub.addSubscriber(sessionId1);
       await stub.addSubscriber(sessionId2);
@@ -167,8 +167,8 @@ describe("SubscriptionDO", () => {
       const activeSession = crypto.randomUUID();
       const staleSession = crypto.randomUUID();
 
-      // Only create the active session stream
-      await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`);
+      // Only create the active session stream (octet-stream matches fanout content type)
+      await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "application/octet-stream" });
 
       await stub.addSubscriber(activeSession);
       await stub.addSubscriber(staleSession);

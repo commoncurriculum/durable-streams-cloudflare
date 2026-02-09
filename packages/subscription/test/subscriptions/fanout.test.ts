@@ -36,10 +36,11 @@ describe("fanoutToSubscribers", () => {
     expect(result.staleSessionIds).toEqual([]);
     expect(mockPostStream).toHaveBeenCalledTimes(3);
 
-    // Verify postStream was called with correct doKeys
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s1`, expect.any(ArrayBuffer), "text/plain", undefined);
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s2`, expect.any(ArrayBuffer), "text/plain", undefined);
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s3`, expect.any(ArrayBuffer), "text/plain", undefined);
+    // Verify postStream was called with correct doKeys and application/json
+    // (session streams are always created as application/json)
+    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s1`, expect.any(ArrayBuffer), "application/octet-stream", undefined);
+    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s2`, expect.any(ArrayBuffer), "application/octet-stream", undefined);
+    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s3`, expect.any(ArrayBuffer), "application/octet-stream", undefined);
   });
 
   it("batches writes in groups of 50", async () => {
@@ -136,7 +137,7 @@ describe("fanoutToSubscribers", () => {
     expect(mockPostStream).toHaveBeenCalledWith(
       `${PROJECT_ID}/s1`,
       expect.any(ArrayBuffer),
-      "application/json",
+      "application/octet-stream",
       { producerId: "fanout:stream-1", producerEpoch: "1", producerSeq: "42" },
     );
   });
