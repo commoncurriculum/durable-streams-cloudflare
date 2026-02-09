@@ -203,7 +203,7 @@ Reading the session stream is done directly via the **core worker**: `GET /v1/:p
 
 ## Authentication
 
-See Chapter 2a (Authentication) for the full auth model. The subscription worker uses the same per-project JWT system as core, with action-based scope mapping:
+See Chapter 3 (Authentication) for the full auth model. The subscription worker uses the same per-project JWT system as core, with action-based scope mapping:
 
 | Action | Required scope |
 |--------|---------------|

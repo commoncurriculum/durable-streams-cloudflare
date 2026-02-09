@@ -1,4 +1,4 @@
-# Chapter 2a: Authentication
+# Chapter 3: Authentication
 
 Both the core and subscription workers implement per-project JWT authentication using HMAC-SHA256 signing secrets stored in a KV namespace. Auth is optional -- both workers can run without it -- but is required for any multi-tenant or production deployment.
 

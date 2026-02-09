@@ -341,4 +341,4 @@ The subscription worker binds to core as `CORE` (see `packages/subscription/wran
 
 ## Project Registry (KV)
 
-The `REGISTRY` KV namespace stores per-project signing secrets for JWT authentication. Both the core and subscription workers bind to the same namespace. See Chapter 2a (Authentication) for details.
+The `REGISTRY` KV namespace stores per-project signing secrets for JWT authentication. Both the core and subscription workers bind to the same namespace. See Chapter 3 (Authentication) for details.

@@ -20,7 +20,7 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 
 ## Where to Find Things
 
-- **Design docs**: `docs/00-index.md` is the table of contents for all design documentation (10 chapters)
+- **Design docs**: `docs/00-index.md` is the table of contents for all design documentation (12 chapters)
 - **Architecture**: `docs/01-architecture.md` — core module map, data model, request flow
 - **Cost analysis**: `docs/02-cost-analysis.md` — billing model, cost-driven design decisions
 - **CDN caching**: `docs/05-cache-architecture.md` (current design), `docs/04-cache-evolution.md` (history)

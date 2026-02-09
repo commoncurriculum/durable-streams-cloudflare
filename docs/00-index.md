@@ -21,9 +21,7 @@ Internal design notes organized chronologically. The central question: how to de
 
 2. **[Cost Analysis and Design Drivers](02-cost-analysis.md)** -- Cloudflare billing model, DO duration costs, transport cost comparison, CDN HIT = $0 insight, phase-by-phase cost evolution from $11,700/mo to $18/mo.
 
-2a. **[Authentication](02a-authentication.md)** -- Per-project JWT auth (HS256), KV registry for signing secrets, scope enforcement, stream-scoped tokens, public stream bypass, custom auth callbacks.
-
-3. *(Merged into Chapter 4)* -- See [04-cache-evolution.md](04-cache-evolution.md).
+3. **[Authentication](03-authentication.md)** -- Per-project JWT auth (HS256), KV registry for signing secrets, scope enforcement, stream-scoped tokens, public stream bypass, custom auth callbacks.
 
 4. **[Cache Research and Strategy Evolution (Phases 1-4)](04-cache-evolution.md)** -- Initial cache research findings (Workers always execute, cache is per-colo, custom domain required), then how caching evolved from "cache everything" (broken) through "cache nothing" (correct but doesn't scale) to the current "cache immutable + long-poll at-tail" design.
 
@@ -41,9 +39,11 @@ Internal design notes organized chronologically. The central question: how to de
 
 11. **[Upstream Cache Proposal Comparison](11-upstream-cache-comparison.md)** -- Analysis of upstream caching proposals (#58, #60, #62) vs our Cloudflare-native implementation. What's already solved, what doesn't apply, what's optional.
 
+12. **[CDN Reader Key](12-cdn-reader-key.md)** -- Per-stream shared reader key design for CDN-cached read authorization. Prevents unauthorized reads of cached responses without fragmenting the cache.
+
 ## Reading Order
 
-**End-to-end system understanding**: 1 -> 2 -> 2a -> 9
+**End-to-end system understanding**: 1 -> 2 -> 3 -> 9
 
 **CDN caching deep-dive** (the bulk of the investigation): 2 -> 4 -> 5 -> 6 -> 7 -> 8
 
