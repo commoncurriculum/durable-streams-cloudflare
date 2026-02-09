@@ -14,13 +14,13 @@ This project handles that wiring: the hibernation bridge, the cache headers, the
 
 The CLI setup wizard deploys up to **four Workers** and an **nginx reverse proxy** (all optional — pick what you need):
 
-| Component | Package | What |
-|-----------|---------|------|
-| **Streams Worker** — Durable Streams server on CF Workers | [`@durable-streams-cloudflare/core`](packages/core/) | One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE, DO hibernation. |
-| **Subscription Worker** — combines N source streams into 1 session stream | [`@durable-streams-cloudflare/subscription`](packages/subscription/) | Pub/sub fan-out, session lifecycle, TTL cleanup, Analytics Engine metrics. Requires the streams worker. |
-| **Nginx Proxy** — enables CDN caching for 99% hit rate at $0/request | [`packages/proxy`](packages/proxy/) | Reverse proxy that puts Cloudflare CDN in front of the streams worker. Without it, every read executes a Worker; with it, cached reads are free. |
-| **Admin (Streams)** — dashboard for stream inspection | [`@durable-streams-cloudflare/admin-core`](packages/admin-core/) | Browse streams, view metadata, read contents, manage projects. |
-| **Admin (Subscription)** — dashboard for subscription metrics | [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Monitor fan-out, sessions, publish rates, cleanup. |
+| Component                                                            | Package                                                                          | What                                                                                                                                             |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Streams Worker** — Durable Streams server on CF Workers            | [`@durable-streams-cloudflare/core`](packages/core/)                             | One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE, DO hibernation.                                               |
+| **Subscription Worker** — combines N source streams into 1 stream    | [`@durable-streams-cloudflare/subscription`](packages/subscription/)             | Pub/sub fan-out, session lifecycle, TTL cleanup, Analytics Engine metrics. Requires the streams worker.                                          |
+| **Nginx Proxy** — enables CDN caching for 99% hit rate at $0/request | [`packages/proxy`](packages/proxy/)                                              | Reverse proxy that puts Cloudflare CDN in front of the streams worker. Without it, every read executes a Worker; with it, cached reads are free. |
+| **Admin (Streams)** — dashboard for stream inspection                | [`@durable-streams-cloudflare/admin-core`](packages/admin-core/)                 | Browse streams, view metadata, read contents, manage projects.                                                                                   |
+| **Admin (Subscription)** — dashboard for subscription metrics        | [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Monitor fan-out, sessions, publish rates, cleanup.                                                                                               |
 
 The streams worker works standalone. Subscription depends on it. The proxy and admin dashboards are optional.
 
@@ -97,7 +97,7 @@ A second Worker that adds session-based pub/sub fan-out on top of the streams wo
 
 ### Why Pub/Sub
 
-Durable Streams gives you one stream per resource. But often a client cares about *many* resources — a user following 50 chat rooms, or an editor watching changes across a project. You don't want the client opening 50 SSE connections.
+Durable Streams gives you one stream per resource. But often a client cares about _many_ resources — an editor watching hundreds of small objects across a project, or a dashboard tracking dozens of feeds. You don't want the client opening hundreds of SSE connections.
 
 The subscription layer solves this: each client gets a **session stream**. Subscribe a session to any number of source streams. When a message is published, the subscription worker fans it out — writing a copy to every subscriber's session stream. The client reads a single SSE connection from the streams worker and gets updates from all their subscriptions.
 
@@ -218,6 +218,7 @@ Pub/Sub Fan-Out (Subscription Worker)
 ## Manual Setup
 
 If you prefer to set things up by hand instead of using the CLI, see the individual package READMEs:
+
 - [Streams worker README](packages/core/README.md) — worker setup, wrangler.toml, auth configuration
 - [Subscription README](packages/subscription/README.md) — worker setup, service bindings, cron cleanup
 
@@ -226,9 +227,11 @@ If you prefer to set things up by hand instead of using the CLI, see the individ
 This repo uses [Changesets](https://github.com/changesets/changesets) for versioning and npm publishing.
 
 1. **Add a changeset** before merging your PR:
+
    ```bash
    pnpm changeset
    ```
+
    Pick which packages changed and whether it's a patch, minor, or major bump.
 
 2. **Merge to main.** The publish workflow opens a "chore: version packages" PR that bumps versions and updates changelogs.
