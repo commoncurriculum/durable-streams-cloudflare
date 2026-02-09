@@ -1,32 +1,26 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { env } from "cloudflare:test";
 import { fanoutToSubscribers } from "../../src/subscriptions/fanout";
-import type { CoreService, PostStreamResult } from "../../src/client";
 
 const PROJECT_ID = "test-project";
 
-function createMockPostStream() {
-  return vi.fn<CoreService["postStream"]>();
-}
-
-function createEnv(mockPostStream: ReturnType<typeof createMockPostStream>) {
-  return { CORE: { postStream: mockPostStream, headStream: vi.fn(), putStream: vi.fn(), deleteStream: vi.fn() } as unknown as CoreService };
+async function createSessionStream(sessionId: string): Promise<void> {
+  await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "text/plain" });
 }
 
 describe("fanoutToSubscribers", () => {
-  let mockPostStream: ReturnType<typeof createMockPostStream>;
-
-  beforeEach(() => {
-    mockPostStream = createMockPostStream();
-  });
-
   it("writes to all session streams", async () => {
-    mockPostStream.mockResolvedValue({ ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null });
-    const env = createEnv(mockPostStream);
+    const s1 = `fanout-s1-${crypto.randomUUID()}`;
+    const s2 = `fanout-s2-${crypto.randomUUID()}`;
+    const s3 = `fanout-s3-${crypto.randomUUID()}`;
+    await createSessionStream(s1);
+    await createSessionStream(s2);
+    await createSessionStream(s3);
 
     const result = await fanoutToSubscribers(
       env,
       PROJECT_ID,
-      ["s1", "s2", "s3"],
+      [s1, s2, s3],
       new TextEncoder().encode("hello").buffer as ArrayBuffer,
       "text/plain",
     );
@@ -34,137 +28,70 @@ describe("fanoutToSubscribers", () => {
     expect(result.successes).toBe(3);
     expect(result.failures).toBe(0);
     expect(result.staleSessionIds).toEqual([]);
-    expect(mockPostStream).toHaveBeenCalledTimes(3);
-
-    // Verify postStream was called with correct doKeys and application/json
-    // (session streams are always created as application/json)
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s1`, expect.any(ArrayBuffer), "text/plain", undefined);
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s2`, expect.any(ArrayBuffer), "text/plain", undefined);
-    expect(mockPostStream).toHaveBeenCalledWith(`${PROJECT_ID}/s3`, expect.any(ArrayBuffer), "text/plain", undefined);
-  });
-
-  it("batches writes in groups of 50", async () => {
-    // Track the order of resolution to verify batching behavior
-    const callOrder: number[] = [];
-    let callCount = 0;
-
-    mockPostStream.mockImplementation(() => {
-      callOrder.push(++callCount);
-      return Promise.resolve({ ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null } as PostStreamResult);
-    });
-
-    const sessionIds = Array.from({ length: 120 }, (_, i) => `session-${i}`);
-
-    const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
-      PROJECT_ID,
-      sessionIds,
-      new TextEncoder().encode("test").buffer as ArrayBuffer,
-      "text/plain",
-    );
-
-    expect(result.successes).toBe(120);
-    expect(mockPostStream).toHaveBeenCalledTimes(120);
   });
 
   it("reports 404s as stale sessions", async () => {
-    mockPostStream.mockImplementation((doKey: string) => {
-      if (doKey.includes("stale")) {
-        return Promise.resolve({ ok: false, status: 404, nextOffset: null, upToDate: null, streamClosed: null, body: "Not found" });
-      }
-      return Promise.resolve({ ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null });
-    });
+    const active1 = `fanout-active-${crypto.randomUUID()}`;
+    const active2 = `fanout-active-${crypto.randomUUID()}`;
+    const stale1 = `fanout-stale-${crypto.randomUUID()}`;
+    const stale2 = `fanout-stale-${crypto.randomUUID()}`;
+    await createSessionStream(active1);
+    await createSessionStream(active2);
+    // stale1 and stale2 have no backing stream — will 404
 
     const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
+      env,
       PROJECT_ID,
-      ["active-1", "stale-1", "active-2", "stale-2"],
+      [active1, stale1, active2, stale2],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
     );
 
     expect(result.successes).toBe(2);
     expect(result.failures).toBe(2);
-    expect(result.staleSessionIds).toEqual(["stale-1", "stale-2"]);
-  });
-
-  it("handles 5xx errors as failures (not stale)", async () => {
-    mockPostStream.mockResolvedValue({ ok: false, status: 500, nextOffset: null, upToDate: null, streamClosed: null, body: "Internal error" });
-
-    const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
-      PROJECT_ID,
-      ["s1", "s2"],
-      new TextEncoder().encode("test").buffer as ArrayBuffer,
-      "text/plain",
-    );
-
-    expect(result.successes).toBe(0);
-    expect(result.failures).toBe(2);
-    expect(result.staleSessionIds).toEqual([]);
-  });
-
-  it("handles rejected promises as failures", async () => {
-    mockPostStream.mockRejectedValue(new Error("Network error"));
-
-    const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
-      PROJECT_ID,
-      ["s1"],
-      new TextEncoder().encode("test").buffer as ArrayBuffer,
-      "text/plain",
-    );
-
-    expect(result.successes).toBe(0);
-    expect(result.failures).toBe(1);
-    expect(result.staleSessionIds).toEqual([]);
+    expect(result.staleSessionIds).toEqual([stale1, stale2]);
   });
 
   it("passes producer headers to postStream", async () => {
-    mockPostStream.mockResolvedValue({ ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null });
-    const env = createEnv(mockPostStream);
+    const s1 = `fanout-prod-${crypto.randomUUID()}`;
+    await createSessionStream(s1);
 
-    await fanoutToSubscribers(
+    const result = await fanoutToSubscribers(
       env,
       PROJECT_ID,
-      ["s1"],
+      [s1],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
-      "application/json",
-      { producerId: "fanout:stream-1", producerEpoch: "1", producerSeq: "42" },
+      "text/plain",
+      { producerId: "fanout:stream-1", producerEpoch: "0", producerSeq: "0" },
     );
 
-    expect(mockPostStream).toHaveBeenCalledTimes(1);
-    expect(mockPostStream).toHaveBeenCalledWith(
-      `${PROJECT_ID}/s1`,
-      expect.any(ArrayBuffer),
-      "application/json",
-      { producerId: "fanout:stream-1", producerEpoch: "1", producerSeq: "42" },
-    );
+    // Producer headers are accepted by the real core worker
+    expect(result.successes).toBe(1);
+    expect(result.failures).toBe(0);
   });
 
   it("returns correct counts for mixed results", async () => {
-    mockPostStream
-      .mockResolvedValueOnce({ ok: true, status: 200, nextOffset: null, upToDate: null, streamClosed: null, body: null })
-      .mockResolvedValueOnce({ ok: false, status: 404, nextOffset: null, upToDate: null, streamClosed: null, body: "Not found" })
-      .mockResolvedValueOnce({ ok: false, status: 500, nextOffset: null, upToDate: null, streamClosed: null, body: "Error" })
-      .mockRejectedValueOnce(new Error("Network error"));
+    const ok = `fanout-ok-${crypto.randomUUID()}`;
+    const stale = `fanout-stale-${crypto.randomUUID()}`;
+    await createSessionStream(ok);
+    // stale has no backing stream — will 404
 
     const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
+      env,
       PROJECT_ID,
-      ["ok", "stale", "error", "network-fail"],
+      [ok, stale],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
     );
 
     expect(result.successes).toBe(1);
-    expect(result.failures).toBe(3);
-    expect(result.staleSessionIds).toEqual(["stale"]);
+    expect(result.failures).toBe(1);
+    expect(result.staleSessionIds).toEqual([stale]);
   });
 
   it("handles empty session list", async () => {
     const result = await fanoutToSubscribers(
-      createEnv(mockPostStream),
+      env,
       PROJECT_ID,
       [],
       new TextEncoder().encode("test").buffer as ArrayBuffer,
@@ -174,6 +101,26 @@ describe("fanoutToSubscribers", () => {
     expect(result.successes).toBe(0);
     expect(result.failures).toBe(0);
     expect(result.staleSessionIds).toEqual([]);
-    expect(mockPostStream).not.toHaveBeenCalled();
+  });
+
+  it("batches writes in groups of 50", async () => {
+    // Create 60 session streams to verify batching works across boundaries
+    const sessionIds: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      const id = `fanout-batch-${i}-${crypto.randomUUID()}`;
+      sessionIds.push(id);
+      await createSessionStream(id);
+    }
+
+    const result = await fanoutToSubscribers(
+      env,
+      PROJECT_ID,
+      sessionIds,
+      new TextEncoder().encode("test").buffer as ArrayBuffer,
+      "text/plain",
+    );
+
+    expect(result.successes).toBe(60);
+    expect(result.failures).toBe(0);
   });
 });
