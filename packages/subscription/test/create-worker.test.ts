@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { AppEnv } from "../src/env";
 
@@ -101,16 +101,11 @@ describe("createSubscriptionWorker", () => {
     const { projectJwtAuth } = await import("../src/http/auth");
 
     const worker = createSubscriptionWorker({ authorize: projectJwtAuth() });
-    const testEnv = {
-      ...createBaseEnv(),
-      REGISTRY: {
-        get: vi.fn().mockResolvedValue(JSON.stringify({ signingSecret: "test-secret" })),
-      } as unknown as KVNamespace,
-    };
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: "test-secret" }));
 
     const response = await worker.fetch(
       new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
-      testEnv,
+      createBaseEnv(),
       {} as ExecutionContext,
     );
 

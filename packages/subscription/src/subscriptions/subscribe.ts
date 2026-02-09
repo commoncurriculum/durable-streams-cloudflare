@@ -73,10 +73,11 @@ export async function subscribe(
   }
   // #endregion synced-to-docs:add-subscription-to-do
 
-  // 3. Track subscription on the session DO
+  // 3. Track subscription on the session DO and set/reset expiry alarm
   const sessionDoStubKey = `${projectId}/${sessionId}`;
   const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoStubKey));
   await sessionStub.addSubscription(streamId);
+  await sessionStub.setExpiry(projectId, sessionId, ttlSeconds);
 
   // 4. Metrics
   const latencyMs = Date.now() - start;

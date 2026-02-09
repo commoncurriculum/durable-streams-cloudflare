@@ -39,6 +39,10 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
     throw new Error(`Failed to touch session: ${result.body} (status: ${result.status})`);
   }
 
+  // Reset the expiry alarm on the SessionDO
+  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(doKey));
+  await sessionStub.setExpiry(projectId, sessionId, ttlSeconds);
+
   createMetrics(env.METRICS).sessionTouch(sessionId, Date.now() - start);
   return { sessionId, expiresAt };
 }

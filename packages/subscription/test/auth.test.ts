@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
 import { parseRoute, extractBearerToken, projectJwtAuth } from "../src/http/auth";
 import type { SubscriptionRoute } from "../src/http/auth";
 
@@ -31,21 +32,6 @@ async function createTestJwt(
   const signatureB64 = base64UrlEncode(new Uint8Array(signature));
 
   return `${headerB64}.${payloadB64}.${signatureB64}`;
-}
-
-function createMockKV(data: Record<string, unknown>): KVNamespace {
-  return {
-    get: vi.fn(async (key: string, type?: string) => {
-      const value = data[key];
-      if (value === undefined) return null;
-      if (type === "json") return value;
-      return JSON.stringify(value);
-    }),
-    put: vi.fn(),
-    delete: vi.fn(),
-    list: vi.fn(),
-    getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
 }
 
 const SECRET = "test-signing-secret-for-hmac-256";
@@ -184,6 +170,10 @@ describe("projectJwtAuth", () => {
   const unsubscribeRoute: SubscriptionRoute = { action: "unsubscribe", project: PROJECT, streamId: "s", sessionId: "sess-1" };
   const deleteRoute: SubscriptionRoute = { action: "deleteSession", project: PROJECT, sessionId: "sess-1" };
 
+  beforeEach(async () => {
+    await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecret: SECRET }));
+  });
+
   it("rejects with 500 when REGISTRY not configured", async () => {
     const result = await auth(makeRequest("token"), publishRoute, {} as any);
     expect(result).toHaveProperty("ok", false);
@@ -191,140 +181,123 @@ describe("projectJwtAuth", () => {
   });
 
   it("rejects with 401 when no token provided", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
-    const result = await auth(makeRequest(), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 401 when project not found in KV", async () => {
-    const kv = createMockKV({});
+    await env.REGISTRY.delete(PROJECT);
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 401 when JWT signature is invalid", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), "wrong-secret");
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 403 when sub does not match project", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ sub: "other-project" }), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("rejects with 401 when token is expired", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ exp: Math.floor(Date.now() / 1000) - 60 }), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   // Write-scope actions
   it("allows valid write JWT for publish", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("rejects read JWT for publish (requires write)", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("rejects read JWT for unsubscribe (requires write)", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), unsubscribeRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), unsubscribeRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("rejects read JWT for deleteSession (requires write)", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), deleteRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), deleteRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   // Read-scope actions
   it("allows read JWT for subscribe", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("allows read JWT for getSession", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("allows read JWT for touchSession", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), touchRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), touchRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("allows write JWT for read-scope actions", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "write" }), SECRET);
-    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   // stream_id claim
   it("allows JWT with matching stream_id on publish", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ stream_id: "s" }), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("rejects JWT with mismatched stream_id on publish", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ stream_id: "other-stream" }), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("rejects JWT with mismatched stream_id on subscribe", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "other-stream" }), SECRET);
-    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("allows JWT without stream_id on any route", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
   it("ignores stream_id on session routes (no streamId in route)", async () => {
-    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "any-stream" }), SECRET);
-    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: kv });
+    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 });

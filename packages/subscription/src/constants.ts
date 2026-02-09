@@ -27,9 +27,9 @@ export const PROJECT_ID_PATTERN = regex("^[a-zA-Z0-9_-]+$");
 // #endregion synced-to-docs:id-patterns
 
 /**
- * Default session TTL in seconds (30 minutes).
+ * Default session TTL in seconds (24 hours).
  */
-export const DEFAULT_SESSION_TTL_SECONDS = 1800;
+export const DEFAULT_SESSION_TTL_SECONDS = 86400;
 
 /**
  * Maximum number of concurrent fanout writes per batch.

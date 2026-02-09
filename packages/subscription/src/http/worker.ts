@@ -29,14 +29,6 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
     return this.#worker.queue!(batch, this.env, this.ctx);
   }
 
-  async scheduled(controller: ScheduledController): Promise<void> {
-    return this.#worker.scheduled!(
-      controller as unknown as ScheduledEvent,
-      this.env,
-      this.ctx,
-    );
-  }
-
   // RPC methods for admin dashboard
   async adminGetSession(projectId: string, sessionId: string): Promise<SessionInfo | null> {
     return getSession(this.env, projectId, sessionId);

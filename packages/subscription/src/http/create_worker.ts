@@ -3,10 +3,8 @@ import { cors } from "hono/cors";
 import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
 import { sessionRoutes } from "./routes/session";
-import { cleanupExpiredSessions } from "../cleanup";
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
-import { logError, logInfo } from "../log";
 import { parseRoute } from "./auth";
 import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
@@ -136,7 +134,6 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     return c.json({ error: "Not found" }, 404);
   });
 
-  // #region synced-to-docs:scheduled-handler
   return {
     fetch: app.fetch,
 
@@ -144,41 +141,5 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     async queue(batch: MessageBatch<FanoutQueueMessage>, env: E, _ctx: ExecutionContext): Promise<void> {
       await handleFanoutQueue(batch, env);
     },
-
-    // Scheduled handler for session cleanup
-    async scheduled(event: ScheduledEvent, env: E, ctx: ExecutionContext): Promise<void> {
-      ctx.waitUntil(
-        (async () => {
-          const start = Date.now();
-          const result = await cleanupExpiredSessions(env);
-          const latencyMs = Date.now() - start;
-
-          // Record cleanup metrics
-          const metrics = createMetrics(env.METRICS);
-          metrics.cleanupBatch({
-            expiredSessions: result.deleted,
-            streamsDeleted: result.streamDeleteSuccesses,
-            subscriptionsRemoved: result.subscriptionRemoveSuccesses,
-            subscriptionsFailed: result.subscriptionRemoveFailures,
-            latencyMs,
-          });
-
-          if (result.deleted > 0) {
-            logInfo({
-              component: "cleanup",
-              deleted: result.deleted,
-              streamDeleteSuccesses: result.streamDeleteSuccesses,
-              streamDeleteFailures: result.streamDeleteFailures,
-              subscriptionRemoveSuccesses: result.subscriptionRemoveSuccesses,
-              subscriptionRemoveFailures: result.subscriptionRemoveFailures,
-              latencyMs,
-            }, "session cleanup completed");
-          }
-        })().catch((err) => {
-          logError({ component: "cleanup" }, "session cleanup failed", err);
-        }),
-      );
-    },
   };
-  // #endregion synced-to-docs:scheduled-handler
 }

@@ -4,11 +4,7 @@ compatibility_date = "2025-02-02"
 compatibility_flags = []
 
 [vars]
-SESSION_TTL_SECONDS = "1800"
-# Required for Analytics Engine SQL queries (cleanup)
-# ACCOUNT_ID = "<your-cloudflare-account-id>"
-# API_TOKEN should be set via: npx wrangler secret put API_TOKEN
-ANALYTICS_DATASET = "subscriptions_metrics"
+SESSION_TTL_SECONDS = "86400"
 
 # Durable Objects for per-stream subscriber storage and per-session subscription tracking
 [durable_objects]
@@ -55,6 +51,3 @@ queue = "subscription-fanout"
 # dead_letter_queue = "subscription-fanout-dlq"
 
 
-# Session cleanup cron
-[triggers]
-crons = ["*/5 * * * *"]

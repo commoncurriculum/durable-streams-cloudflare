@@ -16,6 +16,7 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-006 | Add NaN guards after parseInt on env vars | subscription | P1 | S | -- | **DONE** (8fbddb5) |
 | FIX-007 | Producer ID pattern validation | core | P0 | S | -- | **DONE** (8fbddb5) |
 | FIX-008 | Replace GitHub PR preview dependency | subscription | P0 | S | -- | **SKIPPED** (no stable vitest 4 support) |
+| FIX-050 | Replace mock KV with real bindings in tests | subscription | P0 | S | -- | TODO |
 | FIX-009 | Extract shared JWT and auth logic | core, subscription | P1 | M | -- | **SKIPPED** (user: too much work for little gain) |
 | FIX-010 | Add stream_id claim to subscription JWT | subscription | P1 | S | FIX-009 | **DONE** (8fbddb5) |
 | FIX-011 | Structured logging with context | core, subscription | P1 | L | -- | **DONE** (8fbddb5) |
@@ -94,6 +95,15 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 - **What:** Auth uses substring checks (`pathname.includes("/subscribe")`) which is an actual auth bypass — a session with an ID containing "subscribe" skips auth on DELETE. The anchored regexes (`SESSION_DELETE_RE`, `SUBSCRIBE_RE`, `UNSUBSCRIBE_RE`) already prevent route overlap, making the `includes()` guards redundant and harmful.
 - **Where:** `packages/subscription/src/http/auth.ts:65`
 - **How:** Remove the `includes()` checks entirely — the anchored regexes are tested in method-gated blocks and already prevent overlap. No replacement regex needed.
+- **Effort:** S
+
+#### FIX-050: Replace mock KV with real bindings in subscription tests
+- **Sources:** P0 mock audit
+- **What:** `subscription/test/auth.test.ts` uses `createMockKV()` to mock the entire REGISTRY KV namespace, but these tests run in `@cloudflare/vitest-pool-workers` which provides real KV bindings. The mock should be replaced with real `env.REGISTRY` — seed it with `env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecret: SECRET }))` before tests and use the real binding. Same for `create-worker.test.ts` line 107. Note: `core/test/unit/auth/project-key-auth.test.ts` also mocks KV, but core unit tests run in plain vitest (no cloudflare pool), so that mock is acceptable.
+- **Where:**
+  - `packages/subscription/test/auth.test.ts:36-49` — `createMockKV()` helper and all usages
+  - `packages/subscription/test/create-worker.test.ts:107` — inline mock REGISTRY
+- **How:** Replace `createMockKV({ [PROJECT]: { signingSecret: SECRET } })` with real KV: `await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecret: SECRET }))` in a `beforeEach`, then pass `env.REGISTRY` (or just `env`) to the auth functions. Remove `createMockKV` helper entirely.
 - **Effort:** S
 
 #### FIX-005: Fanout without backpressure / circuit breaker
@@ -340,10 +350,10 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 - **Dependencies:** FIX-011 (nice-to-have)
 - **Effort:** M
 
-#### FIX-044: Use SessionDO RPC for cleanup subscription discovery
-- **What:** Cleanup was using `getSessionSubscriptions()` (Analytics Engine HTTP API) to discover a session's subscriptions. SessionDO already stores subscriptions in SQLite and exposes `getSubscriptions()` RPC — that's the source of truth.
-- **Where:** `packages/subscription/src/cleanup/index.ts`, `packages/subscription/test/cleanup.test.ts`
-- **How:** Replaced `getSessionSubscriptions()` call with `SessionDO.getSubscriptions()` RPC in `cleanupSession()`. Rewrote cleanup tests to use real bindings from `cloudflare:test` (real CORE, SESSION_DO, SUBSCRIPTION_DO) instead of mocks. Only `getExpiredSessions` remains mocked (Analytics Engine HTTP API unavailable in vitest pool). `API_TOKEN` is still needed for `getExpiredSessions` which queries AE for expired sessions.
+#### FIX-044: Replace cleanup cron with SessionDO alarms
+- **What:** Cleanup was a cron job querying Analytics Engine HTTP API for expired sessions, requiring ACCOUNT_ID and API_TOKEN env vars. Replaced entirely with Durable Object alarms on SessionDO — each session sets a DO alarm on subscribe/touch, and the alarm handler removes subscriptions from SubscriptionDOs, deletes the session stream from core, and cleans up local state. Eliminates ACCOUNT_ID, API_TOKEN, ANALYTICS_DATASET env vars, the cleanup module, and the cron trigger entirely. Session TTL defaults to 24 hours.
+- **Where:** `src/session/do.ts` (added `session_info` table, `setExpiry()`, `alarm()`), `src/subscriptions/subscribe.ts`, `src/session/index.ts` (both call `setExpiry`), `src/http/create_worker.ts` (removed `scheduled`), `src/http/worker.ts` (removed `scheduled`), `src/cleanup/` (deleted), `wrangler.toml` (removed cron + env vars), `src/env.ts` (removed AE env vars)
+- **How:** SessionDO stores project/sessionId in `session_info` table and sets alarm via `ctx.storage.setAlarm()`. On alarm fire, removes subscriber from each SubscriptionDO, deletes session stream from core, clears local state.
 - **Effort:** M
 
 #### FIX-045: Document vitest beta version rationale

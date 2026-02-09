@@ -20,10 +20,10 @@ beforeAll(() => {
 });
 
 describe("cleanup integration", () => {
-  // Note: In the new architecture, cleanup is handled lazily:
-  // - Session streams in core are the source of truth
-  // - SubscriptionDOs clean up stale subscribers during fanout (404 response)
-  // - The cleanup cron handles expired sessions via Analytics Engine queries
+  // Session cleanup is handled by SessionDO alarms:
+  // - Each session sets a DO alarm at creation/touch time
+  // - When the alarm fires, SessionDO removes subscriptions and deletes the stream
+  // - SubscriptionDOs also clean up stale subscribers during fanout (404 response)
 
   it("session streams are accessible after subscription", async () => {
     const sessionId = uniqueSessionId();

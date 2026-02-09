@@ -22,7 +22,7 @@ describe("getSession", () => {
     expect(result).not.toBeNull();
     expect(result!.sessionId).toBe(SESSION_ID);
     expect(result!.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
-    // No ACCOUNT_ID/API_TOKEN in test env, so subscriptions will be empty
+    // No subscriptions added yet
     expect(result!.subscriptions).toEqual([]);
   });
 
