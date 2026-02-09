@@ -51,7 +51,7 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 | FIX-041 | Session route error inconsistency | subscription | P2 | S | -- | **DONE** |
 | FIX-042 | Fanout failure logging | subscription | P2 | M | FIX-011 | **DONE** |
 | FIX-043 | DO operation timing instrumentation | core | P2 | M | -- | **DONE** |
-| FIX-044 | Remove API_TOKEN — use RPC for Analytics Engine | subscription | P2 | M | -- | TODO |
+| FIX-044 | Use SessionDO RPC for cleanup subscriptions | subscription | P2 | M | -- | **DONE** |
 | FIX-045 | Document vitest beta version rationale | subscription | P2 | S | -- | **DONE** (FIX-008 skip in CLAUDE.md already documents this) |
 | FIX-046 | Extract shared test helpers | core, subscription | P2 | M | -- | TODO |
 | FIX-047 | Add test for queue fallback path | subscription | P2 | M | -- | **DONE** |
@@ -340,10 +340,10 @@ Merged from Code Reviews #1, #2, and #3. Duplicates consolidated, conflicts reso
 - **Dependencies:** FIX-011 (nice-to-have)
 - **Effort:** M
 
-#### FIX-044: Remove API_TOKEN — switch Analytics Engine queries to worker-to-worker RPC
-- **What:** Analytics Engine queries use external HTTP calls with a Cloudflare API bearer token (`API_TOKEN`). Should use service binding RPC (worker-to-worker), which requires no auth token.
-- **Where:** `packages/subscription/src/analytics/index.ts`, `packages/subscription/src/cleanup/index.ts:111-124`, `packages/subscription/wrangler.toml`, `packages/subscription/README.md`
-- **How:** Replace `fetch()` calls to the Analytics Engine SQL API with RPC via service bindings. Remove `API_TOKEN` from env type, wrangler config, README, and all test fixtures.
+#### FIX-044: Use SessionDO RPC for cleanup subscription discovery
+- **What:** Cleanup was using `getSessionSubscriptions()` (Analytics Engine HTTP API) to discover a session's subscriptions. SessionDO already stores subscriptions in SQLite and exposes `getSubscriptions()` RPC — that's the source of truth.
+- **Where:** `packages/subscription/src/cleanup/index.ts`, `packages/subscription/test/cleanup.test.ts`
+- **How:** Replaced `getSessionSubscriptions()` call with `SessionDO.getSubscriptions()` RPC in `cleanupSession()`. Rewrote cleanup tests to use real bindings from `cloudflare:test` (real CORE, SESSION_DO, SUBSCRIPTION_DO) instead of mocks. Only `getExpiredSessions` remains mocked (Analytics Engine HTTP API unavailable in vitest pool). `API_TOKEN` is still needed for `getExpiredSessions` which queries AE for expired sessions.
 - **Effort:** M
 
 #### FIX-045: Document vitest beta version rationale

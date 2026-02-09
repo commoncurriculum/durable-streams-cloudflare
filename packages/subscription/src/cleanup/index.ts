@@ -1,11 +1,11 @@
 // #region synced-to-docs:cleanup-overview
 /**
- * Session cleanup using Analytics Engine queries.
+ * Session cleanup using Analytics Engine + SessionDO.
  *
  * Flow:
  * 1. Query Analytics Engine for expired sessions
  * 2. For each expired session:
- *    a. Get its subscriptions from Analytics Engine
+ *    a. Get its subscriptions from SessionDO (source of truth)
  *    b. Remove from each SubscriptionDO via RPC
  *    c. Delete the session stream from core
  */
@@ -13,11 +13,7 @@
 
 import { createMetrics } from "../metrics";
 import { logError, logWarn } from "../log";
-import {
-  getExpiredSessions,
-  getSessionSubscriptions,
-  type AnalyticsQueryEnv,
-} from "../analytics";
+import { getExpiredSessions } from "../analytics";
 import type { AppEnv } from "../env";
 
 export interface CleanupResult {
@@ -43,8 +39,6 @@ interface ExpiredSession {
 
 async function cleanupSession(
   env: AppEnv,
-  analyticsEnv: AnalyticsQueryEnv,
-  datasetName: string,
   session: ExpiredSession,
   metrics: ReturnType<typeof createMetrics>,
 ): Promise<SessionCleanupResult> {
@@ -54,17 +48,18 @@ async function cleanupSession(
 
   metrics.sessionExpire(session.sessionId, 0, Date.now() - session.lastActivity);
 
-  const subscriptionsResult = await getSessionSubscriptions(
-    analyticsEnv,
-    datasetName,
-    session.sessionId,
-  );
-
-  if (subscriptionsResult.error) {
-    logError({ sessionId: session.sessionId, project: session.project, component: "cleanup" }, "failed to get subscriptions for session", subscriptionsResult.error);
+  // Get subscriptions from SessionDO (source of truth) instead of Analytics Engine
+  const doKey = `${session.project}/${session.sessionId}`;
+  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(doKey));
+  let streamIds: string[];
+  try {
+    streamIds = await sessionStub.getSubscriptions();
+  } catch (err) {
+    logError({ sessionId: session.sessionId, project: session.project, component: "cleanup" }, "failed to get subscriptions from SessionDO", err);
+    streamIds = [];
   }
 
-  const subscriptions = subscriptionsResult.data;
+  const subscriptions = streamIds.map((streamId) => ({ streamId }));
 
   // #region synced-to-docs:cleanup-session
   // FIX-020: Batch subscription removal RPCs with Promise.allSettled
@@ -168,7 +163,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
     const batch = expiredSessions.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.allSettled(
-      batch.map(session => cleanupSession(env, analyticsEnv, datasetName, session, metrics)),
+      batch.map(session => cleanupSession(env, session, metrics)),
     );
     // #endregion synced-to-docs:cleanup-main
 

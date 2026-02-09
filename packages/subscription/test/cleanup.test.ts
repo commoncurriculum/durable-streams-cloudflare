@@ -1,37 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AppEnv } from "../src/env";
+import { env } from "cloudflare:test";
 
-// Mock the analytics queries module
+// Mock only getExpiredSessions — Analytics Engine HTTP API is unavailable in vitest pool workers
 vi.mock("../src/analytics", () => ({
   getExpiredSessions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
-  getSessionSubscriptions: vi.fn().mockResolvedValue({ data: [], error: undefined }),
 }));
 
 const PROJECT_ID = "test-project";
-const SESSION_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-
-const mockDeleteStream = vi.fn();
-const mockProjectKeys = {} as KVNamespace;
 
 describe("cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDeleteStream.mockReset();
   });
 
   describe("cleanupExpiredSessions", () => {
     it("should skip cleanup if Analytics credentials are not configured", async () => {
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        // No ACCOUNT_ID or API_TOKEN
-      };
-
-      const result = await cleanupExpiredSessions(env);
+      // env doesn't have ACCOUNT_ID or API_TOKEN by default
+      const result = await cleanupExpiredSessions(env as never);
 
       expect(result.deleted).toBe(0);
       expect(result.streamDeleteSuccesses).toBe(0);
@@ -44,17 +31,8 @@ describe("cleanup", () => {
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        ACCOUNT_ID: "test-account",
-        API_TOKEN: "test-token",
-        ANALYTICS_DATASET: "test_metrics",
-      };
-
-      const result = await cleanupExpiredSessions(env);
+      const testEnv = { ...env, ACCOUNT_ID: "test-account", API_TOKEN: "test-token", ANALYTICS_DATASET: "test_metrics" };
+      const result = await cleanupExpiredSessions(testEnv as never);
 
       expect(result.deleted).toBe(0);
       expect(getExpiredSessions).toHaveBeenCalledWith(
@@ -64,95 +42,85 @@ describe("cleanup", () => {
     });
 
     it("should clean up expired sessions", async () => {
-      const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics"
-      );
+      const sessionId = crypto.randomUUID();
+      const streamA = `stream-${crypto.randomUUID()}`;
+      const streamB = `stream-${crypto.randomUUID()}`;
 
+      // Set up real data: session stream + source streams
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/octet-stream" });
+      await env.CORE.putStream(`${PROJECT_ID}/${streamA}`, { contentType: "application/json" });
+      await env.CORE.putStream(`${PROJECT_ID}/${streamB}`, { contentType: "application/json" });
+
+      // Add subscriptions to SessionDO (so cleanup can discover them)
+      const sessionDoKey = `${PROJECT_ID}/${sessionId}`;
+      const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoKey));
+      await sessionStub.addSubscription(streamA);
+      await sessionStub.addSubscription(streamB);
+
+      // Add subscriber to SubscriptionDOs (so cleanup can remove them)
+      const subStubA = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(`${PROJECT_ID}/${streamA}`));
+      await subStubA.addSubscriber(sessionId);
+      const subStubB = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(`${PROJECT_ID}/${streamB}`));
+      await subStubB.addSubscriber(sessionId);
+
+      // Mock getExpiredSessions to return our session
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
-
-      vi.mocked(getSessionSubscriptions).mockResolvedValue({
-        data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
-        error: undefined,
-      });
-
-      // Mock DO RPC - removeSubscriber succeeds
-      const mockRemoveSubscriber = vi.fn().mockResolvedValue(undefined);
-      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
-      const mockDoNamespace = {
-        idFromName: vi.fn().mockReturnValue("do-id"),
-        get: vi.fn().mockReturnValue(mockDoStub),
-      };
-
-      // Mock core RPC for session deletion
-      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const testEnv = { ...env, ACCOUNT_ID: "test-account", API_TOKEN: "test-token" };
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        ACCOUNT_ID: "test-account",
-        API_TOKEN: "test-token",
-        ANALYTICS_DATASET: "test_metrics",
-      };
-
-      const result = await cleanupExpiredSessions(env);
+      const result = await cleanupExpiredSessions(testEnv as never);
 
       expect(result.deleted).toBe(1);
       expect(result.subscriptionRemoveSuccesses).toBe(2);
       expect(result.streamDeleteSuccesses).toBe(1);
 
-      // Verify DO RPC was called to remove subscriptions
-      expect(mockRemoveSubscriber).toHaveBeenCalledTimes(2);
-      expect(mockRemoveSubscriber).toHaveBeenCalledWith(SESSION_ID);
+      // Verify session stream was actually deleted
+      const headResult = await env.CORE.headStream(`${PROJECT_ID}/${sessionId}`);
+      expect(headResult.ok).toBe(false);
 
-      // Verify core deleteStream RPC was called with correct doKey
-      expect(mockDeleteStream).toHaveBeenCalledWith(`${PROJECT_ID}/${SESSION_ID}`);
+      // Verify subscribers were removed from SubscriptionDOs
+      const subsA = await subStubA.getSubscribers(`${PROJECT_ID}/${streamA}`);
+      expect(subsA.count).toBe(0);
+      const subsB = await subStubB.getSubscribers(`${PROJECT_ID}/${streamB}`);
+      expect(subsB.count).toBe(0);
     });
 
-    it("should handle DO RPC failures gracefully", async () => {
-      const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics"
-      );
+    it("should handle SubscriptionDO RPC failures gracefully", async () => {
+      const sessionId = crypto.randomUUID();
+      const streamA = `stream-${crypto.randomUUID()}`;
 
+      // Set up real session stream
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/octet-stream" });
+
+      // Add subscription to SessionDO
+      const sessionDoKey = `${PROJECT_ID}/${sessionId}`;
+      const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoKey));
+      await sessionStub.addSubscription(streamA);
+
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue({
-        data: [{ streamId: "stream-a" }],
-        error: undefined,
-      });
-
-      // Mock DO RPC to fail
-      const mockRemoveSubscriber = vi.fn().mockRejectedValue(new Error("DO error"));
-      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
-      const mockDoNamespace = {
-        idFromName: vi.fn().mockReturnValue("do-id"),
-        get: vi.fn().mockReturnValue(mockDoStub),
-      };
-
-      // Mock core RPC
-      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
-
-      const { cleanupExpiredSessions } = await import("../src/cleanup");
-
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
+      // Mock SUBSCRIPTION_DO to fail — simulates DO error that can't be triggered naturally
+      const failEnv = {
+        ...env,
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
+        SUBSCRIPTION_DO: {
+          idFromName: env.SUBSCRIPTION_DO.idFromName.bind(env.SUBSCRIPTION_DO),
+          get: vi.fn().mockReturnValue({ removeSubscriber: vi.fn().mockRejectedValue(new Error("DO error")) }),
+        },
       };
 
-      const result = await cleanupExpiredSessions(env);
+      const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const result = await cleanupExpiredSessions(failEnv as never);
 
       expect(result.deleted).toBe(1);
       expect(result.subscriptionRemoveFailures).toBe(1);
@@ -160,64 +128,46 @@ describe("cleanup", () => {
     });
 
     it("should handle core deletion failures gracefully", async () => {
-      const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics"
-      );
+      const sessionId = crypto.randomUUID();
 
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
-
-      // Mock core RPC to fail
-      mockDeleteStream.mockResolvedValue({ ok: false, status: 500 });
-
-      const { cleanupExpiredSessions } = await import("../src/cleanup");
-
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
+      // Mock CORE.deleteStream to return 500 — simulates server error that can't be triggered naturally
+      const failEnv = {
+        ...env,
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
+        CORE: {
+          ...env.CORE,
+          deleteStream: vi.fn().mockResolvedValue({ ok: false, status: 500, body: "Internal Server Error" }),
+        },
       };
 
-      const result = await cleanupExpiredSessions(env);
+      const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const result = await cleanupExpiredSessions(failEnv as never);
 
       expect(result.deleted).toBe(1);
       expect(result.streamDeleteFailures).toBe(1);
     });
 
     it("should treat 404 from core as success (already deleted)", async () => {
-      const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics"
-      );
+      // Session stream doesn't exist — deleteStream will naturally return 404
+      const sessionId = crypto.randomUUID();
 
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue({ data: [], error: undefined });
-
-      // Mock core RPC to return 404
-      mockDeleteStream.mockResolvedValue({ ok: false, status: 404 });
-
       const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const testEnv = { ...env, ACCOUNT_ID: "test-account", API_TOKEN: "test-token" };
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        ACCOUNT_ID: "test-account",
-        API_TOKEN: "test-token",
-      };
-
-      const result = await cleanupExpiredSessions(env);
+      const result = await cleanupExpiredSessions(testEnv as never);
 
       expect(result.deleted).toBe(1);
       expect(result.streamDeleteSuccesses).toBe(1);
@@ -228,22 +178,13 @@ describe("cleanup", () => {
       vi.mocked(getExpiredSessions).mockResolvedValue({ data: [], error: undefined });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const testEnv = { ...env, ACCOUNT_ID: "test-account", API_TOKEN: "test-token" };
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        ACCOUNT_ID: "test-account",
-        API_TOKEN: "test-token",
-        // No ANALYTICS_DATASET - should use default
-      };
-
-      await cleanupExpiredSessions(env);
+      await cleanupExpiredSessions(testEnv as never);
 
       expect(getExpiredSessions).toHaveBeenCalledWith(
         { ACCOUNT_ID: "test-account", API_TOKEN: "test-token" },
-        "subscriptions_metrics", // default value
+        "subscriptions_metrics",
       );
     });
 
@@ -256,17 +197,9 @@ describe("cleanup", () => {
       });
 
       const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const testEnv = { ...env, ACCOUNT_ID: "test-account", API_TOKEN: "test-token" };
 
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: {} as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
-        ACCOUNT_ID: "test-account",
-        API_TOKEN: "test-token",
-      };
-
-      const result = await cleanupExpiredSessions(env);
+      const result = await cleanupExpiredSessions(testEnv as never);
 
       expect(result.deleted).toBe(0);
       expect(result.streamDeleteSuccesses).toBe(0);
@@ -275,48 +208,43 @@ describe("cleanup", () => {
 
   describe("cleanup metrics", () => {
     it("reports correct subscription removal stats", async () => {
-      const { getExpiredSessions, getSessionSubscriptions } = await import(
-        "../src/analytics"
-      );
+      const sessionId = crypto.randomUUID();
+      const streamA = `stream-${crypto.randomUUID()}`;
+      const streamB = `stream-${crypto.randomUUID()}`;
 
-      // Setup: 1 expired session with 2 subscriptions
+      // Set up real session stream
+      await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "application/octet-stream" });
+
+      // Add subscriptions to SessionDO
+      const sessionDoKey = `${PROJECT_ID}/${sessionId}`;
+      const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoKey));
+      await sessionStub.addSubscription(streamA);
+      await sessionStub.addSubscription(streamB);
+
+      const { getExpiredSessions } = await import("../src/analytics");
       vi.mocked(getExpiredSessions).mockResolvedValue({
-        data: [{ sessionId: SESSION_ID, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
+        data: [{ sessionId, project: PROJECT_ID, lastActivity: Date.now() - 3600000, ttlSeconds: 1800 }],
         error: undefined,
       });
 
-      vi.mocked(getSessionSubscriptions).mockResolvedValue({
-        data: [{ streamId: "stream-a" }, { streamId: "stream-b" }],
-        error: undefined,
-      });
-
-      // Mock DO RPC - first succeeds, second fails
+      // Mock SUBSCRIPTION_DO: first removeSubscriber succeeds, second fails (error path)
       const mockRemoveSubscriber = vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error("DO error"));
-      const mockDoStub = { removeSubscriber: mockRemoveSubscriber };
-      const mockDoNamespace = {
-        idFromName: vi.fn().mockReturnValue("do-id"),
-        get: vi.fn().mockReturnValue(mockDoStub),
-      };
 
-      // Mock core RPC
-      mockDeleteStream.mockResolvedValue({ ok: true, status: 200 });
-
-      const { cleanupExpiredSessions } = await import("../src/cleanup");
-
-      const env = {
-        CORE: { deleteStream: mockDeleteStream, headStream: vi.fn(), putStream: vi.fn(), postStream: vi.fn() },
-        REGISTRY: mockProjectKeys,
-        SUBSCRIPTION_DO: mockDoNamespace as unknown as AppEnv["SUBSCRIPTION_DO"],
-        SESSION_DO: {} as AppEnv["SESSION_DO"],
+      const testEnv = {
+        ...env,
         ACCOUNT_ID: "test-account",
         API_TOKEN: "test-token",
+        SUBSCRIPTION_DO: {
+          idFromName: env.SUBSCRIPTION_DO.idFromName.bind(env.SUBSCRIPTION_DO),
+          get: vi.fn().mockReturnValue({ removeSubscriber: mockRemoveSubscriber }),
+        },
       };
 
-      const result = await cleanupExpiredSessions(env);
+      const { cleanupExpiredSessions } = await import("../src/cleanup");
+      const result = await cleanupExpiredSessions(testEnv as never);
 
-      // Verify counts: 1 expired, 1 stream deleted, 1 sub succeeded, 1 sub failed
       expect(result.deleted).toBe(1);
       expect(result.streamDeleteSuccesses).toBe(1);
       expect(result.subscriptionRemoveSuccesses).toBe(1);

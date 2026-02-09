@@ -261,7 +261,7 @@ layout: section
 
 <<< @/../src/cleanup/index.ts#synced-to-docs:cleanup-overview ts
 
-Cleanup uses Analytics Engine to find expired sessions, removes their subscriptions from SubscriptionDOs, then deletes their session streams from Core. Single-phase — no marking/grace period.
+Cleanup uses Analytics Engine to find expired sessions, queries SessionDO for each session's subscriptions, removes them from SubscriptionDOs, then deletes their session streams from Core. Single-phase — no marking/grace period.
 
 ---
 
@@ -277,7 +277,7 @@ Queries Analytics Engine for expired sessions, then processes them in parallel b
 
 <<< @/../src/cleanup/index.ts#synced-to-docs:cleanup-session ts
 
-For each expired session: query its subscriptions from Analytics Engine, remove from each SubscriptionDO, then delete the session stream from Core.
+For each expired session: query its subscriptions from SessionDO (source of truth), remove from each SubscriptionDO, then delete the session stream from Core.
 
 ---
 
