@@ -354,7 +354,7 @@ export async function handleLongPoll(
       closedAtTail: current.closed === 1 && current.tail_offset === offset,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
     });
-    headers.set("Cache-Control", cacheControl);
+    headers.set("Cache-Control", "no-store");
     return new Response(null, { status: 204, headers });
   }
 
@@ -371,7 +371,7 @@ export async function handleLongPoll(
   });
 
   if (!read.hasData) {
-    headers.set("Cache-Control", cacheControl);
+    headers.set("Cache-Control", "no-store");
     return new Response(null, { status: 204, headers });
   }
 

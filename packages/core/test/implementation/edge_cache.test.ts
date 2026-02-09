@@ -545,7 +545,7 @@ describe("edge cache", () => {
       await res.arrayBuffer();
     });
 
-    it("long-poll 204 timeout has max-age=20", async () => {
+    it("long-poll 204 timeout has no-store", async () => {
       const streamId = uniqueStreamId("cache-cc-lp204");
 
       // Create empty stream — long-poll will timeout with 204
@@ -559,7 +559,7 @@ describe("edge cache", () => {
 
       const res = await fetch(url);
       expect(res.status).toBe(204);
-      expect(res.headers.get("Cache-Control")).toBe("public, max-age=20");
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
     });
 
     it("HEAD requests return Cache-Control: no-store", async () => {
