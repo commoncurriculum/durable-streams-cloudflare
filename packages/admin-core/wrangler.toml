@@ -7,9 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "CORE"
 service = "durable-streams"
 
+# Replace with your actual KV namespace ID from: wrangler kv namespace create REGISTRY
 [[kv_namespaces]]
 binding = "REGISTRY"
-id = "c4d3f225c12c44b0aa2f56ef42238b5f"
+id = "REGISTRY_ID"
 
 [vars]
 # CF_ACCOUNT_ID = "your-account-id"
