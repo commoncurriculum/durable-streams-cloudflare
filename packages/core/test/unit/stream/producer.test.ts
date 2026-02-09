@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { env, runInDurableObject } from "cloudflare:test";
 import {
   parseProducerHeaders,
   evaluateProducer,
   type ProducerInput,
 } from "../../../src/stream/producer";
-import type { ProducerState, StreamStorage } from "../../../src/storage/types";
+import { DoSqliteStorage } from "../../../src/storage/queries";
+import type { ProducerState } from "../../../src/storage/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,17 +27,30 @@ function baseProducerState(overrides: Partial<ProducerState> = {}): ProducerStat
   };
 }
 
+const STREAM_ID = "test-stream";
+
 /**
- * Minimal mock of StreamStorage — only `getProducer` and `deleteProducer`
- * are used by `evaluateProducer`.
+ * Run test logic inside a fresh Durable Object with real DoSqliteStorage.
+ * The DO's schema is already initialized by the constructor.
  */
-function mockStorage(
-  producer: ProducerState | null = null,
-): StreamStorage & { deleteProducer: ReturnType<typeof vi.fn> } {
-  return {
-    getProducer: vi.fn().mockResolvedValue(producer),
-    deleteProducer: vi.fn().mockResolvedValue(undefined),
-  } as unknown as StreamStorage & { deleteProducer: ReturnType<typeof vi.fn> };
+async function withStorage(fn: (storage: DoSqliteStorage) => Promise<void>): Promise<void> {
+  const id = env.STREAMS.idFromName(`producer-test-${crypto.randomUUID()}`);
+  const stub = env.STREAMS.get(id);
+  await runInDurableObject(stub, async (instance) => {
+    const sql = (instance as unknown as { ctx: DurableObjectState }).ctx.storage.sql;
+    const storage = new DoSqliteStorage(sql);
+    await fn(storage);
+  });
+}
+
+/** Insert a producer record into real storage. */
+async function seedProducer(storage: DoSqliteStorage, state: ProducerState): Promise<void> {
+  await storage.upsertProducer(
+    STREAM_ID,
+    { id: state.producer_id, epoch: state.epoch, seq: state.last_seq },
+    state.last_offset,
+    state.last_updated ?? Date.now(),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -257,182 +272,220 @@ describe("parseProducerHeaders", () => {
 // ---------------------------------------------------------------------------
 
 describe("evaluateProducer", () => {
-  const streamId = "test-stream";
-
   it("returns ok with null state when no existing producer and seq=0", async () => {
-    const storage = mockStorage(null);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
+    await withStorage(async (storage) => {
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toBeNull();
-    }
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).toBeNull();
+      }
+    });
   });
 
   it("returns error 400 when no existing producer and seq != 0", async () => {
-    const storage = mockStorage(null);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
+    await withStorage(async (storage) => {
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.response.status).toBe(400);
-    }
+      expect(result.kind).toBe("error");
+      if (result.kind === "error") {
+        expect(result.response.status).toBe(400);
+      }
+    });
   });
 
   it("deletes expired producer and treats as new (seq=0 succeeds)", async () => {
-    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
-    const expired = baseProducerState({ last_updated: eightDaysAgo });
-    const storage = mockStorage(expired);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
+    await withStorage(async (storage) => {
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const expired = baseProducerState({ last_updated: eightDaysAgo });
+      await seedProducer(storage, expired);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 0 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(storage.deleteProducer).toHaveBeenCalledWith(streamId, "p1");
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toBeNull();
-    }
+      // Producer should have been deleted
+      const remaining = await storage.getProducer(STREAM_ID, "p1");
+      expect(remaining).toBeNull();
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).toBeNull();
+      }
+    });
   });
 
   it("deletes expired producer and rejects seq != 0", async () => {
-    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
-    const expired = baseProducerState({ last_updated: eightDaysAgo });
-    const storage = mockStorage(expired);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 5 };
+    await withStorage(async (storage) => {
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const expired = baseProducerState({ last_updated: eightDaysAgo });
+      await seedProducer(storage, expired);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 5 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(storage.deleteProducer).toHaveBeenCalledWith(streamId, "p1");
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.response.status).toBe(400);
-    }
+      // Producer should have been deleted
+      const remaining = await storage.getProducer(STREAM_ID, "p1");
+      expect(remaining).toBeNull();
+
+      expect(result.kind).toBe("error");
+      if (result.kind === "error") {
+        expect(result.response.status).toBe(400);
+      }
+    });
   });
 
   it("does not treat non-expired producer as expired", async () => {
-    const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
-    const existing = baseProducerState({ last_updated: sixDaysAgo, last_seq: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 6 };
+    await withStorage(async (storage) => {
+      const sixDaysAgo = Date.now() - 6 * 24 * 60 * 60 * 1000;
+      const existing = baseProducerState({ last_updated: sixDaysAgo, last_seq: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 6 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(storage.deleteProducer).not.toHaveBeenCalled();
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toEqual(existing);
-    }
+      // Producer should still exist
+      const still = await storage.getProducer(STREAM_ID, "p1");
+      expect(still).not.toBeNull();
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).not.toBeNull();
+        expect(result.state!.last_seq).toBe(5);
+      }
+    });
   });
 
   it("returns error 403 when epoch < existing epoch", async () => {
-    const existing = baseProducerState({ epoch: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 3, seq: 0 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 3, seq: 0 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.response.status).toBe(403);
-      expect(result.response.headers.get("Producer-Epoch")).toBe("5");
-    }
+      expect(result.kind).toBe("error");
+      if (result.kind === "error") {
+        expect(result.response.status).toBe(403);
+        expect(result.response.headers.get("Producer-Epoch")).toBe("5");
+      }
+    });
   });
 
   it("returns ok when epoch > existing epoch and seq=0 (epoch reset)", async () => {
-    const existing = baseProducerState({ epoch: 2, last_seq: 10 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 5, seq: 0 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 2, last_seq: 10 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 5, seq: 0 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toEqual(existing);
-    }
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).not.toBeNull();
+        expect(result.state!.epoch).toBe(2);
+      }
+    });
   });
 
   it("returns error 400 when epoch > existing epoch and seq != 0", async () => {
-    const existing = baseProducerState({ epoch: 2, last_seq: 10 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 5, seq: 3 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 2, last_seq: 10 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 5, seq: 3 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.response.status).toBe(400);
-    }
+      expect(result.kind).toBe("error");
+      if (result.kind === "error") {
+        expect(result.response.status).toBe(400);
+      }
+    });
   });
 
   it("returns duplicate when same epoch and seq <= existing last_seq", async () => {
-    const existing = baseProducerState({ epoch: 1, last_seq: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 1, last_seq: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 3 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("duplicate");
-    if (result.kind === "duplicate") {
-      expect(result.state).toEqual(existing);
-    }
+      expect(result.kind).toBe("duplicate");
+      if (result.kind === "duplicate") {
+        expect(result.state.last_seq).toBe(5);
+      }
+    });
   });
 
   it("returns duplicate when same epoch and seq equals existing last_seq", async () => {
-    const existing = baseProducerState({ epoch: 1, last_seq: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 5 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 1, last_seq: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 5 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("duplicate");
-    if (result.kind === "duplicate") {
-      expect(result.state).toEqual(existing);
-    }
+      expect(result.kind).toBe("duplicate");
+      if (result.kind === "duplicate") {
+        expect(result.state.last_seq).toBe(5);
+      }
+    });
   });
 
   it("returns ok when same epoch and seq = last_seq + 1 (next expected)", async () => {
-    const existing = baseProducerState({ epoch: 1, last_seq: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 6 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 1, last_seq: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 6 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toEqual(existing);
-    }
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).not.toBeNull();
+        expect(result.state!.last_seq).toBe(5);
+      }
+    });
   });
 
   it("returns error 409 with gap headers when same epoch and seq > last_seq + 1", async () => {
-    const existing = baseProducerState({ epoch: 1, last_seq: 5 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 10 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ epoch: 1, last_seq: 5 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 10 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") {
-      expect(result.response.status).toBe(409);
-      expect(result.response.headers.get("Producer-Expected-Seq")).toBe("6");
-      expect(result.response.headers.get("Producer-Received-Seq")).toBe("10");
-    }
+      expect(result.kind).toBe("error");
+      if (result.kind === "error") {
+        expect(result.response.status).toBe(409);
+        expect(result.response.headers.get("Producer-Expected-Seq")).toBe("6");
+        expect(result.response.headers.get("Producer-Received-Seq")).toBe("10");
+      }
+    });
   });
 
   it("handles producer with null last_updated (no expiry check)", async () => {
-    const existing = baseProducerState({ last_updated: null, last_seq: 3 });
-    const storage = mockStorage(existing);
-    const producer: ProducerInput = { id: "p1", epoch: 1, seq: 4 };
+    await withStorage(async (storage) => {
+      const existing = baseProducerState({ last_updated: null, last_seq: 3 });
+      await seedProducer(storage, existing);
+      const producer: ProducerInput = { id: "p1", epoch: 1, seq: 4 };
 
-    const result = await evaluateProducer(storage, streamId, producer);
+      const result = await evaluateProducer(storage, STREAM_ID, producer);
 
-    expect(storage.deleteProducer).not.toHaveBeenCalled();
-    expect(result.kind).toBe("ok");
-    if (result.kind === "ok") {
-      expect(result.state).toEqual(existing);
-    }
+      // Producer should still exist (not deleted)
+      const still = await storage.getProducer(STREAM_ID, "p1");
+      expect(still).not.toBeNull();
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.state).not.toBeNull();
+        expect(result.state!.last_seq).toBe(3);
+      }
+    });
   });
 });

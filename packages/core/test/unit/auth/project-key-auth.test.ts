@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
 import {
   projectJwtAuth,
   extractBearerToken,
@@ -42,21 +43,6 @@ function makeRequest(token?: string): Request {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   return new Request("http://localhost/v1/myproject/stream/test-stream", { headers });
-}
-
-function createMockKV(data: Record<string, unknown>): KVNamespace {
-  return {
-    get: vi.fn(async (key: string, type?: string) => {
-      const value = data[key];
-      if (value === undefined) return null;
-      if (type === "json") return value;
-      return JSON.stringify(value);
-    }),
-    put: vi.fn(),
-    delete: vi.fn(),
-    list: vi.fn(),
-    getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
 }
 
 const SECRET = "test-signing-secret-for-hmac-256";
@@ -157,21 +143,28 @@ describe("verifyProjectJwt", () => {
 });
 
 describe("lookupProjectConfig", () => {
+  beforeEach(async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+  });
+
   it("returns config when project exists", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
-    const config = await lookupProjectConfig(kv, PROJECT_ID);
+    const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
     expect(config).toEqual({ signingSecret: SECRET });
   });
 
   it("returns null when project does not exist", async () => {
-    const kv = createMockKV({});
-    const config = await lookupProjectConfig(kv, PROJECT_ID);
+    await env.REGISTRY.delete(PROJECT_ID);
+    const config = await lookupProjectConfig(env.REGISTRY, PROJECT_ID);
     expect(config).toBeNull();
   });
 });
 
 describe("projectJwtAuth - authorizeMutation", () => {
   const { authorizeMutation } = projectJwtAuth();
+
+  beforeEach(async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+  });
 
   it("rejects with 500 when REGISTRY not configured", async () => {
     const result = await authorizeMutation(makeRequest("token"), "myproject/test", {} as any, null);
@@ -180,63 +173,56 @@ describe("projectJwtAuth - authorizeMutation", () => {
   });
 
   it("rejects with 401 when no token provided", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
-    const result = await authorizeMutation(makeRequest(), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 401 when project not found in KV", async () => {
-    const kv = createMockKV({});
+    await env.REGISTRY.delete(PROJECT_ID);
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 401 when JWT signature is invalid", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), "wrong-secret");
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 403 when sub does not match project", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ sub: "other-project" }), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("rejects with 401 when token is expired", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ exp: Math.floor(Date.now() / 1000) - 60 }), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects with 403 when scope is read", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
   it("allows valid write JWT", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toEqual({ ok: true });
   });
 
   it("rejects with 403 when doKey has no slash", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims(), SECRET);
-    const result = await authorizeMutation(makeRequest(token), "no-slash", { REGISTRY: kv }, null);
+    const result = await authorizeMutation(makeRequest(token), "no-slash", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) expect(result.response.status).toBe(403);
   });
@@ -245,6 +231,10 @@ describe("projectJwtAuth - authorizeMutation", () => {
 describe("projectJwtAuth - authorizeRead", () => {
   const { authorizeRead } = projectJwtAuth();
 
+  beforeEach(async () => {
+    await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: SECRET }));
+  });
+
   it("rejects with 500 when REGISTRY not configured", async () => {
     const result = await authorizeRead(makeRequest("token"), "myproject/test", {} as any, null);
     expect(result).toHaveProperty("ok", false);
@@ -252,8 +242,7 @@ describe("projectJwtAuth - authorizeRead", () => {
   });
 
   it("rejects with 401 when no token", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
-    const result = await authorizeRead(makeRequest(), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(401);
@@ -261,23 +250,20 @@ describe("projectJwtAuth - authorizeRead", () => {
   });
 
   it("allows valid read JWT", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", true);
   });
 
   it("allows valid write JWT for reads", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "write" }), SECRET);
-    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", true);
   });
 
   it("rejects with 403 when stream_id does not match", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "other-stream" }), SECRET);
-    const result = await authorizeRead(makeRequest(token), "myproject/test-stream", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(token), "myproject/test-stream", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(403);
@@ -285,16 +271,14 @@ describe("projectJwtAuth - authorizeRead", () => {
   });
 
   it("allows when stream_id matches", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "test-stream" }), SECRET);
-    const result = await authorizeRead(makeRequest(token), "myproject/test-stream", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(token), "myproject/test-stream", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", true);
   });
 
   it("rejects with 403 when sub does not match project", async () => {
-    const kv = createMockKV({ [PROJECT_ID]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ sub: "wrong" }), SECRET);
-    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: kv }, null);
+    const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
       expect(result.response.status).toBe(403);
