@@ -1,4 +1,5 @@
 import { createMetrics } from "../metrics";
+import { logError } from "../log";
 import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
 import type { AppEnv } from "../env";
 import type { SubscribeResult } from "./types";
@@ -65,7 +66,7 @@ export async function subscribe(
       try {
         await env.CORE.deleteStream(sessionDoKey);
       } catch (rollbackErr) {
-        console.error(`Failed to rollback session stream ${sessionId}:`, rollbackErr);
+        logError({ projectId, streamId, sessionId, component: "subscribe-rollback" }, "failed to rollback session stream", rollbackErr);
       }
     }
     throw err;

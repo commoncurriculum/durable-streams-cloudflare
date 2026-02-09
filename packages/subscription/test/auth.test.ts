@@ -128,6 +128,16 @@ describe("parseRoute", () => {
     expect(route).toBeNull();
   });
 
+  it("parses DELETE session even when sessionId contains 'subscribe'", async () => {
+    const route = await parseRoute("DELETE", "/v1/myapp/session/subscribe", req("DELETE", "/v1/myapp/session/subscribe"));
+    expect(route).toEqual({ action: "deleteSession", project: "myapp", sessionId: "subscribe" });
+  });
+
+  it("parses DELETE session even when sessionId contains 'unsubscribe'", async () => {
+    const route = await parseRoute("DELETE", "/v1/myapp/session/unsubscribe", req("DELETE", "/v1/myapp/session/unsubscribe"));
+    expect(route).toEqual({ action: "deleteSession", project: "myapp", sessionId: "unsubscribe" });
+  });
+
   it("returns null for unknown paths", async () => {
     const route = await parseRoute("GET", "/health", req("GET", "/health"));
     expect(route).toBeNull();
@@ -277,6 +287,44 @@ describe("projectJwtAuth", () => {
     const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
     const token = await createTestJwt(validClaims({ scope: "write" }), SECRET);
     const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: kv });
+    expect(result).toEqual({ ok: true });
+  });
+
+  // stream_id claim
+  it("allows JWT with matching stream_id on publish", async () => {
+    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
+    const token = await createTestJwt(validClaims({ stream_id: "s" }), SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("rejects JWT with mismatched stream_id on publish", async () => {
+    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
+    const token = await createTestJwt(validClaims({ stream_id: "other-stream" }), SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    expect(result).toHaveProperty("ok", false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it("rejects JWT with mismatched stream_id on subscribe", async () => {
+    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
+    const token = await createTestJwt(validClaims({ scope: "read", stream_id: "other-stream" }), SECRET);
+    const result = await auth(makeRequest(token), subscribeRoute, { REGISTRY: kv });
+    expect(result).toHaveProperty("ok", false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it("allows JWT without stream_id on any route", async () => {
+    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
+    const token = await createTestJwt(validClaims(), SECRET);
+    const result = await auth(makeRequest(token), publishRoute, { REGISTRY: kv });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("ignores stream_id on session routes (no streamId in route)", async () => {
+    const kv = createMockKV({ [PROJECT]: { signingSecret: SECRET } });
+    const token = await createTestJwt(validClaims({ scope: "read", stream_id: "any-stream" }), SECRET);
+    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: kv });
     expect(result).toEqual({ ok: true });
   });
 });

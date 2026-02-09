@@ -94,6 +94,59 @@ describe("parseProducerHeaders", () => {
     expect(result!.error!.status).toBe(400);
   });
 
+  it("returns error 400 for Producer-Id with disallowed characters", () => {
+    const req = makeRequest({
+      "Producer-Id": "prod id with spaces",
+      "Producer-Epoch": "1",
+      "Producer-Seq": "0",
+    });
+    const result = parseProducerHeaders(req);
+
+    expect(result).not.toBeNull();
+    expect(result!.error).toBeDefined();
+    expect(result!.error!.status).toBe(400);
+  });
+
+  it("returns error 400 for Producer-Id exceeding 256 characters", () => {
+    const req = makeRequest({
+      "Producer-Id": "a".repeat(257),
+      "Producer-Epoch": "1",
+      "Producer-Seq": "0",
+    });
+    const result = parseProducerHeaders(req);
+
+    expect(result).not.toBeNull();
+    expect(result!.error).toBeDefined();
+    expect(result!.error!.status).toBe(400);
+  });
+
+  it("accepts Producer-Id with allowed special characters", () => {
+    const req = makeRequest({
+      "Producer-Id": "fanout:org-123_stream.v2",
+      "Producer-Epoch": "0",
+      "Producer-Seq": "0",
+    });
+    const result = parseProducerHeaders(req);
+
+    expect(result).not.toBeNull();
+    expect(result!.error).toBeUndefined();
+    expect(result!.value!.id).toBe("fanout:org-123_stream.v2");
+  });
+
+  it("accepts Producer-Id at max length (256 chars)", () => {
+    const id = "a".repeat(256);
+    const req = makeRequest({
+      "Producer-Id": id,
+      "Producer-Epoch": "0",
+      "Producer-Seq": "0",
+    });
+    const result = parseProducerHeaders(req);
+
+    expect(result).not.toBeNull();
+    expect(result!.error).toBeUndefined();
+    expect(result!.value!.id).toBe(id);
+  });
+
   it("returns error 400 for non-integer Producer-Epoch", () => {
     const req = makeRequest({
       "Producer-Id": "p1",

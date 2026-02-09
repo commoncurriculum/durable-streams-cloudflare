@@ -27,6 +27,7 @@ export type ProducerEval =
 // #endregion docs-producer-types
 
 const PRODUCER_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PRODUCER_ID_PATTERN = /^[a-zA-Z0-9_\-:.]{1,256}$/;
 
 export function parseProducerHeaders(
   request: Request,
@@ -42,8 +43,8 @@ export function parseProducerHeaders(
     return { error: errorResponse(400, "Producer headers must be provided together") };
   }
 
-  if (id.trim().length === 0) {
-    return { error: errorResponse(400, "Producer-Id must not be empty") };
+  if (!PRODUCER_ID_PATTERN.test(id)) {
+    return { error: errorResponse(400, "Producer-Id must match /^[a-zA-Z0-9_\\-:.]{1,256}$/") };
   }
 
   if (!isInteger(epochStr) || !isInteger(seqStr)) {

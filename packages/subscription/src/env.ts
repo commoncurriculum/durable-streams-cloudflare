@@ -14,5 +14,10 @@ export interface AppEnv extends Partial<AnalyticsQueryEnv> {
   CORS_ORIGINS?: string;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
+  MAX_INLINE_FANOUT?: string;
+  /**
+   * KV namespace storing per-project signing secrets and stream metadata.
+   * SECURITY: Must use private ACL — contains JWT signing secrets.
+   */
   REGISTRY: KVNamespace;
 }

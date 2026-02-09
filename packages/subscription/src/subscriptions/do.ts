@@ -10,8 +10,15 @@
 import { DurableObject } from "cloudflare:workers";
 import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
+import { logError, logWarn } from "../log";
 import { bufferToBase64 } from "../util/base64";
-import { FANOUT_QUEUE_THRESHOLD, FANOUT_QUEUE_BATCH_SIZE } from "../constants";
+import {
+  FANOUT_QUEUE_THRESHOLD,
+  FANOUT_QUEUE_BATCH_SIZE,
+  MAX_INLINE_FANOUT,
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+  CIRCUIT_BREAKER_RECOVERY_MS,
+} from "../constants";
 import type { CoreService } from "../client";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
@@ -20,7 +27,10 @@ export interface SubscriptionDOEnv {
   METRICS?: AnalyticsEngineDataset;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
+  MAX_INLINE_FANOUT?: string;
 }
+
+type CircuitState = "closed" | "open" | "half-open";
 
 interface Subscriber {
   session_id: string;
@@ -31,6 +41,12 @@ interface Subscriber {
 export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private sql: SqlStorage;
   private nextFanoutSeq: number;
+
+  // Circuit breaker for inline fanout — protects the publish path when
+  // downstream session streams are slow or failing.
+  private circuitState: CircuitState = "closed";
+  private consecutiveFailures = 0;
+  private lastFailureTime = 0;
 
   constructor(ctx: DurableObjectState, env: SubscriptionDOEnv) {
     super(ctx, env);
@@ -166,12 +182,22 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // 3. Fan out to all subscriber session streams
     let successCount = 0;
     let failureCount = 0;
-    let fanoutMode: "inline" | "queued" = "inline";
+    let fanoutMode: "inline" | "queued" | "circuit-open" | "skipped" = "inline";
 
     if (subscribers.length > 0) {
-      const threshold = this.env.FANOUT_QUEUE_THRESHOLD
+      const thresholdParsed = this.env.FANOUT_QUEUE_THRESHOLD
         ? parseInt(this.env.FANOUT_QUEUE_THRESHOLD, 10)
+        : undefined;
+      const threshold = thresholdParsed !== undefined && Number.isFinite(thresholdParsed) && thresholdParsed > 0
+        ? thresholdParsed
         : FANOUT_QUEUE_THRESHOLD;
+
+      const maxInlineParsed = this.env.MAX_INLINE_FANOUT
+        ? parseInt(this.env.MAX_INLINE_FANOUT, 10)
+        : undefined;
+      const maxInline = maxInlineParsed && Number.isFinite(maxInlineParsed) && maxInlineParsed > 0
+        ? maxInlineParsed
+        : MAX_INLINE_FANOUT;
 
       if (this.env.FANOUT_QUEUE && subscribers.length > threshold) {
         // Queued fanout — enqueue and return immediately
@@ -180,18 +206,33 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
           fanoutMode = "queued";
           metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
         } catch (err) {
-          // Fallback to inline on queue failure
-          console.error("Queue enqueue failed, falling back to inline fanout:", err);
-          const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
-          successCount = result.successes;
-          failureCount = result.failures;
-          this.removeStaleSubscribers(result.staleSessionIds);
+          logError({ projectId, streamId, subscribers: subscribers.length, component: "fanout-queue" }, "queue enqueue failed, falling back to inline fanout", err);
+          if (!this.shouldAttemptInlineFanout()) {
+            fanoutMode = "circuit-open";
+          } else if (subscribers.length > maxInline) {
+            fanoutMode = "skipped";
+          } else {
+            const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
+            successCount = result.successes;
+            failureCount = result.failures;
+            this.updateCircuitBreaker(result.successes, result.failures);
+            this.removeStaleSubscribers(result.staleSessionIds);
+          }
         }
+      } else if (!this.shouldAttemptInlineFanout()) {
+        // Circuit breaker is open — skip inline fanout entirely.
+        // Source write already committed; never return an error here.
+        fanoutMode = "circuit-open";
+      } else if (subscribers.length > maxInline) {
+        // Too many subscribers for inline fanout without a queue
+        fanoutMode = "skipped";
+        logWarn({ streamId, subscribers: subscribers.length, maxInline, component: "fanout" }, "inline fanout skipped: too many subscribers and no queue configured");
       } else {
         // Inline fanout
         const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
         successCount = result.successes;
         failureCount = result.failures;
+        this.updateCircuitBreaker(result.successes, result.failures);
         // #endregion synced-to-docs:fanout
 
         // #region synced-to-docs:stale-cleanup
@@ -223,6 +264,51 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     };
   }
   // #endregion synced-to-docs:publish-response
+
+  /**
+   * Check circuit breaker state. Returns true if inline fanout should proceed.
+   * Transitions open → half-open after the recovery window.
+   */
+  private shouldAttemptInlineFanout(): boolean {
+    if (this.circuitState === "closed") return true;
+
+    if (this.circuitState === "open") {
+      if (Date.now() - this.lastFailureTime >= CIRCUIT_BREAKER_RECOVERY_MS) {
+        this.circuitState = "half-open";
+        return true;
+      }
+      return false;
+    }
+
+    // half-open: allow one attempt
+    return true;
+  }
+
+  /**
+   * Update circuit breaker state based on fanout results.
+   */
+  private updateCircuitBreaker(successes: number, failures: number): void {
+    if (failures === 0) {
+      // All succeeded — close circuit
+      this.circuitState = "closed";
+      this.consecutiveFailures = 0;
+      return;
+    }
+
+    if (successes > 0 && this.circuitState === "half-open") {
+      // Partial success in half-open — close circuit
+      this.circuitState = "closed";
+      this.consecutiveFailures = 0;
+      return;
+    }
+
+    this.consecutiveFailures++;
+    this.lastFailureTime = Date.now();
+
+    if (this.consecutiveFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+      this.circuitState = "open";
+    }
+  }
 
   private async enqueueFanout(
     projectId: string,

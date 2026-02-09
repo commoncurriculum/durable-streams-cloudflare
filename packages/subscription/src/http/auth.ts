@@ -15,6 +15,10 @@ export type AuthorizeSubscription<E = unknown> = (
 ) => SubscriptionAuthResult | Promise<SubscriptionAuthResult>;
 
 export type ProjectJwtEnv = {
+  /**
+   * KV namespace storing per-project signing secrets.
+   * SECURITY: Must use private ACL — contains JWT signing secrets.
+   */
   REGISTRY: KVNamespace;
 };
 
@@ -62,7 +66,7 @@ export async function parseRoute(
   // Session delete: DELETE /v1/:project/session/:sessionId
   if (method === "DELETE" && SESSION_DELETE_RE.test(pathname)) {
     const deleteMatch = SESSION_DELETE_RE.exec(pathname);
-    if (deleteMatch && !pathname.includes("/subscribe") && !pathname.includes("/unsubscribe")) {
+    if (deleteMatch) {
       return { action: "deleteSession", project: deleteMatch[1], sessionId: deleteMatch[2] };
     }
   }
@@ -128,6 +132,7 @@ type ProjectJwtClaims = {
   sub: string;
   scope: "write" | "read";
   exp: number;
+  stream_id?: string;
 };
 
 async function lookupProjectConfig(
@@ -179,6 +184,7 @@ async function verifyProjectJwt(
       sub: payload.sub as string,
       scope: payload.scope as "write" | "read",
       exp: payload.exp as number,
+      stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
   } catch {
     return null;
@@ -230,6 +236,10 @@ export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
     }
 
     if (WRITE_ACTIONS.has(route.action) && claims.scope !== "write") {
+      return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
+    }
+
+    if (claims.stream_id && "streamId" in route && claims.stream_id !== route.streamId) {
       return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
     }
 

@@ -3,6 +3,7 @@ import { arktypeValidator } from "@hono/arktype-validator";
 import { type } from "arktype";
 import { publish } from "../../subscriptions/publish";
 import { createMetrics } from "../../metrics";
+import { logError } from "../../log";
 import { STREAM_ID_PATTERN } from "../../constants";
 import type { AppEnv } from "../../env";
 
@@ -51,7 +52,8 @@ publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParam
     headers.set("X-Fanout-Mode", result.fanoutMode);
 
     return new Response(result.body, { status: result.status, headers });
-  } catch {
+  } catch (err) {
+    logError({ projectId, streamId, component: "publish" }, "publish failed", err);
     metrics.publishError(streamId, "exception", Date.now() - start);
     return c.json({ error: "Failed to publish" }, 500);
   }

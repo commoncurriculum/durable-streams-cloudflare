@@ -34,7 +34,7 @@ export interface PublishResult {
   fanoutCount: number;
   fanoutSuccesses: number;
   fanoutFailures: number;
-  fanoutMode: "inline" | "queued";
+  fanoutMode: "inline" | "queued" | "circuit-open" | "skipped";
 }
 
 export interface FanoutQueueMessage {

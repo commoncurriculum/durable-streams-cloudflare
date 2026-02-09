@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { isExpired } from "../protocol/expiry";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../protocol/limits";
+import { logWarn } from "../log";
 import { LongPollQueue } from "./handlers/realtime";
 import type { SseState } from "./handlers/realtime";
 import { DoSqliteStorage } from "../storage/queries";
@@ -151,12 +152,20 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   private async deleteStreamData(streamId: string): Promise<void> {
     await this.storage.deleteStreamData(streamId);
-    // Clean up stream metadata from KV
+    // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (this.env.REGISTRY) {
-      try {
-        await this.env.REGISTRY.delete(streamId);
-      } catch {
-        // Best-effort KV cleanup
+      const kv = this.env.REGISTRY;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await kv.delete(streamId);
+          return;
+        } catch (e) {
+          if (attempt === 3) {
+            logWarn({ streamId, attempt, component: "kv-cleanup" }, "KV delete failed after retries on expiry", e);
+          } else {
+            await new Promise(r => setTimeout(r, attempt * 100));
+          }
+        }
       }
     }
   }
@@ -215,11 +224,12 @@ export class StreamDO extends DurableObject<StreamEnv> {
           blobs: [streamId, "ws_disconnect", "anonymous"],
           doubles: [1, 0],
         });
-      } catch { /* best-effort metrics */ }
+      } catch (e) { logWarn({ component: "ws-metrics" }, "best-effort WS close metrics failed", e); }
     }
   }
 
-  webSocketError(ws: WebSocket, _error: unknown): void {
+  webSocketError(ws: WebSocket, error: unknown): void {
+    logWarn({ component: "ws-error" }, "WebSocket error", error);
     try { ws.close(1011, "internal error"); } catch { /* already closed */ }
   }
 

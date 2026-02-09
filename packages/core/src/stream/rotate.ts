@@ -96,13 +96,17 @@ export async function rotateSegment(params: {
   // #endregion docs-rotate-store
 
   const remainingStats = await storage.getOpsStatsFrom(streamId, segmentEnd);
-  await storage.batch([
+  const batchStatements = [
     storage.updateStreamStatement(
       streamId,
       ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
       [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
     ),
-  ]);
+  ];
+  if (deleteOps) {
+    batchStatements.push(storage.deleteOpsThroughStatement(streamId, segmentEnd));
+  }
+  await storage.batch(batchStatements);
 
   const segment = {
     readSeq: meta.read_seq,
@@ -115,10 +119,6 @@ export async function rotateSegment(params: {
     sizeBytes,
     messageCount,
   };
-
-  if (deleteOps) {
-    await storage.deleteOpsThrough(streamId, segmentEnd);
-  }
 
   return { rotated: true, segment };
 }

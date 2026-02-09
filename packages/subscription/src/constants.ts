@@ -48,6 +48,28 @@ export const FANOUT_QUEUE_THRESHOLD = 200;
 export const FANOUT_QUEUE_BATCH_SIZE = 50;
 
 /**
+ * Maximum number of subscribers for inline fanout (without a queue).
+ * Above this, fanout is skipped to protect the publish path.
+ */
+export const MAX_INLINE_FANOUT = 1000;
+
+/**
+ * Per-RPC timeout in milliseconds for fanout writes.
+ * Workers RPC has no native timeout, so we use Promise.race with setTimeout.
+ */
+export const FANOUT_RPC_TIMEOUT_MS = 10_000;
+
+/**
+ * Circuit breaker: number of consecutive inline fanout failures before opening.
+ */
+export const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
+
+/**
+ * Circuit breaker: time in ms before retrying after opening (half-open).
+ */
+export const CIRCUIT_BREAKER_RECOVERY_MS = 60_000;
+
+/**
  * Default Analytics Engine dataset name.
  */
 export const DEFAULT_ANALYTICS_DATASET = "subscriptions_metrics";

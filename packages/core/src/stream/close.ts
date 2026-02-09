@@ -21,7 +21,7 @@ export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string):
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_STREAM_CLOSED]: "true",
   });
-  return new Response("stream is closed", { status: 409, headers });
+  return Response.json({ error: "stream is closed" }, { status: 409, headers });
 }
 
 export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): Result<null> {

@@ -12,6 +12,7 @@
 // #endregion synced-to-docs:cleanup-overview
 
 import { createMetrics } from "../metrics";
+import { logError, logWarn } from "../log";
 import {
   getExpiredSessions,
   getSessionSubscriptions,
@@ -60,25 +61,30 @@ async function cleanupSession(
   );
 
   if (subscriptionsResult.error) {
-    console.error(`Failed to get subscriptions for session ${session.sessionId}: ${subscriptionsResult.error}`);
+    logError({ sessionId: session.sessionId, project: session.project, component: "cleanup" }, "failed to get subscriptions for session", subscriptionsResult.error);
   }
 
   const subscriptions = subscriptionsResult.data;
 
   // #region synced-to-docs:cleanup-session
-  // Remove from each SubscriptionDO via RPC (project-scoped key)
-  for (const sub of subscriptions) {
-    try {
-      const doKey = `${session.project}/${sub.streamId}`;
-      const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
-      await stub.removeSubscriber(session.sessionId);
-      subscriptionSuccesses++;
-    } catch (err) {
-      console.error(
-        `Failed to remove subscription ${session.sessionId} from ${sub.streamId}:`,
-        err,
-      );
-      subscriptionFailures++;
+  // FIX-020: Batch subscription removal RPCs with Promise.allSettled
+  const SUB_REMOVAL_BATCH_SIZE = 20;
+  for (let si = 0; si < subscriptions.length; si += SUB_REMOVAL_BATCH_SIZE) {
+    const subBatch = subscriptions.slice(si, si + SUB_REMOVAL_BATCH_SIZE);
+    const subResults = await Promise.allSettled(
+      subBatch.map(async (sub) => {
+        const doKey = `${session.project}/${sub.streamId}`;
+        const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
+        await stub.removeSubscriber(session.sessionId);
+      }),
+    );
+    for (let j = 0; j < subResults.length; j++) {
+      if (subResults[j].status === "fulfilled") {
+        subscriptionSuccesses++;
+      } else {
+        logError({ sessionId: session.sessionId, streamId: subBatch[j].streamId, project: session.project, component: "cleanup" }, "failed to remove subscription", (subResults[j] as PromiseRejectedResult).reason);
+        subscriptionFailures++;
+      }
     }
   }
 
@@ -91,10 +97,10 @@ async function cleanupSession(
       streamDeleteSuccess = true;
       metrics.sessionDelete(session.sessionId, 0);
     } else {
-      console.error(`Failed to delete session stream ${session.sessionId}: ${result.body} (status: ${result.status})`);
+      logError({ sessionId: session.sessionId, project: session.project, status: result.status, component: "cleanup" }, "failed to delete session stream", result.body);
     }
   } catch (err) {
-    console.error(`Failed to delete session stream ${session.sessionId}:`, err);
+    logError({ sessionId: session.sessionId, project: session.project, component: "cleanup" }, "failed to delete session stream (exception)", err);
   }
   // #endregion synced-to-docs:cleanup-session
 
@@ -109,7 +115,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
   const metrics = createMetrics(env.METRICS);
 
   if (!env.ACCOUNT_ID || !env.API_TOKEN) {
-    console.log("Cleanup skipped: ACCOUNT_ID and API_TOKEN required for Analytics Engine queries");
+    logWarn({ component: "cleanup" }, "cleanup skipped: ACCOUNT_ID and API_TOKEN required for Analytics Engine queries");
     return {
       deleted: 0,
       streamDeleteSuccesses: 0,
@@ -128,7 +134,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
   const expiredResult = await getExpiredSessions(analyticsEnv, datasetName);
 
   if (expiredResult.error) {
-    console.error(`Failed to query expired sessions: ${expiredResult.error}`);
+    logError({ component: "cleanup" }, "failed to query expired sessions", expiredResult.error);
     return {
       deleted: 0,
       streamDeleteSuccesses: 0,
@@ -173,6 +179,7 @@ export async function cleanupExpiredSessions(env: AppEnv): Promise<CleanupResult
         subscriptionRemoveSuccesses += result.value.subscriptionSuccesses;
         subscriptionRemoveFailures += result.value.subscriptionFailures;
       } else {
+        logError({ component: "cleanup" }, "cleanup batch session rejected", result.reason);
         streamDeleteFailures++;
       }
     }

@@ -3,6 +3,7 @@ import {
   HEADER_STREAM_UP_TO_DATE,
 } from "../protocol/headers";
 import { Timing, attachTiming } from "../protocol/timing";
+import { logError, logWarn } from "../log";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead } from "./auth";
 import type { StreamDO } from "./durable_object";
@@ -19,6 +20,10 @@ export type BaseEnv = {
   R2?: R2Bucket;
   DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
+  /**
+   * KV namespace storing per-project signing secrets and stream metadata.
+   * SECURITY: Must use private ACL — contains JWT signing secrets.
+   */
   REGISTRY: KVNamespace;
   CORS_ORIGINS?: string;
 };
@@ -144,11 +149,13 @@ async function bridgeSseViaWebSocket(
           // Decode base64 back to binary, then build SSE event
           const binary = Uint8Array.from(atob(dataMsg.payload), (c) => c.charCodeAt(0));
           const sseEvent = buildSseDataEvent(binary.buffer as ArrayBuffer, true);
+          // Fire-and-forget: SSE write to closed/errored stream is non-fatal
           writer.write(sseTextEncoder.encode(sseEvent)).catch(() => {});
         } else {
           // Text payload — build SSE event from the raw text
           const encoded = sseTextEncoder.encode(dataMsg.payload);
           const sseEvent = buildSseDataEvent(encoded.buffer as ArrayBuffer, false);
+          // Fire-and-forget: SSE write to closed/errored stream is non-fatal
           writer.write(sseTextEncoder.encode(sseEvent)).catch(() => {});
         }
       } else if (msg.type === "control") {
@@ -172,18 +179,21 @@ async function bridgeSseViaWebSocket(
           control.upToDate = true;
         }
         const ssePayload = `event: control\ndata:${JSON.stringify(control)}\n\n`;
+        // Fire-and-forget: SSE write to closed/errored stream is non-fatal
         writer.write(sseTextEncoder.encode(ssePayload)).catch(() => {});
       }
-    } catch {
-      // Malformed message — ignore
+    } catch (e) {
+      logWarn({ doKey, component: "ws-bridge" }, "malformed WS message", e);
     }
   });
 
   ws.addEventListener("close", () => {
+    // Fire-and-forget: writer may already be closed
     writer.close().catch(() => {});
   });
 
   ws.addEventListener("error", () => {
+    // Fire-and-forget: writer may already be closed
     writer.close().catch(() => {});
   });
 
@@ -385,8 +395,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
               }),
               timing,
             );
-          } catch {
-            // Winner failed — fall through to make our own DO call
+          } catch (e) {
+            logWarn({ cacheUrl, component: "coalesce" }, "coalesced request failed, falling through to DO", e);
           }
         }
       }
@@ -427,6 +437,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
           doneOrigin?.();
         }
       } catch (err) {
+        logError({ doKey, method, component: "do-rpc" }, "DO routeStreamRequest failed", err);
         if (rejectInFlight && cacheUrl) {
           rejectInFlight(err);
           inFlight.delete(cacheUrl);

@@ -15,3 +15,7 @@ export const LONG_POLL_CACHE_SECONDS = 20;
 export const LONGPOLL_STAGGER_MS = 100;
 export const SEGMENT_MAX_BYTES_DEFAULT = 4 * 1024 * 1024;
 export const SEGMENT_MAX_MESSAGES_DEFAULT = 1000;
+export const MAX_SSE_CLIENTS_DEFAULT = 10_000;
+export const SSE_BROADCAST_BATCH_SIZE = 100;
+/** Default DO storage quota (10 GB). Writes are rejected at 90% of this value. */
+export const DO_STORAGE_QUOTA_BYTES_DEFAULT = 10 * 1024 * 1024 * 1024;

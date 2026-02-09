@@ -1,6 +1,7 @@
 import { baseHeaders } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
-import { LONGPOLL_STAGGER_MS } from "../../protocol/limits";
+import { logWarn } from "../../log";
+import { DO_STORAGE_QUOTA_BYTES_DEFAULT, LONGPOLL_STAGGER_MS } from "../../protocol/limits";
 import {
   evaluateProducer,
   producerDuplicateResponse,
@@ -114,6 +115,17 @@ export async function handlePost(
   request: Request,
 ): Promise<Response> {
   return ctx.state.blockConcurrencyWhile(async () => {
+    // FIX-004: Reject writes when DO storage is near capacity (90% of quota)
+    const quotaBytes = (() => {
+      const raw = ctx.env.DO_STORAGE_QUOTA_BYTES;
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : DO_STORAGE_QUOTA_BYTES_DEFAULT;
+    })();
+    const dbSize = ctx.state.storage.sql.databaseSize;
+    if (dbSize >= quotaBytes * 0.9) {
+      return errorResponse(507, "storage quota exceeded");
+    }
+
     // 1. Validate stream exists
     const meta = await ctx.getStream(streamId);
     const streamResult = validateStreamExists(meta);
@@ -188,8 +200,8 @@ export async function handlePost(
             if (preCacheResp) {
               await caches.default.put(waiterUrl, preCacheResp);
             }
-          } catch {
-            // Pre-cache failure is non-critical — continue
+          } catch (e) {
+            logWarn({ streamId, waiterUrl, component: "pre-cache" }, "pre-cache build/store failed", e);
           }
         }
       }
@@ -277,18 +289,37 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     await closeAllSseClients(ctx);
     closeAllWebSockets(ctx);
 
+    // FIX-015: R2 segment deletion with per-segment error handling
     if (ctx.env.R2 && segments.length > 0) {
-      const r2 = ctx.env.R2; // Narrowed to non-null by conditional
+      const r2 = ctx.env.R2;
       ctx.state.waitUntil(
-        Promise.all(segments.map((segment) => r2.delete(segment.r2_key))).then(
-          () => undefined,
-        ),
+        Promise.allSettled(segments.map(async (segment) => {
+          try {
+            await r2.delete(segment.r2_key);
+          } catch (e) {
+            logWarn({ streamId, r2Key: segment.r2_key, component: "r2-cleanup" }, "R2 segment deletion failed", e);
+          }
+        })),
       );
     }
 
-    // Clean up stream metadata from KV
+    // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (ctx.env.REGISTRY) {
-      ctx.state.waitUntil(ctx.env.REGISTRY.delete(streamId).catch(() => {}));
+      const kv = ctx.env.REGISTRY;
+      ctx.state.waitUntil((async () => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await kv.delete(streamId);
+            return;
+          } catch (e) {
+            if (attempt === 3) {
+              logWarn({ streamId, attempt, component: "kv-cleanup" }, "KV delete failed after retries on stream deletion", e);
+            } else {
+              await new Promise(r => setTimeout(r, attempt * 100));
+            }
+          }
+        }
+      })());
     }
 
     // Record metrics for stream deletion

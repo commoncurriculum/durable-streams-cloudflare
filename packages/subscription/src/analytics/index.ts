@@ -8,6 +8,7 @@
  */
 
 import { SESSION_ID_PATTERN } from "../constants";
+import { logError } from "../log";
 
 export interface AnalyticsQueryEnv {
   ACCOUNT_ID: string;
@@ -89,6 +90,7 @@ async function queryAnalyticsEngine<T>(
     return { data: result.data };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    logError({ component: "analytics" }, "analytics engine query failed (network)", err);
     return {
       data: [],
       error: message,

@@ -1,5 +1,6 @@
 import { fanoutToSubscribers } from "../subscriptions/fanout";
 import { createMetrics } from "../metrics";
+import { logError } from "../log";
 import { base64ToBuffer } from "../util/base64";
 import type { AppEnv } from "../env";
 import type { FanoutQueueMessage } from "../subscriptions/types";
@@ -49,7 +50,7 @@ export async function handleFanoutQueue(
         message.ack();
       }
     } catch (err) {
-      console.error(`Fanout queue message failed for stream ${streamId}:`, err);
+      logError({ projectId, streamId, sessionCount: sessionIds.length, component: "fanout-queue" }, "fanout queue message failed", err);
       message.retry();
     }
   }

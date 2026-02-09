@@ -24,8 +24,11 @@ export async function getSession(env: AppEnv, projectId: string, sessionId: stri
 // #region synced-to-docs:touch-session
 export async function touchSession(env: AppEnv, projectId: string, sessionId: string): Promise<TouchSessionResult> {
   const start = Date.now();
-  const ttlSeconds = env.SESSION_TTL_SECONDS
+  const parsed = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
+    : undefined;
+  const ttlSeconds = parsed !== undefined && Number.isFinite(parsed) && parsed > 0
+    ? parsed
     : DEFAULT_SESSION_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 

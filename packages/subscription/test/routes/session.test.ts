@@ -15,11 +15,20 @@ function createTestApp() {
 describe("GET /session/:sessionId", () => {
   it("returns 404 when session does not exist", async () => {
     const app = await createTestApp();
-    const res = await app.request(`/v1/${PROJECT_ID}/session/nonexistent`, {}, env);
+    const res = await app.request(`/v1/${PROJECT_ID}/session/00000000-0000-0000-0000-000000000000`, {}, env);
 
     expect(res.status).toBe(404);
     const body = await res.json() as { error: string };
     expect(body.error).toBe("Session not found");
+  });
+
+  it("returns 400 for invalid session ID format", async () => {
+    const app = await createTestApp();
+    const res = await app.request(`/v1/${PROJECT_ID}/session/not-a-uuid`, {}, env);
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("Invalid sessionId format");
   });
 
   it("returns session info when session exists", async () => {

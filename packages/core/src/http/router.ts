@@ -1,4 +1,5 @@
 import { errorResponse } from "../protocol/errors";
+import { logError } from "../log";
 import type { LongPollQueue } from "./handlers/realtime";
 import type { SseState } from "./handlers/realtime";
 import type { ReadResult } from "../stream/read/result";
@@ -18,6 +19,8 @@ export type StreamEnv = {
   R2_DELETE_OPS?: string;
   SEGMENT_MAX_MESSAGES?: string;
   SEGMENT_MAX_BYTES?: string;
+  MAX_SSE_CLIENTS?: string;
+  DO_STORAGE_QUOTA_BYTES?: string;
   METRICS?: AnalyticsEngineDataset;
   REGISTRY?: KVNamespace;
 };
@@ -76,6 +79,7 @@ export async function routeRequest(
     if (method === "DELETE") return await handleDelete(ctx, streamId);
     return errorResponse(405, "method not allowed");
   } catch (e) {
+    logError({ streamId, method }, "unhandled error in route handler", e);
     return errorResponse(500, e instanceof Error ? e.message : "internal error");
   }
 }

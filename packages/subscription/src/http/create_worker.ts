@@ -6,6 +6,7 @@ import { sessionRoutes } from "./routes/session";
 import { cleanupExpiredSessions } from "../cleanup";
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
+import { logError, logInfo } from "../log";
 import { parseRoute } from "./auth";
 import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
@@ -163,14 +164,18 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
           });
 
           if (result.deleted > 0) {
-            console.log(
-              `Session cleanup: processed ${result.deleted} expired sessions ` +
-                `(streams: ${result.streamDeleteSuccesses} ok, ${result.streamDeleteFailures} failed; ` +
-                `subscriptions: ${result.subscriptionRemoveSuccesses} ok, ${result.subscriptionRemoveFailures} failed)`,
-            );
+            logInfo({
+              component: "cleanup",
+              deleted: result.deleted,
+              streamDeleteSuccesses: result.streamDeleteSuccesses,
+              streamDeleteFailures: result.streamDeleteFailures,
+              subscriptionRemoveSuccesses: result.subscriptionRemoveSuccesses,
+              subscriptionRemoveFailures: result.subscriptionRemoveFailures,
+              latencyMs,
+            }, "session cleanup completed");
           }
         })().catch((err) => {
-          console.error("Session cleanup failed:", err);
+          logError({ component: "cleanup" }, "session cleanup failed", err);
         }),
       );
     },

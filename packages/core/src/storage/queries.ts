@@ -348,6 +348,10 @@ export class DoSqliteStorage implements StreamStorage {
     this.sql.exec("DELETE FROM ops WHERE end_offset <= ?", endOffset);
   }
 
+  deleteOpsThroughStatement(_streamId: string, endOffset: number): StorageStatement {
+    return { sql: "DELETE FROM ops WHERE end_offset <= ?", args: [endOffset] };
+  }
+
   async getOpsStatsFrom(_streamId: string, startOffset: number): Promise<OpsStats> {
     const result = this.sql.exec<{ messageCount: number; sizeBytes: number }>(
       `

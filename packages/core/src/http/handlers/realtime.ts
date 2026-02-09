@@ -9,6 +9,7 @@ import {
   isTextual,
 } from "../../protocol/headers";
 import { errorResponse } from "../../protocol/errors";
+import { logError, logWarn } from "../../log";
 import { buildEtag } from "../../protocol/etag";
 import { generateResponseCursor } from "../../protocol/cursor";
 import { base64Encode } from "../../protocol/encoding";
@@ -16,6 +17,8 @@ import {
   LONG_POLL_CACHE_SECONDS,
   LONG_POLL_TIMEOUT_MS,
   MAX_CHUNK_BYTES,
+  MAX_SSE_CLIENTS_DEFAULT,
+  SSE_BROADCAST_BATCH_SIZE,
   SSE_RECONNECT_MS,
 } from "../../protocol/limits";
 import { ZERO_OFFSET } from "../../protocol/offsets";
@@ -82,10 +85,17 @@ export type Waiter = {
 };
 
 // #region docs-long-poll-queue
+export const MAX_LONG_POLL_WAITERS = 10_000;
+
 export class LongPollQueue {
   private waiters: Waiter[] = [];
 
   async waitForData(offset: number, url: string, timeoutMs: number): Promise<boolean> {
+    if (this.waiters.length >= MAX_LONG_POLL_WAITERS) {
+      // Reject new waiters when at capacity — caller sees "timed out" (re-fetches)
+      return true;
+    }
+
     return await new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w.timer !== timer);
@@ -104,8 +114,17 @@ export class LongPollQueue {
   }
 
   notify(newTail: number, staggerMs = 0): void {
-    const ready = this.waiters.filter((w) => newTail > w.offset);
-    this.waiters = this.waiters.filter((w) => newTail <= w.offset);
+    // Single-pass partition: split into ready vs remaining
+    const ready: Waiter[] = [];
+    const remaining: Waiter[] = [];
+    for (const w of this.waiters) {
+      if (newTail > w.offset) {
+        ready.push(w);
+      } else {
+        remaining.push(w);
+      }
+    }
+    this.waiters = remaining;
 
     if (staggerMs <= 0 || ready.length <= 1) {
       for (const waiter of ready) {
@@ -394,6 +413,17 @@ export async function handleSse(
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
+
+  // FIX-016: Reject new SSE connections when at capacity
+  const maxSseClients = (() => {
+    const raw = ctx.env.MAX_SSE_CLIENTS;
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : MAX_SSE_CLIENTS_DEFAULT;
+  })();
+  if (ctx.sseState.clients.size >= maxSseClients) {
+    return errorResponse(503, "too many SSE connections");
+  }
+
   let offset: number;
   if (offsetParam === "now") {
     offset = meta.tail_offset;
@@ -481,12 +511,25 @@ export async function broadcastSse(
 
   const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
-  for (const client of entries) {
-    if (client.closed) continue;
-    await writeSseData(client, payload, nextOffsetHeader, true, streamClosed, writeTimestamp);
-    client.offset = nextOffset;
-    if (streamClosed) {
-      await closeSseClient(ctx, client);
+
+  // FIX-003: Batch broadcast with Promise.allSettled instead of sequential loop
+  for (let i = 0; i < entries.length; i += SSE_BROADCAST_BATCH_SIZE) {
+    const batch = entries.slice(i, i + SSE_BROADCAST_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (client) => {
+        if (client.closed) return;
+        await writeSseData(client, payload, nextOffsetHeader, true, streamClosed, writeTimestamp);
+        client.offset = nextOffset;
+        if (streamClosed) {
+          await closeSseClient(ctx, client);
+        }
+      }),
+    );
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === "rejected") {
+        logWarn({ streamId, clientId: batch[j].id, component: "sse-broadcast" }, "SSE broadcast write failed", (results[j] as PromiseRejectedResult).reason);
+        await closeSseClient(ctx, batch[j]);
+      }
     }
   }
 }
@@ -502,12 +545,24 @@ export async function broadcastSseControl(
 ): Promise<void> {
   const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
-  for (const client of entries) {
-    if (client.closed) continue;
-    await writeSseControl(client, nextOffsetHeader, true, streamClosed, writeTimestamp);
-    client.offset = nextOffset;
-    if (streamClosed) {
-      await closeSseClient(ctx, client);
+
+  for (let i = 0; i < entries.length; i += SSE_BROADCAST_BATCH_SIZE) {
+    const batch = entries.slice(i, i + SSE_BROADCAST_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (client) => {
+        if (client.closed) return;
+        await writeSseControl(client, nextOffsetHeader, true, streamClosed, writeTimestamp);
+        client.offset = nextOffset;
+        if (streamClosed) {
+          await closeSseClient(ctx, client);
+        }
+      }),
+    );
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === "rejected") {
+        logWarn({ streamId, clientId: batch[j].id, component: "sse-broadcast" }, "SSE control broadcast write failed", (results[j] as PromiseRejectedResult).reason);
+        await closeSseClient(ctx, batch[j]);
+      }
     }
   }
 }
@@ -533,6 +588,7 @@ async function runSseSession(
     let currentOffset = client.offset;
     let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
     if (read.error) {
+      logWarn({ streamId, clientId: client.id, offset: currentOffset, component: "sse" }, "SSE session initial read error");
       await closeSseClient(ctx, client);
       return;
     }
@@ -565,7 +621,8 @@ async function runSseSession(
     if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
       await closeSseClient(ctx, client);
     }
-  } catch {
+  } catch (e) {
+    logError({ streamId, clientId: client.id, component: "sse" }, "SSE session error", e);
     await closeSseClient(ctx, client);
   }
 }
@@ -773,7 +830,8 @@ async function sendWsCatchUp(
     if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
       ws.close(1000, "stream closed");
     }
-  } catch {
+  } catch (e) {
+    logError({ streamId, component: "ws-catchup" }, "WS catch-up error", e);
     try { ws.close(1011, "catch-up error"); } catch { /* already closed */ }
   }
 }
@@ -842,7 +900,8 @@ export async function broadcastWebSocket(
       if (streamClosed) {
         ws.close(1000, "stream closed");
       }
-    } catch {
+    } catch (e) {
+      logWarn({ streamId, component: "ws-broadcast" }, "WS broadcast data error", e);
       try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
     }
   }
@@ -879,7 +938,8 @@ export async function broadcastWebSocketControl(
       if (streamClosed) {
         ws.close(1000, "stream closed");
       }
-    } catch {
+    } catch (e) {
+      logWarn({ streamId, component: "ws-broadcast" }, "WS broadcast control error", e);
       try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
     }
   }

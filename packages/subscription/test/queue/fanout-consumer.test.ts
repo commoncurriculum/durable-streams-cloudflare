@@ -134,7 +134,6 @@ describe("handleFanoutQueue", () => {
     expect(msg.ack).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-stream"),
-      expect.any(Error),
     );
 
     consoleErrorSpy.mockRestore();

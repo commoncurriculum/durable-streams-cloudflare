@@ -131,6 +131,7 @@ export interface StreamStorage {
   selectOpsRange(streamId: string, startOffset: number, endOffset: number): Promise<ReadChunk[]>;
   selectAllOps(streamId: string): Promise<ReadChunk[]>;
   deleteOpsThrough(streamId: string, endOffset: number): Promise<void>;
+  deleteOpsThroughStatement(streamId: string, endOffset: number): StorageStatement;
   getOpsStatsFrom(streamId: string, startOffset: number): Promise<OpsStats>;
 
   insertSegment(input: SegmentInput): Promise<void>;

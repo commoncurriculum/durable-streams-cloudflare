@@ -1,6 +1,6 @@
 name = "durable-streams-subscriptions-test"
 main = "test/integration/test-worker.ts"
-compatibility_date = "2025-02-02"
+compatibility_date = "2026-02-02"
 compatibility_flags = []
 
 [vars]
