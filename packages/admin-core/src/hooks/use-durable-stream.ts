@@ -49,7 +49,7 @@ export function useDurableStream(options: {
     let cancelled = false;
     setStatus("connecting");
 
-    const url = `${coreUrl}/v1/${encodeURIComponent(projectId)}/stream/${encodeURIComponent(streamKey)}`;
+    const url = `${coreUrl}/v1/stream/${encodeURIComponent(projectId)}/${encodeURIComponent(streamKey)}`;
 
     stream({
       url,

@@ -16,6 +16,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projec
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects.$projectId.index'
 import { Route as ProjectsProjectIdStreamsRouteImport } from './routes/projects.$projectId.streams'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects.$projectId.settings'
+import { Route as ProjectsProjectIdStreamsIndexRouteImport } from './routes/projects.$projectId.streams.index'
 import { Route as ProjectsProjectIdStreamsStreamIdRouteImport } from './routes/projects.$projectId.streams.$streamId'
 import { Route as ApiSseProjectIdIdRouteImport } from './routes/api/sse.$projectId.$id'
 
@@ -56,6 +57,12 @@ const ProjectsProjectIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
+const ProjectsProjectIdStreamsIndexRoute =
+  ProjectsProjectIdStreamsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsProjectIdStreamsRoute,
+  } as any)
 const ProjectsProjectIdStreamsStreamIdRoute =
   ProjectsProjectIdStreamsStreamIdRouteImport.update({
     id: '/$streamId',
@@ -78,15 +85,16 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
+  '/projects/$projectId/streams/': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
-  '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
+  '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/api/sse/$projectId/$id': typeof ApiSseProjectIdIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
+  '/projects/$projectId/streams/': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,15 +121,16 @@ export interface FileRouteTypes {
     | '/projects/$projectId/'
     | '/api/sse/$projectId/$id'
     | '/projects/$projectId/streams/$streamId'
+    | '/projects/$projectId/streams/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/projects'
     | '/projects/$projectId/settings'
-    | '/projects/$projectId/streams'
     | '/projects/$projectId'
     | '/api/sse/$projectId/$id'
     | '/projects/$projectId/streams/$streamId'
+    | '/projects/$projectId/streams'
   id:
     | '__root__'
     | '/'
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/'
     | '/api/sse/$projectId/$id'
     | '/projects/$projectId/streams/$streamId'
+    | '/projects/$projectId/streams/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -191,6 +202,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSettingsRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/streams/': {
+      id: '/projects/$projectId/streams/'
+      path: '/'
+      fullPath: '/projects/$projectId/streams/'
+      preLoaderRoute: typeof ProjectsProjectIdStreamsIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdStreamsRoute
+    }
     '/projects/$projectId/streams/$streamId': {
       id: '/projects/$projectId/streams/$streamId'
       path: '/$streamId'
@@ -210,12 +228,14 @@ declare module '@tanstack/react-router' {
 
 interface ProjectsProjectIdStreamsRouteChildren {
   ProjectsProjectIdStreamsStreamIdRoute: typeof ProjectsProjectIdStreamsStreamIdRoute
+  ProjectsProjectIdStreamsIndexRoute: typeof ProjectsProjectIdStreamsIndexRoute
 }
 
 const ProjectsProjectIdStreamsRouteChildren: ProjectsProjectIdStreamsRouteChildren =
   {
     ProjectsProjectIdStreamsStreamIdRoute:
       ProjectsProjectIdStreamsStreamIdRoute,
+    ProjectsProjectIdStreamsIndexRoute: ProjectsProjectIdStreamsIndexRoute,
   }
 
 const ProjectsProjectIdStreamsRouteWithChildren =

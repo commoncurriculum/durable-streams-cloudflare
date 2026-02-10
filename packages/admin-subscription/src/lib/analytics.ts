@@ -233,7 +233,39 @@ export const createSession = createServerFn({ method: "POST" })
   .handler(async ({ data: { projectId, sessionId } }) => {
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
     await subscription.adminTouchSession(projectId, sessionId);
+
+    // Track session in KV for listing
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (kv) {
+      await kv.put(
+        `sessions/${projectId}/${sessionId}`,
+        JSON.stringify({ createdAt: Date.now() }),
+      );
+    }
+
     return { sessionId };
+  });
+
+export type SessionListItem = {
+  sessionId: string;
+  createdAt: number;
+};
+
+export const listProjectSessions = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<SessionListItem[]> => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) return [];
+    const prefix = `sessions/${projectId}/`;
+    const list = await kv.list({ prefix });
+    const items: SessionListItem[] = [];
+    for (const key of list.keys) {
+      const sessionId = key.name.slice(prefix.length);
+      const value = await kv.get(key.name, "json");
+      const createdAt = (value as { createdAt?: number } | null)?.createdAt ?? 0;
+      items.push({ sessionId, createdAt });
+    }
+    return items.sort((a, b) => b.createdAt - a.createdAt);
   });
 
 export const sendSessionAction = createServerFn({ method: "POST" })

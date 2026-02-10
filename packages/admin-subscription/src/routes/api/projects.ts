@@ -28,9 +28,13 @@ export const Route = createFileRoute("/api/projects")({
           await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
 
           // Also register in core so core can verify JWTs
-          const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
-          if (core) {
-            await core.registerProject(projectId, secret);
+          try {
+            const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+            if (core) {
+              await core.registerProject(projectId, secret);
+            }
+          } catch {
+            // Core service may not be available in all environments
           }
 
           return new Response(

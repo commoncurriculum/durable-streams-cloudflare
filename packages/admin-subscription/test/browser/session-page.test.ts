@@ -63,56 +63,54 @@ test("subscribe action message does not misleadingly show 200 OK", async ({
 });
 
 test("publishing to a subscribed stream shows events in the session log", async ({
-  page,
+  browser,
 }) => {
-  await page.goto(
+  // Use a unique stream name to avoid interference from previous tests
+  const STREAM = `publish-test-${Date.now()}`;
+
+  // Keep session page open (Tab 1) with SSE running while publishing from Tab 2.
+  // This avoids the race condition of disconnecting/reconnecting SSE.
+  const sessionPage = await browser.newPage();
+  await sessionPage.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
   );
 
-  // Wait for the page to load
-  await page.waitForSelector('button:has-text("Subscribe")', { timeout: 10_000 });
+  // Wait for SSE to connect
+  await expect(sessionPage.getByText("connected", { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await sessionPage.waitForSelector('button:has-text("Subscribe")', { timeout: 10_000 });
 
   // Subscribe to the stream
-  const streamInput = page.locator('input[placeholder="stream-id"]');
-  await streamInput.fill("test-stream");
-  await page.click('button:has-text("Subscribe")');
+  const streamInput = sessionPage.locator('input[placeholder="stream-id"]');
+  await streamInput.fill(STREAM);
+  await sessionPage.click('button:has-text("Subscribe")');
 
-  // Wait for the control event from subscribe
-  await page
+  // Wait for subscription to be confirmed server-side (polled via useSessionInspect).
+  // The client-side "Subscribed" control event fires immediately, but the subscription
+  // service may not have fully set up fan-out yet. Wait for the subscription to appear
+  // in the subscriptions table, which means the server has acknowledged it.
+  await expect(
+    sessionPage.locator('button:has-text("Unsubscribe")').first(),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Publish from a second tab (keeps SSE alive on Tab 1)
+  const publishPage = await browser.newPage();
+  await publishPage.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/publish`);
+  await publishPage.waitForLoadState("networkidle");
+
+  await publishPage.locator('input[placeholder="my-stream"]').fill(STREAM);
+  await publishPage.locator("textarea").fill('{"hello":"browser-test"}');
+  await publishPage.click('button:has-text("Send")');
+  await publishPage.waitForSelector("text=Success", { timeout: 10_000 });
+
+  // Back to Tab 1: the data event should appear via the still-active SSE connection
+  const dataEvent = sessionPage
     .locator('[class*="bg-zinc-800"]')
-    .filter({ hasText: "control" })
-    .first()
-    .waitFor({ timeout: 10_000 });
-
-  // Navigate to publish page
-  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/publish`);
-  await page.waitForLoadState("networkidle");
-
-  // Fill in stream ID and body (publish page uses placeholder="my-stream")
-  const publishStreamInput = page.locator('input[placeholder="my-stream"]');
-  await publishStreamInput.fill("test-stream");
-  const bodyTextarea = page.locator("textarea");
-  await bodyTextarea.fill('{"hello":"browser-test"}');
-
-  // Click Send to publish
-  await page.click('button:has-text("Send")');
-
-  // Wait for success
-  await page.waitForSelector("text=Success", { timeout: 10_000 });
-
-  // Navigate back to the session page
-  await page.goto(
-    `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
-  );
-
-  // Wait for a data event
-  const dataEvent = page
-    .locator('[class*="bg-zinc-800"]')
-    .filter({ hasText: "data" })
+    .filter({ hasText: "browser-test" })
     .first();
   await expect(dataEvent).toBeVisible({ timeout: 10_000 });
 
-  // The event should contain our published message
-  const eventText = await dataEvent.textContent();
-  expect(eventText).toContain("browser-test");
+  await sessionPage.close();
+  await publishPage.close();
 });
