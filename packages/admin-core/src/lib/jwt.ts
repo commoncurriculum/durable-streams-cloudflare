@@ -5,7 +5,7 @@ export async function mintJwt(
   signingSecret: string,
 ): Promise<string> {
   const secret = new TextEncoder().encode(signingSecret);
-  const jwt = new SignJWT(claims)
+  const jwt = await new SignJWT(claims)
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .sign(secret);
   
