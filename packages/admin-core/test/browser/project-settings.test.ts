@@ -79,3 +79,36 @@ test("Removing a CORS origin removes it from the list", async ({ page }) => {
 
   await expect(page.getByText("https://myapp.com")).not.toBeVisible({ timeout: 5_000 });
 });
+
+test("Signing Keys section shows key count", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("Signing Keys")).toBeVisible({ timeout: 3_000 });
+  // Project was created with 1 signing key
+  await expect(page.getByText("1 key")).toBeVisible({ timeout: 3_000 });
+});
+
+test("Generate Key shows new secret", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("Signing Keys")).toBeVisible({ timeout: 3_000 });
+  await page.click('button:has-text("Generate Key")');
+
+  // Should show the new secret and count should update to 2
+  await expect(page.getByText("2 keys")).toBeVisible({ timeout: 5_000 });
+});
+
+test("Revoke Key decreases count", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  // Should have 2 keys from previous test
+  await expect(page.getByText("2 keys")).toBeVisible({ timeout: 5_000 });
+
+  // Click the first Revoke button
+  await page.locator('button:has-text("Revoke")').first().click();
+
+  await expect(page.getByText("1 key")).toBeVisible({ timeout: 5_000 });
+});
