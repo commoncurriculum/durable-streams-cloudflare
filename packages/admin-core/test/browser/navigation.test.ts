@@ -19,13 +19,13 @@ test.beforeAll(async ({ browser }) => {
   await page.close();
 });
 
-// ── Overview nav link ──
+// ── System Overview nav link ──
 
-test("Overview nav link navigates to overview page", async ({ page }) => {
+test("System Overview nav link navigates to overview page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
-  await page.click("text=Overview");
+  await page.click("text=System Overview");
 
   await page.waitForURL("**/");
   await expect(page.getByText("Throughput")).toBeVisible({ timeout: 5_000 });
