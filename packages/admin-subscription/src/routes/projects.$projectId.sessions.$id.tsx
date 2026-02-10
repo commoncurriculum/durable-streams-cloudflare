@@ -107,7 +107,7 @@ function SessionDetailPage() {
     setFetching(true);
     try {
       const res = await readStreamClient({
-        url: `${coreUrl}/v1/stream/${projectId}/${id}`,
+        url: `${coreUrl}/v1/stream/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}`,
         offset: "-1",
         live: false,
         headers: { Authorization: `Bearer ${tokenData.token}` },
