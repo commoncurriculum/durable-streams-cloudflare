@@ -1,3 +1,5 @@
+"use client"
+
 import {
   Button as ButtonPrimitive,
   type ButtonProps as ButtonPrimitiveProps,
