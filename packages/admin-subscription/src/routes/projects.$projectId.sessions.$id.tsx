@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { useSessionInspect } from "../lib/queries";
+import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
-import { useSSE, type SseEvent as StreamEvent } from "../hooks/use-sse";
+import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 type SessionData = {
@@ -24,10 +24,16 @@ function SessionDetailPage() {
   const [streamIdInput, setStreamIdInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  const sseUrl = data
-    ? `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}?live=sse&offset=0000000000000000_0000000000000000`
-    : null;
-  const { status, events, addEvent, clearEvents } = useSSE(sseUrl);
+  const { data: coreUrl } = useCoreUrl();
+  const { data: tokenData } = useStreamToken(projectId);
+
+  const { status, events, addEvent, clearEvents } = useDurableStream({
+    coreUrl,
+    projectId,
+    streamKey: id,
+    token: tokenData?.token,
+    enabled: !!data,
+  });
 
   const doAction = useCallback(
     async (
@@ -282,7 +288,7 @@ function SessionDetailPage() {
                     Clear
                   </button>
                 )}
-                <SseStatusBadge status={status} />
+                <StreamStatusBadge status={status} />
               </div>
             </div>
             <div
@@ -315,7 +321,7 @@ function MetaItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SseStatusBadge({ status }: { status: string }) {
+function StreamStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     connected: "text-emerald-400",
     connecting: "text-amber-400",
