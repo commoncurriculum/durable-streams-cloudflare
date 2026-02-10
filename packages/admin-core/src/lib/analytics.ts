@@ -156,30 +156,6 @@ export const sendTestAction = createServerFn({ method: "POST" })
     };
   });
 
-export const getStreamMessages = createServerFn({ method: "GET" })
-  .inputValidator((data: string) => data)
-  .handler(async ({ data: doKey }) => {
-    const core = (env as Record<string, unknown>).CORE as CoreService;
-
-    const result = await core.readStream(doKey, "0000000000000000_0000000000000000");
-
-    if (!result.ok) {
-      throw new Error(`Stream read failed (${result.status}): ${result.body}`);
-    }
-
-    let messages: Record<string, {}>[] = [];
-    if (result.contentType.includes("application/json")) {
-      const parsed = JSON.parse(result.body);
-      messages = Array.isArray(parsed) ? parsed : [parsed];
-    } else {
-      if (result.body.trim()) {
-        messages = [{ _raw: result.body }];
-      }
-    }
-
-    return { messages, nextOffset: result.nextOffset, upToDate: result.upToDate };
-  });
-
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {

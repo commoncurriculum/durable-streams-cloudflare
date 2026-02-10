@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
-import { sendSessionAction, getStreamMessages } from "../lib/analytics";
+import { sendSessionAction } from "../lib/analytics";
+import { stream as readStreamClient } from "@durable-streams/client";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -100,31 +101,34 @@ function SessionDetailPage() {
   }, [streamIdInput, doAction]);
 
   const [fetching, setFetching] = useState(false);
-  const doKey = `${projectId}/${id}`;
 
   const fetchEarlier = useCallback(async () => {
+    if (!coreUrl || !tokenData?.token) return;
     setFetching(true);
     try {
-      const result = (await getStreamMessages({ data: doKey })) as {
-        messages?: Record<string, unknown>[];
-      };
-      const msgs = result?.messages ?? [];
-      if (msgs.length === 0) {
+      const res = await readStreamClient({
+        url: `${coreUrl}/v1/stream/${projectId}/${id}`,
+        offset: "-1",
+        live: false,
+        headers: { Authorization: `Bearer ${tokenData.token}` },
+      });
+      const items = await res.json();
+      if (items.length === 0) {
         addEvent("control", "No earlier messages found");
       } else {
-        for (const msg of msgs) {
+        for (const item of items) {
           const display =
-            typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+            typeof item === "string" ? item : JSON.stringify(item, null, 2);
           addEvent("data", display);
         }
-        addEvent("control", `Loaded ${msgs.length} earlier message(s)`);
+        addEvent("control", `Loaded ${items.length} earlier message(s)`);
       }
     } catch (e) {
       addEvent("error", e instanceof Error ? e.message : String(e));
     } finally {
       setFetching(false);
     }
-  }, [doKey, addEvent]);
+  }, [coreUrl, tokenData?.token, projectId, id, addEvent]);
 
   if (isLoading) {
     return (

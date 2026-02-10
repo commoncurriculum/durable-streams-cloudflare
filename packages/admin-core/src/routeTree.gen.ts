@@ -75,7 +75,6 @@ const ApiStreamsProjectIdIdRoute = ApiStreamsProjectIdIdRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 
-
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRouteWithChildren
@@ -224,7 +223,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStreamsProjectIdIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-
   }
 }
 

@@ -19,10 +19,6 @@ export interface CoreService {
     created_at: number;
     readerKey?: string;
   } | null>;
-  readStream(
-    doKey: string,
-    offset: string,
-  ): Promise<{ ok: boolean; status: number; body: string; nextOffset: string | null; upToDate: boolean; contentType: string }>;
 }
 
 export interface SubscriptionService {
