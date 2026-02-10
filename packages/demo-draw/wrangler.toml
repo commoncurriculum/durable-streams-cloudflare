@@ -1,0 +1,14 @@
+name = "durable-streams-demo-draw"
+main = "src/server.ts"
+compatibility_date = "2026-02-02"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+CORE_URL = "https://ds-stream.commonplanner.com"
+PROJECT_ID = "demo-drawing"
+# SIGNING_SECRET should go in .dev.vars for local dev, or be set as a
+# Cloudflare secret for production:
+#   wrangler secret put SIGNING_SECRET
+
+[observability]
+enabled = true
