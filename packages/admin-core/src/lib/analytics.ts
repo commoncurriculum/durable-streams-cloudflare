@@ -156,30 +156,6 @@ export const sendTestAction = createServerFn({ method: "POST" })
     };
   });
 
-export const getStreamMessages = createServerFn({ method: "GET" })
-  .inputValidator((data: string) => data)
-  .handler(async ({ data: doKey }) => {
-    const core = (env as Record<string, unknown>).CORE as CoreService;
-
-    const result = await core.readStream(doKey, "0000000000000000_0000000000000000");
-
-    if (!result.ok) {
-      throw new Error(`Stream read failed (${result.status}): ${result.body}`);
-    }
-
-    let messages: Record<string, {}>[] = [];
-    if (result.contentType.includes("application/json")) {
-      const parsed = JSON.parse(result.body);
-      messages = Array.isArray(parsed) ? parsed : [parsed];
-    } else {
-      if (result.body.trim()) {
-        messages = [{ _raw: result.body }];
-      }
-    }
-
-    return { messages, nextOffset: result.nextOffset, upToDate: result.upToDate };
-  });
-
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
@@ -230,24 +206,15 @@ export type ProjectStreamRow = {
 export const getProjectStreams = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<ProjectStreamRow[]> => {
-    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
-    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
-    if (!accountId || !apiToken) return [];
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return [];
     try {
-      const rows = await queryAnalytics(`
-        SELECT blob1 as stream_id, count() as messages, sum(double2) as bytes, max(timestamp) as last_seen
-        FROM ${getDatasetName()}
-        WHERE blob1 LIKE '${projectId}/%' AND blob2 = 'append'
-          AND timestamp > NOW() - INTERVAL '24' HOUR
-        GROUP BY blob1
-        ORDER BY last_seen DESC
-        LIMIT 100
-      `);
-      return rows.map((r) => ({
-        stream_id: String(r.stream_id).replace(`${projectId}/`, ""),
-        messages: Number(r.messages),
-        bytes: Number(r.bytes),
-        last_seen: String(r.last_seen),
+      const streams = await core.listProjectStreams(projectId);
+      return streams.map((s) => ({
+        stream_id: s.streamId,
+        messages: 0,
+        bytes: 0,
+        last_seen: new Date(s.createdAt).toISOString(),
       }));
     } catch {
       return [];

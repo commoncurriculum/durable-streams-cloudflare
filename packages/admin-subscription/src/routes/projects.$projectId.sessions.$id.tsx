@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
+import { stream as readStreamClient } from "@durable-streams/client";
+import { streamUrl } from "../lib/stream-url";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -98,6 +100,36 @@ function SessionDetailPage() {
     await doAction("subscribe", streamIdInput.trim());
     setStreamIdInput("");
   }, [streamIdInput, doAction]);
+
+  const [fetching, setFetching] = useState(false);
+
+  const fetchEarlier = useCallback(async () => {
+    if (!coreUrl || !tokenData?.token) return;
+    setFetching(true);
+    try {
+      const res = await readStreamClient({
+        url: streamUrl(coreUrl, projectId, id),
+        offset: "-1",
+        live: false,
+        headers: { Authorization: `Bearer ${tokenData.token}` },
+      });
+      const items = await res.json();
+      if (items.length === 0) {
+        addEvent("control", "No earlier messages found");
+      } else {
+        for (const item of items) {
+          const display =
+            typeof item === "string" ? item : JSON.stringify(item, null, 2);
+          addEvent("data", display);
+        }
+        addEvent("control", `Loaded ${items.length} earlier message(s)`);
+      }
+    } catch (e) {
+      addEvent("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetching(false);
+    }
+  }, [coreUrl, tokenData?.token, projectId, id, addEvent]);
 
   if (isLoading) {
     return (
@@ -280,6 +312,13 @@ function SessionDetailPage() {
             <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
               <h3 className="text-sm font-medium text-zinc-400">Live Event Log</h3>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={fetchEarlier}
+                  disabled={fetching}
+                  className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                >
+                  {fetching ? "Loading..." : "Fetch Earlier Messages"}
+                </button>
                 {events.length > 0 && (
                   <button
                     onClick={clearEvents}

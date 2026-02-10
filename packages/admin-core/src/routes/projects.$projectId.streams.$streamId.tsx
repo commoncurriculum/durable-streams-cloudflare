@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analytics";
+import { inspectStream, sendTestAction } from "../lib/analytics";
 import { formatBytes, relTime } from "../lib/formatters";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
+import { stream as readStreamClient } from "@durable-streams/client";
+import { streamUrl } from "../lib/stream-url";
 import { useCoreUrl, useStreamToken, useStreamTimeseries } from "../lib/queries";
 import {
   AreaChart,
@@ -56,12 +58,6 @@ type StreamInspectData = {
   producers: ProducerRecord[];
   sseClientCount: number;
   longPollWaiterCount: number;
-};
-
-type StreamMessagesResult = {
-  messages: unknown[];
-  nextOffset: string | null;
-  upToDate: boolean;
 };
 
 export const Route = createFileRoute(
@@ -436,7 +432,7 @@ function StreamConsole({
         </div>
 
         {/* Right column: live event log */}
-        <EventLog doKey={doKey} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
+        <EventLog coreUrl={coreUrl} token={tokenData?.token} projectId={projectId} streamId={streamId} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
       </div>
     </div>
   );
@@ -542,13 +538,19 @@ function SendMessagePanel({
 /* ─── Live Event Log ─── */
 
 function EventLog({
-  doKey,
+  coreUrl,
+  token,
+  projectId,
+  streamId,
   events,
   sseStatus,
   clearEvents,
   addEvent,
 }: {
-  doKey: string;
+  coreUrl: string | undefined;
+  token: string | undefined;
+  projectId: string;
+  streamId: string;
   events: StreamEvent[];
   sseStatus: string;
   clearEvents: () => void;
@@ -557,25 +559,31 @@ function EventLog({
   const [fetching, setFetching] = useState(false);
 
   const fetchEarlier = useCallback(async () => {
+    if (!coreUrl || !token) return;
     setFetching(true);
     try {
-      const result = (await getStreamMessages({ data: doKey })) as StreamMessagesResult;
-      const msgs = result?.messages ?? [];
-      if (msgs.length === 0) {
+      const res = await readStreamClient({
+        url: streamUrl(coreUrl, projectId, streamId),
+        offset: "-1",
+        live: false,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const items = await res.json();
+      if (items.length === 0) {
         addEvent("control", "No earlier messages found");
       } else {
-        for (const msg of msgs) {
-          const display = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+        for (const item of items) {
+          const display = typeof item === "string" ? item : JSON.stringify(item, null, 2);
           addEvent("data", display);
         }
-        addEvent("control", `Loaded ${msgs.length} earlier message(s)`);
+        addEvent("control", `Loaded ${items.length} earlier message(s)`);
       }
     } catch (e) {
       addEvent("error", e instanceof Error ? e.message : String(e));
     } finally {
       setFetching(false);
     }
-  }, [doKey, addEvent]);
+  }, [coreUrl, token, projectId, streamId, addEvent]);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)]">
