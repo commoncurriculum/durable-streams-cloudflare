@@ -59,15 +59,15 @@ test.beforeAll(async ({ browser }) => {
 
 // ── Open Project via input + button ──
 
-test("Open Project navigates to project streams page", async ({ page }) => {
+test("Open Project navigates to project detail page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
   await page.locator('input[placeholder="Enter project ID..."]').fill(PROJECT_ID);
   await page.click('button:has-text("Open Project")');
 
-  await page.waitForURL(`**/projects/${PROJECT_ID}/streams`);
-  await expect(page.getByText("Enter a stream ID")).toBeVisible();
+  await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
+  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });
 
 // ── Open Stream via input + button ──

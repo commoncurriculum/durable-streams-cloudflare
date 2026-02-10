@@ -200,6 +200,27 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
 });
 
+export type ProjectListItem = {
+  projectId: string;
+  isPublic: boolean;
+};
+
+export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ProjectListItem[]> => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) return [];
+    const list = await kv.list();
+    const projectIds = list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+    const results: ProjectListItem[] = [];
+    for (const projectId of projectIds) {
+      const raw = await kv.get(projectId);
+      const config = raw ? (JSON.parse(raw) as Partial<ProjectConfig>) : {};
+      results.push({ projectId, isPublic: config.isPublic ?? false });
+    }
+    return results;
+  },
+);
+
 export interface ProjectConfig {
   signingSecrets: string[];
   corsOrigins: string[];

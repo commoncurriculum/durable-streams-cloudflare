@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { useProjects } from "../lib/queries";
+import { useProjectsWithConfig } from "../lib/queries";
 import { createProject } from "../lib/analytics";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/projects/")({
 });
 
 function ProjectsIndexPage() {
-  const { data: projects, isFetched, isFetching } = useProjects();
+  const { data: projects, isFetched, isFetching } = useProjectsWithConfig();
   const loading = !isFetched && isFetching;
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -18,7 +18,7 @@ function ProjectsIndexPage() {
   const handleGo = () => {
     const id = input.trim();
     if (id) {
-      navigate({ to: "/projects/$projectId/streams", params: { projectId: id } });
+      navigate({ to: "/projects/$projectId", params: { projectId: id } });
     }
   };
 
@@ -68,22 +68,28 @@ function ProjectsIndexPage() {
                 <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
                   Project ID
                 </th>
+                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Privacy
+                </th>
               </tr>
             </thead>
             <tbody>
-              {projects!.map((projectId) => (
+              {projects!.map((p) => (
                 <tr
-                  key={projectId}
+                  key={p.projectId}
                   className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
                 >
                   <td className="px-4 py-2 font-mono text-sm">
                     <Link
-                      to="/projects/$projectId/streams"
-                      params={{ projectId }}
+                      to="/projects/$projectId"
+                      params={{ projectId: p.projectId }}
                       className="text-blue-400 hover:underline"
                     >
-                      {projectId}
+                      {p.projectId}
                     </Link>
+                  </td>
+                  <td className="px-4 py-2 text-sm text-zinc-400">
+                    {p.isPublic ? "Public" : "Private"}
                   </td>
                 </tr>
               ))}
@@ -115,6 +121,7 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
       const result = await createProject({ data: { projectId: projectId.trim() } });
       setCreatedSecret(result.signingSecret);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["projectsWithConfig"] });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

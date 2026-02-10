@@ -35,9 +35,10 @@ test("clicking project navigates to /projects/$projectId", async ({ page }) => {
   await link.click();
 
   // Should navigate to project detail (not /streams)
-  await page.waitForURL(`**/projects/${PROJECT_ID}`);
-  // Sub-nav tabs should be visible
-  await expect(page.getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
+  await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
+  await page.waitForLoadState("networkidle");
+  // Sub-nav tabs should be visible (scoped to main to avoid matching top nav "Overview")
+  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });
 
 test("Create Project button is visible", async ({ page }) => {

@@ -1,5 +1,5 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { getStats, getStreams, getHotStreams, getTimeseries, getProjects, getCoreStreamUrl, mintStreamToken } from "./analytics";
+import { getStats, getStreams, getHotStreams, getTimeseries, getProjects, getProjectsWithConfig, getCoreStreamUrl, mintStreamToken } from "./analytics";
 
 export function useStats() {
   return useQuery({
@@ -41,6 +41,13 @@ export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => getProjects(),
+  });
+}
+
+export function useProjectsWithConfig() {
+  return useQuery({
+    queryKey: ["projectsWithConfig"],
+    queryFn: () => getProjectsWithConfig(),
   });
 }
 
