@@ -11,6 +11,8 @@ export interface CoreService {
     doKey: string,
     offset: string,
   ): Promise<{ ok: boolean; status: number; body: string; nextOffset: string | null; upToDate: boolean; contentType: string }>;
+  addSigningKey(projectId: string, newSecret: string): Promise<{ keyCount: number }>;
+  removeSigningKey(projectId: string, secretToRemove: string): Promise<{ keyCount: number }>;
 }
 
 export type AnalyticsRow = Record<string, string | number | null>;

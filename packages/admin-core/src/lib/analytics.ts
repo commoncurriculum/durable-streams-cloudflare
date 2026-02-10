@@ -263,3 +263,35 @@ export const removeCorsOrigin = createServerFn({ method: "POST" })
     await kv.put(data.projectId, JSON.stringify(config));
     return { ok: true };
   });
+
+export const generateSigningKey = createServerFn({ method: "POST" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw);
+    const newSecret = crypto.randomUUID() + crypto.randomUUID();
+    const secrets: string[] = config.signingSecrets ?? [];
+    secrets.unshift(newSecret);
+    config.signingSecrets = secrets;
+    await kv.put(projectId, JSON.stringify(config));
+    return { keyCount: secrets.length, secret: newSecret };
+  });
+
+export const revokeSigningKey = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; secret: string }) => data)
+  .handler(async ({ data }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(data.projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw);
+    const secrets: string[] = config.signingSecrets ?? [];
+    const filtered = secrets.filter((s: string) => s !== data.secret);
+    if (filtered.length === 0) throw new Error("Cannot remove the last signing key");
+    config.signingSecrets = filtered;
+    await kv.put(data.projectId, JSON.stringify(config));
+    return { keyCount: filtered.length };
+  });

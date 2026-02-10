@@ -6,6 +6,8 @@ import {
   updateProjectPrivacy,
   addCorsOrigin,
   removeCorsOrigin,
+  generateSigningKey,
+  revokeSigningKey,
 } from "../lib/analytics";
 import { Switch } from "../components/ui/switch";
 
@@ -49,8 +51,24 @@ function ProjectSettings() {
     },
   });
 
+  const generateKeyMutation = useMutation({
+    mutationFn: () => generateSigningKey({ data: projectId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
+    },
+  });
+
+  const revokeKeyMutation = useMutation({
+    mutationFn: (secret: string) =>
+      revokeSigningKey({ data: { projectId, secret } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
+    },
+  });
+
   const isPublic = config?.isPublic ?? false;
   const corsOrigins = config?.corsOrigins ?? [];
+  const keyCount = config?.signingSecrets?.length ?? 0;
 
   return (
     <div className="space-y-8">
@@ -103,6 +121,40 @@ function ProjectSettings() {
             Add
           </button>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">Signing Keys</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <span className="text-sm text-zinc-300">
+            {keyCount} {keyCount === 1 ? "key" : "keys"}
+          </span>
+          <button
+            type="button"
+            onClick={() => generateKeyMutation.mutate()}
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+          >
+            Generate Key
+          </button>
+        </div>
+        {config?.signingSecrets && config.signingSecrets.length > 0 && (
+          <ul className="space-y-2">
+            {config.signingSecrets.map((secret, i) => (
+              <li key={i} className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2">
+                <span className="font-mono text-sm text-zinc-500">
+                  {secret.slice(0, 8)}...{secret.slice(-4)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => revokeKeyMutation.mutate(secret)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
