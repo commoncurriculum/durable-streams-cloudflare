@@ -183,13 +183,13 @@ describe("admin-subscription integration", () => {
     });
 
     it("Tab 1: creates source streams on core", async () => {
-      const resA = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamA}`, {
+      const resA = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamA}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
       });
       expect(resA.status).toBe(201);
 
-      const resB = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamB}`, {
+      const resB = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamB}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
       });
@@ -210,7 +210,7 @@ describe("admin-subscription integration", () => {
 
       const body = await res.json() as Record<string, unknown>;
       expect(body.isNewSession).toBe(true);
-      expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+      expect(body.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
     });
 
     it("Tab 1: subscribes session to stream B", async () => {
@@ -276,7 +276,7 @@ describe("admin-subscription integration", () => {
     it("Tab 1: session stream contains messages from both publishers", async () => {
       await waitFor(async () => {
         const readRes = await fetch(
-          `${coreUrl}/v1/${PROJECT_ID}/stream/${sessionId}?offset=0000000000000000_0000000000000000`,
+          `${coreUrl}/v1/stream/${PROJECT_ID}/${sessionId}?offset=0000000000000000_0000000000000000`,
         );
         expect(readRes.status).toBe(200);
         const content = await readRes.text();
@@ -306,7 +306,7 @@ describe("admin-subscription integration", () => {
 
       // Create source stream
       const createRes = await fetch(
-        `${coreUrl}/v1/${PROJECT_ID}/stream/${sseStreamId}`,
+        `${coreUrl}/v1/stream/${PROJECT_ID}/${sseStreamId}`,
         { method: "PUT", headers: { "Content-Type": "application/json" } },
       );
       expect(createRes.status).toBe(201);
@@ -322,7 +322,7 @@ describe("admin-subscription integration", () => {
       // Connect SSE to the session stream (live tail)
       const controller = new AbortController();
       const sseRes = await fetch(
-        `${coreUrl}/v1/${PROJECT_ID}/stream/${sseSessionId}?live=sse&offset=now`,
+        `${coreUrl}/v1/stream/${PROJECT_ID}/${sseSessionId}?live=sse&offset=now`,
         { signal: controller.signal },
       );
       expect(sseRes.status).toBe(200);
@@ -366,7 +366,7 @@ describe("admin-subscription integration", () => {
       const sseSessionId = randomUUID();
 
       // Create stream + subscribe
-      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
       });
@@ -379,7 +379,7 @@ describe("admin-subscription integration", () => {
       // Connect SSE
       const controller = new AbortController();
       const sseRes = await fetch(
-        `${coreUrl}/v1/${PROJECT_ID}/stream/${sseSessionId}?live=sse&offset=now`,
+        `${coreUrl}/v1/stream/${PROJECT_ID}/${sseSessionId}?live=sse&offset=now`,
         { signal: controller.signal },
       );
       expect(sseRes.status).toBe(200);
@@ -436,11 +436,11 @@ describe("admin-subscription integration", () => {
       const streamY = `concurrent-y-${Date.now()}`;
 
       // Create streams
-      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamX}`, {
+      await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamX}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
       });
-      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamY}`, {
+      await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamY}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
       });
@@ -477,7 +477,7 @@ describe("admin-subscription integration", () => {
       // Verify both messages arrive in the session stream
       await waitFor(async () => {
         const readRes = await fetch(
-          `${coreUrl}/v1/${PROJECT_ID}/stream/${sessionId}?offset=0000000000000000_0000000000000000`,
+          `${coreUrl}/v1/stream/${PROJECT_ID}/${sessionId}?offset=0000000000000000_0000000000000000`,
         );
         expect(readRes.status).toBe(200);
         const content = await readRes.text();

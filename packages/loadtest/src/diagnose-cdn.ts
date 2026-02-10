@@ -165,7 +165,7 @@ async function main() {
 
   // ── Create a test stream and write initial data ───────────────────
   const streamId = `diag-cdn-${Date.now()}`;
-  const streamUrl = `${coreUrl}/v1/${projectId}/stream/${streamId}`;
+  const streamUrl = `${coreUrl}/v1/stream/${projectId}/${streamId}`;
 
   console.log(`\n${"═".repeat(70)}`);
   console.log(`CDN COALESCING DIAGNOSTIC`);

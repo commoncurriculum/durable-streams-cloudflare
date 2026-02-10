@@ -79,7 +79,7 @@ export default {
 
 async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   const { coreUrl, projectId, streamId, mode, durationSec, authToken } = config;
-  const streamUrl = `${coreUrl}/v1/${projectId}/stream/${streamId}`;
+  const streamUrl = `${coreUrl}/v1/stream/${projectId}/${streamId}`;
 
   const headers: Record<string, string> = {};
   if (authToken) {

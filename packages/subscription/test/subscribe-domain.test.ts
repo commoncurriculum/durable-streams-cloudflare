@@ -17,7 +17,7 @@ describe("subscribe", () => {
     expect(result.isNewSession).toBe(true);
     expect(result.sessionId).toBe(sessionId);
     expect(result.streamId).toBe(streamId);
-    expect(result.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+    expect(result.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
   });
 
   it("existing session returns isNewSession false", async () => {

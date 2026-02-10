@@ -15,7 +15,7 @@ export async function getSession(env: AppEnv, projectId: string, sessionId: stri
 
   return {
     sessionId,
-    sessionStreamPath: `/v1/${projectId}/stream/${sessionId}`,
+    sessionStreamPath: `/v1/stream/${projectId}/${sessionId}`,
     subscriptions,
   };
 }

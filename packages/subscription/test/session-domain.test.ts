@@ -21,7 +21,7 @@ describe("getSession", () => {
 
     expect(result).not.toBeNull();
     expect(result!.sessionId).toBe(SESSION_ID);
-    expect(result!.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${SESSION_ID}`);
+    expect(result!.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${SESSION_ID}`);
     // No subscriptions added yet
     expect(result!.subscriptions).toEqual([]);
   });

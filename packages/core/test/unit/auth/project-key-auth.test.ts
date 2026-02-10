@@ -44,7 +44,7 @@ async function createTestJwt(
 function makeRequest(token?: string): Request {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  return new Request("http://localhost/v1/myproject/stream/test-stream", { headers });
+  return new Request("http://localhost/v1/stream/myproject/test-stream", { headers });
 }
 
 const SECRET = "test-signing-secret-for-hmac-256";

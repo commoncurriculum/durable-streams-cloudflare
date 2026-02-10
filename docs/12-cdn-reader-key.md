@@ -12,7 +12,7 @@ The issue is the second one. Auth-required streams emit `Cache-Control: public, 
 If you know the URL pattern and offset, you can read cached data from an auth-required stream without any credentials:
 
 ```
-curl https://streams.example.com/v1/myproject/stream/secret-stream?offset=100
+curl https://streams.example.com/v1/stream/myproject/secret-stream?offset=100
 ```
 
 The cache key is the bare URL. No auth info. The CDN can't distinguish authorized from unauthorized requests.
@@ -39,7 +39,7 @@ Per-user keys would fragment the cache: each user gets a different cache key, de
 ### Request Flow
 
 ```
-Client request: GET /v1/proj/stream/id?offset=100&rk=abc123&live=long-poll&cursor=xyz
+Client request: GET /v1/stream/proj/id?offset=100&rk=abc123&live=long-poll&cursor=xyz
 
 CDN cache lookup: URL includes rk → unique to authorized readers
   ├─ HIT  → serve (rk was in the URL when this entry was first cached)
@@ -94,7 +94,7 @@ How the client gets the reader key:
 
 Client workflow:
 1. Authenticate (get JWT with read scope)
-2. `HEAD /v1/proj/stream/id` → get `Stream-Reader-Key` header
+2. `HEAD /v1/stream/proj/id` → get `Stream-Reader-Key` header
 3. Use `?rk=<key>` on all subsequent GET requests
 
 ### Cache Store Guard

@@ -21,7 +21,7 @@ const headers: Record<string, string> = { Authorization: `Bearer ${AUTH_TOKEN}` 
 // ---------------------------------------------------------------------------
 
 function streamUrl(id: string): string {
-  return `${BASE_URL}/v1/${PROJECT}/stream/${id}`;
+  return `${BASE_URL}/v1/stream/${PROJECT}/${id}`;
 }
 
 function uid(): string {

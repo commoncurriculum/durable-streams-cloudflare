@@ -80,25 +80,25 @@ URL=https://durable-streams.<your-subdomain>.workers.dev
 # Create a stream (requires a write-scope JWT)
 curl -X PUT -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $JWT" \
-  $URL/v1/my-project/stream/my-stream
+  $URL/v1/stream/my-project/my-stream
 
 # Append a message
 curl -X POST -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $JWT" \
   -d '{"op":"insert","text":"hello"}' \
-  $URL/v1/my-project/stream/my-stream
+  $URL/v1/stream/my-project/my-stream
 
 # Catch-up read (read or write scope)
 curl -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000"
+  "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000"
 
 # Long-poll (blocks until new data)
 curl -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000&live=long-poll"
+  "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000&live=long-poll"
 
 # SSE (streaming)
 curl -N -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000&live=sse"
+  "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
 ## Authentication
@@ -146,7 +146,7 @@ Individual streams can be made publicly readable (no auth required) by adding `?
 ```bash
 curl -X PUT -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/public-feed?public=true"
+  "$URL/v1/stream/my-project/public-feed?public=true"
 ```
 
 Public streams are readable without a token. Writes still require auth. The public flag is immutable — to change it, delete and recreate the stream.

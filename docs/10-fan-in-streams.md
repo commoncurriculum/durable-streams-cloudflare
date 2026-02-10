@@ -70,7 +70,7 @@ Behavior: authenticate, authorize, route to session DO `subscriptions/<sessionId
 3. `GET /v1/subscriptions/{sessionId}`
 Returns the list of subscribed `streamId`s from the session DO.
 
-All stream reads/writes still use the core stream endpoint: `/v1/stream/<stream-id>`.
+All stream reads/writes still use the core stream endpoint: `/v1/stream/<project-id>/<stream-id>`.
 
 ## Internal DO-to-DO Calls (Subscription Updates)
 The session DO updates the stream DO subscriber list via trusted internal calls:

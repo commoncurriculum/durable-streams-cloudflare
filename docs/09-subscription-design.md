@@ -12,7 +12,7 @@ Publisher ── POST /v1/:project/publish/:streamId ──> Subscription Worker
                                                   └─> Fan-out: write to each session stream
                                                        (session:alice, session:bob, ...)
 
-Client ── GET /v1/:project/stream/session:alice?live=sse ──> Core Worker (via CDN)
+Client ── GET /v1/stream/:project/session:alice?live=sse ──> Core Worker (via CDN)
 ```
 
 The subscription worker communicates with core via a **Cloudflare service binding** (`CORE`). This is a direct in-process RPC call, not an HTTP request -- zero network hop, zero auth overhead. The `CoreService` interface exposes `headStream`, `putStream`, `postStream`, and `deleteStream` methods.
@@ -157,7 +157,7 @@ If step 3 fails and the session was just created in step 2, the session stream i
 {
   "sessionId": "user-alice",
   "streamId": "chat-room-1",
-  "sessionStreamPath": "/v1/myapp/stream/user-alice",
+  "sessionStreamPath": "/v1/stream/myapp/user-alice",
   "expiresAt": 1707500000000,
   "isNewSession": true
 }
@@ -199,7 +199,7 @@ All routes are under `/v1/:project/`. The project ID is validated against `^[a-z
 - `Stream-Fanout-Failures`: Failed fan-out writes
 - `Stream-Fanout-Mode`: `inline`, `queued`, `circuit-open`, or `skipped`
 
-Reading the session stream is done directly via the **core worker**: `GET /v1/:project/stream/session:<sessionId>`.
+Reading the session stream is done directly via the **core worker**: `GET /v1/stream/:project/session:<sessionId>`.
 
 ## Authentication
 

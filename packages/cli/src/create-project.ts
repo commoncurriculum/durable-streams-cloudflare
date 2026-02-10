@@ -144,7 +144,7 @@ export async function createProject() {
     "Usage:",
     `  # Create a stream (replace <JWT> with your signed token)`,
     `  curl -X PUT -H "Authorization: Bearer <JWT>" \\`,
-    `    <CORE_URL>/v1/${projectName}/stream/my-stream`,
+    `    <CORE_URL>/v1/stream/${projectName}/my-stream`,
     "",
     `  # Subscribe (replace <JWT> with a read or write token)`,
     `  curl -X POST -H "Authorization: Bearer <JWT>" \\`,
