@@ -13,7 +13,7 @@ import {
   rotateStreamReaderKey,
   listProjects,
   getStreamEntry,
-} from "./project-registry";
+} from "../storage/registry";
 
 const { authorizeMutation, authorizeRead } = projectJwtAuth();
 
@@ -204,4 +204,4 @@ export type {
   ProjectConfig,
 } from "./auth";
 export type { BaseEnv, StreamWorkerConfig } from "./create_worker";
-export type { ProjectEntry, StreamEntry } from "./project-registry";
+export type { ProjectEntry, StreamEntry } from "../storage/registry";

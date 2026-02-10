@@ -1,6 +1,6 @@
 import type { Timing } from "../protocol/timing";
-import type { ProjectEntry } from "./project-registry";
-import { getProjectEntry } from "./project-registry";
+import type { ProjectEntry } from "../storage/registry";
+import { getProjectEntry } from "../storage/registry";
 
 // ============================================================================
 // Types

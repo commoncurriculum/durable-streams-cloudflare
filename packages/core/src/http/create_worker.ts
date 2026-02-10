@@ -12,7 +12,7 @@ import type { StreamDO } from "./durable_object";
 import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
-import { putStreamMetadata, getStreamEntry, type StreamEntry } from "./project-registry";
+import { putStreamMetadata, getStreamEntry, type StreamEntry } from "../storage/registry";
 
 
 // ============================================================================

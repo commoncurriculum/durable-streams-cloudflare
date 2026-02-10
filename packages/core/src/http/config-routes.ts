@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { arktypeValidator } from "@hono/arktype-validator";
 import { type } from "arktype";
-import { getProjectEntry, putProjectEntry } from "./project-registry";
+import { getProjectEntry, putProjectEntry } from "../storage/registry";
 import type { BaseEnv } from "./create_worker";
 import { PROJECT_ID_PATTERN } from "./create_worker";
 
