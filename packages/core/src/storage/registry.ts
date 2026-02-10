@@ -288,3 +288,14 @@ export async function rotateStreamReaderKey(
   entry.readerKey = newReaderKey;
   await putStreamEntry(kv, doKey, entry);
 }
+
+/**
+ * Delete stream metadata from REGISTRY.
+ * Used when a stream is deleted or expires.
+ */
+export async function deleteStreamEntry(
+  kv: KVNamespace,
+  doKey: string,
+): Promise<void> {
+  await kv.delete(doKey);
+}

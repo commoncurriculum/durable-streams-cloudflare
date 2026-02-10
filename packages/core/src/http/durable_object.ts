@@ -12,6 +12,7 @@ import type { StreamContext, StreamEnv } from "./router";
 import { ReadPath } from "../stream/read/path";
 import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
+import { deleteStreamEntry } from "../storage/registry";
 
 export type StreamIntrospection = {
   meta: StreamMeta;
@@ -152,10 +153,9 @@ export class StreamDO extends DurableObject<StreamEnv> {
     await this.storage.deleteStreamData(streamId);
     // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (this.env.REGISTRY) {
-      const kv = this.env.REGISTRY;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          await kv.delete(streamId);
+          await deleteStreamEntry(this.env.REGISTRY, streamId);
           return;
         } catch (e) {
           if (attempt === 3) {

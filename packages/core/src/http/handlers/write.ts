@@ -18,6 +18,7 @@ import {
   closeAllWebSockets,
 } from "./realtime";
 import { ZERO_OFFSET } from "../../protocol/offsets";
+import { deleteStreamEntry } from "../../storage/registry";
 
 // PUT operations
 import { extractPutInput, parsePutInput } from "../../stream/create/parse";
@@ -313,11 +314,10 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
 
     // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (ctx.env.REGISTRY) {
-      const kv = ctx.env.REGISTRY;
       ctx.state.waitUntil((async () => {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            await kv.delete(streamId);
+            await deleteStreamEntry(ctx.env.REGISTRY!, streamId);
             return;
           } catch (e) {
             if (attempt === 3) {
