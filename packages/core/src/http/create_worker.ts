@@ -33,6 +33,12 @@ export type BaseEnv = {
    * SECURITY: Must use private ACL — contains JWT signing secrets.
    */
   REGISTRY: KVNamespace;
+  /**
+   * Comma-separated list of CORS origins that are allowed for ALL projects,
+   * in addition to each project's own corsOrigins list.
+   * Example: "https://admin.example.com,https://dashboard.example.com"
+   */
+  CORS_ORIGINS?: string;
 };
 
 export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
@@ -48,17 +54,32 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 export { PROJECT_ID_PATTERN } from "./stream-path";
 
 /**
- * Resolve the CORS origin for a request from per-project config.
- * Returns null (no CORS headers) when no corsOrigins are configured.
- * Returns "*" when corsOrigins includes "*".
- * Returns the matching origin when the request Origin matches a configured origin.
- * Returns the first configured origin when no match.
+ * Parse the CORS_ORIGINS env var (comma-separated) into an array.
+ * Returns an empty array when the env var is missing or blank.
  */
-function resolveProjectCorsOrigin(corsOrigins: string[] | undefined, requestOrigin: string | null): string | null {
-  if (!corsOrigins || corsOrigins.length === 0) return null;
-  if (corsOrigins.includes("*")) return "*";
-  if (requestOrigin && corsOrigins.includes(requestOrigin)) return requestOrigin;
-  return corsOrigins[0];
+function parseGlobalCorsOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Resolve the CORS origin for a request by merging global and per-project origins.
+ * Global origins (from CORS_ORIGINS env var) apply to ALL projects.
+ * Returns null (no CORS headers) when no origins are configured at either level.
+ * Returns "*" when any origin list includes "*".
+ * Returns the matching origin when the request Origin matches a configured origin.
+ * Returns null when the request origin doesn't match any configured origin.
+ */
+function resolveCorsOrigin(
+  projectOrigins: string[] | undefined,
+  globalOrigins: string[],
+  requestOrigin: string | null,
+): string | null {
+  const merged = [...globalOrigins, ...(projectOrigins ?? [])];
+  if (merged.length === 0) return null;
+  if (merged.includes("*")) return "*";
+  if (requestOrigin && merged.includes(requestOrigin)) return requestOrigin;
+  return null;
 }
 
 function wrapAuthError(result: { status: number; error: string }, origin: string | null): Response {
@@ -509,9 +530,10 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // ================================================================
   app.use("*", async (c, next) => {
     const projectConfig = c.get("projectConfig");
-    let corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+    const globalOrigins = parseGlobalCorsOrigins(c.env.CORS_ORIGINS);
+    let corsOrigin = resolveCorsOrigin(projectConfig?.corsOrigins, globalOrigins, c.req.header("Origin") ?? null);
 
-    // ?public=true implies wildcard CORS when no project corsOrigins are configured
+    // ?public=true implies wildcard CORS when no origins are configured
     if (!corsOrigin && new URL(c.req.url).searchParams.get("public") === "true") {
       corsOrigin = "*";
     }
@@ -587,9 +609,10 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     }
     // #endregion docs-extract-stream-id
 
-    // Derive corsOrigin from projectConfig (already looked up in middleware)
+    // Derive corsOrigin from projectConfig + global origins (already looked up in middleware)
     const projectConfig = c.get("projectConfig");
-    const corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+    const globalOrigins = parseGlobalCorsOrigins(c.env.CORS_ORIGINS);
+    const corsOrigin = resolveCorsOrigin(projectConfig?.corsOrigins, globalOrigins, c.req.header("Origin") ?? null);
 
     const method = request.method.toUpperCase();
     const isStreamRead = method === "GET" || method === "HEAD";
