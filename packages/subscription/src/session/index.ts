@@ -22,7 +22,7 @@ export async function getSession(env: AppEnv, projectId: string, sessionId: stri
 // #endregion synced-to-docs:get-session
 
 // #region synced-to-docs:touch-session
-export async function touchSession(env: AppEnv, projectId: string, sessionId: string): Promise<TouchSessionResult> {
+export async function touchSession(env: AppEnv, projectId: string, sessionId: string, contentType = "application/json"): Promise<TouchSessionResult> {
   const start = Date.now();
   const parsed = env.SESSION_TTL_SECONDS
     ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
@@ -33,7 +33,7 @@ export async function touchSession(env: AppEnv, projectId: string, sessionId: st
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   const doKey = `${projectId}/${sessionId}`;
-  const result = await env.CORE.putStream(doKey, { expiresAt, contentType: "application/json" });
+  const result = await env.CORE.putStream(doKey, { expiresAt, contentType });
 
   if (!result.ok && result.status !== 409) {
     throw new Error(`Failed to touch session: ${result.body} (status: ${result.status})`);
