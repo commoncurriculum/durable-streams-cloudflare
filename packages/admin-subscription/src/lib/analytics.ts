@@ -235,7 +235,7 @@ export const createSession = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; sessionId: string }) => data)
   .handler(async ({ data: { projectId, sessionId } }) => {
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
-    await subscription.adminTouchSession(projectId, sessionId);
+    await subscription.adminTouchSession(projectId, sessionId, "application/json");
 
     return { sessionId };
   });
@@ -319,7 +319,7 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         if (!data.sessionId) {
           throw new Error("touch requires sessionId");
         }
-        const result = await subscription.adminTouchSession(data.projectId, data.sessionId);
+        const result = await subscription.adminTouchSession(data.projectId, data.sessionId, "application/json");
         return { status: 200, statusText: "OK", body: result };
       }
       case "delete": {

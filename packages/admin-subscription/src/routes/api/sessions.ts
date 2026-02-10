@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/sessions")({
           const subscription = (env as Record<string, unknown>)
             .SUBSCRIPTION as SubscriptionService | undefined;
           if (subscription) {
-            await subscription.adminTouchSession(projectId, sessionId);
+            await subscription.adminTouchSession(projectId, sessionId, "application/json");
           }
 
           return new Response(

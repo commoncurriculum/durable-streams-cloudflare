@@ -60,8 +60,8 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
     return publish(this.env, projectId, streamId, { payload, contentType });
   }
 
-  async adminTouchSession(projectId: string, sessionId: string): Promise<TouchSessionResult> {
-    return touchSession(this.env, projectId, sessionId);
+  async adminTouchSession(projectId: string, sessionId: string, contentType = "application/json"): Promise<TouchSessionResult> {
+    return touchSession(this.env, projectId, sessionId, contentType);
   }
 
   async adminDeleteSession(projectId: string, sessionId: string): Promise<DeleteSessionResult> {

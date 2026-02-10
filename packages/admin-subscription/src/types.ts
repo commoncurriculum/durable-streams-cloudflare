@@ -26,7 +26,7 @@ export interface SubscriptionService {
   adminSubscribe(projectId: string, streamId: string, sessionId: string, contentType?: string): Promise<object>;
   adminUnsubscribe(projectId: string, streamId: string, sessionId: string): Promise<object>;
   adminPublish(projectId: string, streamId: string, payload: ArrayBuffer, contentType: string): Promise<object>;
-  adminTouchSession(projectId: string, sessionId: string): Promise<object>;
+  adminTouchSession(projectId: string, sessionId: string, contentType?: string): Promise<object>;
   adminDeleteSession(projectId: string, sessionId: string): Promise<object>;
 }
 
