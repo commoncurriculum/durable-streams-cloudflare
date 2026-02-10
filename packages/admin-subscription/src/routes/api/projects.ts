@@ -24,7 +24,9 @@ export const Route = createFileRoute("/api/projects")({
             });
           }
 
-          const secret = crypto.randomUUID() + crypto.randomUUID();
+          const { generateSecret, exportJWK } = await import("jose");
+          const key = await generateSecret("HS256");
+          const secret = JSON.stringify(await exportJWK(key));
 
           // Use core RPC to create the project with wildcard CORS so the
           // browser can open SSE connections directly to core.
