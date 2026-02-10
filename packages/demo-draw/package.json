@@ -1,0 +1,40 @@
+{
+  "name": "@durable-streams-cloudflare/demo-draw",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "description": "Collaborative drawing demo for Durable Streams",
+  "scripts": {
+    "dev": "vite dev --port 8792",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec vitest run"
+  },
+  "dependencies": {
+    "@durable-streams/client": "^0.2.1",
+    "@tanstack/react-router": "^1",
+    "@tanstack/react-start": "^1",
+    "perfect-freehand": "^1",
+    "react": "^19",
+    "react-aria-components": "^1",
+    "react-dom": "^19",
+    "tailwind-merge": "^2",
+    "tailwind-variants": "^0.3",
+    "tailwindcss-react-aria-components": "^1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1",
+    "@cloudflare/workers-types": "^4.20260207.0",
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3",
+    "vite": "^7",
+    "vitest": "^4.0.18",
+    "wrangler": "^4.63.0"
+  }
+}
