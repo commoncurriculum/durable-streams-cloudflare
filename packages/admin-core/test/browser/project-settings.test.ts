@@ -46,3 +46,36 @@ test("Privacy toggle switches between Public and Private", async ({ page }) => {
   await page.locator('[data-slot="indicator"]').click();
   await expect(page.getByText("Private")).toBeVisible({ timeout: 3_000 });
 });
+
+test("CORS Origins section is visible", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("CORS Origins")).toBeVisible({ timeout: 3_000 });
+});
+
+test("Adding a CORS origin shows it in the list", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByText("CORS Origins")).toBeVisible({ timeout: 3_000 });
+
+  await page.locator('input[placeholder="https://example.com"]').fill("https://myapp.com");
+  await page.click('button:has-text("Add")');
+
+  await expect(page.getByText("https://myapp.com")).toBeVisible({ timeout: 5_000 });
+});
+
+test("Removing a CORS origin removes it from the list", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+
+  // The origin added in the previous test should be visible
+  await expect(page.getByText("https://myapp.com")).toBeVisible({ timeout: 5_000 });
+
+  // Click the remove button next to it
+  const row = page.locator("li, tr, div").filter({ hasText: "https://myapp.com" }).first();
+  await row.locator('button:has-text("Remove")').click();
+
+  await expect(page.getByText("https://myapp.com")).not.toBeVisible({ timeout: 5_000 });
+});
