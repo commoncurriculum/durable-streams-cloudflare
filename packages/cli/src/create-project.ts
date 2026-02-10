@@ -35,7 +35,7 @@ function detectWrangler(): string | null {
   return null;
 }
 
-async function generateSigningSecret(): Promise<string> {
+export async function generateSigningSecret(): Promise<string> {
   const secret = await generateSecret("HS256");
   const jwk = await exportJWK(secret);
   return JSON.stringify(jwk);
