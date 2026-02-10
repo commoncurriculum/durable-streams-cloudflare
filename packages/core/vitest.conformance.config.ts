@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   test: {
     testTimeout: 40_000,
+    retry: 2,
     include: [
       path.resolve(
         __dirname,

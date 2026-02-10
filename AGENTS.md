@@ -163,7 +163,7 @@ Run all 6 CI checks sequentially (stop on first failure):
 pnpm test:all
 ```
 
-This runs: typecheck → lint → all package tests (including Playwright browser tests) → core unit tests → conformance → subscription integration.
+This runs: typecheck → lint → core unit tests → conformance → all package tests (including Playwright browser tests) → subscription integration.
 
 ### What Each Package's `test` Script Actually Runs
 
