@@ -19,12 +19,15 @@ test.beforeAll(async ({ browser }) => {
   await page.close();
 });
 
-test("Overview tab is visible at /projects/$projectId", async ({ page }) => {
+test("Sub-nav tabs are visible at /projects/$projectId", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}`);
   await page.waitForLoadState("networkidle");
 
-  await expect(page.getByText("Overview", { exact: true })).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByText("Settings", { exact: true })).toBeVisible({ timeout: 3_000 });
+  // The project sub-nav should have Overview, Streams, Settings tabs
+  const subNav = page.locator("nav").last();
+  await expect(subNav.getByText("Overview", { exact: true })).toBeVisible({ timeout: 3_000 });
+  await expect(subNav.getByText("Streams", { exact: true })).toBeVisible({ timeout: 3_000 });
+  await expect(subNav.getByText("Settings", { exact: true })).toBeVisible({ timeout: 3_000 });
 });
 
 test("Project overview shows stat card headings", async ({ page }) => {
