@@ -255,6 +255,37 @@ export const getProjectStreams = createServerFn({ method: "GET" })
     }
   });
 
+export type StreamTimeseriesRow = {
+  bucket: number;
+  messages: number;
+  bytes: number;
+};
+
+export const getStreamTimeseries = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: doKey }): Promise<StreamTimeseriesRow[]> => {
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+    if (!accountId || !apiToken) return [];
+    try {
+      const rows = await queryAnalytics(`
+        SELECT intDiv(toUInt32(timestamp), 60) * 60 as bucket, count() as messages, sum(double2) as bytes
+        FROM ${getDatasetName()}
+        WHERE blob1 = '${doKey}' AND blob2 = 'append'
+          AND timestamp > NOW() - INTERVAL '60' MINUTE
+        GROUP BY bucket
+        ORDER BY bucket
+      `);
+      return rows.map((r) => ({
+        bucket: Number(r.bucket),
+        messages: Number(r.messages),
+        bytes: Number(r.bytes),
+      }));
+    } catch {
+      return [];
+    }
+  });
+
 export interface ProjectConfig {
   signingSecrets: string[];
   corsOrigins: string[];
