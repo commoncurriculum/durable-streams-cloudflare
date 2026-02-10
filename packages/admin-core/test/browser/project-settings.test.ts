@@ -25,7 +25,7 @@ test("Settings page shows Privacy section with toggle", async ({ page }) => {
 
   await expect(page.getByText("Privacy")).toBeVisible({ timeout: 3_000 });
   // There should be a toggle switch for privacy
-  await expect(page.locator('switch, [role="switch"]')).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('[role="switch"]')).toBeVisible({ timeout: 3_000 });
 });
 
 test("Privacy toggle switches between Public and Private", async ({ page }) => {
@@ -38,11 +38,11 @@ test("Privacy toggle switches between Public and Private", async ({ page }) => {
   // New projects default to private (toggle off)
   await expect(page.getByText("Private")).toBeVisible({ timeout: 3_000 });
 
-  // Click toggle to switch to Public
-  await toggle.click();
+  // Click the switch indicator (the visible sliding element) to toggle
+  await page.locator('[data-slot="indicator"]').click();
   await expect(page.getByText("Public")).toBeVisible({ timeout: 3_000 });
 
-  // Click toggle again to switch back to Private
-  await toggle.click();
+  // Click again to switch back to Private
+  await page.locator('[data-slot="indicator"]').click();
   await expect(page.getByText("Private")).toBeVisible({ timeout: 3_000 });
 });

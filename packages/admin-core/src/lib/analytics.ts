@@ -198,3 +198,37 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   const list = await kv.list();
   return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
 });
+
+export interface ProjectConfig {
+  signingSecrets: string[];
+  corsOrigins: string[];
+  isPublic: boolean;
+}
+
+export const getProjectConfig = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<ProjectConfig> => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw) as Partial<ProjectConfig>;
+    return {
+      signingSecrets: config.signingSecrets ?? [],
+      corsOrigins: config.corsOrigins ?? [],
+      isPublic: config.isPublic ?? false,
+    };
+  });
+
+export const updateProjectPrivacy = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; isPublic: boolean }) => data)
+  .handler(async ({ data }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(data.projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw);
+    config.isPublic = data.isPublic;
+    await kv.put(data.projectId, JSON.stringify(config));
+    return { ok: true };
+  });
