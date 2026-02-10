@@ -10,6 +10,9 @@ import {
   createProject,
   addSigningKey as registryAddSigningKey,
   removeSigningKey as registryRemoveSigningKey,
+  addCorsOrigin as registryAddCorsOrigin,
+  removeCorsOrigin as registryRemoveCorsOrigin,
+  updatePrivacy as registryUpdatePrivacy,
   rotateStreamReaderKey,
   listProjects,
   getStreamEntry,
@@ -68,6 +71,21 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
     isPublic?: boolean;
   } | null> {
     return getProjectEntry(this.env.REGISTRY, projectId);
+  }
+
+  // RPC: add CORS origin to a project
+  async addCorsOrigin(projectId: string, origin: string): Promise<void> {
+    return registryAddCorsOrigin(this.env.REGISTRY, projectId, origin);
+  }
+
+  // RPC: remove CORS origin from a project
+  async removeCorsOrigin(projectId: string, origin: string): Promise<void> {
+    return registryRemoveCorsOrigin(this.env.REGISTRY, projectId, origin);
+  }
+
+  // RPC: update project privacy setting
+  async updatePrivacy(projectId: string, isPublic: boolean): Promise<void> {
+    return registryUpdatePrivacy(this.env.REGISTRY, projectId, isPublic);
   }
 
   // RPC: get stream metadata from REGISTRY

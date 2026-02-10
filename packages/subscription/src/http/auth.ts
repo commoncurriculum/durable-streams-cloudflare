@@ -143,24 +143,33 @@ function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: st
   return origins.length > 0 ? { corsOrigins: origins } : {};
 }
 
+/**
+ * Look up project config from REGISTRY KV.
+ * Uses the same read logic as core's registry module.
+ */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
 ): Promise<ProjectConfig | null> {
-  const value = await kv.get(projectId, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  // New format: signingSecrets array
-  if (Array.isArray(record.signingSecrets)) {
-    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
+  const raw = await kv.get(projectId, "json");
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  
+  // Normalize legacy single-secret format to array format
+  if (!Array.isArray(record.signingSecrets) && typeof record.signingSecret === "string") {
+    record.signingSecrets = [record.signingSecret];
+    delete record.signingSecret;
+  }
+  
+  // Validate we have signing secrets
+  if (!Array.isArray(record.signingSecrets) || record.signingSecrets.length === 0) {
     return null;
   }
-  // Legacy format: single signingSecret string
-  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
-  }
-  return null;
+  
+  return {
+    signingSecrets: record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0),
+    ...extractCorsOrigins(record),
+  };
 }
 
 async function verifyProjectJwt(
