@@ -509,7 +509,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // ================================================================
   app.use("*", async (c, next) => {
     const projectConfig = c.get("projectConfig");
-    const corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+    let corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+
+    // ?public=true implies wildcard CORS when no project corsOrigins are configured
+    if (!corsOrigin && new URL(c.req.url).searchParams.get("public") === "true") {
+      corsOrigin = "*";
+    }
 
     // Handle OPTIONS preflight
     if (c.req.method === "OPTIONS") {

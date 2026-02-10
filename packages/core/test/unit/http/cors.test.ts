@@ -214,3 +214,53 @@ describe("Per-project CORS from KV", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://myapp.com");
   });
 });
+
+describe("CORS with ?public=true query param", () => {
+  const PROJECT = "cors-public-project";
+
+  beforeEach(async () => {
+    // No project entry in KV — mirrors production when corsOrigins
+    // aren't configured. The ?public=true query param should be
+    // sufficient to enable CORS with Access-Control-Allow-Origin: *.
+    await env.REGISTRY.delete(PROJECT);
+  });
+
+  it("GET with ?public=true returns CORS headers even without KV corsOrigins", async () => {
+    const workerWithAuth = createStreamWorker({
+      authorizeRead: async () => ({ ok: false, status: 401, error: "unauthorized" }),
+      authorizeMutation: async () => ({ ok: true }),
+    });
+
+    const response = await workerWithAuth.fetch!(
+      new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true&offset=-1`, {
+        headers: { Origin: "https://any-origin.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnv(),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  it("OPTIONS preflight with ?public=true returns CORS headers even without KV corsOrigins", async () => {
+    const workerWithAuth = createStreamWorker({
+      authorizeRead: async () => ({ ok: false, status: 401, error: "unauthorized" }),
+      authorizeMutation: async () => ({ ok: true }),
+    });
+
+    const response = await workerWithAuth.fetch!(
+      new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true`, {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://any-origin.com",
+          "Access-Control-Request-Method": "GET",
+        },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnv(),
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+});
