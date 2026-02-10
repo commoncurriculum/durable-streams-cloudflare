@@ -1,5 +1,4 @@
 import { DurableStream } from "@durable-streams/client";
-import { getWriteToken } from "./config";
 
 export type StrokeMessage = {
   type: "stroke";
@@ -22,24 +21,22 @@ function streamPath(projectId: string, roomId: string): string {
 
 /**
  * Get a DurableStream write handle pointing directly at core.
- * Uses a dynamic Authorization header — each request calls the
- * getWriteToken server function for a fresh short-lived JWT.
+ * The write token is minted once when the room config is fetched —
+ * every write reuses the same static Authorization header.
  * Includes ?public=true so created streams are readable without auth.
  */
 export function getWriteStream(
   coreUrl: string,
   projectId: string,
   roomId: string,
+  writeToken: string,
 ): DurableStream {
   return new DurableStream({
     url: `${coreUrl}${streamPath(projectId, roomId)}`,
     contentType: "application/json",
-    headers: {
-      Authorization: async () => {
-        const token = await getWriteToken();
-        return token ? `Bearer ${token}` : "";
-      },
-    },
+    headers: writeToken
+      ? { Authorization: `Bearer ${writeToken}` }
+      : undefined,
     params: { public: "true" },
     warnOnHttp: false,
   });
