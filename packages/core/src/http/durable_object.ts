@@ -7,6 +7,7 @@ import type { SseState } from "./handlers/realtime";
 import { DoSqliteStorage } from "../storage/queries";
 import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../storage/types";
 import { routeRequest } from "./router";
+import { parseStreamPath } from "./stream-path";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
 import { ReadPath } from "../stream/read/path";
@@ -53,17 +54,11 @@ export class StreamDO extends DurableObject<StreamEnv> {
     if (!pathMatch) {
       return new Response("not found", { status: 404 });
     }
-    let streamId: string;
     let projectId: string;
+    let streamId: string;
     try {
-      const i = pathMatch[1].indexOf("/");
-      if (i === -1) {
-        projectId = "_default";
-        streamId = decodeURIComponent(pathMatch[1]);
-      } else {
-        projectId = decodeURIComponent(pathMatch[1].slice(0, i));
-        streamId = decodeURIComponent(pathMatch[1].slice(i + 1));
-      }
+      const decoded = decodeURIComponent(pathMatch[1]);
+      ({ projectId, streamId } = parseStreamPath(decoded));
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "malformed stream id", { status: 400 });
     }

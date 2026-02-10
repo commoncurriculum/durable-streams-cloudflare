@@ -236,11 +236,11 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
 }
 
 export { CoreWorker, StreamDO, createStreamWorker };
-export { projectJwtAuth, extractBearerToken } from "./auth";
+export { projectJwtAuth, extractBearerToken, checkProjectJwt } from "./auth";
 export type { StreamIntrospection } from "./durable_object";
 export type {
   AuthResult,
-  ReadAuthResult,
+  JwtAuthResult,
   AuthorizeMutation,
   AuthorizeRead,
   ProjectJwtEnv,
@@ -249,3 +249,4 @@ export type {
 } from "./auth";
 export type { BaseEnv, StreamWorkerConfig } from "./create_worker";
 export type { ProjectEntry, StreamEntry } from "../storage/registry";
+export { parseStreamPath } from "./stream-path";
