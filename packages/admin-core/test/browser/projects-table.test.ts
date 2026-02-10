@@ -37,8 +37,8 @@ test("clicking project navigates to /projects/$projectId", async ({ page }) => {
   // Should navigate to project detail (not /streams)
   await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
   await page.waitForLoadState("networkidle");
-  // Sub-nav tabs should be visible (scoped to main to avoid matching top nav "Overview")
-  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
+  // Sub-nav tabs should be visible in the header morphing nav
+  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });
 
 test("Create Project button is visible", async ({ page }) => {

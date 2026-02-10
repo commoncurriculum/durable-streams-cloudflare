@@ -11,7 +11,7 @@ test("System Overview nav link navigates to overview page", async ({ page }) => 
   await page.click("nav >> text=System Overview");
 
   await page.waitForURL("**/");
-  await expect(page.getByText("Subscription Service")).toBeVisible();
+  await expect(page.getByText("Subscription Admin")).toBeVisible();
 });
 
 // ── Projects nav link ──
