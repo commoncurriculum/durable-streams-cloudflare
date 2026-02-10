@@ -1,4 +1,5 @@
 import type { Timing } from "../protocol/timing";
+import { parseStreamPath } from "./stream-path";
 
 // ============================================================================
 // Types
@@ -246,7 +247,7 @@ export function projectJwtAuth(): {
     env: ProjectJwtEnv,
     timing: Timing | null,
     timingLabel: string,
-    jwtOptions: { requiredScope?: string | string[]; streamId?: string },
+    buildOptions: (streamId: string) => { requiredScope?: string | string[]; streamId?: string },
   ): Promise<AuthResult> {
     if (!env.REGISTRY) {
       return { ok: false, status: 500, error: "REGISTRY not configured" };
@@ -254,14 +255,10 @@ export function projectJwtAuth(): {
 
     const done = timing?.start(timingLabel);
     try {
-      const slashIndex = doKey.indexOf("/");
-      if (slashIndex === -1) {
-        return { ok: false, status: 403, error: "forbidden" };
-      }
-      const projectId = doKey.substring(0, slashIndex);
+      const { projectId, streamId } = parseStreamPath(doKey);
       const config = await lookupProjectConfig(env.REGISTRY, projectId);
 
-      const result = await checkProjectJwt(request, config, projectId, jwtOptions);
+      const result = await checkProjectJwt(request, config, projectId, buildOptions(streamId));
       if (!result.ok) return result;
       return { ok: true } as const;
     } finally {
@@ -271,12 +268,9 @@ export function projectJwtAuth(): {
 
   return {
     authorizeMutation: (request, doKey, env, timing) =>
-      authorize(request, doKey, env, timing, "edge.auth", { requiredScope: "write" }),
+      authorize(request, doKey, env, timing, "edge.auth", () => ({ requiredScope: "write" })),
 
-    authorizeRead: (request, doKey, env, timing) => {
-      const slashIndex = doKey.indexOf("/");
-      const streamId = slashIndex !== -1 ? doKey.substring(slashIndex + 1) : undefined;
-      return authorize(request, doKey, env, timing, "edge.read_auth", { streamId });
-    },
+    authorizeRead: (request, doKey, env, timing) =>
+      authorize(request, doKey, env, timing, "edge.read_auth", (streamId) => ({ streamId })),
   };
 }

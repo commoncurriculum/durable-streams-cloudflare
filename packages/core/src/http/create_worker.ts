@@ -1,14 +1,17 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import {
   HEADER_SSE_DATA_ENCODING,
   HEADER_STREAM_READER_KEY,
   HEADER_STREAM_UP_TO_DATE,
 } from "../protocol/headers";
+import { errorResponse } from "../protocol/errors";
 import { Timing, attachTiming } from "../protocol/timing";
 import { logError, logWarn } from "../log";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead, ProjectConfig } from "./auth";
-import { extractBearerToken, lookupProjectConfig, verifyProjectJwtMultiKey } from "./auth";
+import { lookupProjectConfig, checkProjectJwt } from "./auth";
+import { parseStreamPath } from "./stream-path";
 import type { StreamDO } from "./durable_object";
 import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
@@ -42,7 +45,6 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 // ============================================================================
 
 export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const DEFAULT_PROJECT_ID = "_default";
 
 /**
  * Resolve the CORS origin for a request from per-project config.
@@ -58,17 +60,10 @@ function resolveProjectCorsOrigin(corsOrigins: string[] | undefined, requestOrig
   return corsOrigins[0];
 }
 
-function wrapAuthError(response: Response, origin: string | null): Response {
-  const headers = new Headers(response.headers);
-  applyCorsHeaders(headers, origin);
-  if (!headers.has("Cache-Control")) {
-    headers.set("Cache-Control", "no-store");
-  }
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+function wrapAuthError(result: { status: number; error: string }, origin: string | null): Response {
+  const resp = errorResponse(result.status, result.error);
+  applyCorsHeaders(resp.headers, origin);
+  return resp;
 }
 
 type StreamMeta = { public: boolean; readerKey?: string };
@@ -242,9 +237,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // makes the DO round-trip; all others await the same promise.
   // Resolved entries linger for COALESCE_LINGER_MS so that requests
   // arriving just after resolution still get a HIT.
+  type AppEnv = { Bindings: E; Variables: { projectConfig: ProjectConfig | null } };
+
   const inFlight = new Map<string, Promise<InFlightResult>>();
 
-  const app = new Hono<{ Bindings: E }>();
+  const app = new Hono<AppEnv>();
 
   // ================================================================
   // Project Config Lookup Middleware
@@ -260,12 +257,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     let projectId: string | undefined;
     if (segments[0] === "v1" && segments[1] === "config" && segments.length === 3) {
       projectId = segments[2];
-    } else if (segments[0] === "v1" && segments[1] === "stream") {
-      projectId = segments.length >= 4 ? segments[2] : DEFAULT_PROJECT_ID;
+    } else if (segments[0] === "v1" && segments[1] === "stream" && segments.length >= 3) {
+      projectId = parseStreamPath(segments.slice(2).join("/")).projectId;
     }
     if (projectId && PROJECT_ID_PATTERN.test(projectId) && c.env.REGISTRY) {
       const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
-      c.set("projectConfig" as never, projectConfig as never);
+      c.set("projectConfig", projectConfig);
     }
     return next();
   });
@@ -274,8 +271,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // CORS Middleware
   // ================================================================
   app.use("*", async (c, next) => {
-    // Reuse projectConfig from context if available
-    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
+    const projectConfig = c.get("projectConfig");
     const corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
 
     // Handle OPTIONS preflight
@@ -285,8 +281,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       return new Response(null, { status: 204, headers });
     }
 
-    // Store corsOrigin in context for response handling
-    c.set("corsOrigin" as never, corsOrigin as never);
     await next();
 
     // Apply CORS headers to response
@@ -305,40 +299,17 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // ================================================================
   app.use("/v1/config/:projectId", async (c, next) => {
     if (!c.env.REGISTRY) {
-      return c.text("REGISTRY not configured", 500);
-    }
-
-    const token = extractBearerToken(c.req.raw);
-    if (!token) {
-      return c.text("unauthorized", 401);
+      return errorResponse(500, "REGISTRY not configured");
     }
 
     const projectId = c.req.param("projectId");
     if (!projectId || !PROJECT_ID_PATTERN.test(projectId)) {
-      return c.text("invalid project id", 400);
+      return errorResponse(400, "invalid project id");
     }
 
-    // Reuse projectConfig from context (already looked up in earlier middleware)
-    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
-    if (!projectConfig) {
-      return c.text("unauthorized", 401);
-    }
-
-    const claims = await verifyProjectJwtMultiKey(token, projectConfig);
-    if (!claims) {
-      return c.text("unauthorized", 401);
-    }
-
-    if (claims.sub !== projectId) {
-      return c.text("forbidden", 403);
-    }
-
-    if (Date.now() >= claims.exp * 1000) {
-      return c.text("token expired", 401);
-    }
-
-    if (claims.scope !== "manage") {
-      return c.text("forbidden", 403);
+    const result = await checkProjectJwt(c.req.raw, c.get("projectConfig"), projectId, { requiredScope: "manage" });
+    if (!result.ok) {
+      return errorResponse(result.status, result.error);
     }
 
     return next();
@@ -350,7 +321,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // ================================================================
   // Stream Routes
   // ================================================================
-  const streamHandler = async (c: any): Promise<Response> => {
+  const streamHandler = async (c: Context<AppEnv>): Promise<Response> => {
     // #region docs-request-arrives
     const request = c.req.raw;
     const url = new URL(c.req.url);
@@ -359,36 +330,26 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     const timing = timingEnabled ? new Timing() : null;
 
     // #region docs-extract-stream-id
-    // Extract project + stream ID from route params
+    // Extract project + stream ID from route params.
+    // Two-segment route: /v1/stream/:project/:stream
+    // Legacy route:      /v1/stream/:stream → _default project
     const projectParam = c.req.param("project");
     const streamParam = c.req.param("stream");
-
-    let projectId: string;
-    let streamId: string;
-
-    // Support both /v1/stream/:project/:stream and /v1/stream/:stream (default project)
-    if (streamParam) {
-      projectId = projectParam;
-      streamId = streamParam;
-    } else {
-      // Legacy format: /v1/stream/:stream maps to _default project
-      projectId = DEFAULT_PROJECT_ID;
-      streamId = projectParam;
+    const rawPath = streamParam ? `${projectParam}/${streamParam}` : projectParam;
+    if (!rawPath) {
+      return errorResponse(400, "missing project or stream id");
     }
-
-    if (!projectId || !streamId) {
-      return new Response("missing project or stream id", { status: 400, headers: { "Cache-Control": "no-store" } });
-    }
+    const { projectId, streamId } = parseStreamPath(rawPath);
     if (!PROJECT_ID_PATTERN.test(projectId)) {
-      return new Response("invalid project id", { status: 400, headers: { "Cache-Control": "no-store" } });
+      return errorResponse(400, "invalid project id");
     }
 
-    // DO key combines project + stream for isolation
     const doKey = `${projectId}/${streamId}`;
     // #endregion docs-extract-stream-id
 
-    // Reuse corsOrigin from context (already looked up in middleware)
-    const corsOrigin = (c.get("corsOrigin" as never) as string | null | undefined) ?? null;
+    // Derive corsOrigin from projectConfig (already looked up in middleware)
+    const projectConfig = c.get("projectConfig");
+    const corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
 
     const method = request.method.toUpperCase();
     const isStreamRead = method === "GET" || method === "HEAD";
@@ -402,11 +363,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       streamMeta = await getStreamMeta(c.env.REGISTRY, doKey);
       if (config?.authorizeRead && !streamMeta?.public) {
         const readAuth = await config.authorizeRead(request, doKey, c.env, timing);
-        if (!readAuth.ok) return wrapAuthError(readAuth.response, corsOrigin);
+        if (!readAuth.ok) return wrapAuthError(readAuth, corsOrigin);
       }
     } else if (!isStreamRead && config?.authorizeMutation) {
       const mutAuth = await config.authorizeMutation(request, doKey, c.env, timing);
-      if (!mutAuth.ok) return wrapAuthError(mutAuth.response, corsOrigin);
+      if (!mutAuth.ok) return wrapAuthError(mutAuth, corsOrigin);
     }
     // #endregion docs-authorize-request
 
