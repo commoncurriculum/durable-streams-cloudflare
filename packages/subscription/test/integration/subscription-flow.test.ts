@@ -38,7 +38,7 @@ describe("subscription flow", () => {
 
     const body = (await res.json()) as SubscribeResponse;
     expect(body.isNewSession).toBe(true);
-    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+    expect(body.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
 
     // Verify session stream exists in core
     const coreRes = await core.getStreamHead(sessionId);
@@ -58,7 +58,7 @@ describe("subscription flow", () => {
 
     const session = (await sessionRes.json()) as SessionResponse;
     expect(session.sessionId).toBe(sessionId);
-    expect(session.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+    expect(session.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
   });
 
   it("session stream receives fanout messages", async () => {

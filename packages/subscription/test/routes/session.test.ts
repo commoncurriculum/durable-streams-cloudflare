@@ -45,7 +45,7 @@ describe("GET /session/:sessionId", () => {
       subscriptions: Array<{ streamId: string }>;
     };
     expect(body.sessionId).toBe(sessionId);
-    expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+    expect(body.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
   });
 });
 

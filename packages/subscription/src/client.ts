@@ -3,7 +3,7 @@ export type PostStreamResult = { ok: boolean; status: number; nextOffset: string
 
 export interface CoreService {
   headStream(doKey: string): Promise<StreamRpcResult>;
-  putStream(doKey: string, options: { expiresAt?: number; body?: ArrayBuffer; contentType: string }): Promise<StreamRpcResult>;
+  putStream(doKey: string, options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string }): Promise<StreamRpcResult>;
   deleteStream(doKey: string): Promise<StreamRpcResult>;
   postStream(
     doKey: string,

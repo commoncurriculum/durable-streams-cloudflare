@@ -2,7 +2,16 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analytics";
 import { formatBytes, relTime } from "../lib/formatters";
-import { useSSE, type SseEvent } from "../hooks/use-sse";
+import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
+import { useCoreUrl, useStreamToken, useStreamTimeseries } from "../lib/queries";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 type StreamMeta = {
   stream_id: string;
@@ -203,8 +212,26 @@ function StreamConsole({
 }) {
   const { meta: m, ops, segments, producers } = data;
 
-  const sseUrl = `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(streamId)}?live=sse&offset=now`;
-  const { status: sseStatus, events, addEvent, clearEvents } = useSSE(sseUrl);
+  const { data: coreUrl } = useCoreUrl();
+  const { data: tokenData } = useStreamToken(projectId);
+  const { data: timeseriesData } = useStreamTimeseries(doKey);
+
+  const chartData = (timeseriesData ?? []).map((r) => ({
+    time: new Date(r.bucket * 1000).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    messages: r.messages,
+  }));
+
+  const { status: sseStatus, events, addEvent, clearEvents } = useDurableStream({
+    coreUrl,
+    projectId,
+    streamKey: streamId,
+    token: tokenData?.token,
+    enabled: true,
+  });
 
   const metaFields: [string, string][] = [
     ["Stream ID", m.stream_id],
@@ -253,6 +280,46 @@ function StreamConsole({
         <RealtimeBadge label="SSE Clients" count={data.sseClientCount} color="cyan" />
         <RealtimeBadge label="Long-Poll Waiters" count={data.longPollWaiterCount} color="blue" />
         <SseStatusBadge status={sseStatus} />
+      </div>
+
+      {/* Message Volume chart */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <h3 className="mb-3 text-sm font-medium text-zinc-400">
+          Message Volume
+        </h3>
+        {(timeseriesData?.length ?? 0) > 0 ? (
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="gradMsgs" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#5b8df8" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#5b8df8" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#606075" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#606075" }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1a1a26",
+                  border: "1px solid #2a2a3a",
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="messages"
+                stroke="#5b8df8"
+                fill="url(#gradMsgs)"
+                strokeWidth={1.5}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-[180px] items-center justify-center text-sm text-zinc-500">
+            No data
+          </div>
+        )}
       </div>
 
       {/* Send Message panel */}
@@ -384,7 +451,7 @@ function SendMessagePanel({
 }: {
   doKey: string;
   contentType: string;
-  addEvent: (type: SseEvent["type"], content: string) => void;
+  addEvent: (type: StreamEvent["type"], content: string) => void;
 }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -482,10 +549,10 @@ function EventLog({
   addEvent,
 }: {
   doKey: string;
-  events: SseEvent[];
+  events: StreamEvent[];
   sseStatus: string;
   clearEvents: () => void;
-  addEvent: (type: SseEvent["type"], content: string) => void;
+  addEvent: (type: StreamEvent["type"], content: string) => void;
 }) {
   const [fetching, setFetching] = useState(false);
 
@@ -595,7 +662,7 @@ function SseStatusBadge({ status }: { status: string }) {
   );
 }
 
-function LogEntry({ event }: { event: SseEvent }) {
+function LogEntry({ event }: { event: StreamEvent }) {
   const time = event.timestamp.toLocaleTimeString("en-US", {
     hour12: false,
     hour: "2-digit",

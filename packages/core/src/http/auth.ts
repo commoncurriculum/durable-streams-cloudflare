@@ -1,14 +1,20 @@
+import { decodeJwt, jwtVerify } from "jose";
 import type { Timing } from "../protocol/timing";
+import type { ProjectEntry } from "../storage/registry";
+import { getProjectEntry } from "../storage/registry";
+import { parseStreamPath } from "./stream-path";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type AuthResult = { ok: true } | { ok: false; response: Response };
+export type AuthResult = { ok: true } | { ok: false; status: number; error: string };
 
-export type ReadAuthResult = AuthResult;
-
-export type ProjectConfig = { signingSecrets: string[]; corsOrigins?: string[] };
+/**
+ * Project config shape used for authentication.
+ * This is a subset of ProjectEntry from REGISTRY - just the auth-relevant fields.
+ */
+export type ProjectConfig = Pick<ProjectEntry, "signingSecrets" | "corsOrigins">;
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -22,7 +28,7 @@ export type AuthorizeRead<E = unknown> = (
   streamId: string,
   env: E,
   timing: Timing | null,
-) => ReadAuthResult | Promise<ReadAuthResult>;
+) => AuthResult | Promise<AuthResult>;
 
 export type ProjectJwtEnv = {
   REGISTRY: KVNamespace;
@@ -30,7 +36,7 @@ export type ProjectJwtEnv = {
 
 export type ProjectJwtClaims = {
   sub: string;
-  scope: "write" | "read";
+  scope: "write" | "read" | "manage";
   exp: number;
   stream_id?: string;
 };
@@ -47,45 +53,20 @@ export function extractBearerToken(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-function base64UrlDecode(input: string): Uint8Array {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
 /**
  * Look up the project config from KV.
- * Normalizes both legacy `{ signingSecret: "..." }` and new `{ signingSecrets: [...] }` formats.
+ * Returns just the auth-relevant fields (signingSecrets and corsOrigins).
  */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
 ): Promise<ProjectConfig | null> {
-  const value = await kv.get(projectId, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  // New format: signingSecrets array
-  if (Array.isArray(record.signingSecrets)) {
-    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
-    return null;
-  }
-  // Legacy format: single signingSecret string
-  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
-  }
-  return null;
-}
-
-function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: string[] } {
-  if (!Array.isArray(record.corsOrigins)) return {};
-  const origins = record.corsOrigins.filter((o): o is string => typeof o === "string" && o.length > 0);
-  return origins.length > 0 ? { corsOrigins: origins } : {};
+  const entry = await getProjectEntry(kv, projectId);
+  if (!entry) return null;
+  return {
+    signingSecrets: entry.signingSecrets,
+    corsOrigins: entry.corsOrigins,
+  };
 }
 
 /**
@@ -93,11 +74,8 @@ function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: st
  * Used to peek at `sub` before we know which secret to verify with.
  */
 export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
   try {
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(parts[1]));
-    return JSON.parse(payloadJson) as Record<string, unknown>;
+    return decodeJwt(token);
   } catch {
     return null;
   }
@@ -105,47 +83,27 @@ export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> |
 
 /**
  * Full HMAC-SHA256 JWT verification.
- * Validates shape: { sub: string, scope: "write"|"read", exp: number, stream_id?: string }
+ * Validates shape: { sub: string, scope: "write"|"read"|"manage", exp: number, stream_id?: string }
  */
 export async function verifyProjectJwt(
   token: string,
   signingSecret: string,
 ): Promise<ProjectJwtClaims | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [headerPart, payloadPart, signaturePart] = parts;
   try {
-    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
-    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
-    if (header.alg !== "HS256") return null;
-
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
-    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    const secret = new TextEncoder().encode(signingSecret);
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+    });
 
     // Validate shape
     if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
-    if (payload.scope !== "write" && payload.scope !== "read") return null;
+    if (payload.scope !== "write" && payload.scope !== "read" && payload.scope !== "manage") return null;
     if (typeof payload.exp !== "number") return null;
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(signingSecret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const ok = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      base64UrlDecode(signaturePart),
-      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
-    );
-    if (!ok) return null;
-
     return {
-      sub: payload.sub as string,
-      scope: payload.scope as "write" | "read",
-      exp: payload.exp as number,
+      sub: payload.sub,
+      scope: payload.scope as "write" | "read" | "manage",
+      exp: payload.exp,
       stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
   } catch {
@@ -169,121 +127,109 @@ export async function verifyProjectJwtMultiKey(
 }
 
 // ============================================================================
+// Shared JWT Auth Check
+// ============================================================================
+
+export type JwtAuthResult =
+  | { ok: true; claims: ProjectJwtClaims }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Shared JWT auth for all paths: extract token → verify → check sub → expiry → scope → stream_id.
+ * Accepts nullable projectConfig so callers don't need a separate null check.
+ */
+export async function checkProjectJwt(
+  request: Request,
+  projectConfig: ProjectConfig | null | undefined,
+  projectId: string,
+  options?: {
+    requiredScope?: string | string[];
+    streamId?: string;
+  },
+): Promise<JwtAuthResult> {
+  const token = extractBearerToken(request);
+  if (!token) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  if (!projectConfig) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const claims = await verifyProjectJwtMultiKey(token, projectConfig);
+  if (!claims) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  if (claims.sub !== projectId) {
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+
+  if (Date.now() >= claims.exp * 1000) {
+    return { ok: false, status: 401, error: "token expired" };
+  }
+
+  if (options?.requiredScope) {
+    const scopes = Array.isArray(options.requiredScope) ? options.requiredScope : [options.requiredScope];
+    if (!scopes.includes(claims.scope)) {
+      return { ok: false, status: 403, error: "forbidden" };
+    }
+  }
+
+  if (options?.streamId && claims.stream_id && claims.stream_id !== options.streamId) {
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+
+  return { ok: true, claims };
+}
+
+// ============================================================================
 // Per-Project JWT Auth
 // ============================================================================
 
 /**
  * Project JWT auth returning `authorizeMutation` and `authorizeRead` callbacks.
  *
- * Both callbacks share core logic:
+ * Both callbacks share core logic via `authorize`:
  * 1. REGISTRY is required — 500 if not bound
- * 2. Extract bearer token → 401 if missing
- * 3. Extract projectId from doKey (split on `/`)
- * 4. lookupProjectConfig → 401 if not found
- * 5. verifyProjectJwt → 401 if invalid
- * 6. Check claims.sub === projectId → 403 if mismatch
- * 7. Check expiry → 401 if expired
+ * 2. Extract projectId + streamId from doKey (split on `/`)
+ * 3. lookupProjectConfig from KV
+ * 4. checkProjectJwt — token, signature, sub, expiry, scope, stream_id
  */
 export function projectJwtAuth(): {
   authorizeMutation: AuthorizeMutation<ProjectJwtEnv>;
   authorizeRead: AuthorizeRead<ProjectJwtEnv>;
 } {
-  const authorizeMutation: AuthorizeMutation<ProjectJwtEnv> = async (request, doKey, env, timing) => {
+  async function authorize(
+    request: Request,
+    doKey: string,
+    env: ProjectJwtEnv,
+    timing: Timing | null,
+    timingLabel: string,
+    buildOptions: (streamId: string) => { requiredScope?: string | string[]; streamId?: string },
+  ): Promise<AuthResult> {
     if (!env.REGISTRY) {
-      return { ok: false, response: new Response("REGISTRY not configured", { status: 500 }) };
+      return { ok: false, status: 500, error: "REGISTRY not configured" };
     }
 
-    const doneAuth = timing?.start("edge.auth");
+    const done = timing?.start(timingLabel);
     try {
-      const token = extractBearerToken(request);
-      if (!token) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
-
-      const slashIndex = doKey.indexOf("/");
-      if (slashIndex === -1) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-      const projectId = doKey.substring(0, slashIndex);
-
+      const { projectId, streamId } = parseStreamPath(doKey);
       const config = await lookupProjectConfig(env.REGISTRY, projectId);
-      if (!config) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
 
-      const claims = await verifyProjectJwtMultiKey(token, config);
-      if (!claims) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
-
-      if (claims.sub !== projectId) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-
-      if (Date.now() >= claims.exp * 1000) {
-        return { ok: false, response: new Response("token expired", { status: 401 }) };
-      }
-
-      if (claims.scope !== "write") {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-
-      return { ok: true };
+      const result = await checkProjectJwt(request, config, projectId, buildOptions(streamId));
+      if (!result.ok) return result;
+      return { ok: true } as const;
     } finally {
-      doneAuth?.();
+      done?.();
     }
+  }
+
+  return {
+    authorizeMutation: (request, doKey, env, timing) =>
+      authorize(request, doKey, env, timing, "edge.auth", () => ({ requiredScope: "write" })),
+
+    authorizeRead: (request, doKey, env, timing) =>
+      authorize(request, doKey, env, timing, "edge.read_auth", (streamId) => ({ streamId })),
   };
-
-  const authorizeRead: AuthorizeRead<ProjectJwtEnv> = async (request, doKey, env, timing) => {
-    if (!env.REGISTRY) {
-      return { ok: false, response: new Response("REGISTRY not configured", { status: 500 }) };
-    }
-
-    const doneAuth = timing?.start("edge.read_auth");
-    try {
-      const token = extractBearerToken(request);
-      if (!token) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
-
-      const slashIndex = doKey.indexOf("/");
-      if (slashIndex === -1) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-      const projectId = doKey.substring(0, slashIndex);
-
-      const config = await lookupProjectConfig(env.REGISTRY, projectId);
-      if (!config) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
-
-      const claims = await verifyProjectJwtMultiKey(token, config);
-      if (!claims) {
-        return { ok: false, response: new Response("unauthorized", { status: 401 }) };
-      }
-
-      if (claims.sub !== projectId) {
-        return { ok: false, response: new Response("forbidden", { status: 403 }) };
-      }
-
-      if (Date.now() >= claims.exp * 1000) {
-        return { ok: false, response: new Response("token expired", { status: 401 }) };
-      }
-
-      // Read auth accepts both "write" and "read" scope
-      // If stream_id is present, verify it matches the stream portion of doKey
-      if (claims.stream_id) {
-        const streamPart = doKey.substring(slashIndex + 1);
-        if (claims.stream_id !== streamPart) {
-          return { ok: false, response: new Response("forbidden", { status: 403 }) };
-        }
-      }
-
-      return { ok: true };
-    } finally {
-      doneAuth?.();
-    }
-  };
-
-  return { authorizeMutation, authorizeRead };
 }

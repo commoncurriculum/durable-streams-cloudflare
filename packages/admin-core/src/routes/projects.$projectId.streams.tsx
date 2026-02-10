@@ -2,7 +2,6 @@ import {
   createFileRoute,
   Outlet,
   useNavigate,
-  useMatch,
 } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -12,21 +11,11 @@ export const Route = createFileRoute("/projects/$projectId/streams")({
 
 function StreamsLayout() {
   const { projectId } = Route.useParams();
-  const childMatch = useMatch({
-    from: "/projects/$projectId/streams/$streamId",
-    shouldThrow: false,
-  });
 
   return (
     <div>
       <SearchBar projectId={projectId} />
-      {childMatch ? (
-        <Outlet />
-      ) : (
-        <div className="py-12 text-center text-zinc-500">
-          Enter a stream ID to open or create a stream
-        </div>
-      )}
+      <Outlet />
     </div>
   );
 }

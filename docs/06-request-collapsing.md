@@ -24,7 +24,7 @@ The cache store guards (see Chapter 5 for the authoritative cache policy referen
 A client following a live stream in long-poll mode makes requests like:
 
 ```
-GET /v1/{project}/stream/{id}?offset=1000&live=long-poll&cursor=abc123
+GET /v1/stream/{project}/{id}?offset=1000&live=long-poll&cursor=abc123
 ```
 
 The DO handler (`packages/core/src/http/handlers/realtime.ts`, `handleLongPoll`):
@@ -49,7 +49,7 @@ The cursor rotates on every response. The client's next request uses the new cur
 All clients following the same stream at the same position share the **same URL**:
 
 ```
-/v1/proj/stream/id?offset=1000&live=long-poll&cursor=abc123
+/v1/stream/proj/id?offset=1000&live=long-poll&cursor=abc123
 ```
 
 If 1M clients are all at offset 1000 with cursor `abc123`:

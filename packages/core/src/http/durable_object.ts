@@ -7,11 +7,13 @@ import type { SseState } from "./handlers/realtime";
 import { DoSqliteStorage } from "../storage/queries";
 import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../storage/types";
 import { routeRequest } from "./router";
+import { parseStreamPath } from "./stream-path";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
 import { ReadPath } from "../stream/read/path";
 import { rotateSegment } from "../stream/rotate";
 import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../stream/offsets";
+import { deleteStreamEntry } from "../storage/registry";
 
 export type StreamIntrospection = {
   meta: StreamMeta;
@@ -46,25 +48,17 @@ export class StreamDO extends DurableObject<StreamEnv> {
     if (live !== "ws-internal") {
       return new Response("not found", { status: 404 });
     }
-    // Extract streamId from the URL path: /v1/stream/:id or /v1/:project/stream/:id
-    // The edge worker sends the full URL, so we parse it here.
-    // Use a simple approach: the doKey is encoded in the path but we need the
-    // streamId that routeStreamRequest would receive. Since the edge worker
-    // constructs the WS URL from the original request URL, we can extract it.
-    const pathMatch = /\/v1\/([^/]+)\/stream\/(.+)$/.exec(url.pathname);
-    const legacyMatch = !pathMatch ? /\/v1\/stream\/(.+)$/.exec(url.pathname) : null;
-    let streamId: string;
+    // Extract streamId from the URL path: /v1/stream/:projectId/:streamId
+    // Also supports /v1/stream/:streamId (maps to _default project)
+    const pathMatch = /\/v1\/stream\/(.+)$/.exec(url.pathname);
+    if (!pathMatch) {
+      return new Response("not found", { status: 404 });
+    }
     let projectId: string;
+    let streamId: string;
     try {
-      if (pathMatch) {
-        projectId = decodeURIComponent(pathMatch[1]);
-        streamId = decodeURIComponent(pathMatch[2]);
-      } else if (legacyMatch) {
-        projectId = "_default";
-        streamId = decodeURIComponent(legacyMatch[1]);
-      } else {
-        return new Response("not found", { status: 404 });
-      }
+      const decoded = decodeURIComponent(pathMatch[1]);
+      ({ projectId, streamId } = parseStreamPath(decoded));
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "malformed stream id", { status: 400 });
     }
@@ -154,10 +148,9 @@ export class StreamDO extends DurableObject<StreamEnv> {
     await this.storage.deleteStreamData(streamId);
     // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (this.env.REGISTRY) {
-      const kv = this.env.REGISTRY;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          await kv.delete(streamId);
+          await deleteStreamEntry(this.env.REGISTRY, streamId);
           return;
         } catch (e) {
           if (attempt === 3) {

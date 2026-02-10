@@ -34,9 +34,11 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@hono/arktype-validator": "^2.0.1",
     "arkregex": "^0.0.5",
     "arktype": "^2.1.29",
-    "hono": "^4"
+    "hono": "^4",
+    "jose": "^5.9.6"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4"

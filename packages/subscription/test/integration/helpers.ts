@@ -103,11 +103,11 @@ export function createCoreClient(baseUrl: string): CoreClient {
       if (content) {
         options.body = content;
       }
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/stream/${streamId}`, options);
+      return fetch(`${baseUrl}/v1/stream/${PROJECT_ID}/${streamId}`, options);
     },
 
     async appendStream(streamId: string, content: string, contentType = "application/json") {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      return fetch(`${baseUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": contentType },
         body: content,
@@ -115,7 +115,7 @@ export function createCoreClient(baseUrl: string): CoreClient {
     },
 
     async readStream(streamId: string, offset = "0000000000000000_0000000000000000") {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/stream/${streamId}?offset=${offset}`);
+      return fetch(`${baseUrl}/v1/stream/${PROJECT_ID}/${streamId}?offset=${offset}`);
     },
 
     async readStreamText(streamId: string, offset = "0000000000000000_0000000000000000") {
@@ -127,13 +127,13 @@ export function createCoreClient(baseUrl: string): CoreClient {
     },
 
     async deleteStream(streamId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      return fetch(`${baseUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "DELETE",
       });
     },
 
     async getStreamHead(streamId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      return fetch(`${baseUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "HEAD",
       });
     },

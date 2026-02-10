@@ -196,14 +196,14 @@ describe("Per-project CORS from KV", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
   });
 
-  it("uses project-scoped corsOrigins for /v1/:project/stream/:id paths", async () => {
+  it("uses project-scoped corsOrigins for /v1/stream/:project/:id paths", async () => {
     await env.REGISTRY.put("my-project", JSON.stringify({
       signingSecrets: ["test-secret"],
       corsOrigins: ["https://myapp.com"],
     }));
 
     const response = await worker.fetch!(
-      new Request("http://localhost/v1/my-project/stream/test-stream", {
+      new Request("http://localhost/v1/stream/my-project/test-stream", {
         method: "PUT",
         headers: { "Content-Type": "text/plain", Origin: "https://myapp.com" },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,

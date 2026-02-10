@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { AnalyticsRow, CoreService } from "../types";
+import { mintJwt } from "./jwt";
 
 export function parseDoKey(doKey: string): { projectId: string; streamId: string } {
   const i = doKey.indexOf("/");
@@ -182,19 +183,263 @@ export const getStreamMessages = createServerFn({ method: "GET" })
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
+    
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.registerProject(projectId, secret);
     return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-  if (!kv) return [];
-  const list = await kv.list();
-  return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+  const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+  if (!core) return [];
+  return core.listProjects();
 });
+
+export type ProjectListItem = {
+  projectId: string;
+  isPublic: boolean;
+};
+
+export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ProjectListItem[]> => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return [];
+    const projectIds = await core.listProjects();
+    const results: ProjectListItem[] = [];
+    for (const projectId of projectIds) {
+      const config = await core.getProjectConfig(projectId);
+      results.push({ projectId, isPublic: config?.isPublic ?? false });
+    }
+    return results;
+  },
+);
+
+export type ProjectStreamRow = {
+  stream_id: string;
+  messages: number;
+  bytes: number;
+  last_seen: string;
+};
+
+export const getProjectStreams = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<ProjectStreamRow[]> => {
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+    if (!accountId || !apiToken) return [];
+    try {
+      const rows = await queryAnalytics(`
+        SELECT blob1 as stream_id, count() as messages, sum(double2) as bytes, max(timestamp) as last_seen
+        FROM ${getDatasetName()}
+        WHERE blob1 LIKE '${projectId}/%' AND blob2 = 'append'
+          AND timestamp > NOW() - INTERVAL '24' HOUR
+        GROUP BY blob1
+        ORDER BY last_seen DESC
+        LIMIT 100
+      `);
+      return rows.map((r) => ({
+        stream_id: String(r.stream_id).replace(`${projectId}/`, ""),
+        messages: Number(r.messages),
+        bytes: Number(r.bytes),
+        last_seen: String(r.last_seen),
+      }));
+    } catch {
+      return [];
+    }
+  });
+
+export type StreamTimeseriesRow = {
+  bucket: number;
+  messages: number;
+  bytes: number;
+};
+
+export const getStreamTimeseries = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: doKey }): Promise<StreamTimeseriesRow[]> => {
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+    if (!accountId || !apiToken) return [];
+    try {
+      const rows = await queryAnalytics(`
+        SELECT intDiv(toUInt32(timestamp), 60) * 60 as bucket, count() as messages, sum(double2) as bytes
+        FROM ${getDatasetName()}
+        WHERE blob1 = '${doKey}' AND blob2 = 'append'
+          AND timestamp > NOW() - INTERVAL '60' MINUTE
+        GROUP BY bucket
+        ORDER BY bucket
+      `);
+      return rows.map((r) => ({
+        bucket: Number(r.bucket),
+        messages: Number(r.messages),
+        bytes: Number(r.bytes),
+      }));
+    } catch {
+      return [];
+    }
+  });
+
+export interface ProjectConfig {
+  signingSecrets: string[];
+  corsOrigins: string[];
+  isPublic: boolean;
+}
+
+export const getProjectConfig = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<ProjectConfig> => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    const config = await core.getProjectConfig(projectId);
+    if (!config) throw new Error("Project not found");
+    
+    return {
+      signingSecrets: config.signingSecrets,
+      corsOrigins: config.corsOrigins ?? [],
+      isPublic: config.isPublic ?? false,
+    };
+  });
+
+export const updateProjectPrivacy = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; isPublic: boolean }) => data)
+  .handler(async ({ data }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.updatePrivacy(data.projectId, data.isPublic);
+    return { ok: true };
+  });
+
+export const addCorsOrigin = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; origin: string }) => data)
+  .handler(async ({ data }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.addCorsOrigin(data.projectId, data.origin);
+    return { ok: true };
+  });
+
+export const removeCorsOrigin = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; origin: string }) => data)
+  .handler(async ({ data }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.removeCorsOrigin(data.projectId, data.origin);
+    return { ok: true };
+  });
+
+export const generateSigningKey = createServerFn({ method: "POST" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    const newSecret = crypto.randomUUID() + crypto.randomUUID();
+    const result = await core.addSigningKey(projectId, newSecret);
+    return { keyCount: result.keyCount, secret: newSecret };
+  });
+
+export const revokeSigningKey = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; secret: string }) => data)
+  .handler(async ({ data }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    const result = await core.removeSigningKey(data.projectId, data.secret);
+    return { keyCount: result.keyCount };
+  });
+
+// ---------------------------------------------------------------------------
+// Core stream URL resolution
+// ---------------------------------------------------------------------------
+
+let cachedCoreUrl: string | undefined;
+
+export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
+  async () => {
+    if (cachedCoreUrl) return cachedCoreUrl;
+
+    const coreUrl = (env as Record<string, unknown>).CORE_URL as
+      | string
+      | undefined;
+    if (coreUrl) {
+      cachedCoreUrl = coreUrl;
+      return cachedCoreUrl;
+    }
+
+    // Fallback: resolve via Cloudflare API
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
+      | string
+      | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
+      | string
+      | undefined;
+
+    if (!accountId || !apiToken) {
+      throw new Error(
+        "CORE_URL or CF_ACCOUNT_ID + CF_API_TOKEN required to resolve core URL",
+      );
+    }
+
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+      { headers: { Authorization: `Bearer ${apiToken}` } },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to resolve workers subdomain (${response.status})`,
+      );
+    }
+
+    const body = (await response.json()) as {
+      result?: { subdomain?: string };
+    };
+    const subdomain = body.result?.subdomain;
+    if (!subdomain) {
+      throw new Error("Could not resolve workers subdomain");
+    }
+
+    cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+    return cachedCoreUrl;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// JWT minting for browser → core auth
+// ---------------------------------------------------------------------------
+
+export const mintStreamToken = createServerFn({ method: "GET" })
+  .inputValidator((data: { projectId: string }) => data)
+  .handler(async ({ data: { projectId } }) => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+
+    const config = await core.getProjectConfig(projectId);
+    if (!config) {
+      throw new Error(`Project "${projectId}" not found`);
+    }
+    
+    const primarySecret = config.signingSecrets[0];
+    if (!primarySecret) {
+      throw new Error(`No signing secret found for project "${projectId}"`);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + 300; // 5 minutes
+    const token = await mintJwt(
+      { sub: projectId, scope: "read", iat: now, exp: expiresAt },
+      primarySecret,
+    );
+
+    return { token, expiresAt };
+  });

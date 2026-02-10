@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { createProject, createSession } from "./helpers";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `demo-${Date.now()}`;
@@ -6,42 +7,9 @@ const PROJECT_ID = `demo-${Date.now()}`;
 let sessionId: string;
 
 // Create a project and session before the three-tab tests run.
-// This mirrors the first thing you do in the demo.
 test.beforeAll(async ({ browser }) => {
-  const page = await browser.newPage();
-
-  // Navigate to admin home
-  await page.goto(ADMIN_URL);
-  await page.waitForLoadState("networkidle");
-
-  // Click "+" to open Create Project modal
-  await page.click('button[title="Create Project"]');
-  await page.waitForSelector("text=Create Project");
-
-  // Fill project ID and create
-  const projectInput = page.locator('input[placeholder="my-project"]');
-  await projectInput.fill(PROJECT_ID);
-  await page.click('button:has-text("Create"):not([disabled])');
-
-  // Wait for signing secret (project creation succeeded)
-  await page.waitForSelector("text=Save this signing secret", {
-    timeout: 10_000,
-  });
-
-  // Click Done — navigates to sessions list
-  await page.click('button:has-text("Done")');
-  await page.waitForURL(`**/projects/${PROJECT_ID}/sessions`);
-
-  // Create a session
-  await page.click('button:has-text("Create Session")');
-  await page.waitForURL(`**/projects/${PROJECT_ID}/sessions/*`);
-
-  // Extract session ID from URL
-  const url = new URL(page.url());
-  const parts = url.pathname.split("/");
-  sessionId = parts[parts.length - 1];
-
-  await page.close();
+  await createProject(browser, ADMIN_URL, PROJECT_ID);
+  sessionId = await createSession(ADMIN_URL, PROJECT_ID);
 });
 
 // ---------------------------------------------------------------------------
@@ -66,13 +34,13 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
     timeout: 10_000,
   });
 
-  // Wait for the action panel
-  await tab1.waitForSelector('button:has-text("Send")', { timeout: 10_000 });
+  // Wait for the subscribe form
+  await tab1.waitForSelector('button:has-text("Subscribe")', { timeout: 10_000 });
 
   // Subscribe to stream A
-  const streamInput = tab1.locator('input[placeholder="my-stream"]');
+  const streamInput = tab1.locator('input[placeholder="stream-id"]');
   await streamInput.fill("demo-stream-a");
-  await tab1.click('button:has-text("Send")');
+  await tab1.click('button:has-text("Subscribe")');
 
   // Wait for "Subscribed to demo-stream-a" control event
   await tab1
@@ -84,7 +52,7 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
   // Subscribe to stream B
   await streamInput.clear();
   await streamInput.fill("demo-stream-b");
-  await tab1.click('button:has-text("Send")');
+  await tab1.click('button:has-text("Subscribe")');
 
   // Wait for the second subscribe control event
   await expect(
@@ -112,9 +80,6 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
   await tab3.waitForSelector("text=Success", { timeout: 10_000 });
 
   // ── Back to Tab 1: verify both data events arrived via SSE ──
-  // The session page stayed open with SSE running the whole time.
-  // Messages from both streams should have fanned out to the session stream.
-
   const logArea = tab1.locator('[class*="bg-zinc-800"]');
 
   // Wait for the message from Tab 2 (publisher A)
@@ -145,9 +110,6 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
 test("Tab 1 SSE stays connected while other tabs publish", async ({
   browser,
 }) => {
-  // Verify SSE doesn't disconnect during the publish activity.
-  // This catches regressions where the SSE connection drops under load.
-
   const tab1 = await browser.newPage();
   await tab1.goto(
     `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,

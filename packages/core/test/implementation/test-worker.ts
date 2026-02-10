@@ -7,7 +7,7 @@ import type { BaseEnv } from "../../src/http/create_worker";
 const putStreamOptions = type({
   "expiresAt?": "number",
   "body?": "ArrayBuffer",
-  "contentType": "string",
+  "contentType?": "string",
 });
 
 // Created at module scope so the in-flight coalescing Map is shared across
@@ -30,15 +30,14 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
-    // Extract stream ID from /v1/stream/:id or /v1/:project/stream/:id
-    const legacyMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
-    const projectMatch = /^\/v1\/([^/]+)\/stream\/(.+)$/.exec(url.pathname);
-    const doKey = projectMatch
-      ? `${projectMatch[1]}/${projectMatch[2]}`
-      : legacyMatch
-        ? `_default/${legacyMatch[1]}`
-        : null;
-    if (!doKey) return new Response("not found", { status: 404 });
+    // Extract stream ID from /v1/stream/:projectId/:streamId or /v1/stream/:streamId
+    const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
+    if (!pathMatch) return new Response("not found", { status: 404 });
+    const raw = pathMatch[1];
+    const i = raw.indexOf("/");
+    const doKey = i === -1
+      ? `_default/${raw}`
+      : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
 
     const streamId = doKey.split("/").slice(1).join("/");
     const stub = this.env.STREAMS.getByName(doKey);
@@ -104,15 +103,16 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   async putStream(
     doKey: string,
-    options: { expiresAt?: number; body?: ArrayBuffer; contentType: string },
+    options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string },
   ): Promise<{ ok: boolean; status: number; body: string | null }> {
     const validated = putStreamOptions(options);
     if (validated instanceof type.errors) {
       return { ok: false, status: 400, body: validated.summary };
     }
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType,
-    };
+    const headers: Record<string, string> = {};
+    if (options.contentType) {
+      headers["Content-Type"] = options.contentType;
+    }
     if (options.expiresAt) {
       headers["Stream-Expires-At"] = new Date(options.expiresAt).toISOString();
     }

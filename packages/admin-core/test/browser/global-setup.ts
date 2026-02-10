@@ -2,10 +2,12 @@ import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 import net from "node:net";
 import fs from "node:fs";
+import os from "node:os";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const CORE_ROOT = path.resolve(import.meta.dirname, "../../../core");
 const PID_FILE = path.join(ROOT, "test/browser/.worker-pids.json");
+const PERSIST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ds-admin-core-test-"));
 
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -50,9 +52,19 @@ export default async function globalSetup() {
   wranglerJson.services = wranglerJson.services.map((s: { binding: string; service: string }) =>
     s.binding === "CORE" ? { ...s, service: CORE_WORKER_NAME } : s,
   );
+  // Align the KV namespace ID with core's wrangler.toml so both workers share
+  // the same local KV store — projects created in admin are visible to core
+  // for JWT auth and CORS resolution on direct browser→core connections.
+  if (wranglerJson.kv_namespaces) {
+    wranglerJson.kv_namespaces = wranglerJson.kv_namespaces.map(
+      (ns: { binding: string; id: string }) =>
+        ns.binding === "REGISTRY" ? { ...ns, id: "registry" } : ns,
+    );
+  }
   fs.writeFileSync(wranglerJsonPath, JSON.stringify(wranglerJson));
 
-  // Start core worker with the unique name
+  // Start core worker with the unique name, persisting to shared dir so
+  // both workers see the same KV data (project configs, CORS origins, signing keys)
   const corePort = await getAvailablePort();
   const coreProc = spawn(
     "pnpm",
@@ -62,13 +74,16 @@ export default async function globalSetup() {
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
       "--name", CORE_WORKER_NAME,
+      "--persist-to", PERSIST_DIR,
     ],
     { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
   await waitForReady(`http://localhost:${corePort}`);
 
-  // Start admin worker (service binding targets CORE_WORKER_NAME)
+  // Start admin worker (service binding targets CORE_WORKER_NAME),
+  // persisting to same shared dir so KV writes here are visible to core
   const adminPort = await getAvailablePort();
+  const coreUrl = `http://localhost:${corePort}`;
   const adminProc = spawn(
     "pnpm",
     [
@@ -77,6 +92,8 @@ export default async function globalSetup() {
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
       "--config", "dist/server/wrangler.json",
+      "--var", `CORE_URL:${coreUrl}`,
+      "--persist-to", PERSIST_DIR,
     ],
     { cwd: ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );

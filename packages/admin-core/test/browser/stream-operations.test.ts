@@ -35,6 +35,13 @@ test.beforeAll(async ({ browser }) => {
   await page.waitForSelector("text=Save this signing secret", { timeout: 10_000 });
   await page.click('button:has-text("Done")');
 
+  // Configure CORS so the browser can connect directly to the core worker for SSE
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+  await page.locator('input[placeholder="https://example.com"]').fill("*");
+  await page.click('button:has-text("Add")');
+  await page.waitForTimeout(1000);
+
   // Navigate to the stream — should show create form
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/streams/${STREAM_ID}`);
   await page.waitForSelector('button:has-text("Create Stream")', { timeout: 10_000 });
@@ -52,15 +59,15 @@ test.beforeAll(async ({ browser }) => {
 
 // ── Open Project via input + button ──
 
-test("Open Project navigates to project streams page", async ({ page }) => {
+test("Open Project navigates to project detail page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
   await page.locator('input[placeholder="Enter project ID..."]').fill(PROJECT_ID);
   await page.click('button:has-text("Open Project")');
 
-  await page.waitForURL(`**/projects/${PROJECT_ID}/streams`);
-  await expect(page.getByText("Enter a stream ID")).toBeVisible();
+  await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
+  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });
 
 // ── Open Stream via input + button ──
@@ -105,6 +112,14 @@ test("stream detail page shows metadata fields", async ({ page }) => {
   await expect(page.getByText("Status")).toBeVisible();
   await expect(page.getByText("Created")).toBeVisible();
   await expect(page.getByText("Tail Offset")).toBeVisible();
+});
+
+// ── Message volume chart ──
+
+test("stream detail shows Message Volume heading", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/streams/${STREAM_ID}`);
+
+  await expect(page.getByText("Message Volume")).toBeVisible({ timeout: 15_000 });
 });
 
 // ── SSE connected badge ──

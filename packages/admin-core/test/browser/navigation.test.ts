@@ -19,13 +19,13 @@ test.beforeAll(async ({ browser }) => {
   await page.close();
 });
 
-// ── Overview nav link ──
+// ── System Overview nav link ──
 
-test("Overview nav link navigates to overview page", async ({ page }) => {
+test("System Overview nav link navigates to overview page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
-  await page.click("text=Overview");
+  await page.click("text=System Overview");
 
   await page.waitForURL("**/");
   await expect(page.getByText("Throughput")).toBeVisible({ timeout: 5_000 });
@@ -60,7 +60,7 @@ test("Overview page renders stat cards and tables", async ({ page }) => {
 
 // ── Project link in table ──
 
-test("clicking a project in the table navigates to its streams page", async ({ page }) => {
+test("clicking a project in the table navigates to its detail page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
@@ -70,6 +70,6 @@ test("clicking a project in the table navigates to its streams page", async ({ p
 
   await projectLink.click();
 
-  await page.waitForURL(`**/projects/${PROJECT_ID}/streams`);
-  await expect(page.locator('input[placeholder="Enter stream ID..."]')).toBeVisible();
+  await page.waitForURL(`**/projects/${PROJECT_ID}`);
+  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });

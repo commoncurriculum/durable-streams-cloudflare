@@ -90,7 +90,7 @@ export async function subscribe(
   return {
     sessionId,
     streamId,
-    sessionStreamPath: `/v1/${projectId}/stream/${sessionId}`,
+    sessionStreamPath: `/v1/stream/${projectId}/${sessionId}`,
     expiresAt,
     isNewSession,
   };

@@ -1,12 +1,12 @@
 {
   "name": "durable-streams-root",
   "private": true,
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@10.29.2",
   "scripts": {
     "build": "pnpm -r run build",
     "clean": "pnpm -r run clean",
     "test": "pnpm -r run test",
-    "test:all": "pnpm -r run typecheck && pnpm -C packages/core run lint && pnpm -C packages/subscription run lint && pnpm -C packages/core run test:unit && pnpm -C packages/core run conformance && pnpm -r run test && pnpm -C packages/subscription run test:integration",
+    "test:all": "pnpm -r run typecheck && pnpm -C packages/core run lint && pnpm -C packages/subscription run lint && pnpm -C packages/core run test:unit && pnpm -C packages/core run conformance && pnpm -r --filter '!@durable-streams-cloudflare/admin-core' --filter '!@durable-streams-cloudflare/admin-subscription' run test && pnpm -C packages/admin-core run test && pnpm -C packages/admin-subscription run test && pnpm -C packages/subscription run test:integration",
     "typecheck": "pnpm -r run typecheck",
     "dev": "pnpm --filter @durable-streams-cloudflare/core --filter @durable-streams-cloudflare/subscription --filter @durable-streams-cloudflare/admin-core --filter @durable-streams-cloudflare/admin-subscription --parallel dev"
   },

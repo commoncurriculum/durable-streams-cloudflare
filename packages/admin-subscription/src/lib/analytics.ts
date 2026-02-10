@@ -190,26 +190,24 @@ export const inspectStreamSubscribers = createServerFn({ method: "GET" })
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
-    // Also register in core's KV so core can verify JWTs for browser SSE connections
+    
+    // Use core RPC to create the project (no auth needed via service binding)
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
-    if (core) {
-      await core.registerProject(projectId, secret);
-    }
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.registerProject(projectId, secret, { corsOrigins: ["*"] });
+    
     return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-  if (!kv) return [];
-  const list = await kv.list();
-  return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+  const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+  if (!core) return [];
+  return core.listProjects();
 });
 
 export type StreamMeta = {
@@ -221,11 +219,16 @@ export type StreamMeta = {
 export const getStreamMeta = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string; streamId: string }) => data)
   .handler(async ({ data: { projectId, streamId } }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) return null;
-    const value = await kv.get(`${projectId}/${streamId}`, "json");
-    if (!value || typeof value !== "object") return null;
-    return value as StreamMeta;
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return null;
+    const doKey = `${projectId}/${streamId}`;
+    const metadata = await core.getStreamMetadata(doKey);
+    if (!metadata) return null;
+    return {
+      public: metadata.public,
+      content_type: metadata.content_type,
+      created_at: metadata.created_at,
+    };
   });
 
 export const createSession = createServerFn({ method: "POST" })
@@ -233,7 +236,22 @@ export const createSession = createServerFn({ method: "POST" })
   .handler(async ({ data: { projectId, sessionId } }) => {
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
     await subscription.adminTouchSession(projectId, sessionId);
+
     return { sessionId };
+  });
+
+export type SessionListItem = {
+  sessionId: string;
+  createdAt: number;
+};
+
+export const listProjectSessions = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<SessionListItem[]> => {
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return [];
+    const streams = await core.listProjectStreams(projectId);
+    return streams.map((s) => ({ sessionId: s.streamId, createdAt: s.createdAt }));
   });
 
 export const sendSessionAction = createServerFn({ method: "POST" })
@@ -254,6 +272,13 @@ export const sendSessionAction = createServerFn({ method: "POST" })
       case "subscribe": {
         if (!data.sessionId || !data.streamId) {
           throw new Error("subscribe requires sessionId and streamId");
+        }
+        // Ensure the source stream exists on core (PUT is idempotent — creates or no-ops)
+        const core = (env as Record<string, unknown>).CORE as CoreService;
+        const doKey = `${data.projectId}/${data.streamId}`;
+        const putResult = await core.putStream(doKey, { contentType: "application/json" });
+        if (!putResult.ok) {
+          throw new Error(`Failed to ensure stream exists (${putResult.status}): ${putResult.body}`);
         }
         const result = await subscription.adminSubscribe(data.projectId, data.streamId, data.sessionId);
         return { status: 200, statusText: "OK", body: result };
@@ -370,17 +395,16 @@ export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
 export const mintStreamToken = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string }) => data)
   .handler(async ({ data: { projectId } }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as
-      | KVNamespace
-      | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
 
-    const config = (await kv.get(projectId, "json")) as {
-      signingSecrets?: string[];
-      signingSecret?: string;
-    } | null;
-    // Support new array format with legacy fallback
-    const primarySecret = config?.signingSecrets?.[0] ?? config?.signingSecret;
+    // Use RPC to get project config (no auth required via service binding)
+    const config = await core.getProjectConfig(projectId);
+    if (!config) {
+      throw new Error(`Project "${projectId}" not found`);
+    }
+
+    const primarySecret = config.signingSecrets[0];
     if (!primarySecret) {
       throw new Error(`No signing secret found for project "${projectId}"`);
     }
