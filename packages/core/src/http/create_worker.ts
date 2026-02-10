@@ -68,7 +68,7 @@ function parseGlobalCorsOrigins(raw: string | undefined): string[] {
  * Returns null (no CORS headers) when no origins are configured at either level.
  * Returns "*" when any origin list includes "*".
  * Returns the matching origin when the request Origin matches a configured origin.
- * Returns the first configured origin when no match.
+ * Returns null when the request origin doesn't match any configured origin.
  */
 function resolveCorsOrigin(
   projectOrigins: string[] | undefined,
@@ -79,7 +79,7 @@ function resolveCorsOrigin(
   if (merged.length === 0) return null;
   if (merged.includes("*")) return "*";
   if (requestOrigin && merged.includes(requestOrigin)) return requestOrigin;
-  return merged[0];
+  return null;
 }
 
 function wrapAuthError(result: { status: number; error: string }, origin: string | null): Response {
