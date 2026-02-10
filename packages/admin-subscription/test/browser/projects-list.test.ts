@@ -38,7 +38,7 @@ test("projects table shows the created project", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
-  const projectCell = page.locator(`text=${PROJECT_ID}`).first();
+  const projectCell = page.locator("main").locator(`text=${PROJECT_ID}`).first();
   await expect(projectCell).toBeVisible({ timeout: 10_000 });
 });
 
@@ -48,7 +48,7 @@ test("clicking a project navigates to /projects/$projectId", async ({ page }) =>
   await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
-  const projectLink = page.locator(`text=${PROJECT_ID}`).first();
+  const projectLink = page.locator("main").locator(`text=${PROJECT_ID}`).first();
   await expect(projectLink).toBeVisible({ timeout: 10_000 });
   await projectLink.click();
 

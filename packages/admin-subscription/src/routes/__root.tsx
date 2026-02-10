@@ -124,6 +124,16 @@ function Nav() {
           >
             Overview
           </Link>
+          <Link
+            to="/projects"
+            className={`border-b-2 px-5 py-2.5 text-sm transition-colors ${
+              currentPath.startsWith("/projects")
+                ? "border-blue-500 text-blue-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Projects
+          </Link>
           {sessionsTo ? (
             <Link
               to={sessionsTo}

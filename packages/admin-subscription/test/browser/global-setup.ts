@@ -2,6 +2,7 @@ import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 import net from "node:net";
 import fs from "node:fs";
+import os from "node:os";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const CORE_ROOT = path.resolve(import.meta.dirname, "../../../core");
@@ -41,6 +42,21 @@ export default async function globalSetup() {
   // Build the admin app first
   execSync("pnpm exec vite build", { cwd: ROOT, stdio: "pipe" });
 
+  // Shared KV/DO persist directory so all workers see the same data
+  const PERSIST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "ds-admin-sub-test-"));
+
+  // Align the KV namespace ID with core's wrangler.toml so all workers share
+  // the same local KV store — projects created in admin are visible to core
+  const wranglerJsonPath = path.join(ROOT, "dist/server/wrangler.json");
+  const wranglerJson = JSON.parse(fs.readFileSync(wranglerJsonPath, "utf-8"));
+  if (wranglerJson.kv_namespaces) {
+    wranglerJson.kv_namespaces = wranglerJson.kv_namespaces.map(
+      (ns: { binding: string; id: string }) =>
+        ns.binding === "REGISTRY" ? { ...ns, id: "registry" } : ns,
+    );
+  }
+  fs.writeFileSync(wranglerJsonPath, JSON.stringify(wranglerJson));
+
   // Start core worker
   const corePort = await getAvailablePort();
   const coreProc = spawn(
@@ -50,6 +66,7 @@ export default async function globalSetup() {
       "--port", String(corePort),
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
+      "--persist-to", PERSIST_DIR,
     ],
     { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
@@ -64,6 +81,7 @@ export default async function globalSetup() {
       "--port", String(subscriptionPort),
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
+      "--persist-to", PERSIST_DIR,
     ],
     { cwd: SUBSCRIPTION_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
@@ -80,6 +98,7 @@ export default async function globalSetup() {
       "--inspector-port", "0",
       "--show-interactive-dev-session=false",
       "--config", "dist/server/wrangler.json",
+      "--persist-to", PERSIST_DIR,
       "--var", `CORE_URL:${coreUrl}`,
     ],
     {
