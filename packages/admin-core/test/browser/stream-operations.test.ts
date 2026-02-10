@@ -67,7 +67,7 @@ test("Open Project navigates to project detail page", async ({ page }) => {
   await page.click('button:has-text("Open Project")');
 
   await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
-  await expect(page.locator("main").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
 });
 
 // ── Open Stream via input + button ──

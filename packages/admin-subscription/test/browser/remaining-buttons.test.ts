@@ -15,13 +15,13 @@ test.beforeAll(async ({ browser }) => {
 // ── Nav: System Overview link ──
 
 test("System Overview nav link navigates to overview page", async ({ page }) => {
-  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions`);
+  await page.goto(`${ADMIN_URL}/projects`);
   await page.waitForLoadState("networkidle");
 
   await page.click("text=System Overview");
 
   await page.waitForURL("**/");
-  await expect(page.getByText("Subscription Service")).toBeVisible();
+  await expect(page.getByText("Subscription Admin")).toBeVisible();
 });
 
 // ── Nav: Publish sub-tab ──
@@ -30,7 +30,7 @@ test("Publish sub-tab navigates to publish page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}`);
   await page.waitForLoadState("networkidle");
 
-  await page.locator("main").getByRole("link", { name: "Publish" }).click();
+  await page.locator("header nav").getByRole("link", { name: "Publish" }).click();
 
   await page.waitForURL(`**/projects/${PROJECT_ID}/publish`);
   await expect(page.getByText("Publish to Stream")).toBeVisible();

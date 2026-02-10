@@ -31,9 +31,8 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body className="min-h-screen bg-zinc-950 text-zinc-100 font-sans antialiased">
-        <Header />
         <QueryClientProvider client={queryClient}>
-          <Nav />
+          <NavBar />
           <main className="mx-auto max-w-7xl px-6 py-6">
             <Outlet />
           </main>
@@ -44,47 +43,60 @@ function RootComponent() {
   );
 }
 
-function Header() {
-  return (
-    <header className="flex items-center gap-4 border-b border-zinc-800 px-6 py-4">
-      <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-      <h1 className="text-base font-semibold tracking-tight">
-        Subscription Service
-      </h1>
-    </header>
-  );
-}
-
-function Nav() {
+function NavBar() {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
+  const projectId = (
+    matches.find((m) => (m.params as Record<string, string>)?.projectId)
+      ?.params as Record<string, string> | undefined
+  )?.projectId;
 
-  const links = [
-    { to: "/", label: "System Overview" },
-    { to: "/projects", label: "Projects" },
-  ] as const;
+  const tabs = projectId
+    ? ([
+        { to: "/projects", label: "\u2039 Projects", end: true },
+        { to: "/projects/$projectId", label: "Overview", end: true },
+        { to: "/projects/$projectId/sessions", label: "Sessions" },
+        { to: "/projects/$projectId/publish", label: "Publish", end: true },
+      ] as const)
+    : ([
+        { to: "/", label: "System Overview", end: true },
+        { to: "/projects", label: "Projects" },
+      ] as const);
 
   return (
-    <nav className="flex border-b border-zinc-800 px-6">
-      {links.map(({ to, label }) => {
-        const isActive =
-          to === "/"
-            ? currentPath === "/"
-            : currentPath.startsWith(to);
-        return (
-          <Link
-            key={to}
-            to={to}
-            className={`border-b-2 px-5 py-2.5 text-sm transition-colors ${
-              isActive
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
+    <header className="flex items-center border-b border-zinc-800 px-6">
+      <Link to="/" className="flex items-center gap-3 py-3 pr-5">
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+        <span className="text-sm font-semibold tracking-tight">
+          Subscription Admin
+        </span>
+      </Link>
+      <div className="mx-1 h-5 border-l border-zinc-700" />
+      <nav className="flex">
+        {tabs.map(({ to, label, ...rest }) => {
+          const end = "end" in rest && rest.end;
+          const resolved = projectId
+            ? to.replace("$projectId", projectId)
+            : to;
+          const isActive = end
+            ? currentPath === resolved || currentPath === resolved + "/"
+            : currentPath.startsWith(resolved);
+          return (
+            <Link
+              key={to}
+              to={to}
+              params={projectId ? { projectId } : undefined}
+              className={`border-b-2 px-4 py-3 text-sm transition-colors ${
+                isActive
+                  ? "border-blue-500 text-blue-400"
+                  : "border-transparent text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+    </header>
   );
 }
