@@ -227,7 +227,7 @@ export async function getStreamEntry(
   
   // Validate with schema
   const validated = streamEntrySchema(record);
-  if (validated instanceof streamEntrySchema.errors) {
+  if (validated instanceof type.errors) {
     return null;
   }
   
@@ -245,7 +245,7 @@ export async function putStreamEntry(
 ): Promise<void> {
   // Validate before writing
   const validated = streamEntrySchema(entry);
-  if (validated instanceof streamEntrySchema.errors) {
+  if (validated instanceof type.errors) {
     throw new Error(`Invalid stream entry: ${validated.summary}`);
   }
   await kv.put(doKey, JSON.stringify(entry));

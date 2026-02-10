@@ -195,35 +195,11 @@ export const createProject = createServerFn({ method: "POST" })
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
     
-    // Use core's HTTP config API to create the project
+    // Use core RPC to create the project (no auth needed via service binding)
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
     
-    // Mint a manage-scope JWT to call the config API
-    const now = Math.floor(Date.now() / 1000);
-    const token = await mintJwt(
-      { sub: projectId, scope: "manage", iat: now, exp: now + 300 },
-      secret,
-    );
-    
-    // Call the HTTP config endpoint
-    const response = await core.fetch(
-      new Request(`https://internal/v1/config/${encodeURIComponent(projectId)}`, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          signingSecrets: [secret],
-        }),
-      })
-    );
-    
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to create project: ${text}`);
-    }
+    await core.registerProject(projectId, secret);
     
     return { ok: true, signingSecret: secret };
   });
