@@ -215,6 +215,141 @@ describe("Per-project CORS from KV", () => {
   });
 });
 
+describe("Global CORS origins (CORS_ORIGINS env var)", () => {
+  let worker: ReturnType<typeof createStreamWorker>;
+
+  beforeEach(async () => {
+    worker = createStreamWorker();
+    await env.REGISTRY.delete("_default");
+    await env.REGISTRY.delete("my-project");
+  });
+
+  function makeEnvWithGlobal(corsOrigins: string): BaseEnv {
+    return { ...env, CORS_ORIGINS: corsOrigins } as unknown as BaseEnv;
+  }
+
+  it("CORS_ORIGINS alone enables CORS even without project corsOrigins", async () => {
+    await env.REGISTRY.put("_default", JSON.stringify({
+      signingSecrets: ["test-secret"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://global.example.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("https://global.example.com"),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://global.example.com");
+  });
+
+  it("request origin matching a global origin is returned even when project has different origins", async () => {
+    await env.REGISTRY.put("my-project", JSON.stringify({
+      signingSecrets: ["test-secret"],
+      corsOrigins: ["https://project.example.com"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/my-project/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://global.example.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("https://global.example.com"),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://global.example.com");
+  });
+
+  it("project origin still works when CORS_ORIGINS is set", async () => {
+    await env.REGISTRY.put("my-project", JSON.stringify({
+      signingSecrets: ["test-secret"],
+      corsOrigins: ["https://project.example.com"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/my-project/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://project.example.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("https://global.example.com"),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://project.example.com");
+  });
+
+  it("wildcard in CORS_ORIGINS returns *", async () => {
+    await env.REGISTRY.put("_default", JSON.stringify({
+      signingSecrets: ["test-secret"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://any.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("*"),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  it("multiple comma-separated global origins are parsed correctly", async () => {
+    await env.REGISTRY.put("_default", JSON.stringify({
+      signingSecrets: ["test-secret"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://second.example.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("https://first.example.com, https://second.example.com"),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://second.example.com");
+  });
+
+  it("OPTIONS preflight uses global origins", async () => {
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/test-stream", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://global.example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal("https://global.example.com"),
+      makeCtx(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://global.example.com");
+  });
+
+  it("no CORS headers when CORS_ORIGINS is empty string and no project origins", async () => {
+    await env.REGISTRY.put("_default", JSON.stringify({
+      signingSecrets: ["test-secret"],
+    }));
+
+    const response = await worker.fetch!(
+      new Request("http://localhost/v1/stream/test-stream", {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain", Origin: "https://any.com" },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
+      makeEnvWithGlobal(""),
+      makeCtx(),
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+});
+
 describe("CORS with ?public=true query param", () => {
   const PROJECT = "cors-public-project";
 

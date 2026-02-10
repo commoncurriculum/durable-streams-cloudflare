@@ -27,6 +27,8 @@ id = "registry"
 [vars]
 # SEGMENT_MAX_MESSAGES = "1000"
 # SEGMENT_MAX_BYTES = "4194304"
+# Comma-separated CORS origins allowed for ALL projects (in addition to per-project origins)
+# CORS_ORIGINS = "https://admin.example.com,https://dashboard.example.com"
 
 [observability]
 enabled = true
