@@ -1,3 +1,4 @@
+import { decodeJwt, jwtVerify } from "jose";
 import type { Timing } from "../protocol/timing";
 
 // ============================================================================
@@ -47,17 +48,6 @@ export function extractBearerToken(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-function base64UrlDecode(input: string): Uint8Array {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
 /**
  * Look up the project config from KV.
  * Normalizes both legacy `{ signingSecret: "..." }` and new `{ signingSecrets: [...] }` formats.
@@ -93,11 +83,8 @@ function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: st
  * Used to peek at `sub` before we know which secret to verify with.
  */
 export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
   try {
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(parts[1]));
-    return JSON.parse(payloadJson) as Record<string, unknown>;
+    return decodeJwt(token);
   } catch {
     return null;
   }
@@ -105,47 +92,27 @@ export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> |
 
 /**
  * Full HMAC-SHA256 JWT verification.
- * Validates shape: { sub: string, scope: "write"|"read", exp: number, stream_id?: string }
+ * Validates shape: { sub: string, scope: "write"|"read"|"manage", exp: number, stream_id?: string }
  */
 export async function verifyProjectJwt(
   token: string,
   signingSecret: string,
 ): Promise<ProjectJwtClaims | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [headerPart, payloadPart, signaturePart] = parts;
   try {
-    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
-    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
-    if (header.alg !== "HS256") return null;
-
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
-    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    const secret = new TextEncoder().encode(signingSecret);
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+    });
 
     // Validate shape
     if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
     if (payload.scope !== "write" && payload.scope !== "read" && payload.scope !== "manage") return null;
     if (typeof payload.exp !== "number") return null;
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(signingSecret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const ok = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      base64UrlDecode(signaturePart),
-      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
-    );
-    if (!ok) return null;
-
     return {
-      sub: payload.sub as string,
+      sub: payload.sub,
       scope: payload.scope as "write" | "read" | "manage",
-      exp: payload.exp as number,
+      exp: payload.exp,
       stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
   } catch {
