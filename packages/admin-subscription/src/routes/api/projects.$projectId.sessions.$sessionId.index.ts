@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import type { SubscriptionService } from "../../types";
 
 export const Route = createFileRoute(
-  "/api/projects/$projectId/sessions/$sessionId",
+  "/api/projects/$projectId/sessions/$sessionId/",
 )({
   server: {
     handlers: ({ createHandlers }) =>
