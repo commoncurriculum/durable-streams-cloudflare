@@ -13,6 +13,9 @@ binding = "REGISTRY"
 id = "REGISTRY_ID"
 
 [vars]
+# Required: public URL of the core worker so the browser can open SSE connections.
+# Without this, live event streaming on the stream detail page will not work.
+CORE_URL = "https://durable-streams.your-subdomain.workers.dev"
 # CF_ACCOUNT_ID = "your-account-id"
 # CF_API_TOKEN = "your-api-token-with-analytics-read"
 # CF_ACCESS_TEAM_DOMAIN = "your-team-name"

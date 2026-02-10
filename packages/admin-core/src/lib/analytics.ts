@@ -353,7 +353,7 @@ export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
 
     if (!accountId || !apiToken) {
       throw new Error(
-        "CORE_URL or CF_ACCOUNT_ID + CF_API_TOKEN required to resolve core URL",
+        "CORE_URL is not set. Add CORE_URL to your wrangler.toml [vars] (e.g. CORE_URL = \"https://durable-streams.your-subdomain.workers.dev\") or set CF_ACCOUNT_ID + CF_API_TOKEN for auto-resolution.",
       );
     }
 
