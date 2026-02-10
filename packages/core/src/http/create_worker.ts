@@ -249,9 +249,20 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   // ================================================================
   // Project Config Lookup Middleware
   // ================================================================
-  // Look up project config once and store in context for reuse by CORS and auth
+  // Look up project config once and store in context for reuse by CORS and auth.
+  // We extract the project ID from the URL path because wildcard middleware
+  // cannot access route-specific params (e.g. :project, :projectId).
   app.use("*", async (c, next) => {
-    const projectId = c.req.param("project") || c.req.param("projectId");
+    const segments = new URL(c.req.url).pathname.split("/").filter(Boolean);
+    // /v1/config/:projectId       → ["v1","config",projectId]
+    // /v1/stream/:project/:stream → ["v1","stream",project,stream]
+    // /v1/stream/:stream          → ["v1","stream",stream] → _default project
+    let projectId: string | undefined;
+    if (segments[0] === "v1" && segments[1] === "config" && segments.length === 3) {
+      projectId = segments[2];
+    } else if (segments[0] === "v1" && segments[1] === "stream") {
+      projectId = segments.length >= 4 ? segments[2] : DEFAULT_PROJECT_ID;
+    }
     if (projectId && PROJECT_ID_PATTERN.test(projectId) && c.env.REGISTRY) {
       const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
       c.set("projectConfig" as never, projectConfig as never);
@@ -376,9 +387,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     const doKey = `${projectId}/${streamId}`;
     // #endregion docs-extract-stream-id
 
-    // Reuse projectConfig and corsOrigin from context (already looked up in middleware)
-    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
-    const corsOrigin = c.get("corsOrigin" as never) as string | null | undefined;
+    // Reuse corsOrigin from context (already looked up in middleware)
+    const corsOrigin = (c.get("corsOrigin" as never) as string | null | undefined) ?? null;
 
     const method = request.method.toUpperCase();
     const isStreamRead = method === "GET" || method === "HEAD";
