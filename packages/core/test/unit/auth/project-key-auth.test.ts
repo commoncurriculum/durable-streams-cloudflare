@@ -186,13 +186,13 @@ describe("projectJwtAuth - authorizeMutation", () => {
   it("rejects with 500 when REGISTRY not configured", async () => {
     const result = await authorizeMutation(makeRequest("token"), "myproject/test", {} as any, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(500);
+    if (!result.ok) expect(result.status).toBe(500);
   });
 
   it("rejects with 401 when no token provided", async () => {
     const result = await authorizeMutation(makeRequest(), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(401);
+    if (!result.ok) expect(result.status).toBe(401);
   });
 
   it("rejects with 401 when project not found in KV", async () => {
@@ -200,35 +200,35 @@ describe("projectJwtAuth - authorizeMutation", () => {
     const token = await createTestJwt(validClaims(), SECRET);
     const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(401);
+    if (!result.ok) expect(result.status).toBe(401);
   });
 
   it("rejects with 401 when JWT signature is invalid", async () => {
     const token = await createTestJwt(validClaims(), "wrong-secret");
     const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(401);
+    if (!result.ok) expect(result.status).toBe(401);
   });
 
   it("rejects with 403 when sub does not match project", async () => {
     const token = await createTestJwt(validClaims({ sub: "other-project" }), SECRET);
     const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(403);
+    if (!result.ok) expect(result.status).toBe(403);
   });
 
   it("rejects with 401 when token is expired", async () => {
     const token = await createTestJwt(validClaims({ exp: Math.floor(Date.now() / 1000) - 60 }), SECRET);
     const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(401);
+    if (!result.ok) expect(result.status).toBe(401);
   });
 
   it("rejects with 403 when scope is read", async () => {
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
     const result = await authorizeMutation(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(403);
+    if (!result.ok) expect(result.status).toBe(403);
   });
 
   it("allows valid write JWT", async () => {
@@ -237,11 +237,11 @@ describe("projectJwtAuth - authorizeMutation", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it("rejects with 403 when doKey has no slash", async () => {
+  it("rejects when doKey has no slash (maps to _default project, no config)", async () => {
     const token = await createTestJwt(validClaims(), SECRET);
     const result = await authorizeMutation(makeRequest(token), "no-slash", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(403);
+    if (!result.ok) expect(result.status).toBe(401);
   });
 });
 
@@ -255,14 +255,14 @@ describe("projectJwtAuth - authorizeRead", () => {
   it("rejects with 500 when REGISTRY not configured", async () => {
     const result = await authorizeRead(makeRequest("token"), "myproject/test", {} as any, null);
     expect(result).toHaveProperty("ok", false);
-    if (!result.ok) expect(result.response.status).toBe(500);
+    if (!result.ok) expect(result.status).toBe(500);
   });
 
   it("rejects with 401 when no token", async () => {
     const result = await authorizeRead(makeRequest(), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
-      expect(result.response.status).toBe(401);
+      expect(result.status).toBe(401);
     }
   });
 
@@ -283,7 +283,7 @@ describe("projectJwtAuth - authorizeRead", () => {
     const result = await authorizeRead(makeRequest(token), "myproject/test-stream", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
-      expect(result.response.status).toBe(403);
+      expect(result.status).toBe(403);
     }
   });
 
@@ -298,7 +298,7 @@ describe("projectJwtAuth - authorizeRead", () => {
     const result = await authorizeRead(makeRequest(token), "myproject/test", { REGISTRY: env.REGISTRY }, null);
     expect(result).toHaveProperty("ok", false);
     if (!result.ok) {
-      expect(result.response.status).toBe(403);
+      expect(result.status).toBe(403);
     }
   });
 });
