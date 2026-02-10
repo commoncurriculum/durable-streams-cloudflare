@@ -253,18 +253,25 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
   const app = new Hono<{ Bindings: E }>();
 
   // ================================================================
-  // CORS Middleware
+  // Project Config Lookup Middleware
   // ================================================================
+  // Look up project config once and store in context for reuse by CORS and auth
   app.use("*", async (c, next) => {
-    const url = new URL(c.req.url);
-    let corsOrigin: string | null = null;
-
-    // Extract projectId from route params - try different param names used by different routes
     const projectId = c.req.param("project") || c.req.param("projectId");
     if (projectId && PROJECT_ID_PATTERN.test(projectId) && c.env.REGISTRY) {
       const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
-      corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+      c.set("projectConfig" as never, projectConfig as never);
     }
+    return next();
+  });
+
+  // ================================================================
+  // CORS Middleware
+  // ================================================================
+  app.use("*", async (c, next) => {
+    // Reuse projectConfig from context if available
+    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
+    const corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
 
     // Handle OPTIONS preflight
     if (c.req.method === "OPTIONS") {
@@ -306,7 +313,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       return c.text("invalid project id", 400);
     }
 
-    const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
+    // Reuse projectConfig from context (already looked up in earlier middleware)
+    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
     if (!projectConfig) {
       return c.text("unauthorized", 401);
     }
@@ -374,15 +382,9 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     const doKey = `${projectId}/${streamId}`;
     // #endregion docs-extract-stream-id
 
-    // Resolve per-project CORS from KV config.
-    let projectConfig: ProjectConfig | null = null;
-    if (c.env.REGISTRY) {
-      projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
-    }
-    const corsOrigin = resolveProjectCorsOrigin(
-      projectConfig?.corsOrigins,
-      request.headers.get("Origin"),
-    );
+    // Reuse projectConfig and corsOrigin from context (already looked up in middleware)
+    const projectConfig = c.get("projectConfig" as never) as ProjectConfig | null | undefined;
+    const corsOrigin = c.get("corsOrigin" as never) as string | null | undefined;
 
     const method = request.method.toUpperCase();
     const isStreamRead = method === "GET" || method === "HEAD";
