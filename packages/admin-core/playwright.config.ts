@@ -2,7 +2,6 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "test/browser",
-  testIgnore: ["**/stream-detail-no-core-url*", "**/stream-detail-fetch-prod*"],
   globalSetup: "test/browser/global-setup.ts",
   globalTeardown: "test/browser/global-teardown.ts",
   timeout: 60_000,
