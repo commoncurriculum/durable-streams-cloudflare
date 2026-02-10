@@ -7,8 +7,9 @@ import { Timing, attachTiming } from "../protocol/timing";
 import { logError, logWarn } from "../log";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead, ProjectConfig } from "./auth";
-import { lookupProjectConfig } from "./auth";
+import { extractBearerToken, lookupProjectConfig, verifyProjectJwtMultiKey } from "./auth";
 import type { StreamDO } from "./durable_object";
+import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
 
@@ -41,6 +42,7 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 
 const STREAM_PATH_RE = /^\/v1\/([^/]+)\/stream\/(.+)$/;
 const LEGACY_STREAM_PATH_RE = /^\/v1\/stream\/(.+)$/;
+const CONFIG_PATH_RE = /^\/v1\/config\/([^/]+)$/;
 export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const DEFAULT_PROJECT_ID = "_default";
 
@@ -290,6 +292,47 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
       if (url.pathname === "/health") {
         return new Response("ok", { status: 200, headers: { "Cache-Control": "no-store" } });
+      }
+
+      // ================================================================
+      // Config API: /v1/config/:projectId — manage scope JWT auth
+      // ================================================================
+      const configMatch = CONFIG_PATH_RE.exec(url.pathname);
+      if (configMatch) {
+        if (!env.REGISTRY) {
+          return new Response("REGISTRY not configured", { status: 500 });
+        }
+        const token = extractBearerToken(request);
+        if (!token) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        let projectId: string;
+        try {
+          projectId = decodeURIComponent(configMatch[1]);
+        } catch {
+          return new Response("invalid project id", { status: 400 });
+        }
+        if (!PROJECT_ID_PATTERN.test(projectId)) {
+          return new Response("invalid project id", { status: 400 });
+        }
+        const projectConfig = await lookupProjectConfig(env.REGISTRY, projectId);
+        if (!projectConfig) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        const claims = await verifyProjectJwtMultiKey(token, projectConfig);
+        if (!claims) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        if (claims.sub !== projectId) {
+          return new Response("forbidden", { status: 403 });
+        }
+        if (Date.now() >= claims.exp * 1000) {
+          return new Response("token expired", { status: 401 });
+        }
+        if (claims.scope !== "manage") {
+          return new Response("forbidden", { status: 403 });
+        }
+        return configRoutes.fetch(request, env, ctx);
       }
 
       // #region docs-extract-stream-id

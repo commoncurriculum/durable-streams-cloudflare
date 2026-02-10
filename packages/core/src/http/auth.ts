@@ -30,7 +30,7 @@ export type ProjectJwtEnv = {
 
 export type ProjectJwtClaims = {
   sub: string;
-  scope: "write" | "read";
+  scope: "write" | "read" | "manage";
   exp: number;
   stream_id?: string;
 };
@@ -124,7 +124,7 @@ export async function verifyProjectJwt(
 
     // Validate shape
     if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
-    if (payload.scope !== "write" && payload.scope !== "read") return null;
+    if (payload.scope !== "write" && payload.scope !== "read" && payload.scope !== "manage") return null;
     if (typeof payload.exp !== "number") return null;
 
     const key = await crypto.subtle.importKey(
@@ -144,7 +144,7 @@ export async function verifyProjectJwt(
 
     return {
       sub: payload.sub as string,
-      scope: payload.scope as "write" | "read",
+      scope: payload.scope as "write" | "read" | "manage",
       exp: payload.exp as number,
       stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
