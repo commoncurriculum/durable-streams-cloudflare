@@ -13,6 +13,7 @@ import {
   rotateStreamReaderKey,
   listProjects,
   getStreamEntry,
+  getProjectEntry,
 } from "../storage/registry";
 
 const { authorizeMutation, authorizeRead } = projectJwtAuth();
@@ -58,6 +59,15 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: list all projects
   async listProjects(): Promise<string[]> {
     return listProjects(this.env.REGISTRY);
+  }
+
+  // RPC: get project config from REGISTRY (admin-only, no auth required via service binding)
+  async getProjectConfig(projectId: string): Promise<{
+    signingSecrets: string[];
+    corsOrigins?: string[];
+    isPublic?: boolean;
+  } | null> {
+    return getProjectEntry(this.env.REGISTRY, projectId);
   }
 
   // RPC: get stream metadata from REGISTRY

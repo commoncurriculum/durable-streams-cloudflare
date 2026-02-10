@@ -229,10 +229,9 @@ export const createProject = createServerFn({ method: "POST" })
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-  if (!kv) return [];
-  const list = await kv.list();
-  return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+  const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+  if (!core) return [];
+  return core.listProjects();
 });
 
 export type StreamMeta = {
@@ -244,11 +243,16 @@ export type StreamMeta = {
 export const getStreamMeta = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string; streamId: string }) => data)
   .handler(async ({ data: { projectId, streamId } }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) return null;
-    const value = await kv.get(`${projectId}/${streamId}`, "json");
-    if (!value || typeof value !== "object") return null;
-    return value as StreamMeta;
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return null;
+    const doKey = `${projectId}/${streamId}`;
+    const metadata = await core.getStreamMetadata(doKey);
+    if (!metadata) return null;
+    return {
+      public: metadata.public,
+      content_type: metadata.content_type,
+      created_at: metadata.created_at,
+    };
   });
 
 export const createSession = createServerFn({ method: "POST" })
@@ -257,14 +261,11 @@ export const createSession = createServerFn({ method: "POST" })
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
     await subscription.adminTouchSession(projectId, sessionId);
 
-    // Track session in KV for listing
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (kv) {
-      await kv.put(
-        `sessions/${projectId}/${sessionId}`,
-        JSON.stringify({ createdAt: Date.now() }),
-      );
-    }
+    // TODO: Session tracking for listing. Options:
+    // 1. Add RPC to subscription worker to list sessions (complex - sessions are in DOs)
+    // 2. Add new KV namespace for admin-subscription metadata
+    // 3. Use Analytics Engine to query active sessions
+    // For now, session listing is disabled until we implement one of these approaches.
 
     return { sessionId };
   });
@@ -277,18 +278,13 @@ export type SessionListItem = {
 export const listProjectSessions = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<SessionListItem[]> => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) return [];
-    const prefix = `sessions/${projectId}/`;
-    const list = await kv.list({ prefix });
-    const items: SessionListItem[] = [];
-    for (const key of list.keys) {
-      const sessionId = key.name.slice(prefix.length);
-      const value = await kv.get(key.name, "json");
-      const createdAt = (value as { createdAt?: number } | null)?.createdAt ?? 0;
-      items.push({ sessionId, createdAt });
-    }
-    return items.sort((a, b) => b.createdAt - a.createdAt);
+    // TODO: Implement session listing without using REGISTRY.
+    // Possible approaches:
+    // 1. Add RPC to subscription worker to enumerate SessionDOs for a project
+    // 2. Query Analytics Engine for recent session activity
+    // 3. Add dedicated KV namespace for admin metadata
+    // For now, return empty array.
+    return [];
   });
 
 export const sendSessionAction = createServerFn({ method: "POST" })
@@ -432,17 +428,16 @@ export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
 export const mintStreamToken = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string }) => data)
   .handler(async ({ data: { projectId } }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as
-      | KVNamespace
-      | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
 
-    const config = (await kv.get(projectId, "json")) as {
-      signingSecrets?: string[];
-      signingSecret?: string;
-    } | null;
-    // Support new array format with legacy fallback
-    const primarySecret = config?.signingSecrets?.[0] ?? config?.signingSecret;
+    // Use RPC to get project config (no auth required via service binding)
+    const config = await core.getProjectConfig(projectId);
+    if (!config) {
+      throw new Error(`Project "${projectId}" not found`);
+    }
+
+    const primarySecret = config.signingSecrets[0];
     if (!primarySecret) {
       throw new Error(`No signing secret found for project "${projectId}"`);
     }
