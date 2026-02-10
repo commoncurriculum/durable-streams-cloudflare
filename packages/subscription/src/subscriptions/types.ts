@@ -56,6 +56,7 @@ export interface SessionInfo {
   sessionId: string;
   sessionStreamPath: string;
   subscriptions: Array<{ streamId: string }>;
+  contentType?: string | null;
 }
 
 export interface TouchSessionResult {

@@ -17,6 +17,7 @@ export async function getSession(env: AppEnv, projectId: string, sessionId: stri
     sessionId,
     sessionStreamPath: `/v1/stream/${projectId}/${sessionId}`,
     subscriptions,
+    contentType: coreResponse.contentType,
   };
 }
 // #endregion synced-to-docs:get-session
