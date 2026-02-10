@@ -39,10 +39,15 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 // Internal Helpers
 // ============================================================================
 
-const STREAM_PATH_RE = /^\/v1\/([^/]+)\/stream\/(.+)$/;
-const LEGACY_STREAM_PATH_RE = /^\/v1\/stream\/(.+)$/;
+const STREAM_PATH_RE = /^\/v1\/stream\/(.+)$/;
 export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const DEFAULT_PROJECT_ID = "_default";
+
+function parseStreamPath(raw: string): { projectId: string; streamId: string } {
+  const i = raw.indexOf("/");
+  if (i === -1) return { projectId: DEFAULT_PROJECT_ID, streamId: raw };
+  return { projectId: raw.slice(0, i), streamId: raw.slice(i + 1) };
+}
 
 /**
  * Resolve the CORS origin for a request from per-project config.
@@ -68,12 +73,11 @@ async function lookupCorsOriginForPath(
   requestOrigin: string | null,
 ): Promise<string | null> {
   if (!kv) return null;
-  const pathMatch = STREAM_PATH_RE.exec(pathname);
-  const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(pathname) : null;
-  if (!pathMatch && !legacyMatch) return null;
+  const match = STREAM_PATH_RE.exec(pathname);
+  if (!match) return null;
   let projectId: string;
   try {
-    projectId = pathMatch ? decodeURIComponent(pathMatch[1]) : DEFAULT_PROJECT_ID;
+    projectId = decodeURIComponent(parseStreamPath(match[1]).projectId);
   } catch {
     return null;
   }
@@ -293,24 +297,19 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
       }
 
       // #region docs-extract-stream-id
-      // Parse project + stream ID from /v1/:project/stream/:id
-      // Also supports legacy /v1/stream/:id format (maps to _default project)
-      const pathMatch = STREAM_PATH_RE.exec(url.pathname);
-      const legacyMatch = !pathMatch ? LEGACY_STREAM_PATH_RE.exec(url.pathname) : null;
-      if (!pathMatch && !legacyMatch) {
+      // Parse project + stream ID from /v1/stream/:projectId/:streamId
+      // Also supports /v1/stream/:streamId (maps to _default project)
+      const match = STREAM_PATH_RE.exec(url.pathname);
+      if (!match) {
         return new Response("not found", { status: 404, headers: { "Cache-Control": "no-store" } });
       }
 
       let projectId: string;
       let streamId: string;
       try {
-        if (pathMatch) {
-          projectId = decodeURIComponent(pathMatch[1]);
-          streamId = decodeURIComponent(pathMatch[2]);
-        } else {
-          projectId = DEFAULT_PROJECT_ID;
-          streamId = decodeURIComponent(legacyMatch![1]);
-        }
+        const parsed = parseStreamPath(match[1]);
+        projectId = decodeURIComponent(parsed.projectId);
+        streamId = decodeURIComponent(parsed.streamId);
       } catch (err) {
         return new Response(
           err instanceof Error ? err.message : "malformed stream id",

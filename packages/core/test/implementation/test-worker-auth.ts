@@ -23,14 +23,13 @@ export default class TestCoreWorkerAuth extends WorkerEntrypoint<BaseEnv> {
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const legacyMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
-    const projectMatch = /^\/v1\/([^/]+)\/stream\/(.+)$/.exec(url.pathname);
-    const doKey = projectMatch
-      ? `${projectMatch[1]}/${projectMatch[2]}`
-      : legacyMatch
-        ? `_default/${legacyMatch[1]}`
-        : null;
-    if (!doKey) return new Response("not found", { status: 404 });
+    const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
+    if (!pathMatch) return new Response("not found", { status: 404 });
+    const raw = pathMatch[1];
+    const i = raw.indexOf("/");
+    const doKey = i === -1
+      ? `_default/${raw}`
+      : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
 
     if (action === "rotate-reader-key") {
       const result = await this.rotateReaderKey(doKey);

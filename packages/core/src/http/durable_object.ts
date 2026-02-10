@@ -46,24 +46,22 @@ export class StreamDO extends DurableObject<StreamEnv> {
     if (live !== "ws-internal") {
       return new Response("not found", { status: 404 });
     }
-    // Extract streamId from the URL path: /v1/stream/:id or /v1/:project/stream/:id
-    // The edge worker sends the full URL, so we parse it here.
-    // Use a simple approach: the doKey is encoded in the path but we need the
-    // streamId that routeStreamRequest would receive. Since the edge worker
-    // constructs the WS URL from the original request URL, we can extract it.
-    const pathMatch = /\/v1\/([^/]+)\/stream\/(.+)$/.exec(url.pathname);
-    const legacyMatch = !pathMatch ? /\/v1\/stream\/(.+)$/.exec(url.pathname) : null;
+    // Extract streamId from the URL path: /v1/stream/:projectId/:streamId
+    // Also supports /v1/stream/:streamId (maps to _default project)
+    const pathMatch = /\/v1\/stream\/(.+)$/.exec(url.pathname);
+    if (!pathMatch) {
+      return new Response("not found", { status: 404 });
+    }
     let streamId: string;
     let projectId: string;
     try {
-      if (pathMatch) {
-        projectId = decodeURIComponent(pathMatch[1]);
-        streamId = decodeURIComponent(pathMatch[2]);
-      } else if (legacyMatch) {
+      const i = pathMatch[1].indexOf("/");
+      if (i === -1) {
         projectId = "_default";
-        streamId = decodeURIComponent(legacyMatch[1]);
+        streamId = decodeURIComponent(pathMatch[1]);
       } else {
-        return new Response("not found", { status: 404 });
+        projectId = decodeURIComponent(pathMatch[1].slice(0, i));
+        streamId = decodeURIComponent(pathMatch[1].slice(i + 1));
       }
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "malformed stream id", { status: 400 });

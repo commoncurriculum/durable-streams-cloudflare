@@ -70,21 +70,21 @@ URL=https://durable-streams.<your-subdomain>.workers.dev
 # Create a stream
 curl -X PUT -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $URL/v1/my-project/stream/my-stream
+  $URL/v1/stream/my-project/my-stream
 
 # Append a message
 curl -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
   -d '{"op":"insert","text":"hello"}' \
-  $URL/v1/my-project/stream/my-stream
+  $URL/v1/stream/my-project/my-stream
 
 # Catch-up read
 curl -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000"
+  "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000"
 
 # SSE (real-time tail)
 curl -N -H "Authorization: Bearer $JWT" \
-  "$URL/v1/my-project/stream/my-stream?offset=0000000000000000_0000000000000000&live=sse"
+  "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
 See the [streams worker README](packages/core/README.md) for the full API, auth options, and configuration.
@@ -117,7 +117,7 @@ SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
 # First, create a source stream on the streams worker
 curl -X PUT -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $CORE/v1/my-project/stream/chat-room-1
+  $CORE/v1/stream/my-project/chat-room-1
 
 # Subscribe a session to that stream
 curl -X POST -H "Authorization: Bearer $JWT" \
@@ -133,7 +133,7 @@ curl -X POST -H "Authorization: Bearer $JWT" \
 
 # Read the session stream via SSE (from the streams worker)
 curl -N -H "Authorization: Bearer $JWT" \
-  "$CORE/v1/my-project/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
+  "$CORE/v1/stream/my-project/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
 See the [subscription README](packages/subscription/README.md) for the full API, session lifecycle, and configuration.

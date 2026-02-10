@@ -105,7 +105,7 @@ curl -X POST $SUB/v1/myapp/publish/chat-room-1 \
 
 # Read the session stream via core (SSE)
 curl -N -H "Authorization: Bearer $JWT" \
-  "$CORE/v1/myapp/stream/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
+  "$CORE/v1/stream/myapp/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
 
 # Check session info
 curl -H "Authorization: Bearer $JWT" $SUB/v1/myapp/session/user-alice

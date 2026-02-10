@@ -95,7 +95,7 @@ describe("POST /subscribe", () => {
       };
       expect(body.sessionId).toBe(sessionId);
       expect(body.streamId).toBe(streamId);
-      expect(body.sessionStreamPath).toBe(`/v1/${PROJECT_ID}/stream/${sessionId}`);
+      expect(body.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
       expect(body.isNewSession).toBe(true);
     });
 

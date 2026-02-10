@@ -220,7 +220,7 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
     const id = `loadtest-${Date.now()}-${i}`;
     streamIds.push(id);
     const ds = await DurableStream.create({
-      url: `${writerBaseUrl}/v1/${projectId}/stream/${id}`,
+      url: `${writerBaseUrl}/v1/stream/${projectId}/${id}`,
       contentType: "application/json",
       headers: auth,
     });
@@ -556,7 +556,7 @@ async function runLocal(coreUrl: string) {
     const id = `loadtest-${Date.now()}-${i}`;
     streamIds.push(id);
     const ds = await DurableStream.create({
-      url: `${coreUrl}/v1/${projectId}/stream/${id}`,
+      url: `${coreUrl}/v1/stream/${projectId}/${id}`,
       contentType: "application/json",
       headers: auth,
       fetch: trackingFetch,

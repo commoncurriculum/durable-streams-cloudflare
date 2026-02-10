@@ -50,7 +50,7 @@ A TTL override (300s edge vs 60s client) was added then removed because it leake
 
 The cursor mechanism makes it work:
 
-1. All clients at the same stream position share the same URL: `/v1/proj/stream/id?offset=1000&live=long-poll&cursor=abc123`
+1. All clients at the same stream position share the same URL: `/v1/stream/proj/id?offset=1000&live=long-poll&cursor=abc123`
 2. First request: cache miss, hits DO, waits for data, gets 200 response
 3. Response is cached at the edge (keyed by full URL including cursor)
 4. Remaining clients: cache hit, served from edge, never reach the DO

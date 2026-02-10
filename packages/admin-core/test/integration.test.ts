@@ -124,7 +124,7 @@ describe("admin-core integration", () => {
   it("can create a stream through the core API", async () => {
     const streamId = `integration-test-${Date.now()}`;
 
-    const res = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    const res = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hello: "world" }),
@@ -147,7 +147,7 @@ describe("admin-core integration", () => {
     const streamId = `integration-append-${Date.now()}`;
 
     // Create stream
-    const createRes = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    const createRes = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ init: true }),
@@ -156,7 +156,7 @@ describe("admin-core integration", () => {
 
     // Append messages
     for (let i = 0; i < 3; i++) {
-      const appendRes = await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      const appendRes = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seq: i, data: `message-${i}` }),
@@ -166,7 +166,7 @@ describe("admin-core integration", () => {
 
     // Read back via core and verify messages
     const readRes = await fetch(
-      `${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}?offset=0000000000000000_0000000000000000`,
+      `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}?offset=0000000000000000_0000000000000000`,
     );
     expect(readRes.status).toBe(200);
     const body = await readRes.text();
@@ -181,14 +181,14 @@ describe("admin-core integration", () => {
     const streamId = `integration-inspect-${Date.now()}`;
 
     // Create with specific content type
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ test: true }),
     });
 
     // Append a message so there's data
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: 42 }),
@@ -210,7 +210,7 @@ describe("admin-core integration", () => {
     const streamId = `integration-sse-${Date.now()}`;
 
     // Create the stream first
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ init: true }),
@@ -245,7 +245,7 @@ describe("admin-core integration", () => {
     }
 
     // Append a message now that SSE is connected and listening
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ live: "event" }),
@@ -273,14 +273,14 @@ describe("admin-core integration", () => {
     const streamId = `integration-read-${Date.now()}`;
 
     // Create and append
-    await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+    await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ first: true }),
     });
 
     for (let i = 0; i < 3; i++) {
-      await fetch(`${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}`, {
+      await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ msg: i }),
@@ -289,7 +289,7 @@ describe("admin-core integration", () => {
 
     // Read back from core (catch-up mode)
     const readRes = await fetch(
-      `${coreUrl}/v1/${PROJECT_ID}/stream/${streamId}?offset=0000000000000000_0000000000000000`,
+      `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}?offset=0000000000000000_0000000000000000`,
     );
     expect(readRes.status).toBe(200);
     const body = await readRes.text();

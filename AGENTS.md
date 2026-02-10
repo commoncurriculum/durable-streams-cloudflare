@@ -102,6 +102,8 @@ Both core and subscription use [ArkType v2](https://arktype.io/) for schema vali
 
 **Before declaring work complete, you MUST run every command below and confirm they all pass.** These are the exact checks GitHub Actions runs on every push and PR. A failure in any of them will block the PR.
 
+**Do NOT use `pnpm -C`** — use `pnpm run` from the repo root instead. Each `-C` invocation triggers a separate user approval prompt.
+
 ### 1. Typecheck (all packages)
 
 ```sh

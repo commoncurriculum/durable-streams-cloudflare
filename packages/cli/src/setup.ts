@@ -994,7 +994,7 @@ export async function setup() {
     summaryLines.push("Quick test:");
     summaryLines.push(`  curl -X PUT -H 'Authorization: Bearer <JWT>' \\`);
     summaryLines.push(`    -H 'Content-Type: application/json' \\`);
-    summaryLines.push(`    ${deployedUrls.core}/v1/${projectName}/stream/test`);
+    summaryLines.push(`    ${deployedUrls.core}/v1/stream/${projectName}/test`);
   }
 
   p.note(summaryLines.join("\n"), "Setup complete");
