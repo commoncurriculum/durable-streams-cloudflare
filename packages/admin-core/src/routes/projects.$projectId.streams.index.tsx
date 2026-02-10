@@ -50,7 +50,7 @@ function StreamsIndexPage() {
                 </TableCell>
                 <TableCell className="font-mono">{s.messages.toLocaleString()}</TableCell>
                 <TableCell>{formatBytes(s.bytes)}</TableCell>
-                <TableCell>{relTime(new Date(s.last_seen).getTime() / 1000)}</TableCell>
+                <TableCell>{relTime(s.last_seen)}</TableCell>
                 <TableCell>
                   <Link
                     to="/projects/$projectId/streams/$streamId"
