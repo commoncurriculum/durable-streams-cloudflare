@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import type { AnalyticsRow, CoreService } from "../types";
+import { mintJwt } from "./jwt";
 
 export function parseDoKey(doKey: string): { projectId: string; streamId: string } {
   const i = doKey.indexOf("/");
@@ -294,4 +295,90 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
     config.signingSecrets = filtered;
     await kv.put(data.projectId, JSON.stringify(config));
     return { keyCount: filtered.length };
+  });
+
+// ---------------------------------------------------------------------------
+// Core stream URL resolution
+// ---------------------------------------------------------------------------
+
+let cachedCoreUrl: string | undefined;
+
+export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
+  async () => {
+    if (cachedCoreUrl) return cachedCoreUrl;
+
+    const coreUrl = (env as Record<string, unknown>).CORE_URL as
+      | string
+      | undefined;
+    if (coreUrl) {
+      cachedCoreUrl = coreUrl;
+      return cachedCoreUrl;
+    }
+
+    // Fallback: resolve via Cloudflare API
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
+      | string
+      | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
+      | string
+      | undefined;
+
+    if (!accountId || !apiToken) {
+      throw new Error(
+        "CORE_URL or CF_ACCOUNT_ID + CF_API_TOKEN required to resolve core URL",
+      );
+    }
+
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+      { headers: { Authorization: `Bearer ${apiToken}` } },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to resolve workers subdomain (${response.status})`,
+      );
+    }
+
+    const body = (await response.json()) as {
+      result?: { subdomain?: string };
+    };
+    const subdomain = body.result?.subdomain;
+    if (!subdomain) {
+      throw new Error("Could not resolve workers subdomain");
+    }
+
+    cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+    return cachedCoreUrl;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// JWT minting for browser → core auth
+// ---------------------------------------------------------------------------
+
+export const mintStreamToken = createServerFn({ method: "GET" })
+  .inputValidator((data: { projectId: string }) => data)
+  .handler(async ({ data: { projectId } }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as
+      | KVNamespace
+      | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+
+    const config = (await kv.get(projectId, "json")) as {
+      signingSecrets?: string[];
+    } | null;
+    const primarySecret = config?.signingSecrets?.[0];
+    if (!primarySecret) {
+      throw new Error(`No signing secret found for project "${projectId}"`);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + 300; // 5 minutes
+    const token = await mintJwt(
+      { sub: projectId, scope: "read", iat: now, exp: expiresAt },
+      primarySecret,
+    );
+
+    return { token, expiresAt };
   });

@@ -35,6 +35,13 @@ test.beforeAll(async ({ browser }) => {
   await page.waitForSelector("text=Save this signing secret", { timeout: 10_000 });
   await page.click('button:has-text("Done")');
 
+  // Configure CORS so the browser can connect directly to the core worker for SSE
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/settings`);
+  await page.waitForLoadState("networkidle");
+  await page.locator('input[placeholder="https://example.com"]').fill("*");
+  await page.click('button:has-text("Add")');
+  await page.waitForTimeout(1000);
+
   // Navigate to the stream — should show create form
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/streams/${STREAM_ID}`);
   await page.waitForSelector('button:has-text("Create Stream")', { timeout: 10_000 });

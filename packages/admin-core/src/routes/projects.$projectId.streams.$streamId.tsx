@@ -2,7 +2,8 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { inspectStream, getStreamMessages, sendTestAction } from "../lib/analytics";
 import { formatBytes, relTime } from "../lib/formatters";
-import { useSSE, type SseEvent } from "../hooks/use-sse";
+import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
+import { useCoreUrl, useStreamToken } from "../lib/queries";
 
 type StreamMeta = {
   stream_id: string;
@@ -203,8 +204,15 @@ function StreamConsole({
 }) {
   const { meta: m, ops, segments, producers } = data;
 
-  const sseUrl = `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(streamId)}?live=sse&offset=now`;
-  const { status: sseStatus, events, addEvent, clearEvents } = useSSE(sseUrl);
+  const { data: coreUrl, error: coreUrlError } = useCoreUrl();
+  const { data: tokenData, error: tokenError } = useStreamToken(projectId);
+  const { status: sseStatus, events, addEvent, clearEvents } = useDurableStream({
+    coreUrl,
+    projectId,
+    streamKey: streamId,
+    token: tokenData?.token,
+    enabled: true,
+  });
 
   const metaFields: [string, string][] = [
     ["Stream ID", m.stream_id],
@@ -384,7 +392,7 @@ function SendMessagePanel({
 }: {
   doKey: string;
   contentType: string;
-  addEvent: (type: SseEvent["type"], content: string) => void;
+  addEvent: (type: StreamEvent["type"], content: string) => void;
 }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -482,10 +490,10 @@ function EventLog({
   addEvent,
 }: {
   doKey: string;
-  events: SseEvent[];
+  events: StreamEvent[];
   sseStatus: string;
   clearEvents: () => void;
-  addEvent: (type: SseEvent["type"], content: string) => void;
+  addEvent: (type: StreamEvent["type"], content: string) => void;
 }) {
   const [fetching, setFetching] = useState(false);
 
@@ -595,7 +603,7 @@ function SseStatusBadge({ status }: { status: string }) {
   );
 }
 
-function LogEntry({ event }: { event: SseEvent }) {
+function LogEntry({ event }: { event: StreamEvent }) {
   const time = event.timestamp.toLocaleTimeString("en-US", {
     hour12: false,
     hour: "2-digit",
