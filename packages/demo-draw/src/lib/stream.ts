@@ -1,4 +1,5 @@
 import { DurableStream } from "@durable-streams/client";
+import { getWriteToken } from "./config";
 
 export type StrokeMessage = {
   type: "stroke";
@@ -20,37 +21,32 @@ function streamPath(projectId: string, roomId: string): string {
 }
 
 /**
- * Create a stream via the demo-draw proxy (same-origin, JWT added server-side).
+ * Get a DurableStream write handle pointing directly at core.
+ * Uses a dynamic Authorization header — each request calls the
+ * getWriteToken server function for a fresh short-lived JWT.
+ * Includes ?public=true so created streams are readable without auth.
  */
-export async function createStream(
+export function getWriteStream(
+  coreUrl: string,
   projectId: string,
   roomId: string,
-  initialMessage: DrawMessage,
-): Promise<Response> {
-  return fetch(streamPath(projectId, roomId), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(initialMessage),
+): DurableStream {
+  return new DurableStream({
+    url: `${coreUrl}${streamPath(projectId, roomId)}`,
+    contentType: "application/json",
+    headers: {
+      Authorization: async () => {
+        const token = await getWriteToken();
+        return token ? `Bearer ${token}` : "";
+      },
+    },
+    params: { public: "true" },
+    warnOnHttp: false,
   });
 }
 
 /**
- * Append a message via the demo-draw proxy (same-origin, JWT added server-side).
- */
-export async function appendToStream(
-  projectId: string,
-  roomId: string,
-  message: DrawMessage,
-): Promise<Response> {
-  return fetch(streamPath(projectId, roomId), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(message),
-  });
-}
-
-/**
- * Subscribe to a stream directly from the core worker (cross-origin).
+ * Subscribe to a stream directly from the core worker.
  * Streams are created as public, so no auth is needed for reads.
  */
 export function subscribeToStream(
