@@ -66,7 +66,7 @@ function Nav() {
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
 
   const links = [
-    { to: "/", label: "Overview" },
+    { to: "/", label: "System Overview" },
     { to: "/projects", label: "Projects" },
   ] as const;
 
