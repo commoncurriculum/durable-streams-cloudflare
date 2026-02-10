@@ -89,8 +89,13 @@ function ProjectSettings() {
         {corsOrigins.length > 0 && (
           <ul className="mb-4 space-y-2">
             {corsOrigins.map((origin) => (
-              <li key={origin} className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2">
-                <span className="font-mono text-sm text-zinc-300">{origin}</span>
+              <li
+                key={origin}
+                className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2"
+              >
+                <span className="font-mono text-sm text-zinc-300">
+                  {origin}
+                </span>
                 <button
                   type="button"
                   onClick={() => removeOriginMutation.mutate(origin)}
@@ -140,9 +145,12 @@ function ProjectSettings() {
         {config?.signingSecrets && config.signingSecrets.length > 0 && (
           <ul className="space-y-2">
             {config.signingSecrets.map((secret, i) => (
-              <li key={i} className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2">
+              <li
+                key={i}
+                className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2"
+              >
                 <span className="font-mono text-sm text-zinc-500">
-                  {secret.slice(0, 8)}...{secret.slice(-4)}
+                  {secret}
                 </span>
                 <button
                   type="button"
