@@ -5,12 +5,12 @@ import { Toolbar } from "@/components/toolbar";
 import { Canvas } from "@/components/canvas";
 import { useDrawing } from "@/hooks/use-drawing";
 import {
-  createStream,
-  appendToStream,
+  getWriteStream,
   subscribeToStream,
   type DrawMessage,
   type StrokeMessage,
 } from "@/lib/stream";
+import type { DurableStream } from "@durable-streams/client";
 import { getRoomConfig } from "@/lib/config";
 
 export const Route = createFileRoute("/room/$roomId")({
@@ -22,28 +22,29 @@ function DrawingRoom() {
   const { roomId } = Route.useParams();
   const { coreUrl, projectId } = Route.useLoaderData();
   const [userId] = useState(() => crypto.randomUUID().slice(0, 8));
-  const streamCreatedRef = useRef(false);
+  const writeStreamRef = useRef<DurableStream | null>(null);
   const renderRemoteRef = useRef<((msg: DrawMessage) => void) | null>(null);
 
   const handleStrokeEnd = useCallback(
     (msg: StrokeMessage) => {
-      if (!streamCreatedRef.current) {
-        // First stroke creates the stream via proxy
-        streamCreatedRef.current = true;
-        createStream(projectId, roomId, msg);
+      if (!writeStreamRef.current) {
+        // First stroke — create a handle and PUT the stream to core
+        const ds = getWriteStream(coreUrl, projectId, roomId);
+        writeStreamRef.current = ds;
+        ds.create({ body: JSON.stringify(msg) });
       } else {
-        appendToStream(projectId, roomId, msg);
+        writeStreamRef.current.append(JSON.stringify(msg));
       }
     },
-    [projectId, roomId],
+    [coreUrl, projectId, roomId],
   );
 
   const handleClear = useCallback(() => {
     const msg: DrawMessage = { type: "clear", userId };
-    if (streamCreatedRef.current) {
-      appendToStream(projectId, roomId, msg);
+    if (writeStreamRef.current) {
+      writeStreamRef.current.append(JSON.stringify(msg));
     }
-  }, [projectId, roomId, userId]);
+  }, [userId]);
 
   const drawing = useDrawing(userId, handleStrokeEnd, handleClear);
 
@@ -78,8 +79,10 @@ function DrawingRoom() {
         return;
       }
 
-      // Mark stream as existing so writes use append (POST) not create (PUT)
-      streamCreatedRef.current = true;
+      // Stream exists — get a write handle so strokes use append (POST)
+      if (!writeStreamRef.current) {
+        writeStreamRef.current = getWriteStream(coreUrl, projectId, roomId);
+      }
 
       unsub = res.subscribeJson<DrawMessage>((batch) => {
         for (const msg of batch.items) {

@@ -3,6 +3,8 @@ import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import path from "node:path";
 import net from "node:net";
+import { DurableStream } from "@durable-streams/client";
+import type { DrawMessage } from "../src/lib/stream";
 
 const ROOT = path.resolve(__dirname, "..");
 const CORE_ROOT = path.resolve(__dirname, "../../core");
@@ -50,7 +52,7 @@ describe("demo-draw integration", () => {
     // Build demo-draw
     execSync("pnpm exec vite build", { cwd: ROOT, stdio: "pipe" });
 
-    // Start core worker
+    // Start core worker (auth-free test worker)
     const corePort = await getAvailablePort();
     coreUrl = `http://localhost:${corePort}`;
     coreProc = spawn(
@@ -67,7 +69,7 @@ describe("demo-draw integration", () => {
     );
     await waitForReady(coreUrl);
 
-    // Start demo-draw worker, overriding CORE_URL to point at our test core
+    // Start demo-draw worker (for SSR page tests)
     const demoPort = await getAvailablePort();
     demoUrl = `http://localhost:${demoPort}`;
     demoProc = spawn(
@@ -116,165 +118,150 @@ describe("demo-draw integration", () => {
     expect(html).toContain("Copy Link");
   });
 
-  // ── Proxy: browser talks to demo-draw, which proxies to core ──
+  // ── DurableStream client: create, append, read directly against core ──
 
-  it("PUT through demo proxy creates a stream on core", async () => {
-    const streamId = `proxy-put-${Date.now()}`;
-    const res = await fetch(
-      `${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "stroke", userId: "test", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
-      },
-    );
-    expect(res.status).toBe(201);
+  it("create + head: stream exists after DurableStream.create", async () => {
+    const streamId = `create-${Date.now()}`;
+    const ds = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
 
-    // Verify it exists on core
-    const headRes = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`, { method: "HEAD" });
-    expect(headRes.status).toBe(200);
+    await ds.create({
+      body: JSON.stringify({ type: "stroke", userId: "test", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
+    });
+
+    const head = await ds.head();
+    expect(head.exists).toBe(true);
   });
 
-  it("POST through demo proxy appends to a stream on core", async () => {
-    const streamId = `proxy-post-${Date.now()}`;
-    // Create via proxy
-    await fetch(`${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+  it("create + append + read: appended data is readable", async () => {
+    const streamId = `append-${Date.now()}`;
+    const ds = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+
+    await ds.create({
       body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
     });
-    // Append via proxy
-    const appendRes = await fetch(`${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#EF4444", width: 4 }),
-    });
-    expect([200, 204]).toContain(appendRes.status);
+    await ds.append(
+      JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#EF4444", width: 4 }),
+    );
 
-    // Read from core to verify
-    const readRes = await fetch(`${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}?offset=-1`);
-    const body = await readRes.text();
-    expect(body).toContain("#EF4444");
+    const res = await ds.stream({ offset: "-1", live: false });
+    const items = await res.json<DrawMessage>();
+    expect(items).toHaveLength(2);
+    expect(items[1]).toMatchObject({ type: "stroke", color: "#EF4444" });
   });
 
-  // ── Two clients syncing through the demo proxy ──
+  // ── Two clients syncing via DurableStream ──
 
   it("client B sees strokes that client A appends (catch-up replay)", async () => {
     const streamId = `sync-catchup-${Date.now()}`;
-    const writeUrl = `${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
-    const readUrl = `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
 
-    // Client A creates the stream and appends 3 strokes via demo proxy
-    await fetch(writeUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+    // Client A writes 3 strokes
+    const clientA = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+    await clientA.create({
       body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#EF4444", width: 8 }),
     });
-    await fetch(writeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#22C55E", width: 4 }),
-    });
-    await fetch(writeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[20, 20, 0.5]], color: "#3B82F6", width: 12 }),
-    });
+    await clientA.append(
+      JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#22C55E", width: 4 }),
+    );
+    await clientA.append(
+      JSON.stringify({ type: "stroke", userId: "A", points: [[20, 20, 0.5]], color: "#3B82F6", width: 12 }),
+    );
 
-    // Client B reads directly from core (streams are public, reads bypass proxy)
-    const readRes = await fetch(`${readUrl}?offset=-1`);
-    expect(readRes.status).toBe(200);
-    const body = await readRes.text();
-    expect(body).toContain("#EF4444");
-    expect(body).toContain("#22C55E");
-    expect(body).toContain("#3B82F6");
+    // Client B catches up
+    const clientB = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+    const res = await clientB.stream({ offset: "-1", live: false });
+    const items = await res.json<DrawMessage>();
+    const colors = items.filter((m): m is DrawMessage & { color: string } => m.type === "stroke").map((m) => m.color);
+    expect(colors).toContain("#EF4444");
+    expect(colors).toContain("#22C55E");
+    expect(colors).toContain("#3B82F6");
   });
 
   it("client B receives client A's stroke in real-time via SSE", async () => {
     const streamId = `sync-live-${Date.now()}`;
-    const writeUrl = `${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
-    const readUrl = `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
 
-    // Create the stream via proxy
-    await fetch(writeUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+    // Client A creates the stream
+    const clientA = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+    await clientA.create({
       body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
     });
 
-    // Client B connects via SSE directly to core (streams are public)
-    const controller = new AbortController();
-    const sseRes = await fetch(`${readUrl}?live=sse&offset=now`, {
-      signal: controller.signal,
+    // Client B subscribes via SSE
+    const clientB = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
     });
-    expect(sseRes.status).toBe(200);
+    const res = await clientB.stream<DrawMessage>({ offset: "now", live: "sse" });
 
-    const reader = sseRes.body!.getReader();
-    const decoder = new TextDecoder();
-    let collected = "";
+    const received: DrawMessage[] = [];
+    const unsub = res.subscribeJson<DrawMessage>((batch) => {
+      received.push(...batch.items);
+    });
+
+    // Client A appends a new stroke
+    await clientA.append(
+      JSON.stringify({ type: "stroke", userId: "A", points: [[99, 99, 1.0]], color: "#EC4899", width: 6 }),
+    );
+
+    // Wait for client B to receive it
     const deadline = Date.now() + 15_000;
-
-    // Wait for SSE connection to be established (upToDate event)
-    while (Date.now() < deadline && !collected.includes("upToDate")) {
-      const { value } = await Promise.race([
-        reader.read(),
-        new Promise<{ value: undefined; done: true }>((r) =>
-          setTimeout(() => r({ value: undefined, done: true }), 500),
-        ),
-      ]);
-      if (value) collected += decoder.decode(value, { stream: true });
-    }
-    expect(collected).toContain("upToDate");
-
-    // Client A appends a new stroke via proxy
-    await fetch(writeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[99, 99, 1.0]], color: "#EC4899", width: 6 }),
-    });
-
-    // Client B should receive it via SSE
-    while (Date.now() < deadline && !collected.includes("#EC4899")) {
-      const { value } = await Promise.race([
-        reader.read(),
-        new Promise<{ value: undefined; done: true }>((r) =>
-          setTimeout(() => r({ value: undefined, done: true }), 500),
-        ),
-      ]);
-      if (value) collected += decoder.decode(value, { stream: true });
+    while (Date.now() < deadline && !received.some((m) => m.type === "stroke" && m.color === "#EC4899")) {
+      await new Promise((r) => setTimeout(r, 100));
     }
 
-    controller.abort();
-    expect(collected).toContain("#EC4899");
-    expect(collected).toContain('"userId":"A"');
+    unsub();
+    res.cancel();
+
+    expect(received.some((m) => m.type === "stroke" && m.color === "#EC4899")).toBe(true);
+    expect(received.some((m) => m.type === "stroke" && m.userId === "A")).toBe(true);
   }, 20_000);
 
   it("clear message resets the stream for late joiners", async () => {
     const streamId = `sync-clear-${Date.now()}`;
-    const writeUrl = `${demoUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
-    const readUrl = `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`;
 
-    // Client A draws then clears via proxy
-    await fetch(writeUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+    // Client A draws, clears, then draws again
+    const clientA = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+    await clientA.create({
       body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#EF4444", width: 8 }),
     });
-    await fetch(writeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "clear", userId: "A" }),
-    });
-    await fetch(writeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[50, 50, 0.5]], color: "#3B82F6", width: 4 }),
-    });
+    await clientA.append(JSON.stringify({ type: "clear", userId: "A" }));
+    await clientA.append(
+      JSON.stringify({ type: "stroke", userId: "A", points: [[50, 50, 0.5]], color: "#3B82F6", width: 4 }),
+    );
 
-    // Client B catches up directly from core (streams are public)
-    const readRes = await fetch(`${readUrl}?offset=-1`);
-    const body = await readRes.text();
-    expect(body).toContain('"type":"clear"');
-    expect(body).toContain("#3B82F6");
+    // Client B catches up
+    const clientB = new DurableStream({
+      url: `${coreUrl}/v1/stream/${PROJECT_ID}/${streamId}`,
+      contentType: "application/json",
+      warnOnHttp: false,
+    });
+    const res = await clientB.stream({ offset: "-1", live: false });
+    const items = await res.json<DrawMessage>();
+    expect(items.some((m) => m.type === "clear")).toBe(true);
+    expect(items.some((m) => m.type === "stroke" && m.color === "#3B82F6")).toBe(true);
   });
 });
