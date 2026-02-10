@@ -13,8 +13,9 @@ export interface CoreService {
   ): Promise<{ ok: boolean; status: number; body: string; nextOffset: string | null; upToDate: boolean; contentType: string }>;
   
   // Project management RPCs
-  registerProject(projectId: string, signingSecret: string): Promise<void>;
+  registerProject(projectId: string, signingSecret: string, options?: { corsOrigins?: string[] }): Promise<void>;
   listProjects(): Promise<string[]>;
+  listProjectStreams(projectId: string): Promise<{ streamId: string; createdAt: number }[]>;
   getProjectConfig(projectId: string): Promise<{
     signingSecrets: string[];
     corsOrigins?: string[];

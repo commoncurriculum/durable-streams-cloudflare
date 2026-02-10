@@ -26,9 +26,10 @@ export const Route = createFileRoute("/api/projects")({
 
           const secret = crypto.randomUUID() + crypto.randomUUID();
 
-          // Use core RPC to create the project
+          // Use core RPC to create the project with wildcard CORS so the
+          // browser can open SSE connections directly to core.
           try {
-            await core.registerProject(projectId, secret);
+            await core.registerProject(projectId, secret, { corsOrigins: ["*"] });
           } catch (err) {
             return new Response(
               JSON.stringify({ error: err instanceof Error ? err.message : "Failed to create project" }),

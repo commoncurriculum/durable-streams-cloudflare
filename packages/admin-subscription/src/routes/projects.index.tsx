@@ -16,7 +16,7 @@ export const Route = createFileRoute("/projects/")({
 function ProjectsIndex() {
   const { data: projects } = useProjects();
 
-  const items = (projects ?? []).map((p) => ({ id: p }));
+  const items = (projects ?? []).map((p: string) => ({ id: p }));
 
   return (
     <div>

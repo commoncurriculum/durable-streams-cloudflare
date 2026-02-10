@@ -199,7 +199,7 @@ export const createProject = createServerFn({ method: "POST" })
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
     
-    await core.registerProject(projectId, secret);
+    await core.registerProject(projectId, secret, { corsOrigins: ["*"] });
     
     return { ok: true, signingSecret: secret };
   });
@@ -237,12 +237,6 @@ export const createSession = createServerFn({ method: "POST" })
     const subscription = (env as Record<string, unknown>).SUBSCRIPTION as SubscriptionService;
     await subscription.adminTouchSession(projectId, sessionId);
 
-    // TODO: Session tracking for listing. Options:
-    // 1. Add RPC to subscription worker to list sessions (complex - sessions are in DOs)
-    // 2. Add new KV namespace for admin-subscription metadata
-    // 3. Use Analytics Engine to query active sessions
-    // For now, session listing is disabled until we implement one of these approaches.
-
     return { sessionId };
   });
 
@@ -254,13 +248,10 @@ export type SessionListItem = {
 export const listProjectSessions = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<SessionListItem[]> => {
-    // TODO: Implement session listing without using REGISTRY.
-    // Possible approaches:
-    // 1. Add RPC to subscription worker to enumerate SessionDOs for a project
-    // 2. Query Analytics Engine for recent session activity
-    // 3. Add dedicated KV namespace for admin metadata
-    // For now, return empty array.
-    return [];
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return [];
+    const streams = await core.listProjectStreams(projectId);
+    return streams.map((s) => ({ sessionId: s.streamId, createdAt: s.createdAt }));
   });
 
 export const sendSessionAction = createServerFn({ method: "POST" })

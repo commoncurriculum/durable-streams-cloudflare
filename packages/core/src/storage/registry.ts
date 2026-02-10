@@ -80,7 +80,13 @@ export async function getProjectEntry(
     delete record.signingSecret;
   }
 
-  return record as unknown as ProjectEntry;
+  // Validate with schema
+  const validated = projectEntrySchema(record);
+  if (validated instanceof type.errors) {
+    return null;
+  }
+
+  return validated as ProjectEntry;
 }
 
 /**
@@ -107,11 +113,13 @@ export async function createProject(
   kv: KVNamespace,
   projectId: string,
   signingSecret: string,
+  options?: { corsOrigins?: string[] },
 ): Promise<void> {
   const existing = await getProjectEntry(kv, projectId);
   await putProjectEntry(kv, projectId, {
     ...existing,
     signingSecrets: [signingSecret],
+    ...(options?.corsOrigins ? { corsOrigins: options.corsOrigins } : {}),
   });
 }
 
@@ -209,6 +217,27 @@ export async function listProjects(kv: KVNamespace): Promise<string[]> {
     .sort();
 }
 
+/**
+ * List all stream entries for a project (keys matching `{projectId}/{streamId}`).
+ * Returns stream IDs with their metadata.
+ */
+export async function listProjectStreams(
+  kv: KVNamespace,
+  projectId: string,
+): Promise<{ streamId: string; createdAt: number }[]> {
+  const prefix = `${projectId}/`;
+  const list = await kv.list({ prefix });
+  const results: { streamId: string; createdAt: number }[] = [];
+  for (const key of list.keys) {
+    const streamId = key.name.slice(prefix.length);
+    const entry = await getStreamEntry(kv, key.name);
+    if (entry) {
+      results.push({ streamId, createdAt: entry.created_at });
+    }
+  }
+  return results.sort((a, b) => b.createdAt - a.createdAt);
+}
+
 // ============================================================================
 // Stream Entry Read / Write
 // ============================================================================
@@ -269,8 +298,11 @@ export async function putStreamMetadata(
     public: metadata.public,
     content_type: metadata.content_type,
     created_at: existing?.created_at ?? Date.now(),
-    readerKey: metadata.readerKey,
   };
+  // Preserve existing readerKey or set new one; omit entirely if undefined
+  // (ArkType rejects explicit undefined for optional string fields)
+  const readerKey = metadata.readerKey ?? existing?.readerKey;
+  if (readerKey) entry.readerKey = readerKey;
   await putStreamEntry(kv, doKey, entry);
 }
 

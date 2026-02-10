@@ -1,7 +1,7 @@
 {
   "name": "durable-streams-root",
   "private": true,
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@10.29.2",
   "scripts": {
     "build": "pnpm -r run build",
     "clean": "pnpm -r run clean",

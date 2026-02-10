@@ -14,7 +14,9 @@ import {
   removeCorsOrigin as registryRemoveCorsOrigin,
   updatePrivacy as registryUpdatePrivacy,
   rotateStreamReaderKey,
+  putStreamMetadata,
   listProjects,
+  listProjectStreams,
   getStreamEntry,
   getProjectEntry,
 } from "../storage/registry";
@@ -45,8 +47,8 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   // RPC: register a project's signing secret in core's REGISTRY KV
   // Called by admin workers so core can verify JWTs for browser SSE connections
-  async registerProject(projectId: string, signingSecret: string): Promise<void> {
-    await createProject(this.env.REGISTRY, projectId, signingSecret);
+  async registerProject(projectId: string, signingSecret: string, options?: { corsOrigins?: string[] }): Promise<void> {
+    await createProject(this.env.REGISTRY, projectId, signingSecret, options);
   }
 
   // RPC: add a signing key to a project (prepended as new primary)
@@ -62,6 +64,11 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: list all projects
   async listProjects(): Promise<string[]> {
     return listProjects(this.env.REGISTRY);
+  }
+
+  // RPC: list all streams for a project
+  async listProjectStreams(projectId: string): Promise<{ streamId: string; createdAt: number }[]> {
+    return listProjectStreams(this.env.REGISTRY, projectId);
   }
 
   // RPC: get project config from REGISTRY (admin-only, no auth required via service binding)
@@ -167,6 +174,15 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
         body: options.body,
       }),
     );
+    // Write stream metadata to REGISTRY on creation (same as HTTP handler)
+    if (response.status === 201 && this.env.REGISTRY) {
+      this.ctx.waitUntil(
+        putStreamMetadata(this.env.REGISTRY, doKey, {
+          public: false,
+          content_type: response.headers.get("Content-Type") || "application/octet-stream",
+        }),
+      );
+    }
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
   }

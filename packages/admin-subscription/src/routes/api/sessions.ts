@@ -27,10 +27,6 @@ export const Route = createFileRoute("/api/sessions")({
             await subscription.adminTouchSession(projectId, sessionId);
           }
 
-          // TODO: Session tracking removed from REGISTRY per security requirement.
-          // Session listing needs to be implemented via subscription worker RPC
-          // or dedicated admin metadata storage.
-
           return new Response(
             JSON.stringify({ ok: true, sessionId }),
             { status: 201, headers: { "Content-Type": "application/json" } },
