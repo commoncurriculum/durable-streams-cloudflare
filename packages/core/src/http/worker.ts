@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { type } from "arktype";
 import { createStreamWorker } from "./create_worker";
-import { projectJwtAuth, lookupProjectConfig } from "./auth";
+import { projectJwtAuth } from "./auth";
 import type { ProjectConfig } from "./auth";
 import { StreamDO } from "./durable_object";
 import type { StreamIntrospection } from "./durable_object";
