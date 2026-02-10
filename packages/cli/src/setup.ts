@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { execSync, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { generateSecret, exportJWK } from "jose";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -766,7 +766,9 @@ export async function setup() {
       if (p.isCancel(name)) cancelled();
       projectName = name;
 
-      signingSecret = randomBytes(32).toString("hex");
+      const secret = await generateSecret("HS256");
+      const jwk = await exportJWK(secret);
+      signingSecret = JSON.stringify(jwk);
 
       const kvSpinner2 = p.spinner();
       kvSpinner2.start("Creating project in KV");
