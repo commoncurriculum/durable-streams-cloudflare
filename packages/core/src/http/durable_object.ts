@@ -7,7 +7,7 @@ import type { SseState } from "./handlers/realtime";
 import { DoSqliteStorage } from "../storage/queries";
 import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../storage/types";
 import { routeRequest } from "./router";
-import { parseStreamPath } from "./stream-path";
+import { parseStreamPathFromUrl } from "./stream-path";
 import { Timing, attachTiming } from "../protocol/timing";
 import type { StreamContext, StreamEnv } from "./router";
 import { ReadPath } from "../stream/read/path";
@@ -48,22 +48,11 @@ export class StreamDO extends DurableObject<StreamEnv> {
     if (live !== "ws-internal") {
       return new Response("not found", { status: 404 });
     }
-    // Extract streamId from the URL path: /v1/stream/:projectId/:streamId
-    // Also supports /v1/stream/:streamId (maps to _default project)
-    const pathMatch = /\/v1\/stream\/(.+)$/.exec(url.pathname);
-    if (!pathMatch) {
+    const parsed = parseStreamPathFromUrl(url.pathname);
+    if (!parsed) {
       return new Response("not found", { status: 404 });
     }
-    let projectId: string;
-    let streamId: string;
-    try {
-      const decoded = decodeURIComponent(pathMatch[1]);
-      ({ projectId, streamId } = parseStreamPath(decoded));
-    } catch (err) {
-      return new Response(err instanceof Error ? err.message : "malformed stream id", { status: 400 });
-    }
-    const doKey = `${projectId}/${streamId}`;
-    return this.routeStreamRequest(doKey, false, request);
+    return this.routeStreamRequest(parsed.path, false, request);
   }
 
   // #region docs-do-rpc
