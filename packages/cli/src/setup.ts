@@ -76,24 +76,20 @@ const WORKER_ADMIN_CORE = "durable-streams-admin-core";
 const WORKER_ADMIN_SUBSCRIPTION = "durable-streams-admin-subscription";
 const R2_BUCKET = "durable-streams";
 const KV_BINDING = "REGISTRY";
+const GITHUB_REPO = "commoncurriculum/durable-streams-cloudflare";
 
 // ---------------------------------------------------------------------------
 // File templates
 // ---------------------------------------------------------------------------
 
 function coreWorkerTs(): string {
-  return `import { createStreamWorker, StreamDO, projectJwtAuth } from "@durable-streams-cloudflare/core";
-
-const { authorizeMutation, authorizeRead } = projectJwtAuth();
-export default createStreamWorker({ authorizeMutation, authorizeRead });
-export { StreamDO };
-`;
+  return `export { default, StreamDO } from "@durable-streams-cloudflare/core";\n`;
 }
 
 function coreWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "${WORKER_CORE}"
 main = "src/worker.ts"
-compatibility_date = "2025-02-02"
+compatibility_date = "2026-02-02"
 
 [durable_objects]
 bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
@@ -113,19 +109,17 @@ id = "${opts.kvNamespaceId}"
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "durable_streams_metrics"
+
+[observability]
+enabled = true
 `;
 }
 
 function subscriptionWorkerTs(): string {
-  return `import { createSubscriptionWorker, SubscriptionDO, SessionDO, projectJwtAuth } from "@durable-streams-cloudflare/subscription";
-
-export default createSubscriptionWorker({ authorize: projectJwtAuth() });
-export { SubscriptionDO, SessionDO };
-`;
+  return `export { default, SubscriptionDO, SessionDO } from "@durable-streams-cloudflare/subscription";\n`;
 }
 
 function subscriptionWranglerToml(opts: {
-  accountId: string;
   kvNamespaceId: string;
 }): string {
   return `name = "${WORKER_SUBSCRIPTION}"
@@ -133,9 +127,7 @@ main = "src/worker.ts"
 compatibility_date = "2025-02-02"
 
 [vars]
-ACCOUNT_ID = "${opts.accountId}"
-SESSION_TTL_SECONDS = "1800"
-ANALYTICS_DATASET = "subscriptions_metrics"
+SESSION_TTL_SECONDS = "86400"
 
 [durable_objects]
 bindings = [
@@ -163,24 +155,38 @@ dataset = "subscriptions_metrics"
 binding = "CORE"
 service = "${WORKER_CORE}"
 
-[triggers]
-crons = ["*/5 * * * *"]
+# Queue-based fanout for hot topics.
+# Without this binding, fanout is always inline.
+[[queues.producers]]
+binding = "FANOUT_QUEUE"
+queue = "subscription-fanout"
+
+# Uncomment to enable queue consumer (processes async fanout messages):
+# [[queues.consumers]]
+# queue = "subscription-fanout"
+# max_batch_size = 10
+# max_batch_timeout = 1
+# max_retries = 3
+# dead_letter_queue = "subscription-fanout-dlq"
 `;
 }
 
 function adminCoreWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "${WORKER_ADMIN_CORE}"
-main = "dist/server/index.js"
+main = "upstream/packages/admin-core/dist/server/index.js"
 compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
+
+[build]
+command = "git clone --depth 1 https://github.com/${GITHUB_REPO}.git upstream && cd upstream && pnpm install && pnpm --filter admin-core run build"
 
 [[rules]]
 type = "ESModule"
 globs = ["**/*.js"]
 
 [assets]
-directory = "dist/client"
+directory = "upstream/packages/admin-core/dist/client"
 
 [[kv_namespaces]]
 binding = "${KV_BINDING}"
@@ -197,17 +203,20 @@ enabled = true
 
 function adminSubscriptionWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "${WORKER_ADMIN_SUBSCRIPTION}"
-main = "dist/server/index.js"
+main = "upstream/packages/admin-subscription/dist/server/index.js"
 compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 no_bundle = true
+
+[build]
+command = "git clone --depth 1 https://github.com/${GITHUB_REPO}.git upstream && cd upstream && pnpm install && pnpm --filter admin-subscription run build"
 
 [[rules]]
 type = "ESModule"
 globs = ["**/*.js"]
 
 [assets]
-directory = "dist/client"
+directory = "upstream/packages/admin-subscription/dist/client"
 
 [[kv_namespaces]]
 binding = "${KV_BINDING}"
@@ -230,49 +239,69 @@ enabled = true
 // Workspace templates
 // ---------------------------------------------------------------------------
 
-function rootPackageJson(opts: { dirName: string; components: string[] }): string {
-  const devCmds: string[] = [];
-  if (opts.components.includes("core")) devCmds.push("pnpm -C workers/streams run dev");
-  if (opts.components.includes("subscription")) devCmds.push("pnpm -C workers/subscriptions run dev");
-  if (opts.components.includes("admin-core")) devCmds.push("pnpm -C workers/admin-core run dev");
-  if (opts.components.includes("admin-subscription")) devCmds.push("pnpm -C workers/admin-subscription run dev");
+function rootPackageJson(opts: { components: string[] }): string {
+  const scripts: Record<string, string> = {
+    build: "pnpm -r --if-present run build",
+    deploy: "pnpm -r run deploy",
+  };
+  if (opts.components.includes("core")) scripts["deploy:streams"] = "pnpm --filter streams run deploy";
+  if (opts.components.includes("subscription")) scripts["deploy:subscriptions"] = "pnpm --filter subscriptions run deploy";
+  if (opts.components.includes("admin-core")) scripts["deploy:admin-core"] = "pnpm --filter admin-core run deploy";
+  if (opts.components.includes("admin-subscription")) scripts["deploy:admin-subscription"] = "pnpm --filter admin-subscription run deploy";
+
+  const deps: Record<string, string> = {};
+  if (opts.components.includes("core")) deps["@durable-streams-cloudflare/core"] = `github:${GITHUB_REPO}#path:packages/core`;
+  if (opts.components.includes("subscription")) deps["@durable-streams-cloudflare/subscription"] = `github:${GITHUB_REPO}#path:packages/subscription`;
 
   const pkg: Record<string, unknown> = {
-    name: opts.dirName,
     private: true,
-    scripts: {
-      ...(devCmds.length > 0 ? { dev: devCmds.join(" & ") + " & wait" } : {}),
-      deploy: "pnpm -r run deploy",
-    },
+    packageManager: "pnpm@10.16.1",
+    scripts,
     devDependencies: {
-      wrangler: "^4.0.0",
+      wrangler: "^4.63.0",
     },
+    ...(Object.keys(deps).length > 0 ? { dependencies: deps } : {}),
   };
   return JSON.stringify(pkg, null, 2) + "\n";
 }
 
 function pnpmWorkspaceYaml(): string {
-  return "packages:\n  - workers/*\n";
+  return `packages:
+  - "workers/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - sharp
+`;
 }
 
 function workerPackageJson(opts: {
   name: string;
   dependency: string;
-  port: number;
-  inspectorPort?: number;
 }): string {
-  const devCmd = opts.inspectorPort
-    ? `wrangler dev --local --port ${opts.port} --inspector-port ${opts.inspectorPort}`
-    : `wrangler dev --local --port ${opts.port}`;
+  const pkgName = opts.dependency.split("/").pop()!;
   const pkg: Record<string, unknown> = {
-    name: opts.name,
     private: true,
+    name: opts.name,
     scripts: {
-      dev: devCmd,
+      build: "true",
       deploy: "wrangler deploy",
     },
     dependencies: {
-      [opts.dependency]: "*",
+      [opts.dependency]: `github:${GITHUB_REPO}#path:packages/${pkgName}`,
+    },
+  };
+  return JSON.stringify(pkg, null, 2) + "\n";
+}
+
+function adminPackageJson(opts: { name: string }): string {
+  const pkg: Record<string, unknown> = {
+    private: true,
+    name: opts.name,
+    scripts: {
+      build: "true",
+      deploy: "wrangler deploy",
     },
   };
   return JSON.stringify(pkg, null, 2) + "\n";
@@ -393,9 +422,9 @@ export async function setup() {
   const includeAdminCore = components.includes("admin-core");
   const includeAdminSubscription = components.includes("admin-subscription");
 
-  // Cloudflare API token (for subscription cron + admin dashboards)
+  // Cloudflare API token (for admin dashboards)
   let cfApiToken = "";
-  if (includeSubscription || includeAdminCore || includeAdminSubscription) {
+  if (includeAdminCore || includeAdminSubscription) {
     p.log.info(
       "An API token is needed for Analytics Engine access.\n" +
       "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
@@ -413,7 +442,7 @@ export async function setup() {
   }
 
   // Account ID fallback prompt
-  if (!accountId && (includeSubscription || includeAdminCore || includeAdminSubscription)) {
+  if (!accountId && (includeAdminCore || includeAdminSubscription)) {
     const input = await p.text({
       message: "Cloudflare Account ID:",
       placeholder: "Couldn't auto-detect — find it in the CF dashboard",
@@ -524,16 +553,16 @@ export async function setup() {
   const filesToWrite: Array<{ path: string; content: string }> = [];
 
   // Root workspace files
-  const dirName = projectDir.split("/").pop() ?? "durable-streams-project";
   filesToWrite.push(
-    { path: join(projectDir, "package.json"), content: rootPackageJson({ dirName, components }) },
+    { path: join(projectDir, "package.json"), content: rootPackageJson({ components }) },
     { path: join(projectDir, "pnpm-workspace.yaml"), content: pnpmWorkspaceYaml() },
+    { path: join(projectDir, ".npmrc"), content: "shamefully-hoist=true\n" },
   );
 
   // Core
   if (includeCore) {
     filesToWrite.push(
-      { path: join(workersDir, "streams", "package.json"), content: workerPackageJson({ name: "streams", dependency: "@durable-streams-cloudflare/core", port: 8787, inspectorPort: 9229 }) },
+      { path: join(workersDir, "streams", "package.json"), content: workerPackageJson({ name: "streams", dependency: "@durable-streams-cloudflare/core" }) },
       { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
       { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
     );
@@ -542,27 +571,27 @@ export async function setup() {
   // Subscription
   if (includeSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "subscriptions", "package.json"), content: workerPackageJson({ name: "subscriptions", dependency: "@durable-streams-cloudflare/subscription", port: 8788, inspectorPort: 9230 }) },
+      { path: join(workersDir, "subscriptions", "package.json"), content: workerPackageJson({ name: "subscriptions", dependency: "@durable-streams-cloudflare/subscription" }) },
       { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs() },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
-        content: subscriptionWranglerToml({ accountId, kvNamespaceId }),
+        content: subscriptionWranglerToml({ kvNamespaceId }),
       },
     );
   }
 
-  // Admin core — wrangler.toml + package.json (pre-built package, no source files needed)
+  // Admin core — wrangler.toml + package.json (built from upstream during deploy)
   if (includeAdminCore) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-core", "package.json"), content: workerPackageJson({ name: "admin-core", dependency: "@durable-streams-cloudflare/admin-core", port: 8790 }) },
+      { path: join(workersDir, "admin-core", "package.json"), content: adminPackageJson({ name: "admin-core" }) },
       { path: join(workersDir, "admin-core", "wrangler.toml"), content: adminCoreWranglerToml({ kvNamespaceId }) },
     );
   }
 
-  // Admin subscription — wrangler.toml + package.json (pre-built package, no source files needed)
+  // Admin subscription — wrangler.toml + package.json (built from upstream during deploy)
   if (includeAdminSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-subscription", "package.json"), content: workerPackageJson({ name: "admin-subscription", dependency: "@durable-streams-cloudflare/admin-subscription", port: 8789 }) },
+      { path: join(workersDir, "admin-subscription", "package.json"), content: adminPackageJson({ name: "admin-subscription" }) },
       { path: join(workersDir, "admin-subscription", "wrangler.toml"), content: adminSubscriptionWranglerToml({ kvNamespaceId }) },
     );
   }
@@ -604,32 +633,6 @@ export async function setup() {
     process.exit(1);
   }
 
-  // Admin packages: copy dist/ into worker directories.
-  // Wrangler with no_bundle can't traverse pnpm symlinks, so we need real files.
-  for (const [flag, pkg, dir] of [
-    [includeAdminCore, "@durable-streams-cloudflare/admin-core", "admin-core"],
-    [includeAdminSubscription, "@durable-streams-cloudflare/admin-subscription", "admin-subscription"],
-  ] as const) {
-    if (!flag) continue;
-    const resolve = runMayFail(
-      `cd "${projectDir}" && node -e "const p=require('path');console.log(p.resolve(require.resolve('${pkg}/worker'),'..','..'))"`
-    );
-    if (!resolve.ok || !resolve.stdout) {
-      installSpinner.stop(`Failed to locate ${pkg}`);
-      p.log.error(resolve.stderr);
-      process.exit(1);
-    }
-    const distDir = resolve.stdout.trim();
-    const dest = join(workersDir, dir, "dist");
-    ensureDir(dest);
-    const cpResult = runMayFail(`cp -R "${distDir}/." "${dest}"`);
-    if (!cpResult.ok) {
-      installSpinner.stop(`Failed to copy ${pkg} dist files`);
-      p.log.error(cpResult.stderr);
-      process.exit(1);
-    }
-  }
-
   installSpinner.stop("Dependencies installed");
 
   // -----------------------------------------------------------------------
@@ -666,10 +669,6 @@ export async function setup() {
     subSpinner.start("Deploying subscription worker");
 
     const subConfig = join(workersDir, "subscriptions", "wrangler.toml");
-
-    if (cfApiToken) {
-      putSecret("API_TOKEN", cfApiToken, subConfig, wranglerCmd);
-    }
 
     const subDeploy = runMayFail(`${wranglerCmd} deploy --config ${subConfig}`);
     if (!subDeploy.ok) {
@@ -856,7 +855,7 @@ export async function setup() {
     // Create .gitignore
     const gitignorePath = join(projectDir, ".gitignore");
     if (!existsSync(gitignorePath)) {
-      writeFile(gitignorePath, "node_modules/\ndist/\n.wrangler/\n", true);
+      writeFile(gitignorePath, "node_modules/\ndist/\n.wrangler/\n.npmrc\nworkers/admin-*/src\n.DS_Store\n.claude/settings.local.json\n", true);
       p.log.info("  Created .gitignore");
     }
 
