@@ -1,23 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { createProject } from "./helpers";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `projlist-${Date.now()}`;
 
 // Create a project so the list has something to show.
 test.beforeAll(async ({ browser }) => {
-  const page = await browser.newPage();
-  await page.goto(ADMIN_URL);
-  await page.waitForLoadState("networkidle");
-
-  // Create project via "+" button
-  await page.click('button[title="Create Project"]');
-  await page.waitForSelector("text=Create Project");
-  const modal = page.locator(".fixed.inset-0");
-  await modal.locator('input[placeholder="my-project"]').fill(PROJECT_ID);
-  await modal.locator('button:has-text("Create"):not([disabled])').click();
-  await page.waitForSelector("text=Save this signing secret", { timeout: 10_000 });
-  await page.click('button:has-text("Done")');
-  await page.close();
+  await createProject(browser, ADMIN_URL, PROJECT_ID);
 });
 
 // ── Projects nav link ──
