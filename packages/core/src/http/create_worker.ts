@@ -11,7 +11,7 @@ import { logError, logWarn } from "../log";
 import { applyCorsHeaders } from "./hono";
 import type { AuthorizeMutation, AuthorizeRead, ProjectConfig } from "./auth";
 import { lookupProjectConfig, checkProjectJwt } from "./auth";
-import { parseStreamPath } from "./stream-path";
+import { parseStreamPath, PROJECT_ID_PATTERN } from "./stream-path";
 import type { StreamDO } from "./durable_object";
 import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
@@ -45,7 +45,7 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 // Internal Helpers
 // ============================================================================
 
-export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export { PROJECT_ID_PATTERN } from "./stream-path";
 
 /**
  * Resolve the CORS origin for a request from per-project config.
@@ -230,6 +230,239 @@ const COALESCE_LINGER_MS = 200;
 const MAX_IN_FLIGHT = 100_000;
 
 // ============================================================================
+// Authorization
+// ============================================================================
+
+type StreamAuthResult = { streamMeta: StreamMeta | null };
+
+// #region docs-authorize-request
+/**
+ * Authorize a stream request. For reads, public streams skip auth entirely
+ * (checked via KV before auth). Stream metadata (including readerKey) is
+ * returned for use in HEAD headers and cache guards.
+ * Returns a StreamAuthResult on success, or an error Response on auth failure.
+ */
+async function authorizeStreamRequest<E extends BaseEnv>(
+  request: Request,
+  doKey: string,
+  env: E,
+  config: StreamWorkerConfig<E> | undefined,
+  isStreamRead: boolean,
+  corsOrigin: string | null,
+  timing: Timing | null,
+): Promise<StreamAuthResult | Response> {
+  let streamMeta: StreamMeta | null = null;
+  if (isStreamRead) {
+    streamMeta = await getStreamMeta(env.REGISTRY, doKey);
+    if (config?.authorizeRead && !streamMeta?.public) {
+      const readAuth = await config.authorizeRead(request, doKey, env, timing);
+      if (!readAuth.ok) return wrapAuthError(readAuth, corsOrigin);
+    }
+  } else if (config?.authorizeMutation) {
+    const mutAuth = await config.authorizeMutation(request, doKey, env, timing);
+    if (!mutAuth.ok) return wrapAuthError(mutAuth, corsOrigin);
+  }
+  return { streamMeta };
+}
+// #endregion docs-authorize-request
+
+// ============================================================================
+// Edge Cache Lookup
+// ============================================================================
+
+/**
+ * Look up a cached response from the edge cache, handling ETag revalidation.
+ * Returns a Response on cache hit (or 304), or null on cache miss.
+ */
+async function lookupEdgeCache(
+  request: Request,
+  cacheUrl: string,
+  corsOrigin: string | null,
+  timing: Timing | null,
+): Promise<Response | null> {
+  const cache = caches.default;
+  const doneCache = timing?.start("edge.cache");
+  const cached = await cache.match(cacheUrl);
+  doneCache?.();
+
+  if (!cached) {
+    timing?.record("edge.cache.result", 0, "miss");
+    return null;
+  }
+
+  // ETag revalidation at the edge
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  const cachedEtag = cached.headers.get("ETag");
+  if (ifNoneMatch && cachedEtag && ifNoneMatch === cachedEtag) {
+    const headers304 = new Headers(cached.headers);
+    headers304.set("X-Cache", "HIT");
+    applyCorsHeaders(headers304, corsOrigin);
+    timing?.record("edge.cache.result", 0, "revalidate-304");
+    return attachTiming(new Response(null, { status: 304, headers: headers304 }), timing);
+  }
+
+  // Cache hit — return cached response
+  const responseHeaders = new Headers(cached.headers);
+  responseHeaders.set("X-Cache", "HIT");
+  applyCorsHeaders(responseHeaders, corsOrigin);
+  timing?.record("edge.cache.result", 0, "hit");
+  return attachTiming(
+    new Response(cached.body, { status: cached.status, headers: responseHeaders }),
+    timing,
+  );
+}
+
+// ============================================================================
+// In-flight Coalescing
+// ============================================================================
+
+/**
+ * Check if another request is already fetching the same URL. If so, wait for
+ * its result and return a Response. Returns null if no pending request exists
+ * or if the pending request fails (caller should fall through to the DO).
+ */
+async function tryCoalesceInFlight(
+  inFlight: Map<string, Promise<InFlightResult>>,
+  cacheUrl: string,
+  corsOrigin: string | null,
+  timing: Timing | null,
+): Promise<Response | null> {
+  const pending = inFlight.get(cacheUrl);
+  if (!pending) return null;
+
+  try {
+    const coalesced = await pending;
+    const headers = new Headers(coalesced.headers);
+    headers.set("X-Cache", "HIT");
+    applyCorsHeaders(headers, corsOrigin);
+    return attachTiming(
+      new Response(coalesced.body, {
+        status: coalesced.status,
+        statusText: coalesced.statusText,
+        headers,
+      }),
+      timing,
+    );
+  } catch (e) {
+    logWarn({ cacheUrl, component: "coalesce" }, "coalesced request failed, falling through to DO", e);
+    return null;
+  }
+}
+
+// ============================================================================
+// Stream Creation Metadata
+// ============================================================================
+
+/**
+ * On successful stream creation (PUT → 201), write metadata to KV for edge
+ * lookups. Generates a reader key for auth-required, non-public streams so
+ * unauthorized clients can't match cached entries.
+ */
+function writeStreamCreationMetadata<E extends BaseEnv>(
+  url: URL,
+  doKey: string,
+  config: StreamWorkerConfig<E> | undefined,
+  kv: KVNamespace,
+  waitUntil: (p: Promise<unknown>) => void,
+  wrapped: Response,
+): void {
+  const isPublic = url.searchParams.get("public") === "true";
+  // Generate a reader key for auth-required, non-public streams.
+  // The reader key adds an unguessable component to the CDN cache key
+  // so unauthorized clients can't match cached entries.
+  // Skip when no authorizeRead is configured (no auth = nothing to protect).
+  const readerKey = !isPublic && config?.authorizeRead
+    ? `rk_${crypto.randomUUID().replace(/-/g, "")}`
+    : undefined;
+  if (readerKey) {
+    wrapped.headers.set(HEADER_STREAM_READER_KEY, readerKey);
+  }
+  waitUntil(putStreamMetadata(kv, doKey, {
+    public: isPublic,
+    content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
+    readerKey,
+  }));
+}
+
+// ============================================================================
+// Edge Cache Storage
+// ============================================================================
+
+/**
+ * Store a cacheable 200 response in the edge cache. Returns true if stored.
+ *
+ * Caches mid-stream reads (immutable data) and long-poll reads (cursor rotation
+ * prevents stale loops, enables request collapsing). Plain GET at-tail responses
+ * are NOT cached — data can change as appends arrive, and caching them breaks
+ * read-after-write consistency.
+ */
+function storeInEdgeCache(
+  waitUntil: (p: Promise<unknown>) => void,
+  cacheUrl: string,
+  isLongPoll: boolean,
+  streamMeta: StreamMeta | null,
+  url: URL,
+  wrapped: Response,
+): boolean {
+  const cc = wrapped.headers.get("Cache-Control") ?? "";
+  const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
+  // Don't cache responses at bare URLs for streams with a reader key.
+  // Without this guard, an authenticated client without ?rk would populate
+  // a cache entry at a guessable URL that anyone could then hit.
+  const hasReaderKey = streamMeta?.readerKey;
+  const urlHasRk = url.searchParams.has("rk");
+  if (!cc.includes("no-store") && (!atTail || isLongPoll) && !(hasReaderKey && !urlHasRk)) {
+    waitUntil(caches.default.put(cacheUrl, wrapped.clone()));
+    return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// In-flight Resolution
+// ============================================================================
+
+/**
+ * Resolve the in-flight promise so coalesced waiters get the result.
+ * Headers are captured from the DO response (before CORS) so each waiter
+ * can apply its own CORS headers.
+ *
+ * When the response was stored in the edge cache, the entry lingers for
+ * COALESCE_LINGER_MS so requests arriving just after resolution still find
+ * the resolved promise (covers the gap before cache.put completes).
+ * Otherwise deletes immediately to avoid serving stale data.
+ */
+function resolveInFlightWaiters(
+  inFlight: Map<string, Promise<InFlightResult>>,
+  cacheUrl: string,
+  response: Response,
+  bodyBuffer: ArrayBuffer,
+  resolve: (r: InFlightResult) => void,
+  storedInCache: boolean,
+): void {
+  const rawHeaders: [string, string][] = [];
+  for (const [k, v] of response.headers) {
+    rawHeaders.push([k, v]);
+  }
+  resolve({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
+  if (storedInCache) {
+    // Linger so requests arriving just after resolution still find
+    // the resolved promise (covers the gap before cache.put completes).
+    const lingerPromise = inFlight.get(cacheUrl);
+    setTimeout(() => {
+      if (inFlight.get(cacheUrl) === lingerPromise) {
+        inFlight.delete(cacheUrl);
+      }
+    }, COALESCE_LINGER_MS);
+  } else {
+    // Response was NOT cached (e.g., at-tail plain GET, 404, 204).
+    // Delete immediately — lingering would serve stale data when
+    // the stream's tail moves on the next append.
+    inFlight.delete(cacheUrl);
+  }
+}
+
+// ============================================================================
 // Factory
 // ============================================================================
 
@@ -343,12 +576,10 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     if (!rawPath) {
       return errorResponse(400, "missing project or stream id");
     }
-    const { projectId, streamId } = parseStreamPath(rawPath);
+    const { projectId, path: doKey } = parseStreamPath(rawPath);
     if (!PROJECT_ID_PATTERN.test(projectId)) {
       return errorResponse(400, "invalid project id");
     }
-
-    const doKey = `${projectId}/${streamId}`;
     // #endregion docs-extract-stream-id
 
     // Derive corsOrigin from projectConfig (already looked up in middleware)
@@ -358,22 +589,10 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     const method = request.method.toUpperCase();
     const isStreamRead = method === "GET" || method === "HEAD";
 
-    // #region docs-authorize-request
-    // Auth callbacks receive doKey (projectId/streamId) so they can check project scope.
-    // For reads, public streams skip auth entirely (checked via KV before auth).
-    // Stream metadata (including readerKey) is used later for HEAD headers and cache guards.
-    let streamMeta: StreamMeta | null = null;
-    if (isStreamRead) {
-      streamMeta = await getStreamMeta(c.env.REGISTRY, doKey);
-      if (config?.authorizeRead && !streamMeta?.public) {
-        const readAuth = await config.authorizeRead(request, doKey, c.env, timing);
-        if (!readAuth.ok) return wrapAuthError(readAuth, corsOrigin);
-      }
-    } else if (!isStreamRead && config?.authorizeMutation) {
-      const mutAuth = await config.authorizeMutation(request, doKey, c.env, timing);
-      if (!mutAuth.ok) return wrapAuthError(mutAuth, corsOrigin);
-    }
-    // #endregion docs-authorize-request
+    // Authorize the request
+    const authResult = await authorizeStreamRequest(request, doKey, c.env, config, isStreamRead, corsOrigin, timing);
+    if (authResult instanceof Response) return authResult;
+    const { streamMeta } = authResult;
 
     // ================================================================
     // Edge cache: check for cached response before hitting the DO
@@ -404,69 +623,21 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
     }
 
     if (cacheable && !skipCacheLookup) {
-      const cache = caches.default;
-      const doneCache = timing?.start("edge.cache");
-      const cached = await cache.match(cacheUrl!);
-      doneCache?.();
-
-      if (cached) {
-        // ETag revalidation at the edge
-        const ifNoneMatch = request.headers.get("If-None-Match");
-        const cachedEtag = cached.headers.get("ETag");
-        if (ifNoneMatch && cachedEtag && ifNoneMatch === cachedEtag) {
-          const headers304 = new Headers(cached.headers);
-          headers304.set("X-Cache", "HIT");
-          applyCorsHeaders(headers304, corsOrigin);
-          timing?.record("edge.cache.result", 0, "revalidate-304");
-          return attachTiming(new Response(null, { status: 304, headers: headers304 }), timing);
-        }
-
-        // Cache hit — return cached response
-        const responseHeaders = new Headers(cached.headers);
-        responseHeaders.set("X-Cache", "HIT");
-        applyCorsHeaders(responseHeaders, corsOrigin);
-        timing?.record("edge.cache.result", 0, "hit");
-        return attachTiming(
-          new Response(cached.body, { status: cached.status, headers: responseHeaders }),
-          timing,
-        );
-      }
-      timing?.record("edge.cache.result", 0, "miss");
+      const cached = await lookupEdgeCache(request, cacheUrl!, corsOrigin, timing);
+      if (cached) return cached;
       cacheStatus = "MISS";
     }
 
-    // ================================================================
     // In-flight coalescing: deduplicate concurrent cache misses
-    // ================================================================
     if (cacheStatus === "MISS" && cacheUrl) {
-      const pending = inFlight.get(cacheUrl);
-      if (pending) {
-        // Another request is already fetching this URL — wait for it
-        try {
-          const coalesced = await pending;
-          const headers = new Headers(coalesced.headers);
-          headers.set("X-Cache", "HIT");
-          applyCorsHeaders(headers, corsOrigin);
-          return attachTiming(
-            new Response(coalesced.body, {
-              status: coalesced.status,
-              statusText: coalesced.statusText,
-              headers,
-            }),
-            timing,
-          );
-        } catch (e) {
-          logWarn({ cacheUrl, component: "coalesce" }, "coalesced request failed, falling through to DO", e);
-        }
-      }
+      const coalesced = await tryCoalesceInFlight(inFlight, cacheUrl, corsOrigin, timing);
+      if (coalesced) return coalesced;
     }
 
     // #region docs-route-to-do
     const stub = c.env.STREAMS.getByName(doKey);
 
-    // ================================================================
     // SSE via internal WebSocket bridge
-    // ================================================================
     if (isSse) {
       return bridgeSseViaWebSocket(stub, doKey, url, request, corsOrigin, timing);
     }
@@ -525,74 +696,18 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
 
     // On successful stream creation, write metadata to KV for edge lookups
     if (method === "PUT" && wrapped.status === 201 && c.env.REGISTRY) {
-      const isPublic = url.searchParams.get("public") === "true";
-      // Generate a reader key for auth-required, non-public streams.
-      // The reader key adds an unguessable component to the CDN cache key
-      // so unauthorized clients can't match cached entries.
-      // Skip when no authorizeRead is configured (no auth = nothing to protect).
-      const readerKey = !isPublic && config?.authorizeRead
-        ? `rk_${crypto.randomUUID().replace(/-/g, "")}`
-        : undefined;
-      const kvMeta: Record<string, unknown> = {
-        public: isPublic,
-        content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
-        created_at: Date.now(),
-      };
-      if (readerKey) {
-        kvMeta.readerKey = readerKey;
-        wrapped.headers.set(HEADER_STREAM_READER_KEY, readerKey);
-      }
-      c.executionCtx.waitUntil(c.env.REGISTRY.put(doKey, JSON.stringify(kvMeta)));
+      writeStreamCreationMetadata(url, doKey, config, c.env.REGISTRY, (p) => c.executionCtx.waitUntil(p), wrapped);
     }
 
-    // ================================================================
     // Edge cache: store cacheable 200 responses
-    // ================================================================
-    // Cache mid-stream reads (immutable data) and long-poll reads
-    // (cursor rotation prevents stale loops, enables request collapsing).
-    // Plain GET at-tail responses are NOT cached — data can change as
-    // appends arrive, and caching them breaks read-after-write consistency.
-    // 204 timeouts are excluded by the status check.
     let storedInCache = false;
-    if (cacheable && wrapped.status === 200) {
-      const cc = wrapped.headers.get("Cache-Control") ?? "";
-      const atTail = wrapped.headers.get(HEADER_STREAM_UP_TO_DATE) === "true";
-      // Don't cache responses at bare URLs for streams with a reader key.
-      // Without this guard, an authenticated client without ?rk would populate
-      // a cache entry at a guessable URL that anyone could then hit.
-      const hasReaderKey = streamMeta?.readerKey;
-      const urlHasRk = url.searchParams.has("rk");
-      if (!cc.includes("no-store") && (!atTail || isLongPoll) && !(hasReaderKey && !urlHasRk)) {
-        c.executionCtx.waitUntil(caches.default.put(cacheUrl!, wrapped.clone()));
-        storedInCache = true;
-      }
+    if (cacheable && wrapped.status === 200 && cacheUrl) {
+      storedInCache = storeInEdgeCache((p) => c.executionCtx.waitUntil(p), cacheUrl, isLongPoll, streamMeta, url, wrapped);
     }
 
-    // Resolve the in-flight promise so coalesced waiters get the result.
-    // Headers are captured from the DO response (before CORS) so each
-    // waiter can apply its own CORS headers.
+    // Resolve in-flight promise so coalesced waiters get the result
     if (resolveInFlight && cacheUrl) {
-      const rawHeaders: [string, string][] = [];
-      for (const [k, v] of response.headers) {
-        rawHeaders.push([k, v]);
-      }
-      resolveInFlight({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
-      if (storedInCache) {
-        // Linger so requests arriving just after resolution still find
-        // the resolved promise (covers the gap before cache.put completes).
-        const lingerKey = cacheUrl;
-        const lingerPromise = inFlight.get(lingerKey);
-        setTimeout(() => {
-          if (inFlight.get(lingerKey) === lingerPromise) {
-            inFlight.delete(lingerKey);
-          }
-        }, COALESCE_LINGER_MS);
-      } else {
-        // Response was NOT cached (e.g., at-tail plain GET, 404, 204).
-        // Delete immediately — lingering would serve stale data when
-        // the stream's tail moves on the next append.
-        inFlight.delete(cacheUrl);
-      }
+      resolveInFlightWaiters(inFlight, cacheUrl, response, bodyBuffer, resolveInFlight, storedInCache);
     }
 
     // Set X-Cache header on cacheable responses so cache behavior
