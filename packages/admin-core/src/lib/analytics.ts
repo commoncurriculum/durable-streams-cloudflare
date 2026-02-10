@@ -232,3 +232,34 @@ export const updateProjectPrivacy = createServerFn({ method: "POST" })
     await kv.put(data.projectId, JSON.stringify(config));
     return { ok: true };
   });
+
+export const addCorsOrigin = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; origin: string }) => data)
+  .handler(async ({ data }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(data.projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw);
+    const origins: string[] = config.corsOrigins ?? [];
+    if (!origins.includes(data.origin)) {
+      origins.push(data.origin);
+    }
+    config.corsOrigins = origins;
+    await kv.put(data.projectId, JSON.stringify(config));
+    return { ok: true };
+  });
+
+export const removeCorsOrigin = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; origin: string }) => data)
+  .handler(async ({ data }) => {
+    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
+    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const raw = await kv.get(data.projectId);
+    if (!raw) throw new Error("Project not found");
+    const config = JSON.parse(raw);
+    const origins: string[] = config.corsOrigins ?? [];
+    config.corsOrigins = origins.filter((o: string) => o !== data.origin);
+    await kv.put(data.projectId, JSON.stringify(config));
+    return { ok: true };
+  });

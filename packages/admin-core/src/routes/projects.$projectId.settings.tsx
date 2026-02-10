@@ -1,6 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getProjectConfig, updateProjectPrivacy } from "../lib/analytics";
+import {
+  getProjectConfig,
+  updateProjectPrivacy,
+  addCorsOrigin,
+  removeCorsOrigin,
+} from "../lib/analytics";
 import { Switch } from "../components/ui/switch";
 
 export const Route = createFileRoute("/projects/$projectId/settings")({
@@ -10,6 +16,7 @@ export const Route = createFileRoute("/projects/$projectId/settings")({
 function ProjectSettings() {
   const { projectId } = Route.useParams();
   const queryClient = useQueryClient();
+  const [newOrigin, setNewOrigin] = useState("");
 
   const { data: config } = useQuery({
     queryKey: ["projectConfig", projectId],
@@ -25,7 +32,25 @@ function ProjectSettings() {
     },
   });
 
+  const addOriginMutation = useMutation({
+    mutationFn: (origin: string) =>
+      addCorsOrigin({ data: { projectId, origin } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
+      setNewOrigin("");
+    },
+  });
+
+  const removeOriginMutation = useMutation({
+    mutationFn: (origin: string) =>
+      removeCorsOrigin({ data: { projectId, origin } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
+    },
+  });
+
   const isPublic = config?.isPublic ?? false;
+  const corsOrigins = config?.corsOrigins ?? [];
 
   return (
     <div className="space-y-8">
@@ -38,6 +63,45 @@ function ProjectSettings() {
           >
             {isPublic ? "Public" : "Private"}
           </Switch>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">CORS Origins</h3>
+        {corsOrigins.length > 0 && (
+          <ul className="mb-4 space-y-2">
+            {corsOrigins.map((origin) => (
+              <li key={origin} className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2">
+                <span className="font-mono text-sm text-zinc-300">{origin}</span>
+                <button
+                  type="button"
+                  onClick={() => removeOriginMutation.mutate(origin)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="https://example.com"
+            value={newOrigin}
+            onChange={(e) => setNewOrigin(e.target.value)}
+            className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (newOrigin.trim()) addOriginMutation.mutate(newOrigin.trim());
+            }}
+            disabled={!newOrigin.trim()}
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            Add
+          </button>
         </div>
       </div>
     </div>
