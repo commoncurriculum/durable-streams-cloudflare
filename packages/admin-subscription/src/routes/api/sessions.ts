@@ -27,16 +27,9 @@ export const Route = createFileRoute("/api/sessions")({
             await subscription.adminTouchSession(projectId, sessionId);
           }
 
-          // Track in KV for listing
-          const kv = (env as Record<string, unknown>).REGISTRY as
-            | KVNamespace
-            | undefined;
-          if (kv) {
-            await kv.put(
-              `sessions/${projectId}/${sessionId}`,
-              JSON.stringify({ createdAt: Date.now() }),
-            );
-          }
+          // TODO: Session tracking removed from REGISTRY per security requirement.
+          // Session listing needs to be implemented via subscription worker RPC
+          // or dedicated admin metadata storage.
 
           return new Response(
             JSON.stringify({ ok: true, sessionId }),

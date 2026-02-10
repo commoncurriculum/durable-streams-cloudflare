@@ -16,25 +16,27 @@ export const Route = createFileRoute("/api/projects")({
             });
           }
 
-          const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-          if (!kv) {
-            return new Response(JSON.stringify({ error: "REGISTRY not configured" }), {
+          const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+          if (!core) {
+            return new Response(JSON.stringify({ error: "CORE service not configured" }), {
               status: 500,
               headers: { "Content-Type": "application/json" },
             });
           }
 
           const secret = crypto.randomUUID() + crypto.randomUUID();
-          await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
 
-          // Also register in core so core can verify JWTs
+          // Use core RPC to create the project
           try {
-            const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
-            if (core) {
-              await core.registerProject(projectId, secret);
-            }
-          } catch {
-            // Core service may not be available in all environments
+            await core.registerProject(projectId, secret);
+          } catch (err) {
+            return new Response(
+              JSON.stringify({ error: err instanceof Error ? err.message : "Failed to create project" }),
+              {
+                status: 500,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
           }
 
           return new Response(
