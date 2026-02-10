@@ -255,6 +255,13 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         if (!data.sessionId || !data.streamId) {
           throw new Error("subscribe requires sessionId and streamId");
         }
+        // Ensure the source stream exists on core (PUT is idempotent — creates or no-ops)
+        const core = (env as Record<string, unknown>).CORE as CoreService;
+        const doKey = `${data.projectId}/${data.streamId}`;
+        const putResult = await core.putStream(doKey, { contentType: "application/json" });
+        if (!putResult.ok) {
+          throw new Error(`Failed to ensure stream exists (${putResult.status}): ${putResult.body}`);
+        }
         const result = await subscription.adminSubscribe(data.projectId, data.streamId, data.sessionId);
         return { status: 200, statusText: "OK", body: result };
       }

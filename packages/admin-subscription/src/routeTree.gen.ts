@@ -15,6 +15,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projec
 import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects.$projectId.sessions'
 import { Route as ProjectsProjectIdPublishRouteImport } from './routes/projects.$projectId.publish'
 import { Route as ProjectsProjectIdSessionsIdRouteImport } from './routes/projects.$projectId.sessions.$id'
+import { Route as ApiSseProjectIdStreamKeyRouteImport } from './routes/api/sse.$projectId.$streamKey'
 
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
@@ -49,6 +50,12 @@ const ProjectsProjectIdSessionsIdRoute =
     path: '/$id',
     getParentRoute: () => ProjectsProjectIdSessionsRoute,
   } as any)
+const ApiSseProjectIdStreamKeyRoute =
+  ApiSseProjectIdStreamKeyRouteImport.update({
+    id: '/api/sse/$projectId/$streamKey',
+    path: '/api/sse/$projectId/$streamKey',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -56,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
+  '/api/sse/$projectId/$streamKey': typeof ApiSseProjectIdStreamKeyRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRoutesByTo {
@@ -64,6 +72,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
+  '/api/sse/$projectId/$streamKey': typeof ApiSseProjectIdStreamKeyRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRoutesById {
@@ -73,6 +82,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
+  '/api/sse/$projectId/$streamKey': typeof ApiSseProjectIdStreamKeyRoute
   '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
 }
 export interface FileRouteTypes {
@@ -83,6 +93,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
+    | '/api/sse/$projectId/$streamKey'
     | '/projects/$projectId/sessions/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -91,6 +102,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
+    | '/api/sse/$projectId/$streamKey'
     | '/projects/$projectId/sessions/$id'
   id:
     | '__root__'
@@ -99,12 +111,14 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/$projectId/publish'
     | '/projects/$projectId/sessions'
+    | '/api/sse/$projectId/$streamKey'
     | '/projects/$projectId/sessions/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
+  ApiSseProjectIdStreamKeyRoute: typeof ApiSseProjectIdStreamKeyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -151,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSessionsIdRouteImport
       parentRoute: typeof ProjectsProjectIdSessionsRoute
     }
+    '/api/sse/$projectId/$streamKey': {
+      id: '/api/sse/$projectId/$streamKey'
+      path: '/api/sse/$projectId/$streamKey'
+      fullPath: '/api/sse/$projectId/$streamKey'
+      preLoaderRoute: typeof ApiSseProjectIdStreamKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -196,6 +217,7 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
+  ApiSseProjectIdStreamKeyRoute: ApiSseProjectIdStreamKeyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -20,7 +20,7 @@ const handler = createStreamWorker({
 const putStreamOptions = type({
   "expiresAt?": "number",
   "body?": "ArrayBuffer",
-  "contentType": "string",
+  "contentType?": "string",
 });
 
 const INTERNAL_BASE_URL = "https://internal/v1/stream";
@@ -103,15 +103,16 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: create or touch a stream
   async putStream(
     doKey: string,
-    options: { expiresAt?: number; body?: ArrayBuffer; contentType: string },
+    options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string },
   ): Promise<{ ok: boolean; status: number; body: string | null }> {
     const validated = putStreamOptions(options);
     if (validated instanceof type.errors) {
       return { ok: false, status: 400, body: validated.summary };
     }
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType,
-    };
+    const headers: Record<string, string> = {};
+    if (options.contentType) {
+      headers["Content-Type"] = options.contentType;
+    }
     if (options.expiresAt) {
       headers["Stream-Expires-At"] = new Date(options.expiresAt).toISOString();
     }

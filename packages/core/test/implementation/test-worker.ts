@@ -7,7 +7,7 @@ import type { BaseEnv } from "../../src/http/create_worker";
 const putStreamOptions = type({
   "expiresAt?": "number",
   "body?": "ArrayBuffer",
-  "contentType": "string",
+  "contentType?": "string",
 });
 
 // Created at module scope so the in-flight coalescing Map is shared across
@@ -104,15 +104,16 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   async putStream(
     doKey: string,
-    options: { expiresAt?: number; body?: ArrayBuffer; contentType: string },
+    options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string },
   ): Promise<{ ok: boolean; status: number; body: string | null }> {
     const validated = putStreamOptions(options);
     if (validated instanceof type.errors) {
       return { ok: false, status: 400, body: validated.summary };
     }
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType,
-    };
+    const headers: Record<string, string> = {};
+    if (options.contentType) {
+      headers["Content-Type"] = options.contentType;
+    }
     if (options.expiresAt) {
       headers["Stream-Expires-At"] = new Date(options.expiresAt).toISOString();
     }

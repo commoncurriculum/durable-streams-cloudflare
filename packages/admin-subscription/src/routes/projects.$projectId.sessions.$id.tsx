@@ -1,11 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
+import { useSessionInspect } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
-import {
-  useDurableStream,
-  type StreamEvent,
-} from "../hooks/use-durable-stream";
+import { useSSE, type SseEvent as StreamEvent } from "../hooks/use-sse";
 
 type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
 
@@ -36,16 +33,10 @@ function SessionDetailPage() {
   const [streamIdInput, setStreamIdInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  const { data: coreUrl } = useCoreUrl();
-  const { data: tokenData } = useStreamToken(projectId);
-
-  const { status, events, addEvent, clearEvents } = useDurableStream({
-    coreUrl,
-    projectId,
-    streamKey: id,
-    token: tokenData?.token,
-    enabled: !!data && !!tokenData?.token,
-  });
+  const sseUrl = data
+    ? `/api/sse/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}?live=sse&offset=0000000000000000_0000000000000000`
+    : null;
+  const { status, events, addEvent, clearEvents } = useSSE(sseUrl);
 
   const handleSend = useCallback(async () => {
     setSending(true);
