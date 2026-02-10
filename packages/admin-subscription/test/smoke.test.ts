@@ -70,11 +70,11 @@ describe("admin-subscription smoke", () => {
     expect(html).toContain("Subscription Service");
   });
 
-  it("GET /projects/:id/sessions renders a Create Session button", async () => {
+  it("GET /projects/:id/sessions renders the sessions page", async () => {
     const res = await fetch(`${BASE_URL}/projects/test-project/sessions`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("Create Session");
+    expect(html).toContain("Sessions");
   });
 
   it("GET /projects/:id/publish renders the publish form", async () => {

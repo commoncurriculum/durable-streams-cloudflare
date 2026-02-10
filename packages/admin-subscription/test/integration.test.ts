@@ -132,12 +132,12 @@ describe("admin-subscription integration", () => {
   // ── Admin page rendering ──
 
   describe("page rendering", () => {
-    it("overview page renders with project dropdown", async () => {
+    it("overview page renders with nav links", async () => {
       const res = await fetch(adminUrl);
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("project-select");
-      expect(html).toContain("Select project...");
+      expect(html).toContain("System Overview");
+      expect(html).toContain("Projects");
     });
 
     it("sessions page renders at project-scoped URL", async () => {
