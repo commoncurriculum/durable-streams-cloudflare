@@ -20,7 +20,7 @@ export const Route = createFileRoute("/room/$roomId")({
 
 function DrawingRoom() {
   const { roomId } = Route.useParams();
-  const { coreUrl, projectId } = Route.useLoaderData();
+  const { coreUrl, projectId, writeToken } = Route.useLoaderData();
   const [userId] = useState(() => crypto.randomUUID().slice(0, 8));
   const writeStreamRef = useRef<DurableStream | null>(null);
   const renderRemoteRef = useRef<((msg: DrawMessage) => void) | null>(null);
@@ -29,14 +29,14 @@ function DrawingRoom() {
     (msg: StrokeMessage) => {
       if (!writeStreamRef.current) {
         // First stroke — create a handle and PUT the stream to core
-        const ds = getWriteStream(coreUrl, projectId, roomId);
+        const ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
         writeStreamRef.current = ds;
         ds.create({ body: JSON.stringify(msg) });
       } else {
         writeStreamRef.current.append(JSON.stringify(msg));
       }
     },
-    [coreUrl, projectId, roomId],
+    [coreUrl, projectId, roomId, writeToken],
   );
 
   const handleClear = useCallback(() => {
@@ -81,7 +81,7 @@ function DrawingRoom() {
 
       // Stream exists — get a write handle so strokes use append (POST)
       if (!writeStreamRef.current) {
-        writeStreamRef.current = getWriteStream(coreUrl, projectId, roomId);
+        writeStreamRef.current = getWriteStream(coreUrl, projectId, roomId, writeToken);
       }
 
       unsub = res.subscribeJson<DrawMessage>((batch) => {
