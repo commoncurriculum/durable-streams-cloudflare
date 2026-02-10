@@ -114,6 +114,14 @@ test("stream detail page shows metadata fields", async ({ page }) => {
   await expect(page.getByText("Tail Offset")).toBeVisible();
 });
 
+// ── Message volume chart ──
+
+test("stream detail shows Message Volume heading", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/streams/${STREAM_ID}`);
+
+  await expect(page.getByText("Message Volume")).toBeVisible({ timeout: 15_000 });
+});
+
 // ── SSE connected badge ──
 
 test("SSE badge shows connected on stream detail page", async ({ page }) => {
