@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
-import { sendSessionAction } from "../lib/analytics";
+import { sendSessionAction, getStreamMessages } from "../lib/analytics";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -98,6 +98,33 @@ function SessionDetailPage() {
     await doAction("subscribe", streamIdInput.trim());
     setStreamIdInput("");
   }, [streamIdInput, doAction]);
+
+  const [fetching, setFetching] = useState(false);
+  const doKey = `${projectId}/${id}`;
+
+  const fetchEarlier = useCallback(async () => {
+    setFetching(true);
+    try {
+      const result = (await getStreamMessages({ data: doKey })) as {
+        messages?: Record<string, unknown>[];
+      };
+      const msgs = result?.messages ?? [];
+      if (msgs.length === 0) {
+        addEvent("control", "No earlier messages found");
+      } else {
+        for (const msg of msgs) {
+          const display =
+            typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+          addEvent("data", display);
+        }
+        addEvent("control", `Loaded ${msgs.length} earlier message(s)`);
+      }
+    } catch (e) {
+      addEvent("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetching(false);
+    }
+  }, [doKey, addEvent]);
 
   if (isLoading) {
     return (
@@ -280,6 +307,13 @@ function SessionDetailPage() {
             <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
               <h3 className="text-sm font-medium text-zinc-400">Live Event Log</h3>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={fetchEarlier}
+                  disabled={fetching}
+                  className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                >
+                  {fetching ? "Loading..." : "Fetch Earlier Messages"}
+                </button>
                 {events.length > 0 && (
                   <button
                     onClick={clearEvents}

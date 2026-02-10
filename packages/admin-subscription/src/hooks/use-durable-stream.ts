@@ -128,7 +128,7 @@ export function useDurableStream(options: {
         cancelRef.current = null;
       }
     };
-  }, [coreUrl, projectId, streamKey, enabled]); // token intentionally excluded — tokenRef handles refresh
+  }, [coreUrl, projectId, streamKey, enabled, !!token]); // token bool triggers initial connect; tokenRef handles refresh
 
   return { status, events, clearEvents, addEvent };
 }
