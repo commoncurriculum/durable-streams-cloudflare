@@ -44,12 +44,6 @@ export type StreamWorkerConfig<E extends BaseEnv = BaseEnv> = {
 export const PROJECT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const DEFAULT_PROJECT_ID = "_default";
 
-function parseStreamPath(raw: string): { projectId: string; streamId: string } {
-  const i = raw.indexOf("/");
-  if (i === -1) return { projectId: DEFAULT_PROJECT_ID, streamId: raw };
-  return { projectId: raw.slice(0, i), streamId: raw.slice(i + 1) };
-}
-
 /**
  * Resolve the CORS origin for a request from per-project config.
  * Returns null (no CORS headers) when no corsOrigins are configured.
