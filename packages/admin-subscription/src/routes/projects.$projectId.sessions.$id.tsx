@@ -5,8 +5,6 @@ import { sendSessionAction } from "../lib/analytics";
 import { useSSE, type SseEvent as StreamEvent } from "../hooks/use-sse";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
-
 type SessionData = {
   sessionId?: string;
   session_id?: string;
@@ -14,13 +12,6 @@ type SessionData = {
   session_stream_path?: string;
   subscriptions?: { streamId?: string; stream_id?: string }[];
 };
-
-const SESSION_ACTIONS: { value: SessionAction; label: string }[] = [
-  { value: "subscribe", label: "Subscribe" },
-  { value: "unsubscribe", label: "Unsub" },
-  { value: "touch", label: "Touch" },
-  { value: "delete", label: "Delete" },
-];
 
 export const Route = createFileRoute("/projects/$projectId/sessions/$id")({
   component: SessionDetailPage,
@@ -30,7 +21,6 @@ function SessionDetailPage() {
   const { projectId, id } = Route.useParams();
   const { data, isLoading, error } = useSessionInspect(id, projectId);
 
-  const [action, setAction] = useState<SessionAction>("subscribe");
   const [streamIdInput, setStreamIdInput] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -39,73 +29,69 @@ function SessionDetailPage() {
     : null;
   const { status, events, addEvent, clearEvents } = useSSE(sseUrl);
 
-  const handleSend = useCallback(async () => {
-    setSending(true);
-    try {
-      let payload: Parameters<typeof sendSessionAction>[0]["data"];
+  const doAction = useCallback(
+    async (
+      action: "subscribe" | "unsubscribe" | "touch" | "delete",
+      streamId?: string,
+    ) => {
+      setSending(true);
+      try {
+        const payload: Parameters<typeof sendSessionAction>[0]["data"] =
+          action === "subscribe" || action === "unsubscribe"
+            ? { action, projectId, sessionId: id, streamId: streamId! }
+            : { action, projectId, sessionId: id };
 
-      switch (action) {
-        case "subscribe":
-        case "unsubscribe":
-          if (!streamIdInput.trim()) {
-            setSending(false);
-            return;
-          }
-          payload = {
-            action,
-            projectId,
-            sessionId: id,
-            streamId: streamIdInput.trim(),
-          };
-          break;
-        case "touch":
-          payload = { action, projectId, sessionId: id };
-          break;
-        case "delete":
-          payload = { action, projectId, sessionId: id };
-          break;
-      }
-
-      const MAX_RETRIES = 2;
-      let lastError: unknown;
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          const result = await sendSessionAction({ data: payload });
-          const body = result.body as Record<string, unknown> | undefined;
-          let message: string;
-          switch (action) {
-            case "subscribe":
-              message = `Subscribed to ${(body?.streamId as string) ?? streamIdInput}`;
-              break;
-            case "unsubscribe":
-              message = `Unsubscribed from ${streamIdInput}`;
-              break;
-            case "touch":
-              message = "Session touched";
-              break;
-            case "delete":
-              message = "Session deleted";
-              break;
-          }
-          addEvent("control", message);
-          lastError = undefined;
-          break;
-        } catch (e) {
-          lastError = e;
-          const msg = e instanceof Error ? e.message : String(e);
-          if (attempt < MAX_RETRIES && msg.includes("restarted")) {
-            await new Promise((r) => setTimeout(r, 300));
-            continue;
+        const MAX_RETRIES = 2;
+        let lastError: unknown;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            const result = await sendSessionAction({ data: payload });
+            const body = result.body as Record<string, unknown> | undefined;
+            let message: string;
+            switch (action) {
+              case "subscribe":
+                message = `Subscribed to ${(body?.streamId as string) ?? streamId}`;
+                break;
+              case "unsubscribe":
+                message = `Unsubscribed from ${streamId}`;
+                break;
+              case "touch":
+                message = "Session touched";
+                break;
+              case "delete":
+                message = "Session deleted";
+                break;
+            }
+            addEvent("control", message);
+            lastError = undefined;
+            break;
+          } catch (e) {
+            lastError = e;
+            const msg = e instanceof Error ? e.message : String(e);
+            if (attempt < MAX_RETRIES && msg.includes("restarted")) {
+              await new Promise((r) => setTimeout(r, 300));
+              continue;
+            }
           }
         }
+        if (lastError) {
+          addEvent(
+            "error",
+            lastError instanceof Error ? lastError.message : String(lastError),
+          );
+        }
+      } finally {
+        setSending(false);
       }
-      if (lastError) {
-        addEvent("error", lastError instanceof Error ? lastError.message : String(lastError));
-      }
-    } finally {
-      setSending(false);
-    }
-  }, [action, projectId, id, streamIdInput, addEvent]);
+    },
+    [projectId, id, addEvent],
+  );
+
+  const handleSubscribe = useCallback(async () => {
+    if (!streamIdInput.trim()) return;
+    await doAction("subscribe", streamIdInput.trim());
+    setStreamIdInput("");
+  }, [streamIdInput, doAction]);
 
   if (isLoading) {
     return (
@@ -139,165 +125,178 @@ function SessionDetailPage() {
   const subscriptions = d.subscriptions ?? [];
 
   return (
-    <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Left column — session info */}
-      <div className="space-y-6">
-        <Link
-          to="/projects/$projectId/sessions"
-          params={{ projectId }}
-          className="text-sm text-zinc-400 hover:text-zinc-200"
-        >
-          &larr; Back to search
-        </Link>
+    <div className="space-y-6">
+      {/* Back link */}
+      <Link
+        to="/projects/$projectId/sessions"
+        params={{ projectId }}
+        className="text-sm text-zinc-400 hover:text-zinc-200"
+      >
+        &larr; Back to sessions
+      </Link>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <MetaItem label="Session ID" value={sessionId} />
-          <MetaItem label="Subscriptions" value={String(subscriptions.length)} />
-          <MetaItem label="Session Stream" value={sessionStreamPath} />
-        </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <MetaItem label="Session ID" value={sessionId} />
+        <MetaItem label="Subscriptions" value={String(subscriptions.length)} />
+        <MetaItem label="Messages" value="\u2014" />
+        <MetaItem label="Session Stream" value={sessionStreamPath} />
+      </div>
 
-        {/* Message Volume */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <h3 className="mb-3 text-sm font-medium text-zinc-400">Message Volume</h3>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={[]}>
-                <defs>
-                  <linearGradient id="sessionMsgGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="time" stroke="#52525b" fontSize={11} />
-                <YAxis stroke="#52525b" fontSize={11} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 6 }}
-                  labelStyle={{ color: "#a1a1aa" }}
-                  itemStyle={{ color: "#3b82f6" }}
-                />
-                <Area type="monotone" dataKey="messages" stroke="#3b82f6" fill="url(#sessionMsgGradient)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      {/* Two-column: left (chart + subscriptions) / right (subscribe + event log) */}
+      <div className="grid min-h-[400px] grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Left column */}
+        <div className="space-y-6">
+          {/* Message Volume */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">Message Volume</h3>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={[]}>
+                  <defs>
+                    <linearGradient id="sessionMsgGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" stroke="#52525b" fontSize={11} />
+                  <YAxis stroke="#52525b" fontSize={11} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 6 }}
+                    labelStyle={{ color: "#a1a1aa" }}
+                    itemStyle={{ color: "#3b82f6" }}
+                  />
+                  <Area type="monotone" dataKey="messages" stroke="#3b82f6" fill="url(#sessionMsgGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
 
-        {/* Subscriptions */}
-        {subscriptions.length > 0 ? (
+          {/* Subscriptions */}
           <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
             <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
               Subscriptions ({subscriptions.length})
             </h3>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800">
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Stream ID
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {subscriptions.map((s, i) => {
-                  const sid =
-                    typeof s === "string"
-                      ? s
-                      : s.streamId || s.stream_id || "\u2014";
-                  return (
-                    <tr
-                      key={i}
-                      className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                    >
-                      <td className="px-4 py-2 font-mono text-sm text-zinc-400">
-                        {sid}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {subscriptions.length > 0 ? (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-zinc-800">
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+                      Stream ID
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subscriptions.map((s, i) => {
+                    const sid =
+                      typeof s === "string"
+                        ? s
+                        : s.streamId || s.stream_id || "\u2014";
+                    return (
+                      <tr
+                        key={i}
+                        className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
+                      >
+                        <td className="px-4 py-2 font-mono text-sm text-zinc-400">
+                          {sid}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            onClick={() => doAction("unsubscribe", sid)}
+                            disabled={sending}
+                            className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                          >
+                            Unsubscribe
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="py-8 text-center text-zinc-500">
+                No active subscriptions
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="py-8 text-center text-zinc-500">
-            No active subscriptions
-          </div>
-        )}
-      </div>
+        </div>
 
-      {/* Right column — actions + event log */}
-      <div className="flex flex-col gap-6">
-        {/* Actions panel */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-          <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1">
-            Action
-          </label>
-          <div className="flex overflow-hidden rounded-md border border-zinc-700">
-            {SESSION_ACTIONS.map((a) => (
-              <button
-                key={a.value}
-                onClick={() => setAction(a.value)}
-                className={`flex-1 px-2 py-2 text-xs ${
-                  action === a.value
-                    ? "bg-blue-600 text-white"
-                    : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
-
-          {(action === "subscribe" || action === "unsubscribe") && (
-            <>
-              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mt-4 mb-1">
-                Stream ID
-              </label>
+        {/* Right column */}
+        <div className="flex flex-col gap-6">
+          {/* Add Subscription form */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+            <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500 mb-2">
+              Add Subscription
+            </label>
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={streamIdInput}
                 onChange={(e) => setStreamIdInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="my-stream"
-                className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
+                onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
+                placeholder="stream-id"
+                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-blue-500"
               />
-            </>
-          )}
+              <button
+                onClick={handleSubscribe}
+                disabled={sending || !streamIdInput.trim()}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Subscribe
+              </button>
+            </div>
 
-          <button
-            onClick={handleSend}
-            disabled={sending}
-            className="mt-5 w-full rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {sending ? "Sending..." : "Send"}
-          </button>
-        </div>
-
-        {/* Event log */}
-        <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-            <h3 className="text-sm font-medium text-zinc-400">Live Event Log</h3>
-            <div className="flex items-center gap-3">
-              {events.length > 0 && (
-                <button
-                  onClick={clearEvents}
-                  className="text-xs text-zinc-500 hover:text-zinc-300"
-                >
-                  Clear
-                </button>
-              )}
-              <SseStatusBadge status={status} />
+            {/* Utility actions */}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => doAction("touch")}
+                disabled={sending}
+                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+              >
+                Touch
+              </button>
+              <button
+                onClick={() => doAction("delete")}
+                disabled={sending}
+                className="flex-1 rounded-md border border-red-900 bg-zinc-800 px-3 py-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+              >
+                Delete
+              </button>
             </div>
           </div>
-          <div
-            className="flex-1 space-y-1 overflow-y-auto p-2"
-            style={{ maxHeight: 500 }}
-          >
-            {events.length === 0 ? (
-              <div className="py-12 text-center text-sm text-zinc-500">
-                Subscribe to a stream and publish to see live events
+
+          {/* Event log */}
+          <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <h3 className="text-sm font-medium text-zinc-400">Live Event Log</h3>
+              <div className="flex items-center gap-3">
+                {events.length > 0 && (
+                  <button
+                    onClick={clearEvents}
+                    className="text-xs text-zinc-500 hover:text-zinc-300"
+                  >
+                    Clear
+                  </button>
+                )}
+                <SseStatusBadge status={status} />
               </div>
-            ) : (
-              events.map((evt, i) => <LogEntry key={i} event={evt} />)
-            )}
+            </div>
+            <div
+              className="flex-1 space-y-1 overflow-y-auto p-2"
+              style={{ maxHeight: 500 }}
+            >
+              {events.length === 0 ? (
+                <div className="py-12 text-center text-sm text-zinc-500">
+                  Subscribe to a stream and publish to see live events
+                </div>
+              ) : (
+                events.map((evt, i) => <LogEntry key={i} event={evt} />)
+              )}
+            </div>
           </div>
         </div>
       </div>
