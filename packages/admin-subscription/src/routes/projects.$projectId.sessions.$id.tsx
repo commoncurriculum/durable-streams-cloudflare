@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { useSessionInspect } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
 import { useSSE, type SseEvent as StreamEvent } from "../hooks/use-sse";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 type SessionAction = "subscribe" | "unsubscribe" | "touch" | "delete";
 
@@ -149,10 +150,36 @@ function SessionDetailPage() {
           &larr; Back to search
         </Link>
 
-        {/* Metadata */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Stat cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <MetaItem label="Session ID" value={sessionId} />
+          <MetaItem label="Subscriptions" value={String(subscriptions.length)} />
           <MetaItem label="Session Stream" value={sessionStreamPath} />
+        </div>
+
+        {/* Message Volume */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <h3 className="mb-3 text-sm font-medium text-zinc-400">Message Volume</h3>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={[]}>
+                <defs>
+                  <linearGradient id="sessionMsgGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="time" stroke="#52525b" fontSize={11} />
+                <YAxis stroke="#52525b" fontSize={11} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 6 }}
+                  labelStyle={{ color: "#a1a1aa" }}
+                  itemStyle={{ color: "#3b82f6" }}
+                />
+                <Area type="monotone" dataKey="messages" stroke="#3b82f6" fill="url(#sessionMsgGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Subscriptions */}
