@@ -8,6 +8,6 @@ export async function mintJwt(
   const jwt = await new SignJWT(claims)
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .sign(secret);
-  
+
   return jwt;
 }
