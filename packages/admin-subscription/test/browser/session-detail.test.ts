@@ -21,24 +21,34 @@ test.beforeAll(async ({ browser }) => {
   await page.close();
 });
 
-// ── Stat cards ──
+// ── Stat cards row ──
 
-test("session detail shows Subscriptions stat card", async ({ page }) => {
+test("session detail shows stat cards for Subscriptions and Messages", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
   await expect(page.getByText("Subscriptions").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Messages").first()).toBeVisible({ timeout: 5_000 });
 });
 
 // ── Message Volume heading ──
 
-test("session detail shows Message Volume heading", async ({ page }) => {
+test("session detail shows Message Volume chart heading", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
   await expect(page.getByText("Message Volume")).toBeVisible({ timeout: 10_000 });
 });
 
-// ── SSE badge still works ──
+// ── Subscriptions table with Unsubscribe ──
 
-test("session detail shows SSE connected badge", async ({ page }) => {
+test("session detail shows Add Subscription form", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
+  await expect(page.getByPlaceholder("stream-id")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Subscribe" })).toBeVisible({ timeout: 5_000 });
+});
+
+// ── Live Event Log / SSE ──
+
+test("session detail shows live event log with SSE badge", async ({ page }) => {
+  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
+  await expect(page.getByText("Live Event Log")).toBeVisible({ timeout: 10_000 });
   const badge = page.getByText("connected", { exact: true });
   await expect(badge).toBeVisible({ timeout: 10_000 });
 });
