@@ -6,6 +6,20 @@ import type { ProjectConfig } from "./auth";
 import { StreamDO } from "./durable_object";
 import type { StreamIntrospection } from "./durable_object";
 import type { BaseEnv } from "./create_worker";
+import {
+  createProject,
+  addSigningKey as registryAddSigningKey,
+  removeSigningKey as registryRemoveSigningKey,
+  addCorsOrigin as registryAddCorsOrigin,
+  removeCorsOrigin as registryRemoveCorsOrigin,
+  updatePrivacy as registryUpdatePrivacy,
+  rotateStreamReaderKey,
+  putStreamMetadata,
+  listProjects,
+  listProjectStreams,
+  getStreamEntry,
+  getProjectEntry,
+} from "../storage/registry";
 
 const { authorizeMutation, authorizeRead } = projectJwtAuth();
 
@@ -33,27 +47,62 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   // RPC: register a project's signing secret in core's REGISTRY KV
   // Called by admin workers so core can verify JWTs for browser SSE connections
-  async registerProject(projectId: string, signingSecret: string): Promise<void> {
-    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: [signingSecret] }));
+  async registerProject(projectId: string, signingSecret: string, options?: { corsOrigins?: string[] }): Promise<void> {
+    await createProject(this.env.REGISTRY, projectId, signingSecret, options);
   }
 
   // RPC: add a signing key to a project (prepended as new primary)
   async addSigningKey(projectId: string, newSecret: string): Promise<{ keyCount: number }> {
-    const config = await lookupProjectConfig(this.env.REGISTRY, projectId);
-    const secrets = config ? config.signingSecrets : [];
-    secrets.unshift(newSecret);
-    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: secrets }));
-    return { keyCount: secrets.length };
+    return registryAddSigningKey(this.env.REGISTRY, projectId, newSecret);
   }
 
   // RPC: remove a signing key from a project (refuses to remove the last key)
   async removeSigningKey(projectId: string, secretToRemove: string): Promise<{ keyCount: number }> {
-    const config = await lookupProjectConfig(this.env.REGISTRY, projectId);
-    if (!config) throw new Error(`Project "${projectId}" not found`);
-    const filtered = config.signingSecrets.filter((s) => s !== secretToRemove);
-    if (filtered.length === 0) throw new Error("Cannot remove the last signing key");
-    await this.env.REGISTRY.put(projectId, JSON.stringify({ signingSecrets: filtered }));
-    return { keyCount: filtered.length };
+    return registryRemoveSigningKey(this.env.REGISTRY, projectId, secretToRemove);
+  }
+
+  // RPC: list all projects
+  async listProjects(): Promise<string[]> {
+    return listProjects(this.env.REGISTRY);
+  }
+
+  // RPC: list all streams for a project
+  async listProjectStreams(projectId: string): Promise<{ streamId: string; createdAt: number }[]> {
+    return listProjectStreams(this.env.REGISTRY, projectId);
+  }
+
+  // RPC: get project config from REGISTRY (admin-only, no auth required via service binding)
+  async getProjectConfig(projectId: string): Promise<{
+    signingSecrets: string[];
+    corsOrigins?: string[];
+    isPublic?: boolean;
+  } | null> {
+    return getProjectEntry(this.env.REGISTRY, projectId);
+  }
+
+  // RPC: add CORS origin to a project
+  async addCorsOrigin(projectId: string, origin: string): Promise<void> {
+    return registryAddCorsOrigin(this.env.REGISTRY, projectId, origin);
+  }
+
+  // RPC: remove CORS origin from a project
+  async removeCorsOrigin(projectId: string, origin: string): Promise<void> {
+    return registryRemoveCorsOrigin(this.env.REGISTRY, projectId, origin);
+  }
+
+  // RPC: update project privacy setting
+  async updatePrivacy(projectId: string, isPublic: boolean): Promise<void> {
+    return registryUpdatePrivacy(this.env.REGISTRY, projectId, isPublic);
+  }
+
+  // RPC: get stream metadata from REGISTRY
+  async getStreamMetadata(doKey: string): Promise<{
+    public: boolean;
+    content_type: string;
+    created_at: number;
+    readerKey?: string;
+  } | null> {
+    return getStreamEntry(this.env.REGISTRY, doKey);
   }
 
   // RPC: stream inspection (replaces /admin HTTP endpoint)
@@ -125,6 +174,15 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
         body: options.body,
       }),
     );
+    // Write stream metadata to REGISTRY on creation (same as HTTP handler)
+    if (response.status === 201 && this.env.REGISTRY) {
+      this.ctx.waitUntil(
+        putStreamMetadata(this.env.REGISTRY, doKey, {
+          public: false,
+          content_type: response.headers.get("Content-Type") || "application/octet-stream",
+        }),
+      );
+    }
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
   }
@@ -132,8 +190,7 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
   // RPC: rotate the reader key for a stream (invalidates all CDN-cached entries)
   async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
     const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;
-    const existing = await this.env.REGISTRY.get(doKey, "json") as Record<string, unknown> | null;
-    await this.env.REGISTRY.put(doKey, JSON.stringify({ ...existing, readerKey }));
+    await rotateStreamReaderKey(this.env.REGISTRY, doKey, readerKey);
     return { readerKey };
   }
 
@@ -191,4 +248,5 @@ export type {
   ProjectConfig,
 } from "./auth";
 export type { BaseEnv, StreamWorkerConfig } from "./create_worker";
+export type { ProjectEntry, StreamEntry } from "../storage/registry";
 export { parseStreamPath } from "./stream-path";

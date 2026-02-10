@@ -119,16 +119,7 @@ export function extractBearerToken(request: Request): string | null {
 // JWT Helpers (shared with core)
 // ============================================================================
 
-function base64UrlDecode(input: string): Uint8Array {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
+import { jwtVerify } from "jose";
 
 type ProjectJwtClaims = {
   sub: string;
@@ -143,64 +134,53 @@ function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: st
   return origins.length > 0 ? { corsOrigins: origins } : {};
 }
 
+/**
+ * Look up project config from REGISTRY KV.
+ * Uses the same read logic as core's registry module.
+ */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
 ): Promise<ProjectConfig | null> {
-  const value = await kv.get(projectId, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  // New format: signingSecrets array
-  if (Array.isArray(record.signingSecrets)) {
-    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
+  const raw = await kv.get(projectId, "json");
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  
+  // Normalize legacy single-secret format to array format
+  if (!Array.isArray(record.signingSecrets) && typeof record.signingSecret === "string") {
+    record.signingSecrets = [record.signingSecret];
+    delete record.signingSecret;
+  }
+  
+  // Validate we have signing secrets
+  if (!Array.isArray(record.signingSecrets) || record.signingSecrets.length === 0) {
     return null;
   }
-  // Legacy format: single signingSecret string
-  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
-  }
-  return null;
+  
+  return {
+    signingSecrets: record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0),
+    ...extractCorsOrigins(record),
+  };
 }
 
 async function verifyProjectJwt(
   token: string,
   signingSecret: string,
 ): Promise<ProjectJwtClaims | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [headerPart, payloadPart, signaturePart] = parts;
   try {
-    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
-    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
-    if (header.alg !== "HS256") return null;
-
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
-    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    const secret = new TextEncoder().encode(signingSecret);
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+    });
 
     if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
     if (payload.scope !== "write" && payload.scope !== "read") return null;
     if (typeof payload.exp !== "number") return null;
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(signingSecret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const ok = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      new Uint8Array(base64UrlDecode(signaturePart)),
-      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
-    );
-    if (!ok) return null;
-
     return {
-      sub: payload.sub as string,
+      sub: payload.sub,
       scope: payload.scope as "write" | "read",
-      exp: payload.exp as number,
+      exp: payload.exp,
       stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
   } catch {

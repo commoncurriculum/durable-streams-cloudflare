@@ -1,4 +1,7 @@
+import { decodeJwt, jwtVerify } from "jose";
 import type { Timing } from "../protocol/timing";
+import type { ProjectEntry } from "../storage/registry";
+import { getProjectEntry } from "../storage/registry";
 import { parseStreamPath } from "./stream-path";
 
 // ============================================================================
@@ -7,7 +10,11 @@ import { parseStreamPath } from "./stream-path";
 
 export type AuthResult = { ok: true } | { ok: false; status: number; error: string };
 
-export type ProjectConfig = { signingSecrets: string[]; corsOrigins?: string[] };
+/**
+ * Project config shape used for authentication.
+ * This is a subset of ProjectEntry from REGISTRY - just the auth-relevant fields.
+ */
+export type ProjectConfig = Pick<ProjectEntry, "signingSecrets" | "corsOrigins">;
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -46,45 +53,20 @@ export function extractBearerToken(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-function base64UrlDecode(input: string): Uint8Array {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
 /**
  * Look up the project config from KV.
- * Normalizes both legacy `{ signingSecret: "..." }` and new `{ signingSecrets: [...] }` formats.
+ * Returns just the auth-relevant fields (signingSecrets and corsOrigins).
  */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
 ): Promise<ProjectConfig | null> {
-  const value = await kv.get(projectId, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  // New format: signingSecrets array
-  if (Array.isArray(record.signingSecrets)) {
-    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
-    return null;
-  }
-  // Legacy format: single signingSecret string
-  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
-  }
-  return null;
-}
-
-function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: string[] } {
-  if (!Array.isArray(record.corsOrigins)) return {};
-  const origins = record.corsOrigins.filter((o): o is string => typeof o === "string" && o.length > 0);
-  return origins.length > 0 ? { corsOrigins: origins } : {};
+  const entry = await getProjectEntry(kv, projectId);
+  if (!entry) return null;
+  return {
+    signingSecrets: entry.signingSecrets,
+    corsOrigins: entry.corsOrigins,
+  };
 }
 
 /**
@@ -92,11 +74,8 @@ function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: st
  * Used to peek at `sub` before we know which secret to verify with.
  */
 export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
   try {
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(parts[1]));
-    return JSON.parse(payloadJson) as Record<string, unknown>;
+    return decodeJwt(token);
   } catch {
     return null;
   }
@@ -104,47 +83,27 @@ export function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> |
 
 /**
  * Full HMAC-SHA256 JWT verification.
- * Validates shape: { sub: string, scope: "write"|"read", exp: number, stream_id?: string }
+ * Validates shape: { sub: string, scope: "write"|"read"|"manage", exp: number, stream_id?: string }
  */
 export async function verifyProjectJwt(
   token: string,
   signingSecret: string,
 ): Promise<ProjectJwtClaims | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [headerPart, payloadPart, signaturePart] = parts;
   try {
-    const headerJson = new TextDecoder().decode(base64UrlDecode(headerPart));
-    const header = JSON.parse(headerJson) as { alg?: string; typ?: string };
-    if (header.alg !== "HS256") return null;
-
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
-    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    const secret = new TextEncoder().encode(signingSecret);
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+    });
 
     // Validate shape
     if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
     if (payload.scope !== "write" && payload.scope !== "read" && payload.scope !== "manage") return null;
     if (typeof payload.exp !== "number") return null;
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(signingSecret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const ok = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      base64UrlDecode(signaturePart),
-      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
-    );
-    if (!ok) return null;
-
     return {
-      sub: payload.sub as string,
+      sub: payload.sub,
       scope: payload.scope as "write" | "read" | "manage",
-      exp: payload.exp as number,
+      exp: payload.exp,
       stream_id: typeof payload.stream_id === "string" ? payload.stream_id : undefined,
     };
   } catch {

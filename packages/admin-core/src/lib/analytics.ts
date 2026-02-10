@@ -183,21 +183,22 @@ export const getStreamMessages = createServerFn({ method: "GET" })
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
     const secret = data.signingSecret?.trim() || crypto.randomUUID() + crypto.randomUUID();
-    await kv.put(projectId, JSON.stringify({ signingSecrets: [secret] }));
+    
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.registerProject(projectId, secret);
     return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-  if (!kv) return [];
-  const list = await kv.list();
-  return list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+  const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+  if (!core) return [];
+  return core.listProjects();
 });
 
 export type ProjectListItem = {
@@ -207,15 +208,13 @@ export type ProjectListItem = {
 
 export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
   async (): Promise<ProjectListItem[]> => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) return [];
-    const list = await kv.list();
-    const projectIds = list.keys.map((k) => k.name).filter((name) => !name.includes("/")).sort();
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) return [];
+    const projectIds = await core.listProjects();
     const results: ProjectListItem[] = [];
     for (const projectId of projectIds) {
-      const raw = await kv.get(projectId);
-      const config = raw ? (JSON.parse(raw) as Partial<ProjectConfig>) : {};
-      results.push({ projectId, isPublic: config.isPublic ?? false });
+      const config = await core.getProjectConfig(projectId);
+      results.push({ projectId, isPublic: config?.isPublic ?? false });
     }
     return results;
   },
@@ -295,13 +294,14 @@ export interface ProjectConfig {
 export const getProjectConfig = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<ProjectConfig> => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw) as Partial<ProjectConfig>;
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    const config = await core.getProjectConfig(projectId);
+    if (!config) throw new Error("Project not found");
+    
     return {
-      signingSecrets: config.signingSecrets ?? [],
+      signingSecrets: config.signingSecrets,
       corsOrigins: config.corsOrigins ?? [],
       isPublic: config.isPublic ?? false,
     };
@@ -310,77 +310,52 @@ export const getProjectConfig = createServerFn({ method: "GET" })
 export const updateProjectPrivacy = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; isPublic: boolean }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(data.projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw);
-    config.isPublic = data.isPublic;
-    await kv.put(data.projectId, JSON.stringify(config));
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.updatePrivacy(data.projectId, data.isPublic);
     return { ok: true };
   });
 
 export const addCorsOrigin = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; origin: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(data.projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw);
-    const origins: string[] = config.corsOrigins ?? [];
-    if (!origins.includes(data.origin)) {
-      origins.push(data.origin);
-    }
-    config.corsOrigins = origins;
-    await kv.put(data.projectId, JSON.stringify(config));
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.addCorsOrigin(data.projectId, data.origin);
     return { ok: true };
   });
 
 export const removeCorsOrigin = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; origin: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(data.projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw);
-    const origins: string[] = config.corsOrigins ?? [];
-    config.corsOrigins = origins.filter((o: string) => o !== data.origin);
-    await kv.put(data.projectId, JSON.stringify(config));
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    await core.removeCorsOrigin(data.projectId, data.origin);
     return { ok: true };
   });
 
 export const generateSigningKey = createServerFn({ method: "POST" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw);
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
     const newSecret = crypto.randomUUID() + crypto.randomUUID();
-    const secrets: string[] = config.signingSecrets ?? [];
-    secrets.unshift(newSecret);
-    config.signingSecrets = secrets;
-    await kv.put(projectId, JSON.stringify(config));
-    return { keyCount: secrets.length, secret: newSecret };
+    const result = await core.addSigningKey(projectId, newSecret);
+    return { keyCount: result.keyCount, secret: newSecret };
   });
 
 export const revokeSigningKey = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; secret: string }) => data)
   .handler(async ({ data }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as KVNamespace | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
-    const raw = await kv.get(data.projectId);
-    if (!raw) throw new Error("Project not found");
-    const config = JSON.parse(raw);
-    const secrets: string[] = config.signingSecrets ?? [];
-    const filtered = secrets.filter((s: string) => s !== data.secret);
-    if (filtered.length === 0) throw new Error("Cannot remove the last signing key");
-    config.signingSecrets = filtered;
-    await kv.put(data.projectId, JSON.stringify(config));
-    return { keyCount: filtered.length };
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
+    
+    const result = await core.removeSigningKey(data.projectId, data.secret);
+    return { keyCount: result.keyCount };
   });
 
 // ---------------------------------------------------------------------------
@@ -446,15 +421,15 @@ export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
 export const mintStreamToken = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string }) => data)
   .handler(async ({ data: { projectId } }) => {
-    const kv = (env as Record<string, unknown>).REGISTRY as
-      | KVNamespace
-      | undefined;
-    if (!kv) throw new Error("REGISTRY KV namespace is not configured");
+    const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
+    if (!core) throw new Error("CORE service binding is not configured");
 
-    const config = (await kv.get(projectId, "json")) as {
-      signingSecrets?: string[];
-    } | null;
-    const primarySecret = config?.signingSecrets?.[0];
+    const config = await core.getProjectConfig(projectId);
+    if (!config) {
+      throw new Error(`Project "${projectId}" not found`);
+    }
+    
+    const primarySecret = config.signingSecrets[0];
     if (!primarySecret) {
       throw new Error(`No signing secret found for project "${projectId}"`);
     }
