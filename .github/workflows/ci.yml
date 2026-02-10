@@ -32,7 +32,31 @@ jobs:
       - run: pnpm -C packages/core run lint
       - run: pnpm -C packages/subscription run lint
 
-  test:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C packages/core run test
+
+  test-subscription:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C packages/subscription run test
+
+  test-admin-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +67,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -C packages/admin-core exec playwright install --with-deps chromium
-      - run: pnpm -r run test
+      - run: pnpm -C packages/admin-core run test
+
+  test-admin-subscription:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C packages/admin-subscription exec playwright install --with-deps chromium
+      - run: pnpm -C packages/admin-subscription run test
 
   test-unit:
     runs-on: ubuntu-latest
