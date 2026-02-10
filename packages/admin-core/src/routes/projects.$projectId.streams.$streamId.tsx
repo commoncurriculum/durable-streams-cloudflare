@@ -208,7 +208,7 @@ function StreamConsole({
 }) {
   const { meta: m, ops, segments, producers } = data;
 
-  const { data: coreUrl } = useCoreUrl();
+  const { data: coreUrl, error: coreUrlError } = useCoreUrl();
   const { data: tokenData } = useStreamToken(projectId);
   const { data: timeseriesData } = useStreamTimeseries(doKey);
 
@@ -275,8 +275,15 @@ function StreamConsole({
         <h2 className="font-mono text-lg font-semibold text-blue-400">{streamId}</h2>
         <RealtimeBadge label="SSE Clients" count={data.sseClientCount} color="cyan" />
         <RealtimeBadge label="Long-Poll Waiters" count={data.longPollWaiterCount} color="blue" />
-        <SseStatusBadge status={sseStatus} />
+        <SseStatusBadge status={coreUrlError ? "error" : sseStatus} />
       </div>
+
+      {coreUrlError && (
+        <div className="rounded-lg border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
+          <span className="font-semibold text-red-400">SSE unavailable: </span>
+          {coreUrlError instanceof Error ? coreUrlError.message : String(coreUrlError)}
+        </div>
+      )}
 
       {/* Message Volume chart */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -662,6 +669,7 @@ function SseStatusBadge({ status }: { status: string }) {
     connected: "text-emerald-400",
     connecting: "text-amber-400",
     disconnected: "text-zinc-500",
+    error: "text-red-400",
   };
   return (
     <span className={`font-mono text-xs ${colors[status] ?? "text-zinc-500"}`}>
