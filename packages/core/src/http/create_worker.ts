@@ -12,7 +12,7 @@ import type { StreamDO } from "./durable_object";
 import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
-import { putStreamMetadata, getStreamEntry } from "./project-registry";
+import { putStreamMetadata, getStreamEntry, type StreamEntry } from "./project-registry";
 
 
 // ============================================================================
@@ -102,11 +102,15 @@ function wrapAuthError(response: Response, origin: string | null): Response {
   });
 }
 
-type StreamMeta = { public: boolean; readerKey?: string };
+/**
+ * Simplified stream metadata for edge caching decisions.
+ * This is a subset of StreamEntry - just the fields needed for cache control.
+ */
+type StreamMeta = Pick<StreamEntry, "public" | "readerKey">;
 
 /**
  * Look up stream metadata from KV.
- * KV key: `projectId/streamId`, value: JSON with `{ public, content_type, created_at, readerKey? }`.
+ * Returns just the fields needed for edge caching (public, readerKey).
  * Returns null when the KV binding is missing or the key doesn't exist.
  */
 async function getStreamMeta(kv: KVNamespace | undefined, doKey: string): Promise<StreamMeta | null> {

@@ -1,4 +1,6 @@
 import type { Timing } from "../protocol/timing";
+import type { ProjectEntry } from "./project-registry";
+import { getProjectEntry } from "./project-registry";
 
 // ============================================================================
 // Types
@@ -8,7 +10,11 @@ export type AuthResult = { ok: true } | { ok: false; response: Response };
 
 export type ReadAuthResult = AuthResult;
 
-export type ProjectConfig = { signingSecrets: string[]; corsOrigins?: string[] };
+/**
+ * Project config shape used for authentication.
+ * This is a subset of ProjectEntry from REGISTRY - just the auth-relevant fields.
+ */
+export type ProjectConfig = Pick<ProjectEntry, "signingSecrets" | "corsOrigins">;
 
 export type AuthorizeMutation<E = unknown> = (
   request: Request,
@@ -60,32 +66,18 @@ function base64UrlDecode(input: string): Uint8Array {
 
 /**
  * Look up the project config from KV.
- * Normalizes both legacy `{ signingSecret: "..." }` and new `{ signingSecrets: [...] }` formats.
+ * Returns just the auth-relevant fields (signingSecrets and corsOrigins).
  */
 export async function lookupProjectConfig(
   kv: KVNamespace,
   projectId: string,
 ): Promise<ProjectConfig | null> {
-  const value = await kv.get(projectId, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  // New format: signingSecrets array
-  if (Array.isArray(record.signingSecrets)) {
-    const secrets = record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0);
-    if (secrets.length > 0) return { signingSecrets: secrets, ...extractCorsOrigins(record) };
-    return null;
-  }
-  // Legacy format: single signingSecret string
-  if (typeof record.signingSecret === "string" && record.signingSecret.length > 0) {
-    return { signingSecrets: [record.signingSecret], ...extractCorsOrigins(record) };
-  }
-  return null;
-}
-
-function extractCorsOrigins(record: Record<string, unknown>): { corsOrigins?: string[] } {
-  if (!Array.isArray(record.corsOrigins)) return {};
-  const origins = record.corsOrigins.filter((o): o is string => typeof o === "string" && o.length > 0);
-  return origins.length > 0 ? { corsOrigins: origins } : {};
+  const entry = await getProjectEntry(kv, projectId);
+  if (!entry) return null;
+  return {
+    signingSecrets: entry.signingSecrets,
+    corsOrigins: entry.corsOrigins,
+  };
 }
 
 /**

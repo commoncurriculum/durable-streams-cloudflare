@@ -8,6 +8,11 @@
  * KV Keys:
  * - `{projectId}` → ProjectEntry
  * - `{projectId}/{streamId}` → StreamEntry
+ *
+ * NOTE: This module defines types for data stored in REGISTRY KV only.
+ * Do NOT confuse with:
+ * - `StreamMeta` in storage/types.ts: Internal DurableObject SQLite state
+ *   (stream_id, tail_offset, segment info, etc.)
  */
 
 import { type } from "arktype";

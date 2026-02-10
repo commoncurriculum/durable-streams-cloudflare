@@ -204,3 +204,4 @@ export type {
   ProjectConfig,
 } from "./auth";
 export type { BaseEnv, StreamWorkerConfig } from "./create_worker";
+export type { ProjectEntry, StreamEntry } from "./project-registry";
