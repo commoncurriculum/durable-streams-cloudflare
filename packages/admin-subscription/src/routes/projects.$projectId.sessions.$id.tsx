@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
 import { sendSessionAction } from "../lib/analytics";
 import { stream as readStreamClient } from "@durable-streams/client";
+import { streamUrl } from "../lib/stream-url";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -107,7 +108,7 @@ function SessionDetailPage() {
     setFetching(true);
     try {
       const res = await readStreamClient({
-        url: `${coreUrl}/v1/stream/${encodeURIComponent(projectId)}/${encodeURIComponent(id)}`,
+        url: streamUrl(coreUrl, projectId, id),
         offset: "-1",
         live: false,
         headers: { Authorization: `Bearer ${tokenData.token}` },

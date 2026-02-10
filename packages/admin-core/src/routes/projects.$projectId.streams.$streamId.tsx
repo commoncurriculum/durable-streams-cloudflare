@@ -4,6 +4,7 @@ import { inspectStream, sendTestAction } from "../lib/analytics";
 import { formatBytes, relTime } from "../lib/formatters";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { stream as readStreamClient } from "@durable-streams/client";
+import { streamUrl } from "../lib/stream-url";
 import { useCoreUrl, useStreamToken, useStreamTimeseries } from "../lib/queries";
 import {
   AreaChart,
@@ -562,7 +563,7 @@ function EventLog({
     setFetching(true);
     try {
       const res = await readStreamClient({
-        url: `${coreUrl}/v1/stream/${projectId}/${streamId}`,
+        url: streamUrl(coreUrl, projectId, streamId),
         offset: "-1",
         live: false,
         headers: { Authorization: `Bearer ${token}` },

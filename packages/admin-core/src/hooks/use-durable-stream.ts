@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { stream } from "@durable-streams/client";
+import { streamUrl } from "../lib/stream-url";
 
 export type StreamEvent = {
   type: "data" | "control" | "error";
@@ -49,7 +50,7 @@ export function useDurableStream(options: {
     let cancelled = false;
     setStatus("connecting");
 
-    const url = `${coreUrl}/v1/stream/${encodeURIComponent(projectId)}/${encodeURIComponent(streamKey)}`;
+    const url = streamUrl(coreUrl, projectId, streamKey);
 
     stream({
       url,
