@@ -25,6 +25,9 @@ importers:
       '@durable-streams/client':
         specifier: ^0.2.1
         version: 0.2.1
+      '@heroicons/react':
+        specifier: ^2.2.0
+        version: 2.2.0(react@19.2.4)
       '@tanstack/react-query':
         specifier: ^5
         version: 5.90.20(react@19.2.4)
@@ -1289,6 +1292,11 @@ packages:
 
   '@formatjs/intl-localematcher@0.6.2':
     resolution: {integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==}
+
+  '@heroicons/react@2.2.0':
+    resolution: {integrity: sha512-LMcepvRaS9LYHJGsF0zzmgKCUim/X3N/DQKc4jepAXJ7l8QxJ1PmxJzqplF2Z3FE4PqBAIGyJAQ/w4B5dsqbtQ==}
+    peerDependencies:
+      react: '>= 16 || ^19.0.0-rc'
 
   '@hono/arktype-validator@2.0.1':
     resolution: {integrity: sha512-Z4PQFtzgbGneBap+TTViRIBAoUWbwEwg8PaKNqALAP6z9N2ksJI81PfcsSQNUzwtrn8LipkMvBb8/D9Pei2GJw==}
@@ -6830,6 +6838,10 @@ snapshots:
   '@formatjs/intl-localematcher@0.6.2':
     dependencies:
       tslib: 2.8.1
+
+  '@heroicons/react@2.2.0(react@19.2.4)':
+    dependencies:
+      react: 19.2.4
 
   '@hono/arktype-validator@2.0.1(arktype@2.1.29)(hono@4.11.7)':
     dependencies:

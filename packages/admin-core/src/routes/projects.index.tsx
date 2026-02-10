@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { useProjectsWithConfig } from "../lib/queries";
 import { createProject } from "../lib/analytics";
 import { useQueryClient } from "@tanstack/react-query";
+import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/projects/")({
   component: ProjectsIndexPage,
@@ -47,56 +48,43 @@ function ProjectsIndexPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-        <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
-          Projects
-        </h3>
-        {loading ? (
-          <div className="p-4 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-4 animate-pulse rounded bg-zinc-800" />
-            ))}
-          </div>
-        ) : (projects?.length ?? 0) === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-zinc-500">
-            No projects found. Enter a project ID above to navigate directly.
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Project ID
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Privacy
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects!.map((p) => (
-                <tr
-                  key={p.projectId}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
-                  <td className="px-4 py-2 font-mono text-sm">
-                    <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: p.projectId }}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {p.projectId}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-sm text-zinc-400">
-                    {p.isPublic ? "Public" : "Private"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {loading ? (
+        <div className="p-4 space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-4 animate-pulse rounded bg-zinc-800" />
+          ))}
+        </div>
+      ) : (
+        <Table aria-label="Projects">
+          <TableHeader>
+            <TableColumn isRowHeader>Project ID</TableColumn>
+            <TableColumn>Privacy</TableColumn>
+          </TableHeader>
+          <TableBody
+            items={projects ?? []}
+            renderEmptyState={() => (
+              <div className="py-6 text-center text-sm text-zinc-500">
+                No projects found. Enter a project ID above to navigate directly.
+              </div>
+            )}
+          >
+            {(p) => (
+              <TableRow id={p.projectId}>
+                <TableCell>
+                  <Link
+                    to="/projects/$projectId"
+                    params={{ projectId: p.projectId }}
+                    className="font-mono text-blue-400 hover:underline"
+                  >
+                    {p.projectId}
+                  </Link>
+                </TableCell>
+                <TableCell>{p.isPublic ? "Public" : "Private"}</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      )}
 
       {showModal && (
         <CreateProjectModal onClose={() => setShowModal(false)} />

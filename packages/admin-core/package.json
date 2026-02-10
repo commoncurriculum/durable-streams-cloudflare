@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@durable-streams/client": "^0.2.1",
+    "@heroicons/react": "^2.2.0",
     "@tanstack/react-query": "^5",
     "@tanstack/react-router": "^1",
     "@tanstack/react-start": "^1",

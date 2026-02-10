@@ -221,6 +221,40 @@ export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
   },
 );
 
+export type ProjectStreamRow = {
+  stream_id: string;
+  messages: number;
+  bytes: number;
+  last_seen: string;
+};
+
+export const getProjectStreams = createServerFn({ method: "GET" })
+  .inputValidator((data: string) => data)
+  .handler(async ({ data: projectId }): Promise<ProjectStreamRow[]> => {
+    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+    if (!accountId || !apiToken) return [];
+    try {
+      const rows = await queryAnalytics(`
+        SELECT blob1 as stream_id, count() as messages, sum(double2) as bytes, max(timestamp) as last_seen
+        FROM ${getDatasetName()}
+        WHERE blob1 LIKE '${projectId}/%' AND blob2 = 'append'
+          AND timestamp > NOW() - INTERVAL '24' HOUR
+        GROUP BY blob1
+        ORDER BY last_seen DESC
+        LIMIT 100
+      `);
+      return rows.map((r) => ({
+        stream_id: String(r.stream_id).replace(`${projectId}/`, ""),
+        messages: Number(r.messages),
+        bytes: Number(r.bytes),
+        last_seen: String(r.last_seen),
+      }));
+    } catch {
+      return [];
+    }
+  });
+
 export interface ProjectConfig {
   signingSecrets: string[];
   corsOrigins: string[];
