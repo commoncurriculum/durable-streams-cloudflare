@@ -13,6 +13,7 @@ import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
+import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects.$projectId.index'
 import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects.$projectId.sessions'
@@ -40,6 +41,11 @@ const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/$projectId',
   path: '/$projectId',
   getParentRoute: () => ProjectsRoute,
+} as any)
+const ApiSessionsRoute = ApiSessionsRouteImport.update({
+  id: '/api/sessions',
+  path: '/api/sessions',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProjectsRoute = ApiProjectsRouteImport.update({
   id: '/api/projects',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/api/projects': typeof ApiProjectsRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/projects': typeof ApiProjectsRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/api/projects': typeof ApiProjectsRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/'
     | '/projects'
     | '/api/projects'
+    | '/api/sessions'
     | '/projects/$projectId'
     | '/projects/'
     | '/projects/$projectId/publish'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/projects'
+    | '/api/sessions'
     | '/projects'
     | '/projects/$projectId/publish'
     | '/projects/$projectId'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/'
     | '/projects'
     | '/api/projects'
+    | '/api/sessions'
     | '/projects/$projectId'
     | '/projects/'
     | '/projects/$projectId/publish'
@@ -162,6 +174,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   ApiProjectsRoute: typeof ApiProjectsRoute
+  ApiSessionsRoute: typeof ApiSessionsRoute
   ApiSseProjectIdStreamKeyRoute: typeof ApiSseProjectIdStreamKeyRoute
 }
 
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
       parentRoute: typeof ProjectsRoute
+    }
+    '/api/sessions': {
+      id: '/api/sessions'
+      path: '/api/sessions'
+      fullPath: '/api/sessions'
+      preLoaderRoute: typeof ApiSessionsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/projects': {
       id: '/api/projects'
@@ -296,6 +316,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   ApiProjectsRoute: ApiProjectsRoute,
+  ApiSessionsRoute: ApiSessionsRoute,
   ApiSseProjectIdStreamKeyRoute: ApiSseProjectIdStreamKeyRoute,
 }
 export const routeTree = rootRouteImport

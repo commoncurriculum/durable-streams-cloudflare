@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createProject } from "./helpers";
+import { createProject, createSession } from "./helpers";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `sessdet-${Date.now()}`;
@@ -8,17 +8,7 @@ let sessionId: string;
 
 test.beforeAll(async ({ browser }) => {
   await createProject(browser, ADMIN_URL, PROJECT_ID);
-
-  // Create a session
-  const page = await browser.newPage();
-  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions`);
-  await page.waitForLoadState("networkidle");
-  await page.click('button:has-text("Create Session")');
-  await page.waitForURL(`**/projects/${PROJECT_ID}/sessions/*`, { timeout: 10_000 });
-  const url = new URL(page.url());
-  const parts = url.pathname.split("/");
-  sessionId = parts[parts.length - 1];
-  await page.close();
+  sessionId = await createSession(ADMIN_URL, PROJECT_ID);
 });
 
 // ── Stat cards row ──

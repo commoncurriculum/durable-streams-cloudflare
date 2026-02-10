@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createProject } from "./helpers";
+import { createProject, createSession } from "./helpers";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `browser-test-${Date.now()}`;
@@ -8,17 +8,7 @@ let sessionId: string;
 
 test.beforeAll(async ({ browser }) => {
   await createProject(browser, ADMIN_URL, PROJECT_ID);
-
-  // Create a session
-  const page = await browser.newPage();
-  await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions`);
-  await page.waitForLoadState("networkidle");
-  await page.click('button:has-text("Create Session")');
-  await page.waitForURL(`**/projects/${PROJECT_ID}/sessions/*`, { timeout: 10_000 });
-  const url = new URL(page.url());
-  const parts = url.pathname.split("/");
-  sessionId = parts[parts.length - 1];
-  await page.close();
+  sessionId = await createSession(ADMIN_URL, PROJECT_ID);
 });
 
 test("SSE badge shows connected after creating a project and session", async ({
@@ -65,14 +55,16 @@ test("subscribe action message does not misleadingly show 200 OK", async ({
 test("publishing to a subscribed stream shows events in the session log", async ({
   browser,
 }) => {
-  // Use a unique stream name to avoid interference from previous tests
+  // Use a completely fresh session to avoid state contamination from previous tests.
+  // The subscribe action can hang when a session already has prior subscriptions and
+  // SSE event history (replayed on connect) from earlier test runs.
+  const freshSessionId = await createSession(ADMIN_URL, PROJECT_ID);
   const STREAM = `publish-test-${Date.now()}`;
 
   // Keep session page open (Tab 1) with SSE running while publishing from Tab 2.
-  // This avoids the race condition of disconnecting/reconnecting SSE.
   const sessionPage = await browser.newPage();
   await sessionPage.goto(
-    `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
+    `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${freshSessionId}`,
   );
 
   // Wait for SSE to connect
@@ -86,13 +78,12 @@ test("publishing to a subscribed stream shows events in the session log", async 
   await streamInput.fill(STREAM);
   await sessionPage.click('button:has-text("Subscribe")');
 
-  // Wait for subscription to be confirmed server-side (polled via useSessionInspect).
-  // The client-side "Subscribed" control event fires immediately, but the subscription
-  // service may not have fully set up fan-out yet. Wait for the subscription to appear
-  // in the subscriptions table, which means the server has acknowledged it.
+  // Wait for the subscribe RPC to complete. The client-side "Subscribed to X" control
+  // event fires right after adminSubscribe returns, proving the subscription is stored
+  // in SubscriptionDO's SQLite and ready for fan-out.
   await expect(
-    sessionPage.locator('button:has-text("Unsubscribe")').first(),
-  ).toBeVisible({ timeout: 10_000 });
+    sessionPage.locator('[class*="bg-zinc-800"]').filter({ hasText: `Subscribed to ${STREAM}` }).first(),
+  ).toBeVisible({ timeout: 15_000 });
 
   // Publish from a second tab (keeps SSE alive on Tab 1)
   const publishPage = await browser.newPage();
