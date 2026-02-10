@@ -12,6 +12,7 @@ import {
   getStreamMeta,
   getCoreStreamUrl,
   mintStreamToken,
+  listProjectSessions,
 } from "./analytics";
 
 export function useStats() {
@@ -120,5 +121,14 @@ export function useStreamToken(projectId: string | undefined) {
     enabled: !!projectId,
     staleTime: FOUR_MINUTES,
     refetchInterval: FOUR_MINUTES,
+  });
+}
+
+export function useProjectSessions(projectId: string) {
+  return useQuery({
+    queryKey: ["projectSessions", projectId],
+    queryFn: () => listProjectSessions({ data: projectId }),
+    refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   });
 }
