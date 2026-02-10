@@ -12,6 +12,7 @@ import type { StreamDO } from "./durable_object";
 import { configRoutes } from "./config-routes";
 import { buildSseDataEvent } from "./handlers/realtime";
 import type { WsDataMessage, WsControlMessage } from "./handlers/realtime";
+import { putStreamMetadata, getStreamEntry } from "./project-registry";
 
 
 // ============================================================================
@@ -110,12 +111,11 @@ type StreamMeta = { public: boolean; readerKey?: string };
  */
 async function getStreamMeta(kv: KVNamespace | undefined, doKey: string): Promise<StreamMeta | null> {
   if (!kv) return null;
-  const value = await kv.get(doKey, "json");
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
+  const entry = await getStreamEntry(kv, doKey);
+  if (!entry) return null;
   return {
-    public: record.public === true,
-    readerKey: typeof record.readerKey === "string" ? record.readerKey : undefined,
+    public: entry.public,
+    readerKey: entry.readerKey,
   };
 }
 
@@ -559,16 +559,18 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(
         const readerKey = !isPublic && config?.authorizeRead
           ? `rk_${crypto.randomUUID().replace(/-/g, "")}`
           : undefined;
-        const kvMeta: Record<string, unknown> = {
-          public: isPublic,
-          content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
-          created_at: Date.now(),
-        };
+        
         if (readerKey) {
-          kvMeta.readerKey = readerKey;
           wrapped.headers.set(HEADER_STREAM_READER_KEY, readerKey);
         }
-        ctx.waitUntil(env.REGISTRY.put(doKey, JSON.stringify(kvMeta)));
+        
+        ctx.waitUntil(
+          putStreamMetadata(env.REGISTRY, doKey, {
+            public: isPublic,
+            content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
+            readerKey,
+          })
+        );
       }
 
       // ================================================================
