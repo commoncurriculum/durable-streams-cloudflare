@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useProjectSessions } from "../lib/queries";
+import { useSessions } from "../lib/queries";
 import { createSession } from "../lib/analytics";
 import {
   Table,
@@ -18,9 +17,8 @@ export const Route = createFileRoute("/projects/$projectId/sessions/")({
 
 function SessionsIndex() {
   const { projectId } = Route.useParams();
-  const { data: sessions } = useProjectSessions(projectId);
+  const { data: sessions } = useSessions();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
@@ -28,7 +26,6 @@ function SessionsIndex() {
     const sessionId = crypto.randomUUID();
     try {
       await createSession({ data: { projectId, sessionId } });
-      await queryClient.invalidateQueries({ queryKey: ["projectSessions", projectId] });
       navigate({
         to: "/projects/$projectId/sessions/$id",
         params: { projectId, id: sessionId },
@@ -38,7 +35,12 @@ function SessionsIndex() {
     }
   };
 
-  const items = (sessions ?? []).map((s) => ({ id: s.sessionId, ...s }));
+  const items = (sessions ?? []).map((row) => ({
+    id: String(row.session_id),
+    sessionId: String(row.session_id),
+    lastSeen: String(row.last_seen ?? ""),
+    events: Number(row.events ?? 0),
+  }));
 
   return (
     <div>
@@ -56,7 +58,8 @@ function SessionsIndex() {
         <Table aria-label="Sessions">
           <TableHeader>
             <TableColumn isRowHeader>Session ID</TableColumn>
-            <TableColumn>Created</TableColumn>
+            <TableColumn>Events</TableColumn>
+            <TableColumn>Last Seen</TableColumn>
           </TableHeader>
           <TableBody
             items={items}
@@ -77,11 +80,8 @@ function SessionsIndex() {
                     {item.sessionId}
                   </Link>
                 </TableCell>
-                <TableCell>
-                  {item.createdAt
-                    ? new Date(item.createdAt).toLocaleString()
-                    : "—"}
-                </TableCell>
+                <TableCell>{item.events}</TableCell>
+                <TableCell>{item.lastSeen || "—"}</TableCell>
               </TableRow>
             )}
           </TableBody>

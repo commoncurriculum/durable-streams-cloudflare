@@ -95,15 +95,6 @@ export function useProjects() {
   });
 }
 
-export function useProjectSessions(projectId: string) {
-  return useQuery({
-    queryKey: ["projectSessions", projectId],
-    queryFn: () => listProjectSessions({ data: projectId }),
-    refetchInterval: 5000,
-    placeholderData: keepPreviousData,
-  });
-}
-
 export function useStreamMeta(projectId: string | undefined, streamId: string | undefined) {
   return useQuery({
     queryKey: ["streamMeta", projectId, streamId],
