@@ -24,7 +24,7 @@ test("Sessions tab navigates to sessions page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}`);
   await page.waitForLoadState("networkidle");
 
-  await page.locator("main").click("text=Sessions");
+  await page.locator("main").getByRole("link", { name: "Sessions" }).click();
 
   await page.waitForURL(`**/projects/${PROJECT_ID}/sessions`);
 });
@@ -35,7 +35,7 @@ test("Publish tab navigates to publish page", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}`);
   await page.waitForLoadState("networkidle");
 
-  await page.locator("main").click("text=Publish");
+  await page.locator("main").getByRole("link", { name: "Publish" }).click();
 
   await page.waitForURL(`**/projects/${PROJECT_ID}/publish`);
 });
