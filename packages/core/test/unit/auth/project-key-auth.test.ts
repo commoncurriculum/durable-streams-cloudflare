@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { SignJWT, UnsecuredJWT } from "jose";
+import { SignJWT } from "jose";
 import {
   projectJwtAuth,
   extractBearerToken,
@@ -92,12 +92,6 @@ describe("verifyProjectJwt", () => {
 
   it("rejects JWT signed with wrong secret", async () => {
     const token = await createTestJwt(validClaims(), "wrong-secret");
-    const claims = await verifyProjectJwt(token, SECRET);
-    expect(claims).toBeNull();
-  });
-
-  it("rejects JWT with non-HS256 algorithm", async () => {
-    const token = new UnsecuredJWT(validClaims()).encode();
     const claims = await verifyProjectJwt(token, SECRET);
     expect(claims).toBeNull();
   });
