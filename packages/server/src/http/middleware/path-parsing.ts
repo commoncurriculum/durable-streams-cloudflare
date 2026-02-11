@@ -15,12 +15,29 @@ export async function pathParsingMiddleware(c: any, next: () => Promise<void>): 
     c.set("streamPath", streamPath.path);
   }
 
-  // Config routes: extract projectId from /v1/config/:projectId
+  // Parse route segments for config and estuary routes
   const segments = url.pathname.split("/").filter(Boolean);
+  
+  // Config routes: /v1/config/:projectId
   if (segments[0] === "v1" && segments[1] === "config" && segments.length === 3) {
     projectId = segments[2];
     if (!PROJECT_ID_PATTERN.test(projectId)) {
       projectId = null;
+    }
+  }
+
+  // Estuary routes: /v1/estuary/:projectId/:estuaryId or /v1/estuary/subscribe/:projectId/:streamId
+  if (segments[0] === "v1" && segments[1] === "estuary") {
+    if (segments[2] === "subscribe" && segments.length === 5) {
+      // /v1/estuary/subscribe/:projectId/:streamId
+      projectId = segments[3];
+      c.set("projectId", segments[3]);
+      c.set("streamId", segments[4]);
+    } else if (segments.length === 4) {
+      // /v1/estuary/:projectId/:estuaryId
+      projectId = segments[2];
+      c.set("projectId", segments[2]);
+      c.set("estuaryId", segments[3]);
     }
   }
 
