@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { arktypeValidator } from "@hono/arktype-validator";
 import { logger } from "hono/logger";
-import { type } from "arktype";
 import type { StreamDO } from "./durable-object";
 import type { InFlightResult } from "./middleware/coalesce";
 import type { StreamMeta } from "./middleware/cache";
@@ -30,16 +29,18 @@ import {
   putConfig,
 } from "./v1/config";
 
-// Domain logic for estuary operations
-import { subscribe } from "../subscriptions/subscribe";
-import { unsubscribe } from "../subscriptions/unsubscribe";
-import { getEstuary, touchEstuary, deleteEstuary } from "../estuary";
+import {
+  subscribe,
+  unsubscribe,
+  subscribeBodySchema,
+  unsubscribeBodySchema,
+  getEstuary,
+  touchEstuary,
+  deleteEstuary,
+} from "./v1/estuary";
 
 // Queue handler
 import { handleFanoutQueue } from "../queue/fanout-consumer";
-
-// Validation
-import { isValidEstuaryId } from "../constants";
 
 // Error handling
 import { errorResponse } from "./shared/errors";
@@ -74,25 +75,6 @@ export type BaseEnv = {
 };
 
 export { PROJECT_ID_PATTERN } from "./shared/stream-path";
-
-// ============================================================================
-// Validation Schemas
-// ============================================================================
-
-const subscribeBodySchema = type({
-  estuaryId: type("string > 0").pipe((s, ctx) => {
-    if (!isValidEstuaryId(s)) return ctx.error("Invalid estuaryId format");
-    return s;
-  }),
-  "contentType?": "string",
-});
-
-const unsubscribeBodySchema = type({
-  estuaryId: type("string > 0").pipe((s, ctx) => {
-    if (!isValidEstuaryId(s)) return ctx.error("Invalid estuaryId format");
-    return s;
-  }),
-});
 
 // ============================================================================
 // Factory
@@ -153,82 +135,22 @@ export function createStreamWorker<
   );
 
   // Estuary subscribe/unsubscribe routes
-  // biome-ignore lint: Hono context typing is complex
   app.post(
     "/v1/estuary/subscribe/:projectId/:streamId",
     arktypeValidator("json", subscribeBodySchema),
-    async (c: any) => {
-      const projectId = c.get("projectId");
-      const streamId = c.get("streamId");
-      const { estuaryId } = c.req.valid("json");
-      try {
-        return c.json(await subscribe(c.env, projectId, streamId, estuaryId));
-      } catch (err) {
-        logError({ projectId, streamId, estuaryId, component: "subscribe" }, "subscribe failed", err);
-        return c.json({ error: err instanceof Error ? err.message : "Failed to subscribe" }, 500);
-      }
-    }
+    subscribe
   );
 
-  // biome-ignore lint: Hono context typing is complex
   app.delete(
     "/v1/estuary/subscribe/:projectId/:streamId",
     arktypeValidator("json", unsubscribeBodySchema),
-    async (c: any) => {
-      const projectId = c.get("projectId");
-      const streamId = c.get("streamId");
-      const { estuaryId } = c.req.valid("json");
-      try {
-        return c.json(await unsubscribe(c.env, projectId, streamId, estuaryId));
-      } catch (err) {
-        logError({ projectId, streamId, estuaryId, component: "unsubscribe" }, "unsubscribe failed", err);
-        return c.json({ error: err instanceof Error ? err.message : "Failed to remove subscription" }, 500);
-      }
-    }
+    unsubscribe
   );
 
   // Estuary management routes
-  // biome-ignore lint: Hono context typing is complex
-  app.get("/v1/estuary/:projectId/:estuaryId", async (c: any) => {
-    const projectId = c.get("projectId");
-    const estuaryId = c.get("estuaryId");
-    if (!estuaryId || !isValidEstuaryId(estuaryId)) {
-      return c.json({ error: "Invalid estuaryId format" }, 400);
-    }
-    const estuary = await getEstuary(c.env, projectId, estuaryId);
-    if (!estuary) return c.json({ error: "Estuary not found" }, 404);
-    return c.json(estuary);
-  });
-
-  // biome-ignore lint: Hono context typing is complex
-  app.post("/v1/estuary/:projectId/:estuaryId", async (c: any) => {
-    const projectId = c.get("projectId");
-    const estuaryId = c.get("estuaryId");
-    if (!estuaryId || !isValidEstuaryId(estuaryId)) {
-      return c.json({ error: "Invalid estuaryId format" }, 400);
-    }
-    try {
-      return c.json(await touchEstuary(c.env, projectId, estuaryId));
-    } catch (err) {
-      logError({ projectId, estuaryId, component: "touch-estuary" }, "touch estuary failed", err);
-      return c.json({ error: err instanceof Error ? err.message : "Failed to touch estuary" }, 500);
-    }
-  });
-
-  // biome-ignore lint: Hono context typing is complex
-  app.delete("/v1/estuary/:projectId/:estuaryId", async (c: any) => {
-    const projectId = c.get("projectId");
-    const estuaryId = c.get("estuaryId");
-    if (!estuaryId || !isValidEstuaryId(estuaryId)) {
-      return c.json({ error: "Invalid estuaryId format" }, 400);
-    }
-    try {
-      return c.json(await deleteEstuary(c.env, projectId, estuaryId));
-    } catch (err) {
-      logError({ projectId, estuaryId, component: "delete-estuary" }, "delete estuary failed", err);
-      return c.json({ error: err instanceof Error ? err.message : "Failed to delete estuary stream" }, 500);
-    }
-  });
+  app.get("/v1/estuary/:projectId/:estuaryId", getEstuary);
+  app.post("/v1/estuary/:projectId/:estuaryId", touchEstuary);
+  app.delete("/v1/estuary/:projectId/:estuaryId", deleteEstuary);
 
   // #region docs-route-to-do
   // Stream route — all pre/post-processing handled by middleware

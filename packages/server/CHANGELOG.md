@@ -1,4 +1,4 @@
-# @durable-streams-cloudflare/core
+# @durable-streams-cloudflare/server
 
 ## 0.8.0
 

@@ -1,7 +1,6 @@
 /**
- * Internal API for stream operations.
- * These functions replace the old CORE service binding RPCs.
- * They call the StreamDO directly without going through HTTP.
+ * Internal helpers for stream operations.
+ * These functions call the StreamDO directly without going through HTTP.
  */
 
 import type { BaseEnv } from "./http";
@@ -32,7 +31,7 @@ export async function headStream(
   env: BaseEnv,
   doKey: string
 ): Promise<StreamRpcResult> {
-  const stub = env.STREAMS.getByName(doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
     doKey, 
     false,
@@ -63,7 +62,7 @@ export async function putStream(
   if (options.expiresAt) {
     headers["Stream-Expires-At"] = new Date(options.expiresAt).toISOString();
   }
-  const stub = env.STREAMS.getByName(doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
     doKey, 
     false,
@@ -74,14 +73,19 @@ export async function putStream(
     }),
   );
   
-  // Write stream metadata to REGISTRY on creation
-  if (response.status === 201 && env.REGISTRY && ctx) {
-    ctx.waitUntil(
-      putStreamMetadata(env.REGISTRY, doKey, {
-        public: false,
-        content_type: response.headers.get("Content-Type") || "application/octet-stream",
-      }),
-    );
+  // Write stream metadata to REGISTRY on creation. Use ctx.waitUntil when available,
+  // otherwise await the metadata write so callers without an ExecutionContext still
+  // get KV metadata.
+  if (response.status === 201 && env.REGISTRY) {
+    const metadataPromise = putStreamMetadata(env.REGISTRY, doKey, {
+      public: false,
+      content_type: response.headers.get("Content-Type") || "application/octet-stream",
+    });
+    if (ctx) {
+      ctx.waitUntil(metadataPromise);
+    } else {
+      await metadataPromise;
+    }
   }
   
   const body = response.ok ? null : await response.text();
@@ -95,7 +99,7 @@ export async function deleteStream(
   env: BaseEnv,
   doKey: string
 ): Promise<StreamRpcResult> {
-  const stub = env.STREAMS.getByName(doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
     doKey, 
     false,
@@ -121,7 +125,7 @@ export async function postStream(
     headers["Producer-Epoch"] = producerHeaders.producerEpoch;
     headers["Producer-Seq"] = producerHeaders.producerSeq;
   }
-  const stub = env.STREAMS.getByName(doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
     doKey, 
     false,

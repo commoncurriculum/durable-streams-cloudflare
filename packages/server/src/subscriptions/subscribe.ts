@@ -37,7 +37,7 @@ export async function subscribe(
   const estuaryDoKey = `${projectId}/${estuaryId}`;
   const coreResponse = await putStream(env, estuaryDoKey, { expiresAt, contentType });
 
-  const isNewEstuary = coreResponse.ok;
+  const isNewEstuary = coreResponse.status === 201;
   // #endregion synced-to-docs:create-estuary-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
@@ -50,7 +50,7 @@ export async function subscribe(
     if (estuaryHead.ok && estuaryHead.contentType && estuaryHead.contentType !== contentType) {
       throw new Error(
         `Content type mismatch: estuary stream is ${estuaryHead.contentType} but source stream ${streamId} is ${contentType}. ` +
-        `A estuary can only subscribe to streams of the same content type.`,
+        `An estuary can only subscribe to streams of the same content type.`,
       );
     }
   }
