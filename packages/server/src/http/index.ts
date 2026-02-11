@@ -136,21 +136,21 @@ export function createStreamWorker<
 
   // Estuary subscribe/unsubscribe routes
   app.post(
-    "/v1/estuary/subscribe/:projectId/:streamId",
+    "/v1/estuary/subscribe/*",
     arktypeValidator("json", subscribeBodySchema),
     subscribe
   );
 
   app.delete(
-    "/v1/estuary/subscribe/:projectId/:streamId",
+    "/v1/estuary/subscribe/*",
     arktypeValidator("json", unsubscribeBodySchema),
     unsubscribe
   );
 
   // Estuary management routes
-  app.get("/v1/estuary/:projectId/:estuaryId", getEstuary);
-  app.post("/v1/estuary/:projectId/:estuaryId", touchEstuary);
-  app.delete("/v1/estuary/:projectId/:estuaryId", deleteEstuary);
+  app.get("/v1/estuary/*", getEstuary);
+  app.post("/v1/estuary/*", touchEstuary);
+  app.delete("/v1/estuary/*", deleteEstuary);
 
   // #region docs-route-to-do
   // Stream route — all pre/post-processing handled by middleware

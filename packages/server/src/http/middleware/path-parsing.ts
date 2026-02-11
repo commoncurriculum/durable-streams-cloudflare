@@ -26,18 +26,40 @@ export async function pathParsingMiddleware(c: any, next: () => Promise<void>): 
     }
   }
 
-  // Estuary routes: /v1/estuary/:projectId/:estuaryId or /v1/estuary/subscribe/:projectId/:streamId
+  // Estuary routes: /v1/estuary/subscribe/* or /v1/estuary/*
   if (segments[0] === "v1" && segments[1] === "estuary") {
-    if (segments[2] === "subscribe" && segments.length === 5) {
-      // /v1/estuary/subscribe/:projectId/:streamId
-      projectId = segments[3];
-      c.set("projectId", segments[3]);
-      c.set("streamId", segments[4]);
-    } else if (segments.length === 4) {
-      // /v1/estuary/:projectId/:estuaryId
-      projectId = segments[2];
-      c.set("projectId", segments[2]);
-      c.set("estuaryId", segments[3]);
+    if (segments[2] === "subscribe" && segments.length >= 4) {
+      // /v1/estuary/subscribe/<projectId>/<streamId>
+      // Everything after "subscribe" is the projectId/streamId combined
+      const remainingPath = segments.slice(3).join("/");
+      const idx = remainingPath.indexOf("/");
+      if (idx === -1) {
+        // Only projectId provided
+        projectId = remainingPath;
+        c.set("projectId", remainingPath);
+      } else {
+        // projectId/streamId
+        projectId = remainingPath.slice(0, idx);
+        const streamId = remainingPath.slice(idx + 1);
+        c.set("projectId", projectId);
+        c.set("streamId", streamId);
+      }
+    } else if (segments.length >= 3) {
+      // /v1/estuary/<projectId>/<estuaryId>
+      // Everything after "estuary" is the projectId/estuaryId combined
+      const remainingPath = segments.slice(2).join("/");
+      const idx = remainingPath.indexOf("/");
+      if (idx === -1) {
+        // Only projectId provided
+        projectId = remainingPath;
+        c.set("projectId", remainingPath);
+      } else {
+        // projectId/estuaryId
+        projectId = remainingPath.slice(0, idx);
+        const estuaryId = remainingPath.slice(idx + 1);
+        c.set("projectId", projectId);
+        c.set("estuaryId", estuaryId);
+      }
     }
   }
 
