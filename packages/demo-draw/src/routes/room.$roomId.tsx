@@ -25,16 +25,11 @@ function DrawingRoom() {
   const writeStreamRef = useRef<DurableStream | null>(null);
   const renderRemoteRef = useRef<((msg: DrawMessage) => void) | null>(null);
 
+
   const handleStrokeEnd = useCallback(
-    (msg: StrokeMessage) => {
-      if (!writeStreamRef.current) {
-        // First stroke — create a handle and PUT the stream to core
+    async (msg: StrokeMessage) => {
         const ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
-        writeStreamRef.current = ds;
-        ds.create({ body: JSON.stringify(msg) });
-      } else {
-        writeStreamRef.current.append(JSON.stringify(msg));
-      }
+        ds.append(JSON.stringify(msg));
     },
     [coreUrl, projectId, roomId, writeToken],
   );
@@ -57,11 +52,12 @@ function DrawingRoom() {
     async function init() {
       // Subscribe to the stream directly from core (reads are public)
       const ds = subscribeToStream(coreUrl, projectId, roomId);
+      console.log('ds', ds)
 
       // Try to read — if the stream doesn't exist yet, retry after a delay
       let res;
       try {
-        res = await ds.stream({ offset: "-1", live: "sse" });
+        res = await ds.stream({ offset: "-1", live: "sse", json: true });
       } catch {
         // Stream doesn't exist yet — someone else might create it, or we will on first stroke
         // Retry in a bit

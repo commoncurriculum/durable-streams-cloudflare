@@ -4,7 +4,7 @@
  * Every log entry is a single JSON line with consistent fields:
  *   { level, msg, ts, ...context }
  *
- * Context fields (streamId, projectId, sessionId, etc.) are passed
+ * Context fields (streamId, projectId, estuaryId, etc.) are passed
  * per-call so each site includes only what's relevant.
  */
 

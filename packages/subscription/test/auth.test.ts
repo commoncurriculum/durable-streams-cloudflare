@@ -34,7 +34,7 @@ function validClaims(overrides?: Record<string, unknown>) {
 function makeRequest(token?: string): Request {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  return new Request("http://localhost/v1/myapp/publish/my-stream", { headers });
+  return new Request("http://localhost/v1/estuary/publish/myapp/my-stream", { headers });
 }
 
 // ============================================================================
@@ -51,62 +51,52 @@ describe("parseRoute", () => {
     return new Request(`http://localhost${url}`, init);
   }
 
-  it("parses POST /v1/:project/publish/:streamId", async () => {
-    const route = await parseRoute("POST", "/v1/myapp/publish/my-stream", req("POST", "/v1/myapp/publish/my-stream"));
+  it("parses POST /v1/estuary/publish/:projectId/:streamId", async () => {
+    const route = await parseRoute("POST", "/v1/estuary/publish/myapp/my-stream", req("POST", "/v1/estuary/publish/myapp/my-stream"));
     expect(route).toEqual({ action: "publish", project: "myapp", streamId: "my-stream" });
   });
 
   it("parses publish with complex streamId", async () => {
-    const route = await parseRoute("POST", "/v1/myapp/publish/org:doc-123", req("POST", "/v1/myapp/publish/org:doc-123"));
+    const route = await parseRoute("POST", "/v1/estuary/publish/myapp/org:doc-123", req("POST", "/v1/estuary/publish/myapp/org:doc-123"));
     expect(route).toEqual({ action: "publish", project: "myapp", streamId: "org:doc-123" });
   });
 
-  it("parses GET /v1/:project/session/:sessionId", async () => {
-    const route = await parseRoute("GET", "/v1/myapp/session/sess-1", req("GET", "/v1/myapp/session/sess-1"));
-    expect(route).toEqual({ action: "getSession", project: "myapp", sessionId: "sess-1" });
+  it("parses GET /v1/estuary/:projectId/:estuaryId", async () => {
+    const route = await parseRoute("GET", "/v1/estuary/myapp/est-1", req("GET", "/v1/estuary/myapp/est-1"));
+    expect(route).toEqual({ action: "getEstuary", project: "myapp", estuaryId: "est-1" });
   });
 
-  it("parses POST /v1/:project/session/:sessionId/touch", async () => {
-    const route = await parseRoute("POST", "/v1/myapp/session/sess-1/touch", req("POST", "/v1/myapp/session/sess-1/touch"));
-    expect(route).toEqual({ action: "touchSession", project: "myapp", sessionId: "sess-1" });
+  it("parses POST /v1/estuary/:projectId/:estuaryId (touch)", async () => {
+    const route = await parseRoute("POST", "/v1/estuary/myapp/est-1", req("POST", "/v1/estuary/myapp/est-1"));
+    expect(route).toEqual({ action: "touchEstuary", project: "myapp", estuaryId: "est-1" });
   });
 
-  it("parses DELETE /v1/:project/session/:sessionId", async () => {
-    const route = await parseRoute("DELETE", "/v1/myapp/session/sess-1", req("DELETE", "/v1/myapp/session/sess-1"));
-    expect(route).toEqual({ action: "deleteSession", project: "myapp", sessionId: "sess-1" });
+  it("parses DELETE /v1/estuary/:projectId/:estuaryId", async () => {
+    const route = await parseRoute("DELETE", "/v1/estuary/myapp/est-1", req("DELETE", "/v1/estuary/myapp/est-1"));
+    expect(route).toEqual({ action: "deleteEstuary", project: "myapp", estuaryId: "est-1" });
   });
 
-  it("parses POST /v1/:project/subscribe with body", async () => {
-    const body = { sessionId: "sess-1", streamId: "stream-a" };
-    const route = await parseRoute("POST", "/v1/myapp/subscribe", req("POST", "/v1/myapp/subscribe", body));
-    expect(route).toEqual({ action: "subscribe", project: "myapp", streamId: "stream-a", sessionId: "sess-1" });
+  it("parses POST /v1/estuary/subscribe/:projectId/:streamId with body", async () => {
+    const body = { estuaryId: "est-1" };
+    const route = await parseRoute("POST", "/v1/estuary/subscribe/myapp/stream-a", req("POST", "/v1/estuary/subscribe/myapp/stream-a", body));
+    expect(route).toEqual({ action: "subscribe", project: "myapp", streamId: "stream-a", estuaryId: "est-1" });
   });
 
-  it("parses DELETE /v1/:project/unsubscribe with body", async () => {
-    const body = { sessionId: "sess-1", streamId: "stream-a" };
-    const route = await parseRoute("DELETE", "/v1/myapp/unsubscribe", req("DELETE", "/v1/myapp/unsubscribe", body));
-    expect(route).toEqual({ action: "unsubscribe", project: "myapp", streamId: "stream-a", sessionId: "sess-1" });
+  it("parses DELETE /v1/estuary/subscribe/:projectId/:streamId with body", async () => {
+    const body = { estuaryId: "est-1" };
+    const route = await parseRoute("DELETE", "/v1/estuary/subscribe/myapp/stream-a", req("DELETE", "/v1/estuary/subscribe/myapp/stream-a", body));
+    expect(route).toEqual({ action: "unsubscribe", project: "myapp", streamId: "stream-a", estuaryId: "est-1" });
   });
 
   it("returns null for subscribe with malformed body", async () => {
-    const route = await parseRoute("POST", "/v1/myapp/subscribe", req("POST", "/v1/myapp/subscribe"));
+    const route = await parseRoute("POST", "/v1/estuary/subscribe/myapp/stream-a", req("POST", "/v1/estuary/subscribe/myapp/stream-a"));
     expect(route).toBeNull();
   });
 
-  it("returns null for subscribe with missing fields", async () => {
-    const body = { sessionId: "sess-1" }; // missing streamId
-    const route = await parseRoute("POST", "/v1/myapp/subscribe", req("POST", "/v1/myapp/subscribe", body));
+  it("returns null for subscribe with missing estuaryId", async () => {
+    const body = { streamId: "stream-a" }; // missing estuaryId
+    const route = await parseRoute("POST", "/v1/estuary/subscribe/myapp/stream-a", req("POST", "/v1/estuary/subscribe/myapp/stream-a", body));
     expect(route).toBeNull();
-  });
-
-  it("parses DELETE session even when sessionId contains 'subscribe'", async () => {
-    const route = await parseRoute("DELETE", "/v1/myapp/session/subscribe", req("DELETE", "/v1/myapp/session/subscribe"));
-    expect(route).toEqual({ action: "deleteSession", project: "myapp", sessionId: "subscribe" });
-  });
-
-  it("parses DELETE session even when sessionId contains 'unsubscribe'", async () => {
-    const route = await parseRoute("DELETE", "/v1/myapp/session/unsubscribe", req("DELETE", "/v1/myapp/session/unsubscribe"));
-    expect(route).toEqual({ action: "deleteSession", project: "myapp", sessionId: "unsubscribe" });
   });
 
   it("returns null for unknown paths", async () => {
@@ -115,11 +105,11 @@ describe("parseRoute", () => {
   });
 
   it("returns null for wrong method on known path", async () => {
-    const route = await parseRoute("GET", "/v1/myapp/publish/my-stream", req("GET", "/v1/myapp/publish/my-stream"));
+    const route = await parseRoute("GET", "/v1/estuary/publish/myapp/my-stream", req("GET", "/v1/estuary/publish/myapp/my-stream"));
     expect(route).toBeNull();
   });
 
-  it("returns null for old (non-project) paths", async () => {
+  it("returns null for old (non-estuary) paths", async () => {
     const route = await parseRoute("POST", "/v1/publish/my-stream", req("POST", "/v1/publish/my-stream"));
     expect(route).toBeNull();
   });
@@ -149,11 +139,11 @@ describe("extractBearerToken", () => {
 describe("projectJwtAuth", () => {
   const auth = projectJwtAuth();
   const publishRoute: SubscriptionRoute = { action: "publish", project: PROJECT, streamId: "s" };
-  const subscribeRoute: SubscriptionRoute = { action: "subscribe", project: PROJECT, streamId: "s", sessionId: "sess-1" };
-  const getSessionRoute: SubscriptionRoute = { action: "getSession", project: PROJECT, sessionId: "sess-1" };
-  const touchRoute: SubscriptionRoute = { action: "touchSession", project: PROJECT, sessionId: "sess-1" };
-  const unsubscribeRoute: SubscriptionRoute = { action: "unsubscribe", project: PROJECT, streamId: "s", sessionId: "sess-1" };
-  const deleteRoute: SubscriptionRoute = { action: "deleteSession", project: PROJECT, sessionId: "sess-1" };
+  const subscribeRoute: SubscriptionRoute = { action: "subscribe", project: PROJECT, streamId: "s", estuaryId: "est-1" };
+  const getEstuaryRoute: SubscriptionRoute = { action: "getEstuary", project: PROJECT, estuaryId: "est-1" };
+  const touchRoute: SubscriptionRoute = { action: "touchEstuary", project: PROJECT, estuaryId: "est-1" };
+  const unsubscribeRoute: SubscriptionRoute = { action: "unsubscribe", project: PROJECT, streamId: "s", estuaryId: "est-1" };
+  const deleteRoute: SubscriptionRoute = { action: "deleteEstuary", project: PROJECT, estuaryId: "est-1" };
 
   beforeEach(async () => {
     await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [SECRET] }));
@@ -221,7 +211,7 @@ describe("projectJwtAuth", () => {
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
-  it("rejects read JWT for deleteSession (requires write)", async () => {
+  it("rejects read JWT for deleteEstuary (requires write)", async () => {
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
     const result = await auth(makeRequest(token), deleteRoute, { REGISTRY: env.REGISTRY });
     expect(result).toHaveProperty("ok", false);
@@ -235,13 +225,13 @@ describe("projectJwtAuth", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it("allows read JWT for getSession", async () => {
+  it("allows read JWT for getEstuary", async () => {
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
-    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: env.REGISTRY });
+    const result = await auth(makeRequest(token), getEstuaryRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 
-  it("allows read JWT for touchSession", async () => {
+  it("allows read JWT for touchEstuary", async () => {
     const token = await createTestJwt(validClaims({ scope: "read" }), SECRET);
     const result = await auth(makeRequest(token), touchRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
@@ -280,9 +270,9 @@ describe("projectJwtAuth", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it("ignores stream_id on session routes (no streamId in route)", async () => {
+  it("ignores stream_id on estuary routes (no streamId in route)", async () => {
     const token = await createTestJwt(validClaims({ scope: "read", stream_id: "any-stream" }), SECRET);
-    const result = await auth(makeRequest(token), getSessionRoute, { REGISTRY: env.REGISTRY });
+    const result = await auth(makeRequest(token), getEstuaryRoute, { REGISTRY: env.REGISTRY });
     expect(result).toEqual({ ok: true });
   });
 });
@@ -297,7 +287,7 @@ const NEW_SECRET = "new-signing-secret-for-rotation";
 describe("projectJwtAuth - key rotation", () => {
   const auth = projectJwtAuth();
   const publishRoute: SubscriptionRoute = { action: "publish", project: PROJECT, streamId: "s" };
-  const subscribeRoute: SubscriptionRoute = { action: "subscribe", project: PROJECT, streamId: "s", sessionId: "sess-1" };
+  const subscribeRoute: SubscriptionRoute = { action: "subscribe", project: PROJECT, streamId: "s", estuaryId: "est-1" };
 
   it("allows old key during rotation", async () => {
     await env.REGISTRY.put(PROJECT, JSON.stringify({ signingSecrets: [NEW_SECRET, OLD_SECRET] }));

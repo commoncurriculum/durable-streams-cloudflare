@@ -7,19 +7,19 @@ export async function unsubscribe(
   env: AppEnv,
   projectId: string,
   streamId: string,
-  sessionId: string,
+  estuaryId: string,
 ): Promise<UnsubscribeResult> {
   const start = Date.now();
   const doKey = `${projectId}/${streamId}`;
   const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
-  await stub.removeSubscriber(sessionId);
+  await stub.removeSubscriber(estuaryId);
 
-  // Remove subscription from the session DO
-  const sessionDoKey = `${projectId}/${sessionId}`;
-  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoKey));
-  await sessionStub.removeSubscription(streamId);
+  // Remove subscription from the estuary DO
+  const estuaryDoKey = `${projectId}/${estuaryId}`;
+  const estuaryStub = env.ESTUARY_DO.get(env.ESTUARY_DO.idFromName(estuaryDoKey));
+  await estuaryStub.removeSubscription(streamId);
 
-  createMetrics(env.METRICS).unsubscribe(streamId, sessionId, Date.now() - start);
-  return { sessionId, streamId, unsubscribed: true };
+  createMetrics(env.METRICS).unsubscribe(streamId, estuaryId, Date.now() - start);
+  return { estuaryId, streamId, unsubscribed: true };
 }
 // #endregion synced-to-docs:unsubscribe

@@ -6,10 +6,10 @@ import { regex } from "arkregex";
 
 // #region synced-to-docs:id-patterns
 /**
- * Pattern for valid session IDs.
+ * Pattern for valid estuary IDs.
  * Must be a UUID (8-4-4-4-12 hex format).
  */
-export const SESSION_ID_PATTERN = regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "i");
+export const ESTUARY_ID_PATTERN = regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "i");
 
 /**
  * Pattern for valid stream IDs.
@@ -27,9 +27,9 @@ export const PROJECT_ID_PATTERN = regex("^[a-zA-Z0-9_-]+$");
 // #endregion synced-to-docs:id-patterns
 
 /**
- * Default session TTL in seconds (24 hours).
+ * Default estuary TTL in seconds (24 hours).
  */
-export const DEFAULT_SESSION_TTL_SECONDS = 86400;
+export const DEFAULT_ESTUARY_TTL_SECONDS = 86400;
 
 /**
  * Maximum number of concurrent fanout writes per batch.
@@ -43,7 +43,7 @@ export const FANOUT_BATCH_SIZE = 50;
 export const FANOUT_QUEUE_THRESHOLD = 200;
 
 /**
- * Number of session IDs per queue message when using queued fanout.
+ * Number of estuary IDs per queue message when using queued fanout.
  */
 export const FANOUT_QUEUE_BATCH_SIZE = 50;
 
@@ -75,12 +75,12 @@ export const CIRCUIT_BREAKER_RECOVERY_MS = 60_000;
 export const DEFAULT_ANALYTICS_DATASET = "subscriptions_metrics";
 
 /**
- * Validates a session ID against the allowed pattern.
- * @param sessionId - The session ID to validate
+ * Validates a estuary ID against the allowed pattern.
+ * @param estuaryId - The estuary ID to validate
  * @returns true if valid, false otherwise
  */
-export function isValidSessionId(sessionId: string): boolean {
-  return SESSION_ID_PATTERN.test(sessionId);
+export function isValidEstuaryId(estuaryId: string): boolean {
+  return ESTUARY_ID_PATTERN.test(estuaryId);
 }
 
 /**

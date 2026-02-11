@@ -7,8 +7,6 @@ import { logError } from "../../log";
 import { STREAM_ID_PATTERN } from "../../constants";
 import type { AppEnv } from "../../env";
 
-export const publishRoutes = new Hono<{ Bindings: AppEnv }>();
-
 const streamIdParamSchema = type({
   streamId: type("string > 0").pipe((s, ctx) => {
     if (!STREAM_ID_PATTERN.test(s)) return ctx.error("Invalid streamId format");
@@ -16,10 +14,12 @@ const streamIdParamSchema = type({
   }),
 });
 
+export const publishRoutes = new Hono<{ Bindings: AppEnv }>();
+
 // #region synced-to-docs:publish-route
-publishRoutes.post("/publish/:streamId", arktypeValidator("param", streamIdParamSchema), async (c) => {
+publishRoutes.post("/publish/:projectId/:streamId", arktypeValidator("param", streamIdParamSchema), async (c) => {
   const start = Date.now();
-  const projectId = c.req.param("project")!;
+  const projectId = c.req.param("projectId");
   const streamId = c.req.param("streamId");
   const metrics = createMetrics(c.env.METRICS);
 

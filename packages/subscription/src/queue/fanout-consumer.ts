@@ -8,7 +8,7 @@ import type { FanoutQueueMessage } from "../subscriptions/types";
 /**
  * Queue consumer for async fanout.
  *
- * Each message contains a batch of session IDs and a base64-encoded payload.
+ * Each message contains a batch of estuary IDs and a base64-encoded payload.
  * Calls the same shared fanoutToSubscribers() used by inline fanout.
  */
 export async function handleFanoutQueue(
@@ -18,24 +18,24 @@ export async function handleFanoutQueue(
   const metrics = createMetrics(env.METRICS);
 
   for (const message of batch.messages) {
-    const { projectId, streamId, sessionIds, payload: payloadBase64, contentType, producerHeaders } = message.body;
+    const { projectId, streamId, estuaryIds, payload: payloadBase64, contentType, producerHeaders } = message.body;
     const start = Date.now();
 
     try {
       const payload = base64ToBuffer(payloadBase64);
-      const result = await fanoutToSubscribers(env, projectId, sessionIds, payload, contentType, producerHeaders);
+      const result = await fanoutToSubscribers(env, projectId, estuaryIds, payload, contentType, producerHeaders);
 
       // Remove stale subscribers via DO RPC (project-scoped key)
-      if (result.staleSessionIds.length > 0) {
+      if (result.staleEstuaryIds.length > 0) {
         const doKey = `${projectId}/${streamId}`;
         const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
-        await stub.removeSubscribers(result.staleSessionIds);
+        await stub.removeSubscribers(result.staleEstuaryIds);
       }
 
       // Record metrics
       metrics.fanout({
         streamId,
-        subscribers: sessionIds.length,
+        subscribers: estuaryIds.length,
         success: result.successes,
         failures: result.failures,
         latencyMs: Date.now() - start,
@@ -43,14 +43,14 @@ export async function handleFanoutQueue(
 
       // If all writes succeeded or returned 404 (stale), ack
       // Only retry on actual server errors (5xx / network failures)
-      const serverErrors = result.failures - result.staleSessionIds.length;
+      const serverErrors = result.failures - result.staleEstuaryIds.length;
       if (serverErrors > 0) {
         message.retry();
       } else {
         message.ack();
       }
     } catch (err) {
-      logError({ projectId, streamId, sessionCount: sessionIds.length, component: "fanout-queue" }, "fanout queue message failed", err);
+      logError({ projectId, streamId, estuaryCount: estuaryIds.length, component: "fanout-queue" }, "fanout queue message failed", err);
       message.retry();
     }
   }
