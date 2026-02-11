@@ -45,6 +45,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 14. **[S2 Integration Options](14-s2-integration-options.md)** -- In-depth analysis of three approaches to integrating S2.dev: as a backing store replacement, via protocol adapter, or with a native S2 client library. Includes implementation details, cost comparisons, feature matrices, and migration roadmaps.
 
+15. **[S2 Native Client Deep Dive](15-s2-native-client-deep-dive.md)** -- Detailed analysis of S2's authentication model and building an auth proxy to preserve JWT-based UX. Includes S2 access token scoping, JWT-to-S2-token exchange implementation, complete code examples, and migration path. Compares S2's granular permission system with Durable Streams' JWT auth.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
