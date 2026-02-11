@@ -43,6 +43,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
+14. **[S2 Integration Options](14-s2-integration-options.md)** -- In-depth analysis of three approaches to integrating S2.dev: as a backing store replacement, via protocol adapter, or with a native S2 client library. Includes implementation details, cost comparisons, feature matrices, and migration roadmaps.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
