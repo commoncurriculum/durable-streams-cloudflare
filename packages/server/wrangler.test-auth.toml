@@ -1,0 +1,29 @@
+name = "durable-streams-auth"
+main = "test/implementation/test-worker-auth.ts"
+compatibility_date = "2026-02-02"
+compatibility_flags = []
+
+[durable_objects]
+bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
+# KV namespace for per-project signing secrets and stream metadata
+[[kv_namespaces]]
+binding = "REGISTRY"
+id = "registry-auth"
+
+[vars]
+
+[observability]
+enabled = true
