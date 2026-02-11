@@ -49,6 +49,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 16. **[Client API & CDN Comparison](16-client-api-cdn-comparison.md)** -- Side-by-side comparison of Durable Streams HTTP-first API vs S2 SDK-first API. Analyzes developer experience, type safety, and feature parity. Examines S2's CDN compatibility and explains Durable Streams' offset/cursor-based caching design that enables 99% HIT rate and 162x cost reduction. Includes recommendations by workload type.
 
+17. **[S2 HTTP API & CDN Strategies](17-s2-http-api-cdn-strategies.md)** -- Confirms S2 has full REST API (SDK optional). Explores three strategies for enabling CDN caching with S2: protocol adapter with transformation, caching proxy with headers, and hybrid approach. Includes complete implementation examples for Durable Streams → S2 protocol adapter with cursor rotation and at-tail detection. Cost analysis: $68-218/month (S2+CDN) vs $18/month (current DO+CDN).
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
