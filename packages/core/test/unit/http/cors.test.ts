@@ -1,9 +1,46 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { createStreamWorker } from "../../../src/http/create_worker";
-import type { BaseEnv } from "../../../src/http/create_worker";
+import { createStreamWorker } from "../../../src/http";
+import type { BaseEnv } from "../../../src/http";
 
 const PROJECT_ID = "_default";
+const SECRET = "test-secret";
+
+// ============================================================================
+// JWT Test Helpers
+// ============================================================================
+
+function base64UrlEncode(data: Uint8Array): string {
+  const binary = String.fromCharCode(...data);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function createTestJwt(
+  claims: Record<string, unknown>,
+  secret: string,
+): Promise<string> {
+  const header = { alg: "HS256", typ: "JWT" };
+  const headerB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
+  const payloadB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)));
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signingInput));
+  return `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
+}
+
+function readClaims(overrides?: Record<string, unknown>) {
+  return { sub: PROJECT_ID, scope: "read", exp: Math.floor(Date.now() / 1000) + 3600, ...overrides };
+}
+
+function writeClaims(overrides?: Record<string, unknown>) {
+  return { sub: PROJECT_ID, scope: "write", exp: Math.floor(Date.now() / 1000) + 3600, ...overrides };
+}
 
 function makeEnv(): BaseEnv {
   return { ...env } as unknown as BaseEnv;
@@ -150,12 +187,15 @@ describe("Per-project CORS from KV", () => {
 
   it("CORS headers on error responses (404)", async () => {
     await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
-      signingSecrets: ["test-secret"],
+      signingSecrets: [SECRET],
       corsOrigins: ["*"],
     }));
 
+    const token = await createTestJwt(readClaims(), SECRET);
     const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/nonexistent?offset=-1") as unknown as Request<unknown, IncomingRequestCfProperties>,
+      new Request("http://localhost/v1/stream/nonexistent?offset=-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
       makeEnv(),
       makeCtx(),
     );
@@ -167,15 +207,17 @@ describe("Per-project CORS from KV", () => {
 
   it("CORS headers on error responses (409 conflict)", async () => {
     await env.REGISTRY.put(PROJECT_ID, JSON.stringify({
-      signingSecrets: ["test-secret"],
+      signingSecrets: [SECRET],
       corsOrigins: ["*"],
     }));
+
+    const token = await createTestJwt(writeClaims(), SECRET);
 
     // Create a stream with text/plain
     await worker.fetch!(
       new Request("http://localhost/v1/stream/conflict-test", {
         method: "PUT",
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "text/plain", Authorization: `Bearer ${token}` },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,
       makeEnv(),
       makeCtx(),
@@ -185,7 +227,7 @@ describe("Per-project CORS from KV", () => {
     const response = await worker.fetch!(
       new Request("http://localhost/v1/stream/conflict-test", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,
       makeEnv(),
       makeCtx(),
@@ -361,12 +403,9 @@ describe("CORS with ?public=true query param", () => {
   });
 
   it("GET with ?public=true returns CORS headers even without KV corsOrigins", async () => {
-    const workerWithAuth = createStreamWorker({
-      authorizeRead: async () => ({ ok: false, status: 401, error: "unauthorized" }),
-      authorizeMutation: async () => ({ ok: true }),
-    });
+    const w = createStreamWorker();
 
-    const response = await workerWithAuth.fetch!(
+    const response = await w.fetch!(
       new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true&offset=-1`, {
         headers: { Origin: "https://any-origin.com" },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,
@@ -374,16 +413,14 @@ describe("CORS with ?public=true query param", () => {
       makeCtx(),
     );
 
+    // Auth may block (401) but CORS headers should still be present
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 
   it("OPTIONS preflight with ?public=true returns CORS headers even without KV corsOrigins", async () => {
-    const workerWithAuth = createStreamWorker({
-      authorizeRead: async () => ({ ok: false, status: 401, error: "unauthorized" }),
-      authorizeMutation: async () => ({ ok: true }),
-    });
+    const w = createStreamWorker();
 
-    const response = await workerWithAuth.fetch!(
+    const response = await w.fetch!(
       new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true`, {
         method: "OPTIONS",
         headers: {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validatePutInput } from "../../../src/stream/create/validate";
-import type { ParsedPutInput } from "../../../src/stream/types";
+import { validatePutInput } from "../../../src/http/v1/streams/create/validate";
+import type { ParsedPutInput } from "../../../src/http/v1/streams/types";
 import type { StreamMeta } from "../../../src/storage/types";
 
 // Helper to create a base ParsedPutInput

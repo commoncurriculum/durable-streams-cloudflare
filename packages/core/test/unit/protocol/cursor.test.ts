@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { generateCursor, generateResponseCursor } from "../../../src/protocol/cursor";
+import { generateCursor, generateResponseCursor } from "../../../src/http/v1/streams/realtime/cursor";
 
 // Known constants from the source (used to compute expected values)
 const CURSOR_EPOCH_MS = Date.UTC(2024, 9, 9, 0, 0, 0, 0); // Oct 9, 2024 UTC

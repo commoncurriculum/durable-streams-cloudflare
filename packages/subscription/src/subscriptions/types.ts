@@ -1,19 +1,19 @@
 export interface SubscribeResult {
-  sessionId: string;
+  estuaryId: string;
   streamId: string;
-  sessionStreamPath: string;
+  estuaryStreamPath: string;
   expiresAt: number;
-  isNewSession: boolean;
+  isNewEstuary: boolean;
 }
 
 export interface UnsubscribeResult {
-  sessionId: string;
+  estuaryId: string;
   streamId: string;
   unsubscribed: true;
 }
 
-export interface DeleteSessionResult {
-  sessionId: string;
+export interface DeleteEstuaryResult {
+  estuaryId: string;
   deleted: true;
 }
 
@@ -40,7 +40,7 @@ export interface PublishResult {
 export interface FanoutQueueMessage {
   projectId: string;
   streamId: string;
-  sessionIds: string[];
+  estuaryIds: string[];
   payload: string; // base64-encoded
   contentType: string;
   producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string };
@@ -49,23 +49,23 @@ export interface FanoutQueueMessage {
 export interface FanoutResult {
   successes: number;
   failures: number;
-  staleSessionIds: string[];
+  staleEstuaryIds: string[];
 }
 
-export interface SessionInfo {
-  sessionId: string;
-  sessionStreamPath: string;
+export interface EstuaryInfo {
+  estuaryId: string;
+  estuaryStreamPath: string;
   subscriptions: Array<{ streamId: string }>;
   contentType?: string | null;
 }
 
-export interface TouchSessionResult {
-  sessionId: string;
+export interface TouchEstuaryResult {
+  estuaryId: string;
   expiresAt: number;
 }
 
 export interface SubscriberInfo {
-  sessionId: string;
+  estuaryId: string;
   subscribedAt: number;
 }
 

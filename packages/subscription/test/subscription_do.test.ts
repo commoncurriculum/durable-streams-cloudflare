@@ -20,16 +20,16 @@ describe("SubscriptionDO", () => {
 
   describe("addSubscriber", () => {
     it("should add a subscriber", async () => {
-      await stub.addSubscriber("session-123");
+      await stub.addSubscriber("estuary-123");
 
       const result = await stub.getSubscribers(streamId);
       expect(result.count).toBe(1);
-      expect(result.subscribers[0].sessionId).toBe("session-123");
+      expect(result.subscribers[0].estuaryId).toBe("estuary-123");
     });
 
     it("should not duplicate on re-add", async () => {
-      await stub.addSubscriber("session-123");
-      await stub.addSubscriber("session-123");
+      await stub.addSubscriber("estuary-123");
+      await stub.addSubscriber("estuary-123");
 
       const result = await stub.getSubscribers(streamId);
       expect(result.count).toBe(1);
@@ -38,8 +38,8 @@ describe("SubscriptionDO", () => {
 
   describe("removeSubscriber", () => {
     it("should remove a subscriber", async () => {
-      await stub.addSubscriber("session-123");
-      await stub.removeSubscriber("session-123");
+      await stub.addSubscriber("estuary-123");
+      await stub.removeSubscriber("estuary-123");
 
       const result = await stub.getSubscribers(streamId);
       expect(result.count).toBe(0);
@@ -55,7 +55,7 @@ describe("SubscriptionDO", () => {
 
       const result = await stub.getSubscribers(streamId);
       expect(result.count).toBe(1);
-      expect(result.subscribers[0].sessionId).toBe("s2");
+      expect(result.subscribers[0].estuaryId).toBe("s2");
     });
   });
 
@@ -190,7 +190,7 @@ describe("SubscriptionDO", () => {
       // Verify stale subscriber was removed
       const after = await stub.getSubscribers(streamId);
       expect(after.count).toBe(1);
-      expect(after.subscribers[0].sessionId).toBe(activeSession);
+      expect(after.subscribers[0].estuaryId).toBe(activeSession);
     });
 
     it("should set nextOffset from core write", async () => {

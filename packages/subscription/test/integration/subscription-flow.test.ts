@@ -2,14 +2,14 @@ import { describe, it, expect, beforeAll } from "vitest";
 import {
   createSubscriptionsClient,
   createCoreClient,
-  uniqueSessionId,
+  uniqueEstuaryId,
   uniqueStreamId,
   waitFor,
   PROJECT_ID,
   type SubscriptionsClient,
   type CoreClient,
   type SubscribeResponse,
-  type SessionResponse,
+  type EstuaryResponse,
   type TouchResponse,
 } from "./helpers";
 
@@ -25,51 +25,51 @@ beforeAll(() => {
 });
 
 describe("subscription flow", () => {
-  it("creates session stream in core when subscribing", async () => {
-    const sessionId = uniqueSessionId();
+  it("creates estuary stream in core when subscribing", async () => {
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     // Create source stream first (subscribe looks up its content type)
     await core.createStream(streamId);
 
-    // Subscribe creates session stream
-    const res = await subs.subscribe(sessionId, streamId);
+    // Subscribe creates estuary stream
+    const res = await subs.subscribe(estuaryId, streamId);
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as SubscribeResponse;
-    expect(body.isNewSession).toBe(true);
-    expect(body.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
+    expect(body.isNewEstuary).toBe(true);
+    expect(body.estuaryStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${estuaryId}`);
 
-    // Verify session stream exists in core
-    const coreRes = await core.getStreamHead(sessionId);
+    // Verify estuary stream exists in core
+    const coreRes = await core.getStreamHead(estuaryId);
     expect(coreRes.ok).toBe(true);
   });
 
-  it("get session returns session info", async () => {
-    const sessionId = uniqueSessionId();
+  it("get estuary returns estuary info", async () => {
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
-    // Get session info
-    const sessionRes = await subs.getSession(sessionId);
-    expect(sessionRes.status).toBe(200);
+    // Get estuary info
+    const estuaryRes = await subs.getEstuary(estuaryId);
+    expect(estuaryRes.status).toBe(200);
 
-    const session = (await sessionRes.json()) as SessionResponse;
-    expect(session.sessionId).toBe(sessionId);
-    expect(session.sessionStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${sessionId}`);
+    const estuary = (await estuaryRes.json()) as EstuaryResponse;
+    expect(estuary.estuaryId).toBe(estuaryId);
+    expect(estuary.estuaryStreamPath).toBe(`/v1/stream/${PROJECT_ID}/${estuaryId}`);
   });
 
-  it("session stream receives fanout messages", async () => {
-    const sessionId = uniqueSessionId();
+  it("estuary stream receives fanout messages", async () => {
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     // Create source stream first
     await core.createStream(streamId);
 
-    // Subscribe session to stream
-    await subs.subscribe(sessionId, streamId);
+    // Subscribe estuary to stream
+    await subs.subscribe(estuaryId, streamId);
 
     // Publish to stream
     const payload = JSON.stringify({ message: "hello world" });
@@ -78,35 +78,35 @@ describe("subscription flow", () => {
 
     // Wait for fanout
     await waitFor(async () => {
-      const content = await core.readStreamText(sessionId);
+      const content = await core.readStreamText(estuaryId);
       expect(content).toContain("hello world");
     });
   });
 
-  it("multiple sessions receive same fanout message", async () => {
-    const session1 = uniqueSessionId();
-    const session2 = uniqueSessionId();
-    const session3 = uniqueSessionId();
+  it("multiple estuaries receive same fanout message", async () => {
+    const estuary1 = uniqueEstuaryId();
+    const estuary2 = uniqueEstuaryId();
+    const estuary3 = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     // Create source stream
     await core.createStream(streamId);
 
-    // Subscribe all sessions
-    await subs.subscribe(session1, streamId);
-    await subs.subscribe(session2, streamId);
-    await subs.subscribe(session3, streamId);
+    // Subscribe all estuaries
+    await subs.subscribe(estuary1, streamId);
+    await subs.subscribe(estuary2, streamId);
+    await subs.subscribe(estuary3, streamId);
 
     // Publish message
     const payload = JSON.stringify({ event: "broadcast" });
     const pubRes = await subs.publish(streamId, payload);
     expect(pubRes.status).toBe(204);
 
-    // Wait for fanout to all sessions
+    // Wait for fanout to all estuaries
     await waitFor(async () => {
-      const content1 = await core.readStreamText(session1);
-      const content2 = await core.readStreamText(session2);
-      const content3 = await core.readStreamText(session3);
+      const content1 = await core.readStreamText(estuary1);
+      const content2 = await core.readStreamText(estuary2);
+      const content3 = await core.readStreamText(estuary3);
 
       expect(content1).toContain("broadcast");
       expect(content2).toContain("broadcast");
@@ -115,12 +115,12 @@ describe("subscription flow", () => {
   });
 
   it("unsubscribe stops receiving fanout messages", async () => {
-    const sessionId = uniqueSessionId();
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     // Create stream and subscribe
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
     // Publish first message
     const pub1Res = await subs.publish(streamId, JSON.stringify({ msg: 1 }));
@@ -128,12 +128,12 @@ describe("subscription flow", () => {
 
     // Wait for first message to arrive
     await waitFor(async () => {
-      const content = await core.readStreamText(sessionId);
+      const content = await core.readStreamText(estuaryId);
       expect(content).toContain('"msg":1');
     });
 
     // Unsubscribe
-    const unsubRes = await subs.unsubscribe(sessionId, streamId);
+    const unsubRes = await subs.unsubscribe(estuaryId, streamId);
     expect(unsubRes.status).toBe(200);
 
     // Publish second message
@@ -142,7 +142,7 @@ describe("subscription flow", () => {
 
     // Wait a short time, then verify second message NOT received
     await waitFor(async () => {
-      const content = await core.readStreamText(sessionId);
+      const content = await core.readStreamText(estuaryId);
       expect(content).toContain('"msg":1');
       expect(content).not.toContain('"msg":2');
     }, { timeout: 500 });
@@ -166,15 +166,15 @@ describe("publish flow", () => {
     expect(content).toContain("test");
   });
 
-  it("fans out to all subscribed sessions", async () => {
-    const sessions = Array.from({ length: 5 }, () => uniqueSessionId());
+  it("fans out to all subscribed estuaries", async () => {
+    const estuaries = Array.from({ length: 5 }, () => uniqueEstuaryId());
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
 
-    // Subscribe all sessions
-    for (const session of sessions) {
-      await subs.subscribe(session, streamId);
+    // Subscribe all estuaries
+    for (const estuary of estuaries) {
+      await subs.subscribe(estuary, streamId);
     }
 
     // Publish
@@ -184,19 +184,19 @@ describe("publish flow", () => {
 
     // Wait for fanout
     await waitFor(async () => {
-      for (const session of sessions) {
-        const content = await core.readStreamText(session);
+      for (const estuary of estuaries) {
+        const content = await core.readStreamText(estuary);
         expect(content).toContain("fanout");
       }
     });
   });
 
-  it("session streams contain correct message content", async () => {
-    const sessionId = uniqueSessionId();
+  it("estuary streams contain correct message content", async () => {
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
     // Send multiple messages
     await subs.publish(streamId, JSON.stringify({ seq: 1, data: "first" }));
@@ -205,7 +205,7 @@ describe("publish flow", () => {
 
     // Wait for all messages
     await waitFor(async () => {
-      const content = await core.readStreamText(sessionId);
+      const content = await core.readStreamText(estuaryId);
       expect(content).toContain('"seq":1');
       expect(content).toContain('"seq":2');
       expect(content).toContain('"seq":3');
@@ -216,11 +216,11 @@ describe("publish flow", () => {
   });
 
   it("producer headers provide idempotency", async () => {
-    const sessionId = uniqueSessionId();
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
     // Publish with producer headers
     // Note: Producer-Seq must start at 0 for a new producer
@@ -235,7 +235,7 @@ describe("publish flow", () => {
     const subsUrl = process.env.INTEGRATION_TEST_SUBSCRIPTIONS_URL ?? "http://localhost:8788";
 
     // First publish
-    const res1 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
+    const res1 = await fetch(`${subsUrl}/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
@@ -244,7 +244,7 @@ describe("publish flow", () => {
 
     // Wait for fanout
     await waitFor(async () => {
-      const content = await core.readStreamText(sessionId);
+      const content = await core.readStreamText(estuaryId);
       expect(content).toContain("unique");
     });
   });
@@ -265,13 +265,13 @@ describe("publish flow", () => {
     };
 
     // Publish twice with same producer headers
-    const res1 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
+    const res1 = await fetch(`${subsUrl}/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
     });
 
-    const res2 = await fetch(`${subsUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
+    const res2 = await fetch(`${subsUrl}/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
       method: "POST",
       headers,
       body: payload,
@@ -287,52 +287,52 @@ describe("publish flow", () => {
   });
 });
 
-describe("session lifecycle", () => {
+describe("estuary lifecycle", () => {
   it("touch returns new expiry time", async () => {
-    const sessionId = uniqueSessionId();
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
-    // Touch session
-    const touchRes = await subs.touchSession(sessionId);
+    // Touch estuary
+    const touchRes = await subs.touchEstuary(estuaryId);
     expect(touchRes.status).toBe(200);
 
     const touch = (await touchRes.json()) as TouchResponse;
-    expect(touch.sessionId).toBe(sessionId);
+    expect(touch.estuaryId).toBe(estuaryId);
     expect(touch.expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it("delete session removes from core", async () => {
-    const sessionId = uniqueSessionId();
+  it("delete estuary removes from core", async () => {
+    const estuaryId = uniqueEstuaryId();
     const streamId = uniqueStreamId();
 
     await core.createStream(streamId);
-    await subs.subscribe(sessionId, streamId);
+    await subs.subscribe(estuaryId, streamId);
 
     // Verify exists
-    const beforeCore = await core.getStreamHead(sessionId);
+    const beforeCore = await core.getStreamHead(estuaryId);
     expect(beforeCore.ok).toBe(true);
 
-    const beforeSession = await subs.getSession(sessionId);
-    expect(beforeSession.status).toBe(200);
+    const beforeEstuary = await subs.getEstuary(estuaryId);
+    expect(beforeEstuary.status).toBe(200);
 
     // Delete
-    const delRes = await subs.deleteSession(sessionId);
+    const delRes = await subs.deleteEstuary(estuaryId);
     expect(delRes.status).toBe(200);
 
     // Verify gone from core
-    const afterCore = await core.getStreamHead(sessionId);
+    const afterCore = await core.getStreamHead(estuaryId);
     expect(afterCore.status).toBe(404);
 
-    // Session endpoint should return 404
-    const afterSession = await subs.getSession(sessionId);
-    expect(afterSession.status).toBe(404);
+    // Estuary endpoint should return 404
+    const afterEstuary = await subs.getEstuary(estuaryId);
+    expect(afterEstuary.status).toBe(404);
   });
 
-  it("subscriptions work after session delete and recreate", async () => {
-    const sessionId = uniqueSessionId();
+  it("subscriptions work after estuary delete and recreate", async () => {
+    const estuaryId = uniqueEstuaryId();
     const stream1 = uniqueStreamId("sub1");
     const stream2 = uniqueStreamId("sub2");
 
@@ -340,25 +340,25 @@ describe("session lifecycle", () => {
     await core.createStream(stream2);
 
     // Subscribe
-    await subs.subscribe(sessionId, stream1);
-    await subs.subscribe(sessionId, stream2);
+    await subs.subscribe(estuaryId, stream1);
+    await subs.subscribe(estuaryId, stream2);
 
-    // Delete session
-    await subs.deleteSession(sessionId);
+    // Delete estuary
+    await subs.deleteEstuary(estuaryId);
 
-    // Session should be gone
-    const afterDelete = await subs.getSession(sessionId);
+    // Estuary should be gone
+    const afterDelete = await subs.getEstuary(estuaryId);
     expect(afterDelete.status).toBe(404);
 
-    // Re-subscribe creates new session
-    const resubRes = await subs.subscribe(sessionId, stream1);
+    // Re-subscribe creates new estuary
+    const resubRes = await subs.subscribe(estuaryId, stream1);
     expect(resubRes.status).toBe(200);
 
     const resub = (await resubRes.json()) as SubscribeResponse;
-    expect(resub.isNewSession).toBe(true);
+    expect(resub.isNewEstuary).toBe(true);
 
-    // Session should exist again
-    const afterResub = await subs.getSession(sessionId);
+    // Estuary should exist again
+    const afterResub = await subs.getEstuary(estuaryId);
     expect(afterResub.status).toBe(200);
   });
 });

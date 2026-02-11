@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeOffset } from "../../src/protocol/offsets";
+import { encodeOffset } from "../../src/http/v1/streams/shared/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("segment boundary alignment", () => {

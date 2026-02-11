@@ -2,17 +2,17 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { createSubscriptionWorker } from "./create_worker";
 import { projectJwtAuth } from "./auth";
 import { SubscriptionDO } from "../subscriptions/do";
-import { SessionDO } from "../session/do";
-import { getSession, touchSession, deleteSession } from "../session";
+import { EstuaryDO } from "../estuary/do";
+import { getEstuary, touchEstuary, deleteEstuary } from "../estuary";
 import { subscribe } from "../subscriptions/subscribe";
 import { unsubscribe } from "../subscriptions/unsubscribe";
 import { publish } from "../subscriptions/publish";
 import type { AppEnv } from "../env";
 import type { FanoutQueueMessage } from "../subscriptions/types";
 import type {
-  SessionInfo,
-  TouchSessionResult,
-  DeleteSessionResult,
+  EstuaryInfo,
+  TouchEstuaryResult,
+  DeleteEstuaryResult,
   SubscribeResult,
   UnsubscribeResult,
   PublishResult,
@@ -29,26 +29,26 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
     return this.#worker.queue!(batch, this.env, this.ctx);
   }
 
-  // RPC methods for admin dashboard
-  async adminGetSession(projectId: string, sessionId: string): Promise<SessionInfo | null> {
-    return getSession(this.env, projectId, sessionId);
+  // RPC methods for admin dashboard (names unchanged for now)
+  async adminGetSession(projectId: string, estuaryId: string): Promise<EstuaryInfo | null> {
+    return getEstuary(this.env, projectId, estuaryId);
   }
 
   async adminSubscribe(
     projectId: string,
     streamId: string,
-    sessionId: string,
+    estuaryId: string,
     _contentType?: string,
   ): Promise<SubscribeResult> {
-    return subscribe(this.env, projectId, streamId, sessionId);
+    return subscribe(this.env, projectId, streamId, estuaryId);
   }
 
   async adminUnsubscribe(
     projectId: string,
     streamId: string,
-    sessionId: string,
+    estuaryId: string,
   ): Promise<UnsubscribeResult> {
-    return unsubscribe(this.env, projectId, streamId, sessionId);
+    return unsubscribe(this.env, projectId, streamId, estuaryId);
   }
 
   async adminPublish(
@@ -60,16 +60,16 @@ export default class SubscriptionWorker extends WorkerEntrypoint<AppEnv> {
     return publish(this.env, projectId, streamId, { payload, contentType });
   }
 
-  async adminTouchSession(projectId: string, sessionId: string, contentType = "application/json"): Promise<TouchSessionResult> {
-    return touchSession(this.env, projectId, sessionId, contentType);
+  async adminTouchSession(projectId: string, estuaryId: string, contentType = "application/json"): Promise<TouchEstuaryResult> {
+    return touchEstuary(this.env, projectId, estuaryId, contentType);
   }
 
-  async adminDeleteSession(projectId: string, sessionId: string): Promise<DeleteSessionResult> {
-    return deleteSession(this.env, projectId, sessionId);
+  async adminDeleteSession(projectId: string, estuaryId: string): Promise<DeleteEstuaryResult> {
+    return deleteEstuary(this.env, projectId, estuaryId);
   }
 }
 
-export { SubscriptionWorker, SubscriptionDO, SessionDO, createSubscriptionWorker };
+export { SubscriptionWorker, SubscriptionDO, EstuaryDO, createSubscriptionWorker };
 export { projectJwtAuth } from "./auth";
 export type { SubscriptionAuthResult, SubscriptionRoute, AuthorizeSubscription } from "./auth";
 export type { SubscriptionWorkerConfig } from "./create_worker";

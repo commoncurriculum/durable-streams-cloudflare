@@ -1,24 +1,67 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { createStreamWorker } from "../../src/http/create_worker";
-import { StreamDO } from "../../src/http/durable_object";
-import type { BaseEnv } from "../../src/http/create_worker";
+import { SignJWT } from "jose";
+import { StreamDO } from "../../src/http/durable-object";
+import { createStreamWorker } from "../../src/http";
+import type { BaseEnv } from "../../src/http";
+import { createProject } from "../../src/storage/registry";
+import { parseStreamPathFromUrl } from "../../src/http/shared/stream-path";
 
-// Auth-enabled worker for reader key tests: uses a permissive auth callback
-// that always passes. This ensures authorizeRead is set so reader keys are
-// generated on stream creation, while still allowing all requests through.
-const handler = createStreamWorker({
-  authorizeRead: () => ({ ok: true }),
-  authorizeMutation: () => ({ ok: true }),
-});
+// ============================================================================
+// Test JWT infrastructure
+// ============================================================================
 
+const TEST_SIGNING_SECRET = "test-signing-secret-for-auth-tests";
+const SECRET_KEY = new TextEncoder().encode(TEST_SIGNING_SECRET);
+
+// Production handler with full auth middleware chain
+const handler = createStreamWorker<BaseEnv>();
+
+const registeredProjects = new Set<string>();
+
+async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
+  if (registeredProjects.has(projectId)) return;
+  await createProject(kv, projectId, TEST_SIGNING_SECRET, {
+    corsOrigins: ["*"],
+  });
+  registeredProjects.add(projectId);
+}
+
+async function generateTestToken(scope = "manage"): Promise<string> {
+  return new SignJWT({ scope })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject("test-user")
+    .setExpirationTime("1h")
+    .sign(SECRET_KEY);
+}
+
+// ============================================================================
+// Test Worker (reader key / auth tests)
+// ============================================================================
+
+// Same pattern as test-worker.ts: full production auth with injected tokens.
+// This worker exists for reader key tests that use a separate KV namespace.
 export default class TestCoreWorkerAuth extends WorkerEntrypoint<BaseEnv> {
   async fetch(request: Request): Promise<Response> {
+    const parsed = parseStreamPathFromUrl(new URL(request.url).pathname);
+    await ensureProject(this.env.REGISTRY, parsed?.projectId ?? "_default");
+
     const debugAction = request.headers.get("X-Debug-Action");
     if (debugAction) {
       return this.#handleDebugAction(debugAction, request);
     }
 
-    return handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
+    if (!request.headers.has("Authorization")) {
+      const token = await generateTestToken("manage");
+      const headers = new Headers(request.headers);
+      headers.set("Authorization", `Bearer ${token}`);
+      request = new Request(request, { headers });
+    }
+
+    return handler.fetch!(
+      request as unknown as Request<unknown, IncomingRequestCfProperties>,
+      this.env,
+      this.ctx,
+    );
   }
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {

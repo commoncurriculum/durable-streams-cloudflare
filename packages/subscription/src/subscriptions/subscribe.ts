@@ -1,27 +1,27 @@
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
-import { DEFAULT_SESSION_TTL_SECONDS } from "../constants";
+import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
 import type { AppEnv } from "../env";
 import type { SubscribeResult } from "./types";
 
-// #region synced-to-docs:create-session-stream
+// #region synced-to-docs:create-estuary-stream
 export async function subscribe(
   env: AppEnv,
   projectId: string,
   streamId: string,
-  sessionId: string,
+  estuaryId: string,
 ): Promise<SubscribeResult> {
   const start = Date.now();
   const metrics = createMetrics(env.METRICS);
-  const parsed = env.SESSION_TTL_SECONDS
-    ? Number.parseInt(env.SESSION_TTL_SECONDS, 10)
+  const parsed = env.ESTUARY_TTL_SECONDS
+    ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10)
     : undefined;
   const ttlSeconds = parsed !== undefined && Number.isFinite(parsed) && parsed > 0
     ? parsed
-    : DEFAULT_SESSION_TTL_SECONDS;
+    : DEFAULT_ESTUARY_TTL_SECONDS;
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
-  // 0. Look up the source stream's content type so the session stream matches
+  // 0. Look up the source stream's content type so the estuary stream matches
   const sourceDoKey = `${projectId}/${streamId}`;
   const sourceHead = await env.CORE.headStream(sourceDoKey);
   if (!sourceHead.ok) {
@@ -32,24 +32,24 @@ export async function subscribe(
   }
   const contentType = sourceHead.contentType;
 
-  // 1. Create/touch session stream in core with the same content type
-  const sessionDoKey = `${projectId}/${sessionId}`;
-  const coreResponse = await env.CORE.putStream(sessionDoKey, { expiresAt, contentType });
+  // 1. Create/touch estuary stream in core with the same content type
+  const estuaryDoKey = `${projectId}/${estuaryId}`;
+  const coreResponse = await env.CORE.putStream(estuaryDoKey, { expiresAt, contentType });
 
-  const isNewSession = coreResponse.ok;
-  // #endregion synced-to-docs:create-session-stream
+  const isNewEstuary = coreResponse.ok;
+  // #endregion synced-to-docs:create-estuary-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
-    throw new Error(`Failed to create session stream: ${coreResponse.body} (status: ${coreResponse.status})`);
+    throw new Error(`Failed to create estuary stream: ${coreResponse.body} (status: ${coreResponse.status})`);
   }
 
-  // If session stream already exists, verify content type matches
+  // If estuary stream already exists, verify content type matches
   if (coreResponse.status === 409) {
-    const sessionHead = await env.CORE.headStream(sessionDoKey);
-    if (sessionHead.ok && sessionHead.contentType && sessionHead.contentType !== contentType) {
+    const estuaryHead = await env.CORE.headStream(estuaryDoKey);
+    if (estuaryHead.ok && estuaryHead.contentType && estuaryHead.contentType !== contentType) {
       throw new Error(
-        `Content type mismatch: session stream is ${sessionHead.contentType} but source stream ${streamId} is ${contentType}. ` +
-        `A session can only subscribe to streams of the same content type.`,
+        `Content type mismatch: estuary stream is ${estuaryHead.contentType} but source stream ${streamId} is ${contentType}. ` +
+        `A estuary can only subscribe to streams of the same content type.`,
       );
     }
   }
@@ -59,40 +59,40 @@ export async function subscribe(
   const streamDoKey = `${projectId}/${streamId}`;
   const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamDoKey));
   try {
-    await stub.addSubscriber(sessionId);
+    await stub.addSubscriber(estuaryId);
   } catch (err) {
-    // Rollback session if we just created it
-    if (isNewSession) {
+    // Rollback estuary if we just created it
+    if (isNewEstuary) {
       try {
-        await env.CORE.deleteStream(sessionDoKey);
+        await env.CORE.deleteStream(estuaryDoKey);
       } catch (rollbackErr) {
-        logError({ projectId, streamId, sessionId, component: "subscribe-rollback" }, "failed to rollback session stream", rollbackErr);
+        logError({ projectId, streamId, estuaryId, component: "subscribe-rollback" }, "failed to rollback estuary stream", rollbackErr);
       }
     }
     throw err;
   }
   // #endregion synced-to-docs:add-subscription-to-do
 
-  // 3. Track subscription on the session DO and set/reset expiry alarm
-  const sessionDoStubKey = `${projectId}/${sessionId}`;
-  const sessionStub = env.SESSION_DO.get(env.SESSION_DO.idFromName(sessionDoStubKey));
-  await sessionStub.addSubscription(streamId);
-  await sessionStub.setExpiry(projectId, sessionId, ttlSeconds);
+  // 3. Track subscription on the estuary DO and set/reset expiry alarm
+  const estuaryDoStubKey = `${projectId}/${estuaryId}`;
+  const estuaryStub = env.ESTUARY_DO.get(env.ESTUARY_DO.idFromName(estuaryDoStubKey));
+  await estuaryStub.addSubscription(streamId);
+  await estuaryStub.setExpiry(projectId, estuaryId, ttlSeconds);
 
   // 4. Metrics
   const latencyMs = Date.now() - start;
-  metrics.subscribe(streamId, sessionId, isNewSession, latencyMs);
-  if (isNewSession) {
-    metrics.sessionCreate(sessionId, projectId, ttlSeconds, latencyMs);
+  metrics.subscribe(streamId, estuaryId, isNewEstuary, latencyMs);
+  if (isNewEstuary) {
+    metrics.estuaryCreate(estuaryId, projectId, ttlSeconds, latencyMs);
   }
 
   // #region synced-to-docs:subscribe-response
   return {
-    sessionId,
+    estuaryId,
     streamId,
-    sessionStreamPath: `/v1/stream/${projectId}/${sessionId}`,
+    estuaryStreamPath: `/v1/stream/${projectId}/${estuaryId}`,
     expiresAt,
-    isNewSession,
+    isNewEstuary,
   };
   // #endregion synced-to-docs:subscribe-response
 }

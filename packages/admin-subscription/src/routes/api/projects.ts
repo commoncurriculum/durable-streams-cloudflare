@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { generateSecret, exportJWK } from "jose";
 import type { CoreService } from "../../types";
 
 export const Route = createFileRoute("/api/projects")({
@@ -24,7 +25,8 @@ export const Route = createFileRoute("/api/projects")({
             });
           }
 
-          const secret = crypto.randomUUID() + crypto.randomUUID();
+          const key = await generateSecret("HS256", { extractable: true });
+          const secret = JSON.stringify(await exportJWK(key));
 
           // Use core RPC to create the project with wildcard CORS so the
           // browser can open SSE connections directly to core.

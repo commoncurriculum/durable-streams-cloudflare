@@ -4,18 +4,18 @@ import { fanoutToSubscribers } from "../../src/subscriptions/fanout";
 
 const PROJECT_ID = "test-project";
 
-async function createSessionStream(sessionId: string): Promise<void> {
-  await env.CORE.putStream(`${PROJECT_ID}/${sessionId}`, { contentType: "text/plain" });
+async function createEstuaryStream(estuaryId: string): Promise<void> {
+  await env.CORE.putStream(`${PROJECT_ID}/${estuaryId}`, { contentType: "text/plain" });
 }
 
 describe("fanoutToSubscribers", () => {
-  it("writes to all session streams", async () => {
+  it("writes to all estuary streams", async () => {
     const s1 = `fanout-s1-${crypto.randomUUID()}`;
     const s2 = `fanout-s2-${crypto.randomUUID()}`;
     const s3 = `fanout-s3-${crypto.randomUUID()}`;
-    await createSessionStream(s1);
-    await createSessionStream(s2);
-    await createSessionStream(s3);
+    await createEstuaryStream(s1);
+    await createEstuaryStream(s2);
+    await createEstuaryStream(s3);
 
     const result = await fanoutToSubscribers(
       env,
@@ -27,16 +27,16 @@ describe("fanoutToSubscribers", () => {
 
     expect(result.successes).toBe(3);
     expect(result.failures).toBe(0);
-    expect(result.staleSessionIds).toEqual([]);
+    expect(result.staleEstuaryIds).toEqual([]);
   });
 
-  it("reports 404s as stale sessions", async () => {
+  it("reports 404s as stale estuaries", async () => {
     const active1 = `fanout-active-${crypto.randomUUID()}`;
     const active2 = `fanout-active-${crypto.randomUUID()}`;
     const stale1 = `fanout-stale-${crypto.randomUUID()}`;
     const stale2 = `fanout-stale-${crypto.randomUUID()}`;
-    await createSessionStream(active1);
-    await createSessionStream(active2);
+    await createEstuaryStream(active1);
+    await createEstuaryStream(active2);
     // stale1 and stale2 have no backing stream — will 404
 
     const result = await fanoutToSubscribers(
@@ -49,12 +49,12 @@ describe("fanoutToSubscribers", () => {
 
     expect(result.successes).toBe(2);
     expect(result.failures).toBe(2);
-    expect(result.staleSessionIds).toEqual([stale1, stale2]);
+    expect(result.staleEstuaryIds).toEqual([stale1, stale2]);
   });
 
   it("passes producer headers to postStream", async () => {
     const s1 = `fanout-prod-${crypto.randomUUID()}`;
-    await createSessionStream(s1);
+    await createEstuaryStream(s1);
 
     const result = await fanoutToSubscribers(
       env,
@@ -73,7 +73,7 @@ describe("fanoutToSubscribers", () => {
   it("returns correct counts for mixed results", async () => {
     const ok = `fanout-ok-${crypto.randomUUID()}`;
     const stale = `fanout-stale-${crypto.randomUUID()}`;
-    await createSessionStream(ok);
+    await createEstuaryStream(ok);
     // stale has no backing stream — will 404
 
     const result = await fanoutToSubscribers(
@@ -86,10 +86,10 @@ describe("fanoutToSubscribers", () => {
 
     expect(result.successes).toBe(1);
     expect(result.failures).toBe(1);
-    expect(result.staleSessionIds).toEqual([stale]);
+    expect(result.staleEstuaryIds).toEqual([stale]);
   });
 
-  it("handles empty session list", async () => {
+  it("handles empty estuary list", async () => {
     const result = await fanoutToSubscribers(
       env,
       PROJECT_ID,
@@ -100,22 +100,22 @@ describe("fanoutToSubscribers", () => {
 
     expect(result.successes).toBe(0);
     expect(result.failures).toBe(0);
-    expect(result.staleSessionIds).toEqual([]);
+    expect(result.staleEstuaryIds).toEqual([]);
   });
 
   it("batches writes in groups of 50", async () => {
-    // Create 60 session streams to verify batching works across boundaries
-    const sessionIds: string[] = [];
+    // Create 60 estuary streams to verify batching works across boundaries
+    const estuaryIds: string[] = [];
     for (let i = 0; i < 60; i++) {
       const id = `fanout-batch-${i}-${crypto.randomUUID()}`;
-      sessionIds.push(id);
-      await createSessionStream(id);
+      estuaryIds.push(id);
+      await createEstuaryStream(id);
     }
 
     const result = await fanoutToSubscribers(
       env,
       PROJECT_ID,
-      sessionIds,
+      estuaryIds,
       new TextEncoder().encode("test").buffer as ArrayBuffer,
       "text/plain",
     );
