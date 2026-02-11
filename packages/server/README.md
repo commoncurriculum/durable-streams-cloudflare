@@ -1,29 +1,42 @@
-# @durable-streams-cloudflare/core
+# @durable-streams-cloudflare/server
 
-Cloudflare Workers + Durable Objects implementation of the [Durable Streams](https://github.com/electric-sql/durable-streams) HTTP protocol. A Durable Object per stream acts as the sequencer, with SQLite in DO storage as the hot log and R2 for immutable cold segments. Conformance-tested against the official test suite.
+Unified Cloudflare Workers + Durable Objects implementation combining **core streaming** ([Durable Streams protocol](https://github.com/electric-sql/durable-streams)) with **pub/sub subscriptions** (fan-out to multiple subscribers).
 
-This is a **library** — you import `createStreamWorker()`, pass your auth config, and deploy as your own Cloudflare Worker. Your worker file is ~5 lines.
+This package merges the functionality of `@durable-streams-cloudflare/core` and `@durable-streams-cloudflare/subscription` into a single worker with enhanced features powered by Hono.
 
 ## Features
 
+### Core Streaming
 - **Durable Object per stream** — single-threaded sequencer with strong ordering
 - **SQLite hot log** — low-latency writes via DO transactional storage
 - **R2 cold segments** — automatic rotation of historical data to immutable R2 objects
-- **Protocol-correct caching** — Cache-Control headers per Durable Streams spec, external CDN-friendly
+- **Protocol-correct caching** — Cache-Control headers per Durable Streams spec, CDN-friendly
 - **Long-poll + SSE** — real-time delivery with catch-up reads
 - **DO hibernation** — SSE via internal WebSocket bridge lets the DO sleep between writes
 - **JSON mode** — array flattening, JSON validation, message-count offsets
 - **TTL / Expires-At** — stream-level time-to-live enforcement
 - **Idempotent producers** — epoch/seq-based duplicate detection
-- **Pluggable auth** — mutation and read auth callbacks, or bring your own
 - **Conformance-tested** — passes the official Durable Streams test suite
+
+### Pub/Sub Subscriptions (Estuary)
+- **Fan-out to subscribers** — publish once, distribute to N estuary streams
+- **Inline & queued fan-out** — synchronous for <200 subscribers, queued for hot topics
+- **Circuit breaker** — protects publish path when subscribers fail
+- **Estuary TTL** — automatic cleanup of inactive subscription streams
+- **Content-type validation** — estuaries inherit source stream content type
+
+### Hono Integration
+- **JWT authentication** — `hono/jwt` for HMAC-SHA256 token verification
+- **CORS middleware** — `hono/cors` with per-project origin configuration
+- **HTTP logger** — `hono/logger` for request logging
+- **Timing headers** — `hono/timing` for Server-Timing diagnostics
 
 ## Quick Start
 
 ### 1. Install
 
 ```bash
-npm install @durable-streams-cloudflare/core
+npm install @durable-streams-cloudflare/server
 ```
 
 ### 2. Create Your Worker
@@ -31,23 +44,58 @@ npm install @durable-streams-cloudflare/core
 `src/worker.ts`:
 
 ```ts
-import { createStreamWorker, StreamDO } from "@durable-streams-cloudflare/core";
+import { ServerWorker, StreamDO, SubscriptionDO, EstuaryDO } from "@durable-streams-cloudflare/server";
 
-export default createStreamWorker();
-export { StreamDO };
+export default ServerWorker;
+export { StreamDO, SubscriptionDO, EstuaryDO };
 ```
 
 `wrangler.toml`:
 
 ```toml
-name = "durable-streams"
+name = "durable-streams-server"
 main = "src/worker.ts"
-compatibility_date = "2025-02-02"
+compatibility_date = "2026-02-02"
 
 [durable_objects]
-bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" },
+  { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
+]
 
 [[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SubscriptionDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["EstuaryDO"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
+[[kv_namespaces]]
+binding = "REGISTRY"
+id = "your-kv-namespace-id"
+
+# Optional: Queue-based fanout for hot topics
+[[queues.producers]]
+binding = "FANOUT_QUEUE"
+queue = "subscription-fanout"
+
+[vars]
+ESTUARY_TTL_SECONDS = "86400"
+```
 tag = "v1"
 new_sqlite_classes = ["StreamDO"]
 
@@ -269,6 +317,215 @@ The client sees standard SSE (`EventSource` works unchanged). The DO is only bil
 
 - [`@durable-streams-cloudflare/subscription`](../subscription/README.md) — pub/sub fan-out layer
 - [Durable Streams protocol](https://github.com/electric-sql/durable-streams) — upstream spec and test suite
+
+## License
+
+MIT
+
+## API Routes
+
+### Core Streaming Routes
+
+#### `PUT /v1/stream/:projectId/:streamId`
+Create or touch a stream. Requires write or manage scope JWT.
+
+**Headers:**
+- `Authorization: Bearer <JWT>` (required)
+- `Content-Type: application/json` (or your preferred type)
+- `Stream-Expires-At: <ISO8601>` (optional TTL)
+
+**Response:** `201 Created` or `409 Conflict` if already exists with different content-type
+
+#### `POST /v1/stream/:projectId/:streamId`
+Append a message to the stream. Requires write or manage scope JWT.
+
+**Headers:**
+- `Authorization: Bearer <JWT>` (required)
+- `Content-Type: application/json` (must match stream content-type)
+- `Producer-Id`, `Producer-Epoch`, `Producer-Seq` (optional idempotency)
+
+**Body:** Message payload (JSON array if content-type is application/json)
+
+**Response:** `200 OK` with `Stream-Next-Offset` header
+
+#### `GET /v1/stream/:projectId/:streamId`
+Read from a stream. Requires read, write, or manage scope JWT (or public stream).
+
+**Query Parameters:**
+- `offset=<hex>` (required) - Offset to read from
+- `live=long-poll|sse` (optional) - Real-time mode
+- `limit=<N>` (optional) - Max messages per response
+
+**Response:** `200 OK` with messages, `Stream-Next-Offset`, `Stream-Up-To-Date` headers
+
+#### `DELETE /v1/stream/:projectId/:streamId`
+Delete a stream. Requires manage scope JWT.
+
+**Response:** `200 OK`
+
+### Subscription Routes (Estuary)
+
+#### `POST /v1/estuary/subscribe/:projectId/:streamId`
+Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist.
+
+**Body:**
+```json
+{
+  "estuaryId": "user-123",
+  "contentType": "application/json"
+}
+```
+
+**Response:**
+```json
+{
+  "estuaryId": "user-123",
+  "streamId": "notifications",
+  "estuaryStreamPath": "/v1/stream/my-project/user-123",
+  "expiresAt": 1738986400000,
+  "isNewEstuary": true
+}
+```
+
+#### `DELETE /v1/estuary/subscribe/:projectId/:streamId`
+Unsubscribe an estuary from a stream.
+
+**Body:**
+```json
+{
+  "estuaryId": "user-123"
+}
+```
+
+**Response:**
+```json
+{
+  "estuaryId": "user-123",
+  "streamId": "notifications",
+  "unsubscribed": true
+}
+```
+
+#### `GET /v1/estuary/:projectId/:estuaryId`
+Get estuary information including all subscriptions.
+
+**Response:**
+```json
+{
+  "estuaryId": "user-123",
+  "estuaryStreamPath": "/v1/stream/my-project/user-123",
+  "subscriptions": [
+    { "streamId": "notifications" },
+    { "streamId": "alerts" }
+  ],
+  "contentType": "application/json"
+}
+```
+
+#### `POST /v1/estuary/:projectId/:estuaryId`
+Touch (refresh TTL) on an estuary stream.
+
+**Response:**
+```json
+{
+  "estuaryId": "user-123",
+  "expiresAt": 1738986400000
+}
+```
+
+#### `DELETE /v1/estuary/:projectId/:estuaryId`
+Delete an estuary stream and all its subscriptions.
+
+**Response:**
+```json
+{
+  "estuaryId": "user-123",
+  "deleted": true
+}
+```
+
+### Configuration Routes
+
+#### `GET /v1/config/:projectId`
+Get project configuration (signing secrets, CORS origins).
+
+#### `PUT /v1/config/:projectId`
+Update project configuration.
+
+## Pub/Sub Usage Example
+
+```bash
+# 1. Create source stream
+curl -X PUT -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  $URL/v1/stream/my-project/notifications
+
+# 2. Subscribe user estuaries
+curl -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"estuaryId":"user-alice"}' \
+  $URL/v1/estuary/subscribe/my-project/notifications
+
+curl -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"estuaryId":"user-bob"}' \
+  $URL/v1/estuary/subscribe/my-project/notifications
+
+# 3. Publish to source stream (fans out to all subscribers)
+curl -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"type":"alert","message":"System maintenance in 10 minutes"}' \
+  $URL/v1/stream/my-project/notifications
+
+# 4. Each user reads their own estuary stream
+curl -H "Authorization: Bearer $JWT_ALICE" \
+  "$URL/v1/stream/my-project/user-alice?offset=0000000000000000_0000000000000000&live=sse"
+
+curl -H "Authorization: Bearer $JWT_BOB" \
+  "$URL/v1/stream/my-project/user-bob?offset=0000000000000000_0000000000000000&live=sse"
+```
+
+## Architecture
+
+### Three Durable Objects
+
+1. **StreamDO** - Per-stream sequencer (hot log + R2 segments)
+2. **SubscriptionDO** - Per-stream subscriber registry + fanout logic
+3. **EstuaryDO** - Per-user subscription tracker + TTL cleanup
+
+### Internal API
+
+Subscription functionality calls stream operations via `internal-api.ts` which directly invokes StreamDO methods. No HTTP or worker-to-worker RPC overhead.
+
+### Fan-out Modes
+
+| Subscriber Count | Mode | Behavior |
+|------------------|------|----------|
+| ≤ 200 (default) | Inline | Synchronous fanout within publish request |
+| > 200 | Queued | Enqueues batches to `FANOUT_QUEUE`, async delivery |
+| > 1000 (no queue) | Skipped | Publish succeeds, fanout skipped to protect origin |
+| Circuit open | Circuit-open | Inline fanout skipped after repeated failures |
+
+## Migration from Core + Subscription
+
+If you're currently running separate `@durable-streams-cloudflare/core` and `@durable-streams-cloudflare/subscription` workers:
+
+1. Deploy `@durable-streams-cloudflare/server` as a new worker
+2. Update client code to point to new routes:
+   - `/v1/estuary/publish/:projectId/:streamId` → Use `/v1/stream/:projectId/:streamId` (POST)
+   - `/v1/estuary/subscribe/:projectId/:streamId` → Same path, new worker
+3. No data migration needed - DOs migrate automatically when accessed
+4. Remove old workers once verified
+
+## Development
+
+```bash
+pnpm install
+pnpm dev          # Start local dev server
+pnpm typecheck    # Run TypeScript compiler
+pnpm lint         # Run oxlint
+pnpm test:unit    # Run unit tests
+```
 
 ## License
 
