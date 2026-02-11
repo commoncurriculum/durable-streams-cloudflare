@@ -1,7 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { type } from "arktype";
 import { createStreamWorker } from "../http";
-import type { ProjectConfig } from "../http/middleware/auth";
 import { StreamDO } from "../http/durable-object";
 import type { StreamIntrospection } from "../http/durable-object";
 import type { BaseEnv } from "../http";
@@ -230,17 +229,6 @@ export default class CoreWorker extends WorkerEntrypoint<BaseEnv> {
 }
 
 export { CoreWorker, StreamDO, createStreamWorker };
-export { projectJwtAuth, extractBearerToken, checkProjectJwt } from "../http/middleware/auth";
 export type { StreamIntrospection } from "../http/durable-object";
-export type {
-  AuthResult,
-  JwtAuthResult,
-  AuthorizeMutation,
-  AuthorizeRead,
-  ProjectJwtEnv,
-  ProjectJwtClaims,
-  ProjectConfig,
-} from "../http/middleware/auth";
 export type { BaseEnv } from "../http";
 export type { ProjectEntry, StreamEntry } from "../storage/registry";
-export { parseStreamPath } from "../http/shared/stream-path";

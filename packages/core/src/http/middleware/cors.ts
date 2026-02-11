@@ -70,3 +70,33 @@ export function resolveCorsOrigin(
   if (requestOrigin && merged.includes(requestOrigin)) return requestOrigin;
   return null;
 }
+
+// ============================================================================
+// Hono Middleware
+// ============================================================================
+
+// biome-ignore lint: Hono context typing is complex; middleware is wired through the app
+export async function corsMiddleware(c: any, next: () => Promise<void>): Promise<void | Response> {
+  const projectConfig = c.get("projectConfig");
+  const globalOrigins = parseGlobalCorsOrigins(c.env.CORS_ORIGINS);
+  let corsOrigin = resolveCorsOrigin(projectConfig?.corsOrigins, globalOrigins, c.req.header("Origin") ?? null);
+
+  // ?public=true implies wildcard CORS when no origins are configured
+  if (!corsOrigin && new URL(c.req.url).searchParams.get("public") === "true") {
+    corsOrigin = "*";
+  }
+
+  c.set("corsOrigin", corsOrigin);
+
+  // Handle OPTIONS preflight
+  if (c.req.method === "OPTIONS") {
+    const headers = new Headers();
+    applyCorsHeaders(headers, corsOrigin);
+    return new Response(null, { status: 204, headers });
+  }
+
+  await next();
+
+  // Apply CORS headers to response
+  applyCorsHeaders(c.res.headers, corsOrigin);
+}

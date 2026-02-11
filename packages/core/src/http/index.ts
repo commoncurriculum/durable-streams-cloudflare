@@ -1,11 +1,33 @@
 import { Hono } from "hono";
-import { applyCorsHeaders, parseGlobalCorsOrigins, resolveCorsOrigin } from "./middleware/cors";
-import type { ProjectConfig, ProjectJwtClaims } from "./middleware/auth";
-import { lookupProjectConfig, extractBearerToken, verifyProjectJwtMultiKey } from "./middleware/auth";
-import { parseStreamPathFromUrl, PROJECT_ID_PATTERN } from "./shared/stream-path";
+import { arktypeValidator } from "@hono/arktype-validator";
 import type { StreamDO } from "./durable-object";
 import type { InFlightResult } from "./middleware/coalesce";
-import { mountRoutes } from "./router";
+import type { StreamMeta } from "./middleware/cache";
+import type { Timing } from "./shared/timing";
+import type {
+  ProjectConfig,
+  ProjectJwtClaims,
+} from "./middleware/authentication";
+
+// Middleware
+import { pathParsingMiddleware } from "./middleware/path-parsing";
+import { corsMiddleware } from "./middleware/cors";
+import { authenticationMiddleware } from "./middleware/authentication";
+import { authorizationMiddleware } from "./middleware/authorization";
+import { timingMiddleware } from "./middleware/timing";
+import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
+
+// Route handlers
+import {
+  projectIdParamSchema,
+  configBodySchema,
+  getConfig,
+  putConfig,
+} from "./v1/config";
+
+// Error handling
+import { errorResponse } from "./shared/errors";
+import { logError } from "../log";
 
 // ============================================================================
 // Types
@@ -35,7 +57,9 @@ export { PROJECT_ID_PATTERN } from "./shared/stream-path";
 // Factory
 // ============================================================================
 
-export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandler<E> {
+export function createStreamWorker<
+  E extends BaseEnv = BaseEnv
+>(): ExportedHandler<E> {
   type AppEnv = {
     Bindings: E;
     Variables: {
@@ -45,110 +69,74 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       streamId: string | null;
       streamPath: string | null;
       corsOrigin: string | null;
+      streamMeta: StreamMeta | null;
+      timing: Timing | null;
     };
   };
 
   const inFlight = new Map<string, Promise<InFlightResult>>();
   const app = new Hono<AppEnv>();
 
-  // ================================================================
-  // Path Parsing + Project Config Lookup Middleware
-  // ================================================================
-  app.use("*", async (c, next) => {
-    const url = new URL(c.req.url);
-    let projectId: string | null = null;
+  // #region docs-request-arrives
+  // Global middleware
+  app.use("*", pathParsingMiddleware);
+  app.use("*", corsMiddleware);
+  app.use("*", authenticationMiddleware);
 
-    // Stream routes: parse /v1/stream/<project>/<stream>
-    const streamPath = parseStreamPathFromUrl(url.pathname);
-    if (streamPath) {
-      projectId = streamPath.projectId;
-      c.set("projectId", streamPath.projectId);
-      c.set("streamId", streamPath.streamId);
-      c.set("streamPath", streamPath.path);
-    }
+  // Stream-scoped middleware
+  app.use("/v1/stream/*", authorizationMiddleware);
+  app.use("/v1/stream/*", timingMiddleware);
+  app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
+  // #endregion docs-request-arrives
 
-    // Config routes: extract projectId from /v1/config/:projectId
-    const segments = url.pathname.split("/").filter(Boolean);
-    if (segments[0] === "v1" && segments[1] === "config" && segments.length === 3) {
-      projectId = segments[2];
-      if (!PROJECT_ID_PATTERN.test(projectId)) {
-        projectId = null;
-      }
-    }
-
-    // Look up project config from KV
-    if (projectId && c.env.REGISTRY) {
-      const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
-      c.set("projectConfig", projectConfig);
-    }
-    return next();
+  // Health check
+  // biome-ignore lint: Hono context typing is complex
+  app.get("/health", (c: any) => {
+    return c.text("ok", 200, { "Cache-Control": "no-store" });
   });
 
-  // ================================================================
-  // CORS Middleware
-  // ================================================================
-  app.use("*", async (c, next) => {
-    const projectConfig = c.get("projectConfig");
-    const globalOrigins = parseGlobalCorsOrigins(c.env.CORS_ORIGINS);
-    let corsOrigin = resolveCorsOrigin(projectConfig?.corsOrigins, globalOrigins, c.req.header("Origin") ?? null);
+  // Config routes
+  app.get(
+    "/v1/config/:projectId",
+    arktypeValidator("param", projectIdParamSchema),
+    getConfig
+  );
+  app.put(
+    "/v1/config/:projectId",
+    arktypeValidator("param", projectIdParamSchema),
+    arktypeValidator("json", configBodySchema),
+    putConfig
+  );
 
-    // ?public=true implies wildcard CORS when no origins are configured
-    if (!corsOrigin && new URL(c.req.url).searchParams.get("public") === "true") {
-      corsOrigin = "*";
-    }
+  // #region docs-route-to-do
+  // Stream route — all pre/post-processing handled by middleware
+  // biome-ignore lint: Hono context typing is complex
+  app.all("/v1/stream/*", async (c: any) => {
+    const timing = c.get("timing");
+    const doKey = c.get("streamPath");
+    const stub = c.env.STREAMS.getByName(doKey);
+    const doneOrigin = timing?.start("edge.origin");
+    const response = await stub.routeStreamRequest(doKey, !!timing, c.req.raw);
+    doneOrigin?.();
+    return response;
+  });
+  // #endregion docs-route-to-do
 
-    c.set("corsOrigin", corsOrigin);
-
-    // Handle OPTIONS preflight
-    if (c.req.method === "OPTIONS") {
-      const headers = new Headers();
-      applyCorsHeaders(headers, corsOrigin);
-      return new Response(null, { status: 204, headers });
-    }
-
-    await next();
-
-    // Apply CORS headers to response
-    applyCorsHeaders(c.res.headers, corsOrigin);
+  // 404 fallback
+  // biome-ignore lint: Hono context typing is complex
+  app.all("*", (c: any) => {
+    return c.text("not found", 404, { "Cache-Control": "no-store" });
   });
 
-  // ================================================================
-  // JWT Auth Middleware (shared across all routes)
-  // ================================================================
-  app.use("*", async (c, next) => {
-    const token = extractBearerToken(c.req.raw);
-    if (!token) {
-      c.set("jwtClaims", null);
-      return next();
-    }
-
-    const projectConfig = c.get("projectConfig");
-    if (!projectConfig) {
-      c.set("jwtClaims", null);
-      return next();
-    }
-
-    // Validate JWT signature against project's signing secrets
-    const claims = await verifyProjectJwtMultiKey(token, projectConfig);
-    if (!claims) {
-      c.set("jwtClaims", null);
-      return next();
-    }
-
-    // Check token is not expired
-    if (Date.now() >= claims.exp * 1000) {
-      c.set("jwtClaims", null);
-      return next();
-    }
-
-    c.set("jwtClaims", claims);
-    return next();
+  // biome-ignore lint: Hono context typing is complex
+  app.onError((err: Error, c: any) => {
+    logError(
+      { streamPath: c.get("streamPath"), method: c.req.method },
+      "unhandled error",
+      err
+    );
+    return errorResponse(500, err.message ?? "internal error");
   });
-
-  // ================================================================
-  // Routes (all defined in router.ts)
-  // ================================================================
-  mountRoutes<E>(app, inFlight);
 
   return {
     fetch: app.fetch,

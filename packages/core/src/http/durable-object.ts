@@ -1,19 +1,35 @@
 import { DurableObject } from "cloudflare:workers";
 import { isExpired } from "./shared/expiry";
-import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "./shared/limits";
-import { logWarn } from "../log";
+import {
+  SEGMENT_MAX_BYTES_DEFAULT,
+  SEGMENT_MAX_MESSAGES_DEFAULT,
+} from "./shared/limits";
+import { logWarn, logError } from "../log";
 import { LongPollQueue } from "../http/v1/streams/realtime/handlers";
 import type { SseState } from "../http/v1/streams/realtime/handlers";
 import { DoSqliteStorage } from "../storage/queries";
-import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../storage/types";
-import { routeRequest } from "./router";
+import type {
+  StreamMeta,
+  ProducerState,
+  SegmentRecord,
+  OpsStats,
+} from "../storage/types";
 import { parseStreamPathFromUrl } from "./shared/stream-path";
 import { Timing, attachTiming } from "./shared/timing";
 import type { StreamContext, StreamEnv } from "../http/v1/streams/types";
 import { ReadPath } from "../http/v1/streams/read/path";
 import { rotateSegment } from "../http/v1/streams/shared/rotate";
-import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "../http/v1/streams/shared/stream-offsets";
+import {
+  encodeStreamOffset,
+  encodeTailOffset,
+  resolveOffsetParam,
+} from "../http/v1/streams/shared/stream-offsets";
 import { deleteStreamEntry } from "../storage/registry";
+import { handlePut } from "./v1/streams/create";
+import { handlePost } from "./v1/streams/append";
+import { handleDelete } from "./v1/streams/delete";
+import { handleGet, handleHead } from "./v1/streams/read";
+import { errorResponse } from "./shared/errors";
 
 export type StreamIntrospection = {
   meta: StreamMeta;
@@ -59,12 +75,15 @@ export class StreamDO extends DurableObject<StreamEnv> {
   async routeStreamRequest(
     streamId: string,
     timingEnabled: boolean,
-    request: Request,
+    request: Request
   ): Promise<Response> {
     const timing = timingEnabled ? new Timing() : null;
     const doneTotal = timing?.start("do.total");
 
-    if (this.env.DEBUG_COALESCE === "1" && request.headers.get("X-Debug-Coalesce") === "1") {
+    if (
+      this.env.DEBUG_COALESCE === "1" &&
+      request.headers.get("X-Debug-Coalesce") === "1"
+    ) {
       return new Response(JSON.stringify(this.readPath.getStats()), {
         status: 200,
         headers: {
@@ -89,20 +108,47 @@ export class StreamDO extends DurableObject<StreamEnv> {
         resolveOffsetParam(this.storage, streamId, meta, offsetParam),
       encodeOffset: (streamId, meta, offset) =>
         encodeStreamOffset(this.storage, streamId, meta, offset),
-      encodeTailOffset: (streamId, meta) => encodeTailOffset(this.storage, streamId, meta),
+      encodeTailOffset: (streamId, meta) =>
+        encodeTailOffset(this.storage, streamId, meta),
       readFromOffset: (streamId, meta, offset, maxChunkBytes) =>
-        this.readPath.readFromOffset(streamId, meta, offset, maxChunkBytes, timing),
+        this.readPath.readFromOffset(
+          streamId,
+          meta,
+          offset,
+          maxChunkBytes,
+          timing
+        ),
       rotateSegment: this.rotateSegment.bind(this),
       getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
     };
 
-    const response = await routeRequest(ctx, streamId, request);
+    const url = new URL(request.url);
+    const method = request.method.toUpperCase();
+    let response;
+
+    try {
+      if (method === "PUT") response = await handlePut(ctx, streamId, request);
+      else if (method === "POST") response = await handlePost(ctx, streamId, request);
+      else if (method === "GET") response = await handleGet(ctx, streamId, request, url);
+      else if (method === "HEAD") response = await handleHead(ctx, streamId);
+      else if (method === "DELETE") response = await handleDelete(ctx, streamId);
+      else response = errorResponse(405, "method not allowed");
+    } catch (e) {
+      logError({ streamId, method }, "unhandled error in route handler", e);
+      response = errorResponse(
+        500,
+        e instanceof Error ? e.message : "internal error"
+      );
+    }
+
     doneTotal?.();
     return attachTiming(response, timing);
     // #endregion docs-build-context
   }
 
-  async getIntrospection(streamId: string): Promise<StreamIntrospection | null> {
+  async getIntrospection(
+    streamId: string
+  ): Promise<StreamIntrospection | null> {
     const meta = await this.storage.getStream(streamId);
     if (!meta) return null;
 
@@ -143,9 +189,13 @@ export class StreamDO extends DurableObject<StreamEnv> {
           return;
         } catch (e) {
           if (attempt === 3) {
-            logWarn({ streamId, attempt, component: "kv-cleanup" }, "KV delete failed after retries on expiry", e);
+            logWarn(
+              { streamId, attempt, component: "kv-cleanup" },
+              "KV delete failed after retries on expiry",
+              e
+            );
           } else {
-            await new Promise(r => setTimeout(r, attempt * 100));
+            await new Promise((r) => setTimeout(r, attempt * 100));
           }
         }
       }
@@ -154,7 +204,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   private async rotateSegment(
     streamId: string,
-    options?: { force?: boolean; retainOps?: boolean },
+    options?: { force?: boolean; retainOps?: boolean }
   ): Promise<void> {
     if (this.rotating) return;
     this.rotating = true;
@@ -176,13 +226,17 @@ export class StreamDO extends DurableObject<StreamEnv> {
   private segmentMaxMessages(): number {
     const raw = this.env.SEGMENT_MAX_MESSAGES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_MESSAGES_DEFAULT;
+    return Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : SEGMENT_MAX_MESSAGES_DEFAULT;
   }
 
   private segmentMaxBytes(): number {
     const raw = this.env.SEGMENT_MAX_BYTES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : SEGMENT_MAX_BYTES_DEFAULT;
+    return Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : SEGMENT_MAX_BYTES_DEFAULT;
   }
 
   // =========================================================================
@@ -194,31 +248,51 @@ export class StreamDO extends DurableObject<StreamEnv> {
     // Reserved for future use (e.g., offset acknowledgements).
   }
 
-  webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): void {
+  webSocketClose(
+    ws: WebSocket,
+    _code: number,
+    _reason: string,
+    _wasClean: boolean
+  ): void {
     // Connection closed — no cleanup needed beyond what Cloudflare does
     // automatically. The WebSocket is already removed from getWebSockets().
     if (this.env.METRICS) {
       try {
-        const attachment = ws.deserializeAttachment() as { streamId?: string } | null;
+        const attachment = ws.deserializeAttachment() as {
+          streamId?: string;
+        } | null;
         const streamId = attachment?.streamId ?? "unknown";
         this.env.METRICS.writeDataPoint({
           indexes: [streamId],
           blobs: [streamId, "ws_disconnect", "anonymous"],
           doubles: [1, 0],
         });
-      } catch (e) { logWarn({ component: "ws-metrics" }, "best-effort WS close metrics failed", e); }
+      } catch (e) {
+        logWarn(
+          { component: "ws-metrics" },
+          "best-effort WS close metrics failed",
+          e
+        );
+      }
     }
   }
 
   webSocketError(ws: WebSocket, error: unknown): void {
     logWarn({ component: "ws-error" }, "WebSocket error", error);
-    try { ws.close(1011, "internal error"); } catch { /* already closed */ }
+    try {
+      ws.close(1011, "internal error");
+    } catch {
+      /* already closed */
+    }
   }
 
   // RPC methods for test tooling (accessible only via service bindings, not HTTP)
 
   async testForceCompact(streamId: string, retainOps?: boolean): Promise<void> {
-    await this.rotateSegment(streamId, { force: true, retainOps: retainOps ?? false });
+    await this.rotateSegment(streamId, {
+      force: true,
+      retainOps: retainOps ?? false,
+    });
   }
 
   async testGetOpsCount(streamId: string): Promise<number> {
@@ -226,8 +300,16 @@ export class StreamDO extends DurableObject<StreamEnv> {
     return stats.messageCount;
   }
 
-  async testSetProducerAge(streamId: string, producerId: string, lastUpdated: number): Promise<boolean> {
-    return await this.storage.updateProducerLastUpdated(streamId, producerId, lastUpdated);
+  async testSetProducerAge(
+    streamId: string,
+    producerId: string,
+    lastUpdated: number
+  ): Promise<boolean> {
+    return await this.storage.updateProducerLastUpdated(
+      streamId,
+      producerId,
+      lastUpdated
+    );
   }
 
   async testTruncateLatestSegment(streamId: string): Promise<boolean> {

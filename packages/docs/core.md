@@ -33,7 +33,7 @@ Follow a PUT request from arrival to storage
 
 A client sends: `PUT /v1/stream/user-123`
 
-<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-request-arrives
+<<< @/../core/src/http/index.ts#docs-request-arrives
 
 The `createStreamWorker` factory builds a Worker with middleware (path parsing, CORS, JWT auth) that forwards to the DO via typed RPC.
 
@@ -41,15 +41,15 @@ The `createStreamWorker` factory builds a Worker with middleware (path parsing, 
 
 # 2. Authorizing the Request
 
-<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-authorize-request
+<<< @/../core/src/http/middleware/authorization.ts#docs-authorize-request
 
-Auth uses shared JWT middleware: tokens are validated once, claims stored in Hono context. The edge handler checks scope (`write`/`manage` for mutations) and public flag (for reads).
+Stream auth is a Hono middleware mounted on `/v1/stream/*`. It checks scope (`write`/`manage` for mutations) and the public flag (for reads). JWT tokens are validated by the upstream JWT middleware; stream auth uses the claims from context.
 
 ---
 
 # 3. Extracting the Stream ID
 
-<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-extract-stream-id
+<<< @/../core/src/http/middleware/authorization.ts#docs-extract-stream-id
 
 The stream ID is extracted from the URL path and validated.
 
@@ -57,7 +57,7 @@ The stream ID is extracted from the URL path and validated.
 
 # 4. Routing to the Durable Object
 
-<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-route-to-do
+<<< @/../core/src/http/index.ts#docs-route-to-do
 
 Every stream maps to exactly one Durable Object instance. The Worker calls `stub.routeStreamRequest()` via typed RPC — stream ID, cache mode, auth stream ID, and timing flag are passed as typed parameters alongside the original `Request`.
 
@@ -79,15 +79,7 @@ The context includes storage, SSE/long-poll state, and functions for offset enco
 
 ---
 
-# 7. The Router
-
-<<< @/../core/src/http/router.ts#docs-route-request
-
-Requests are routed by HTTP method to the appropriate handler.
-
----
-
-# 8. Handling PUT (Stream Creation)
+# 7. Handling PUT (Stream Creation)
 
 <<< @/../core/src/http/v1/streams/create/index.ts#docs-handle-put
 
