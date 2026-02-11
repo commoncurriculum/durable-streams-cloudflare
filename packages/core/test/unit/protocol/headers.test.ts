@@ -17,7 +17,7 @@ import {
   normalizeContentType,
   isJsonContentType,
   isTextual,
-} from "../../../src/protocol/headers";
+} from "../../../src/http/shared/headers";
 
 // ============================================================================
 // Header constants

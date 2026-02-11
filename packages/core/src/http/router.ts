@@ -1,65 +1,52 @@
-import { errorResponse } from "../protocol/errors";
+import { arktypeValidator } from "@hono/arktype-validator";
+import { errorResponse } from "./shared/errors";
 import { logError } from "../log";
-import type { LongPollQueue } from "./handlers/realtime";
-import type { SseState } from "./handlers/realtime";
-import type { ReadResult } from "../stream/read/result";
-import type { StreamMeta, StreamStorage } from "../storage/types";
-import type { Timing } from "../protocol/timing";
-import { handleDelete, handlePost, handlePut } from "./handlers/write";
-import { handleGet, handleHead } from "./handlers/read";
+import { projectIdParamSchema, configBodySchema, getConfig, putConfig } from "./v1/config";
+import { createStreamHandler } from "./v1/streams/edge-handler";
+import type { StreamContext } from "./v1/streams/types";
+import { handlePut } from "./v1/streams/create";
+import { handlePost } from "./v1/streams/append";
+import { handleDelete } from "./v1/streams/delete";
+import { handleGet, handleHead } from "./v1/streams/read";
+import type { BaseEnv } from "./index";
+import type { InFlightResult } from "./middleware/coalesce";
 
 // ============================================================================
-// StreamEnv + StreamContext
+// HTTP Routes
 // ============================================================================
 
-export type StreamEnv = {
-  R2?: R2Bucket;
-  DEBUG_COALESCE?: string;
-  DEBUG_TIMING?: string;
-  R2_DELETE_OPS?: string;
-  SEGMENT_MAX_MESSAGES?: string;
-  SEGMENT_MAX_BYTES?: string;
-  MAX_SSE_CLIENTS?: string;
-  DO_STORAGE_QUOTA_BYTES?: string;
-  METRICS?: AnalyticsEngineDataset;
-  REGISTRY?: KVNamespace;
-};
+// biome-ignore lint: Hono app generic typing is complex
+export function mountRoutes<E extends BaseEnv>(app: any, inFlight: Map<string, Promise<InFlightResult>>): void {
+  // Health check
+  app.get("/health", (c: any) => {
+    return c.text("ok", 200, { "Cache-Control": "no-store" });
+  });
 
-export type ResolveOffsetResult = {
-  offset: number;
-  error?: Response;
-};
+  // Config routes
+  app.get(
+    "/v1/config/:projectId",
+    arktypeValidator("param", projectIdParamSchema),
+    getConfig,
+  );
+  app.put(
+    "/v1/config/:projectId",
+    arktypeValidator("param", projectIdParamSchema),
+    arktypeValidator("json", configBodySchema),
+    putConfig,
+  );
 
-export type StreamContext = {
-  state: DurableObjectState;
-  env: StreamEnv;
-  storage: StreamStorage;
-  timing?: Timing | null;
-  longPoll: LongPollQueue;
-  sseState: SseState;
-  getStream: (streamId: string) => Promise<StreamMeta | null>;
-  resolveOffset: (
-    streamId: string,
-    meta: StreamMeta,
-    offsetParam: string | null,
-  ) => Promise<ResolveOffsetResult>;
-  encodeOffset: (streamId: string, meta: StreamMeta, offset: number) => Promise<string>;
-  encodeTailOffset: (streamId: string, meta: StreamMeta) => Promise<string>;
-  readFromOffset: (
-    streamId: string,
-    meta: StreamMeta,
-    offset: number,
-    maxChunkBytes: number,
-  ) => Promise<ReadResult>;
-  rotateSegment: (
-    streamId: string,
-    options?: { force?: boolean; retainOps?: boolean },
-  ) => Promise<void>;
-  getWebSockets: (tag?: string) => WebSocket[];
-};
+  // Stream routes — single wildcard, middleware already parsed projectId/streamId
+  const streamHandler = createStreamHandler<E>(inFlight);
+  app.all("/v1/stream/*", streamHandler);
+
+  // 404 fallback
+  app.all("*", (c: any) => {
+    return c.text("not found", 404, { "Cache-Control": "no-store" });
+  });
+}
 
 // ============================================================================
-// Router
+// DO-Level Method Dispatch
 // ============================================================================
 
 // #region docs-route-request

@@ -6,8 +6,8 @@ import {
   validateContentTypeMatch,
   validateStreamNotClosed,
   validateNonEmptyBody,
-} from "../../../src/stream/append/validate";
-import type { ParsedPostInput } from "../../../src/stream/types";
+} from "../../../src/http/v1/streams/append/validate";
+import type { ParsedPostInput } from "../../../src/http/v1/streams/types";
 import type { StreamMeta } from "../../../src/storage/types";
 
 // Helper to create a base ParsedPostInput

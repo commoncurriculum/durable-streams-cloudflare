@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { createStreamWorker } from "../../src/http/create_worker";
-import { StreamDO } from "../../src/http/durable_object";
-import type { BaseEnv } from "../../src/http/create_worker";
+import { createStreamWorker } from "../../src/http";
+import { StreamDO } from "../../src/http/durable-object";
+import type { BaseEnv } from "../../src/http";
 
 // Auth-enabled worker for reader key tests: uses a permissive auth callback
 // that always passes. This ensures authorizeRead is set so reader keys are

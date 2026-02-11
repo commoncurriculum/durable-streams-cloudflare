@@ -3,9 +3,9 @@ import {
   closeStreamOnly,
   buildClosedConflict,
   validateStreamSeq,
-} from "../../../src/stream/close";
-import type { ProducerInput } from "../../../src/stream/producer";
-import { encodeCurrentOffset } from "../../../src/stream/offsets";
+} from "../../../src/http/v1/streams/shared/close";
+import type { ProducerInput } from "../../../src/http/v1/streams/shared/producer";
+import { encodeCurrentOffset } from "../../../src/http/v1/streams/shared/stream-offsets";
 import { baseMeta, withStorage, seedStream } from "../helpers";
 
 // close.test uses application/json with zeroed segment fields

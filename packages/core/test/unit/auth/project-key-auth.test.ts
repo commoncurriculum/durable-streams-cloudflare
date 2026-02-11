@@ -7,8 +7,8 @@ import {
   verifyProjectJwtMultiKey,
   lookupProjectConfig,
   decodeJwtPayloadUnsafe,
-} from "../../../src/http/auth";
-import type { ProjectConfig } from "../../../src/http/auth";
+} from "../../../src/http/middleware/auth";
+import type { ProjectConfig } from "../../../src/http/middleware/auth";
 
 // ============================================================================
 // JWT Test Helpers

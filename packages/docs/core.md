@@ -33,23 +33,23 @@ Follow a PUT request from arrival to storage
 
 A client sends: `PUT /v1/stream/user-123`
 
-<<< @/../core/src/http/create_worker.ts#docs-request-arrives
+<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-request-arrives
 
-The `createStreamWorker` factory builds a Worker that parses the URL, runs pluggable auth callbacks, and forwards to the DO via typed RPC.
+The `createStreamWorker` factory builds a Worker with middleware (path parsing, CORS, JWT auth) that forwards to the DO via typed RPC.
 
 ---
 
 # 2. Authorizing the Request
 
-<<< @/../core/src/http/create_worker.ts#docs-authorize-request
+<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-authorize-request
 
-Auth is pluggable: `authorizeMutation` and `authorizeRead` callbacks are provided at worker creation time. Built-in strategies include `bearerTokenAuth()` and `jwtStreamAuth()`.
+Auth uses shared JWT middleware: tokens are validated once, claims stored in Hono context. The edge handler checks scope (`write`/`manage` for mutations) and public flag (for reads).
 
 ---
 
 # 3. Extracting the Stream ID
 
-<<< @/../core/src/http/create_worker.ts#docs-extract-stream-id
+<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-extract-stream-id
 
 The stream ID is extracted from the URL path and validated.
 
@@ -57,7 +57,7 @@ The stream ID is extracted from the URL path and validated.
 
 # 4. Routing to the Durable Object
 
-<<< @/../core/src/http/create_worker.ts#docs-route-to-do
+<<< @/../core/src/http/v1/streams/edge-handler.ts#docs-route-to-do
 
 Every stream maps to exactly one Durable Object instance. The Worker calls `stub.routeStreamRequest()` via typed RPC — stream ID, cache mode, auth stream ID, and timing flag are passed as typed parameters alongside the original `Request`.
 
@@ -65,7 +65,7 @@ Every stream maps to exactly one Durable Object instance. The Worker calls `stub
 
 # 5. Inside the Durable Object
 
-<<< @/../core/src/http/durable_object.ts#docs-do-rpc
+<<< @/../core/src/http/durable-object.ts#docs-do-rpc
 
 `StreamDO` extends <code>DurableObject&lt;StreamEnv&gt;</code> and exposes `routeStreamRequest()` as an RPC method. It receives typed parameters directly from the Worker — no header extraction needed.
 
@@ -73,7 +73,7 @@ Every stream maps to exactly one Durable Object instance. The Worker calls `stub
 
 # 6. Building the Context
 
-<<< @/../core/src/http/durable_object.ts#docs-build-context
+<<< @/../core/src/http/durable-object.ts#docs-build-context
 
 The context includes storage, SSE/long-poll state, and functions for offset encoding and segment rotation.
 
@@ -89,7 +89,7 @@ Requests are routed by HTTP method to the appropriate handler.
 
 # 8. Handling PUT (Stream Creation)
 
-<<< @/../core/src/http/handlers/write.ts#docs-handle-put
+<<< @/../core/src/http/v1/streams/create/index.ts#docs-handle-put
 
 PUT creates or updates a stream. Everything runs inside `blockConcurrencyWhile` for consistency.
 
@@ -97,7 +97,7 @@ PUT creates or updates a stream. Everything runs inside `blockConcurrencyWhile` 
 
 # 9. Handling POST (Append Messages)
 
-<<< @/../core/src/http/handlers/write.ts#docs-handle-post
+<<< @/../core/src/http/v1/streams/append/index.ts#docs-handle-post
 
 POST appends messages. Producer headers enable duplicate detection via epoch/seq tracking.
 
@@ -105,7 +105,7 @@ POST appends messages. Producer headers enable duplicate detection via epoch/seq
 
 # 10. Side Effects After Mutation
 
-<<< @/../core/src/http/handlers/write.ts#docs-side-effects
+<<< @/../core/src/http/v1/streams/append/index.ts#docs-side-effects
 
 After storing, the handler notifies long-poll waiters, broadcasts to SSE clients, and triggers segment rotation.
 
@@ -143,25 +143,19 @@ Follow a GET request for historical data
 
 # 1. Read Authorization (JWT)
 
-For reads, the worker can validate JWT tokens for stream-scoped access:
-
-<<< @/../core/src/http/auth.ts#docs-authorize-read
-
-JWT claims include `stream_id` and `exp` (expiry timestamp). The built-in `jwtStreamAuth` strategy also validates that the stream ID matches the requested stream.
+For reads, JWT auth middleware validates the token and stores claims in context. Public streams skip auth entirely; non-public streams require a valid JWT. The edge handler checks the `public` flag via KV metadata before enforcing auth.
 
 ---
 
-# 2. Cache Mode Resolution
+# 2. Edge Cache
 
-<<< @/../core/src/http/router.ts#docs-cache-mode
-
-Cache mode determines if responses can be CDN-cached (shared) or must be private.
+The edge handler checks cache status before hitting the DO. Non-public streams include a reader key in the cache URL so unauthorized clients can't match cached entries.
 
 ---
 
 # 3. Handling GET
 
-<<< @/../core/src/http/handlers/read.ts#docs-handle-get
+<<< @/../core/src/http/v1/streams/read/handler.ts#docs-handle-get
 
 GET first checks for live modes (SSE, long-poll), then falls back to direct read.
 
@@ -169,7 +163,7 @@ GET first checks for live modes (SSE, long-poll), then falls back to direct read
 
 # 4. Resolving the Offset
 
-<<< @/../core/src/http/handlers/read.ts#docs-resolve-offset
+<<< @/../core/src/http/v1/streams/read/handler.ts#docs-resolve-offset
 
 The offset can be `-1` (start), `now` (tail), or an encoded cursor. Data is read up to `MAX_CHUNK_BYTES`.
 
@@ -177,7 +171,7 @@ The offset can be `-1` (start), `now` (tail), or an encoded cursor. Data is read
 
 # 5. Building the Response
 
-<<< @/../core/src/http/handlers/read.ts#docs-build-response
+<<< @/../core/src/http/v1/streams/read/handler.ts#docs-build-response
 
 Response includes ETag, cache headers, and the next offset for pagination.
 
@@ -217,7 +211,7 @@ Follow a long-poll request from wait to data delivery
 
 # 1. Long-Poll Handler Setup
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-long-poll-setup
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-long-poll-setup
 
 The handler validates the offset, reads cache mode from context, and checks for closed streams at tail.
 
@@ -225,7 +219,7 @@ The handler validates the offset, reads cache mode from context, and checks for 
 
 # 2. Checking for Immediate Data
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-long-poll-immediate
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-long-poll-immediate
 
 If data is immediately available, return it without waiting.
 
@@ -233,7 +227,7 @@ If data is immediately available, return it without waiting.
 
 # 3. The Waiting Game
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-long-poll-wait
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-long-poll-wait
 
 If no data available, wait up to `LONG_POLL_TIMEOUT_MS` (default 30s). On timeout, return 204.
 
@@ -241,7 +235,7 @@ If no data available, wait up to `LONG_POLL_TIMEOUT_MS` (default 30s). On timeou
 
 # 4. The Long-Poll Queue
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-long-poll-queue
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-long-poll-queue
 
 Waiters register with their current offset. When new data arrives, `notify()` wakes waiters.
 
@@ -287,7 +281,7 @@ Follow an SSE connection from open to message delivery
 
 # 1. SSE Mode Detection
 
-<<< @/../core/src/http/handlers/read.ts#docs-sse-mode-detection
+<<< @/../core/src/http/v1/streams/read/handler.ts#docs-sse-mode-detection
 
 The `live` query parameter determines streaming mode: `sse` or `long-poll`.
 
@@ -295,7 +289,7 @@ The `live` query parameter determines streaming mode: `sse` or `long-poll`.
 
 # 2. Setting Up SSE
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-sse-setup
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-sse-setup
 
 A TransformStream is created, and the client is registered with a unique ID.
 
@@ -303,7 +297,7 @@ A TransformStream is created, and the client is registered with a unique ID.
 
 # 3. SSE Client Lifecycle
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-sse-lifecycle
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-sse-lifecycle
 
 Each client gets a close timer (55 seconds) and the response stream is returned.
 
@@ -311,7 +305,7 @@ Each client gets a close timer (55 seconds) and the response stream is returned.
 
 # 4. Broadcasting to SSE Clients
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-broadcast-sse
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-broadcast-sse
 
 When messages are written, `broadcastSse` pushes to all connected clients.
 
@@ -319,7 +313,7 @@ When messages are written, `broadcastSse` pushes to all connected clients.
 
 # 5. SSE Event Format
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-sse-data-event
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-sse-data-event
 
 Data events are encoded as standard SSE format. Binary content is base64-encoded.
 
@@ -327,7 +321,7 @@ Data events are encoded as standard SSE format. Binary content is base64-encoded
 
 # 6. SSE Control Events
 
-<<< @/../core/src/http/handlers/realtime.ts#docs-sse-control-event
+<<< @/../core/src/http/v1/streams/realtime/handlers.ts#docs-sse-control-event
 
 Control events include the next offset, up-to-date status, and cursor for resume.
 
@@ -369,7 +363,7 @@ Follow a DELETE request through cascade cleanup
 
 # 1. The Delete Handler
 
-<<< @/../core/src/http/handlers/write.ts#docs-handle-delete
+<<< @/../core/src/http/v1/streams/delete/index.ts#docs-handle-delete
 
 DELETE cascades through all storage layers: SQLite ops → R2 segments.
 
@@ -416,7 +410,7 @@ layout: section
 
 # Offset Encoding
 
-<<< @/../core/src/protocol/offsets.ts#docs-encode
+<<< @/../core/src/http/v1/streams/shared/offsets.ts#docs-encode
 
 Offsets encode both the byte offset and read sequence (for segment lookups).
 
@@ -424,13 +418,13 @@ Offsets encode both the byte offset and read sequence (for segment lookups).
 
 # Offset Decoding
 
-<<< @/../core/src/protocol/offsets.ts#docs-decode
+<<< @/../core/src/http/v1/streams/shared/offsets.ts#docs-decode
 
 ---
 
 # Segment Rotation
 
-<<< @/../core/src/stream/rotate.ts#docs-rotate-check
+<<< @/../core/src/http/v1/streams/shared/rotate.ts#docs-rotate-check
 
 Segments rotate when they exceed size or message count thresholds.
 
@@ -438,7 +432,7 @@ Segments rotate when they exceed size or message count thresholds.
 
 # Segment Storage
 
-<<< @/../core/src/stream/rotate.ts#docs-rotate-store
+<<< @/../core/src/http/v1/streams/shared/rotate.ts#docs-rotate-store
 
 Messages are serialized to R2, then ops are deleted from SQLite.
 
@@ -446,7 +440,7 @@ Messages are serialized to R2, then ops are deleted from SQLite.
 
 # Producer Deduplication (Types)
 
-<<< @/../core/src/stream/producer.ts#docs-producer-types
+<<< @/../core/src/http/v1/streams/shared/producer.ts#docs-producer-types
 
 Producers provide idempotency through epoch/sequence tracking.
 
@@ -454,7 +448,7 @@ Producers provide idempotency through epoch/sequence tracking.
 
 # Producer Deduplication (State Machine)
 
-<<< @/../core/src/stream/producer.ts#docs-producer-evaluate
+<<< @/../core/src/http/v1/streams/shared/producer.ts#docs-producer-evaluate
 
 The state machine handles: new producer, epoch bump, duplicate, sequence gap.
 
@@ -462,7 +456,7 @@ The state machine handles: new producer, epoch bump, duplicate, sequence gap.
 
 # R2 Cold Storage - The ReadPath Class
 
-<<< @/../core/src/stream/read/path.ts#docs-read-path-class
+<<< @/../core/src/http/v1/streams/read/path.ts#docs-read-path-class
 
 ReadPath provides a unified read interface with coalescing and caching.
 
@@ -470,7 +464,7 @@ ReadPath provides a unified read interface with coalescing and caching.
 
 # R2 Cold Storage - Segment Lookup
 
-<<< @/../core/src/stream/read/path.ts#docs-resolve-storage-tier
+<<< @/../core/src/http/v1/streams/read/path.ts#docs-resolve-storage-tier
 
 When offset is below `segment_start`, read from R2 segments instead of SQLite.
 
@@ -478,7 +472,7 @@ When offset is below `segment_start`, read from R2 segments instead of SQLite.
 
 # R2 Cold Storage - Decoding Segments
 
-<<< @/../core/src/stream/read/path.ts#docs-read-r2-segment
+<<< @/../core/src/http/v1/streams/read/path.ts#docs-read-r2-segment
 
 Segment data is fetched from R2, then decoded and filtered by offset.
 
@@ -499,7 +493,7 @@ Useful for checking stream existence or polling for state changes.
 
 # Error Responses
 
-<<< @/../core/src/protocol/errors.ts#docs-error-response
+<<< @/../core/src/http/shared/errors.ts#docs-error-response
 
 All errors use consistent headers and format.
 

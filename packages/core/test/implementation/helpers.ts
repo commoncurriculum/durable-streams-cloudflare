@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ZERO_OFFSET } from "../../src/protocol/offsets";
+import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 const STREAM_PREFIX = "/v1/stream/";

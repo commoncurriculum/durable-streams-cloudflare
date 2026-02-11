@@ -4,8 +4,8 @@ import {
   encodeTailOffset,
   encodeStreamOffset,
   resolveOffsetParam,
-} from "../../../src/stream/offsets";
-import { encodeOffset, decodeOffsetParts } from "../../../src/protocol/offsets";
+} from "../../../src/http/v1/streams/shared/stream-offsets";
+import { encodeOffset, decodeOffsetParts } from "../../../src/http/v1/streams/shared/offsets";
 import {
   baseMeta,
   withStorage,

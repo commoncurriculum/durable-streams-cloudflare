@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/protocol/offsets";
+import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
 import { startWorker, type WorkerHandle } from "./worker_harness";
 import { uniqueStreamId } from "./helpers";
 

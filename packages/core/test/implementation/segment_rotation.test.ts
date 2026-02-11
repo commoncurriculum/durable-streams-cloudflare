@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeOffsetParts } from "../../src/protocol/offsets";
+import { decodeOffsetParts } from "../../src/http/v1/streams/shared/offsets";
 import { createClient, uniqueStreamId } from "./helpers";
 
 describe("segment rotation", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parsePutInput } from "../../../src/stream/create/parse";
-import type { RawPutInput } from "../../../src/stream/types";
-import { errorResponse } from "../../../src/protocol/errors";
+import { parsePutInput } from "../../../src/http/v1/streams/create/parse";
+import type { RawPutInput } from "../../../src/http/v1/streams/types";
+import { errorResponse } from "../../../src/http/shared/errors";
 
 // Helper to create a base RawPutInput
 function baseRawInput(overrides: Partial<RawPutInput> = {}): RawPutInput {
