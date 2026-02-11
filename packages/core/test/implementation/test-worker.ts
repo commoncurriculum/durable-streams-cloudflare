@@ -1,8 +1,47 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { SignJWT } from "jose";
 import { type } from "arktype";
-import { createStreamWorker } from "../../src/http/create_worker";
-import { StreamDO } from "../../src/http/durable_object";
-import type { BaseEnv } from "../../src/http/create_worker";
+import { StreamDO } from "../../src/http/durable-object";
+import { createStreamWorker } from "../../src/http";
+import type { BaseEnv } from "../../src/http";
+import { createProject } from "../../src/storage/registry";
+import { parseStreamPathFromUrl } from "../../src/http/shared/stream-path";
+
+// ============================================================================
+// Test JWT infrastructure
+// ============================================================================
+
+const TEST_SIGNING_SECRET = "test-signing-secret-for-implementation-tests";
+const SECRET_KEY = new TextEncoder().encode(TEST_SIGNING_SECRET);
+
+// Production handler with full auth middleware (pathParsing → CORS →
+// authentication → authorization → timing → edgeCache). Created at module
+// scope so the in-flight coalescing Map is shared across all requests.
+const handler = createStreamWorker<BaseEnv>();
+
+// Register projects on demand — subscription integration tests use
+// "test-project", implementation tests use "_default" (implicit).
+const registeredProjects = new Set<string>();
+
+async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
+  if (registeredProjects.has(projectId)) return;
+  await createProject(kv, projectId, TEST_SIGNING_SECRET, {
+    corsOrigins: ["*"],
+  });
+  registeredProjects.add(projectId);
+}
+
+async function generateTestToken(scope = "manage"): Promise<string> {
+  return new SignJWT({ scope })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject("test-user")
+    .setExpirationTime("1h")
+    .sign(SECRET_KEY);
+}
+
+// ============================================================================
+// Validation
+// ============================================================================
 
 const putStreamOptions = type({
   "expiresAt?": "number",
@@ -10,27 +49,47 @@ const putStreamOptions = type({
   "contentType?": "string",
 });
 
-// Created at module scope so the in-flight coalescing Map is shared across
-// all requests in the isolate (WorkerEntrypoint creates a new instance per
-// request, so an instance field would give each request its own empty Map).
-const handler = createStreamWorker();
+// ============================================================================
+// Test Worker
+// ============================================================================
 
-// Auth-free worker for tests: no auth callbacks = no auth checks.
-// Extends WorkerEntrypoint so subscription integration tests can use RPC methods.
+// Uses the full production auth middleware chain. On each request the worker:
+// 1. Registers the _default project with a known signing secret (idempotent)
+// 2. Injects a real, properly-signed JWT token for requests without Authorization
+// 3. Delegates to the production handler which validates the token normally
+//
+// Conformance tests (external package) cannot add headers, so the worker
+// provides real tokens on their behalf. Implementation tests also get tokens
+// injected — the production auth middleware validates every request.
 export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   async fetch(request: Request): Promise<Response> {
-    // Route test-only debug actions via X-Debug-Action header to DO RPC methods
+    // Register the project for this URL so auth middleware can look it up
+    const parsed = parseStreamPathFromUrl(new URL(request.url).pathname);
+    await ensureProject(this.env.REGISTRY, parsed?.projectId ?? "_default");
+
+    // Debug actions bypass the HTTP handler entirely (direct DO RPC)
     const debugAction = request.headers.get("X-Debug-Action");
     if (debugAction) {
       return this.#handleDebugAction(debugAction, request);
     }
 
-    return handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
+    // Inject a valid JWT for requests without an Authorization header
+    if (!request.headers.has("Authorization")) {
+      const token = await generateTestToken("manage");
+      const headers = new Headers(request.headers);
+      headers.set("Authorization", `Bearer ${token}`);
+      request = new Request(request, { headers });
+    }
+
+    return handler.fetch!(
+      request as unknown as Request<unknown, IncomingRequestCfProperties>,
+      this.env,
+      this.ctx,
+    );
   }
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
-    // Extract stream ID from /v1/stream/:projectId/:streamId or /v1/stream/:streamId
     const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
     if (!pathMatch) return new Response("not found", { status: 404 });
     const raw = pathMatch[1];
@@ -78,6 +137,11 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     }
     return new Response("unknown action", { status: 400 });
   }
+
+  // ============================================================================
+  // RPC methods (used by subscription integration tests via service bindings)
+  // These bypass the HTTP handler — they call the DO directly.
+  // ============================================================================
 
   async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
     const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;

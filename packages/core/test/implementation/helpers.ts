@@ -1,4 +1,4 @@
-import { ZERO_OFFSET } from "../../src/protocol/offsets";
+import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 const STREAM_PREFIX = "/v1/stream/";
@@ -46,7 +46,10 @@ export function createClient(baseUrl = BASE_URL): {
   return {
     streamUrl: (streamId, params) => buildStreamUrl(baseUrl, streamId, params),
     createStream: async (streamId, body = "", contentType = "text/plain") => {
-      const response = await fetch(buildStreamUrl(baseUrl, streamId), {
+      // Create as public so no reader key is generated — reader keys block
+      // caching at bare URLs, which would break edge cache tests.  Reader key
+      // behavior is tested separately in cdn_reader_key.test.ts.
+      const response = await fetch(buildStreamUrl(baseUrl, streamId, { public: "true" }), {
         method: "PUT",
         headers: {
           "Content-Type": contentType,

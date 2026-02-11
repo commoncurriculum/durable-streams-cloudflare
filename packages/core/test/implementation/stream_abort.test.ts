@@ -1,6 +1,6 @@
 import net from "node:net";
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/protocol/offsets";
+import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
 import { createClient, delay, uniqueStreamId } from "./helpers";
 
 async function sendTruncatedBody(baseUrl: string, path: string, body: string): Promise<void> {

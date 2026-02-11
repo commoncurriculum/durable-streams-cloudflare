@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROJECT_ID_PATTERN } from "../../../src/http/create_worker";
+import { PROJECT_ID_PATTERN } from "../../../src/http";
 
 describe("project ID validation", () => {
   it("accepts valid project IDs", () => {
