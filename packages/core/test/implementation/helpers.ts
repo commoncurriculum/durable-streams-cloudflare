@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { ZERO_OFFSET } from "../../src/protocol/offsets";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
@@ -26,7 +25,7 @@ export function streamUrl(streamId: string, params?: Record<string, string>): st
 }
 
 export function uniqueStreamId(prefix = "impl"): string {
-  return `${prefix}-${randomUUID()}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 export function createClient(baseUrl = BASE_URL): {

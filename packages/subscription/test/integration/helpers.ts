@@ -1,13 +1,11 @@
-import { randomUUID } from "node:crypto";
-
 export const PROJECT_ID = "test-project";
 
 export function uniqueSessionId(_prefix?: string): string {
-  return randomUUID();
+  return crypto.randomUUID();
 }
 
 export function uniqueStreamId(prefix = "stream"): string {
-  return `${prefix}-${randomUUID()}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 export function delay(ms: number): Promise<void> {
