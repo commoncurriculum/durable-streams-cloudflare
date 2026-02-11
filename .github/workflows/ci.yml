@@ -94,7 +94,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -C packages/subscription run test:integration
 
-  test-server:
+  test-server-unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

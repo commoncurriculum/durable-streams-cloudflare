@@ -386,6 +386,9 @@ importers:
       '@durable-streams/server-conformance-tests':
         specifier: ^0.2.1
         version: 0.2.1(@types/node@25.2.1)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
+      jose:
+        specifier: ^5.9.6
+        version: 5.10.0
       oxfmt:
         specifier: ^0.28.0
         version: 0.28.0

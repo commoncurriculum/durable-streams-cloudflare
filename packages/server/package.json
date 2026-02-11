@@ -48,6 +48,7 @@
     "@cloudflare/workers-types": "^4.20260207.0",
     "@durable-streams/client": "^0.2.1",
     "@durable-streams/server-conformance-tests": "^0.2.1",
+    "jose": "^5.9.6",
     "oxfmt": "^0.28.0",
     "oxlint": "^1.43.0",
     "typescript": "^5.9.3",

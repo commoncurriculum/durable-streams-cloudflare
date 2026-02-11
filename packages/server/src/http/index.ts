@@ -121,6 +121,12 @@ export function createStreamWorker<
     return c.text("ok", 200, { "Cache-Control": "no-store" });
   });
 
+  // OPTIONS for health (preflight) - no CORS headers for non-stream routes
+  // biome-ignore lint: Hono context typing is complex
+  app.options("/health", (c: any) => {
+    return c.body(null, 204);
+  });
+
   // Config routes
   app.get(
     "/v1/config/:projectId",
