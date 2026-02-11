@@ -12,7 +12,6 @@ import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
 import { logError, logInfo, logWarn } from "../log";
 import { bufferToBase64 } from "../util/base64";
-import { postStream } from "../storage/streams";
 import {
   FANOUT_QUEUE_THRESHOLD,
   FANOUT_QUEUE_BATCH_SIZE,
@@ -22,6 +21,8 @@ import {
 } from "../constants";
 import type { BaseEnv } from "../http";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
+
+const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 export interface SubscriptionDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
@@ -138,30 +139,34 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // Clone payload — ArrayBuffers are transferred across RPC boundaries,
     // so the source write would detach the buffer before fanout can use it.
     const fanoutPayload = params.payload.slice(0);
-    const writeResult = await postStream(
-      this.env as BaseEnv,
+    
+    const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(sourceDoKey));
+    const headers: Record<string, string> = { "Content-Type": params.contentType };
+    if (producerHeaders) {
+      headers["X-Producer-Id"] = producerHeaders.producerId;
+      headers["X-Producer-Epoch"] = producerHeaders.producerEpoch;
+      headers["X-Producer-Seq"] = producerHeaders.producerSeq;
+    }
+    const writeResponse = await stub.routeStreamRequest(
       sourceDoKey,
-      params.payload,
-      params.contentType,
-      producerHeaders,
+      false,
+      new Request(INTERNAL_BASE_URL, {
+        method: "POST",
+        headers,
+        body: params.payload,
+      })
     );
 
-    // #endregion synced-to-docs:publish-to-source
-
-    if (!writeResult.ok) {
-      metrics.publishError(streamId, `http_${writeResult.status}`, Date.now() - start);
-      return {
-        status: writeResult.status,
-        nextOffset: null,
-        upToDate: null,
-        streamClosed: null,
-        body: JSON.stringify({ error: "Failed to write to stream", details: writeResult.body }),
-        fanoutCount: 0,
-        fanoutSuccesses: 0,
-        fanoutFailures: 0,
-        fanoutMode: "inline",
-      };
+    if (!writeResponse.ok) {
+      const errorText = await writeResponse.text();
+      throw new Error(`Failed to write to source stream: ${errorText} (status: ${writeResponse.status})`);
     }
+
+    const nextOffset = writeResponse.headers.get("X-Stream-Next-Offset");
+    const upToDate = writeResponse.headers.get("X-Stream-Up-To-Date");
+    const streamClosed = writeResponse.headers.get("X-Stream-Closed");
+
+    // #endregion synced-to-docs:publish-to-source
 
     // Track fanout sequence for producer-based deduplication.
     // Each subscriber estuary stream gets writes from producer "fanout:<streamId>".
@@ -257,11 +262,11 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     // #region synced-to-docs:publish-response
     return {
-      status: writeResult.status,
-      nextOffset: writeResult.nextOffset,
-      upToDate: writeResult.upToDate,
-      streamClosed: writeResult.streamClosed,
-      body: writeResult.body ?? "",
+      status: writeResponse.status,
+      nextOffset: nextOffset,
+      upToDate: upToDate,
+      streamClosed: streamClosed,
+      body: "",
       fanoutCount: subscribers.length,
       fanoutSuccesses: successCount,
       fanoutFailures: failureCount,

@@ -1,9 +1,11 @@
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import { headStream, putStream, deleteStream as deleteStreamInternal } from "../storage/streams";
+import { putStreamMetadata } from "../storage/registry";
 import type { BaseEnv } from "../http";
 import type { SubscribeResult } from "./types";
+
+const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 // #region synced-to-docs:create-estuary-stream
 export async function subscribe(
@@ -24,32 +26,61 @@ export async function subscribe(
 
   // 0. Look up the source stream's content type so the estuary stream matches
   const sourceDoKey = `${projectId}/${streamId}`;
-  const sourceHead = await headStream(env, sourceDoKey);
+  const sourceStub = env.STREAMS.get(env.STREAMS.idFromName(sourceDoKey));
+  const sourceHead = await sourceStub.routeStreamRequest(
+    sourceDoKey,
+    false,
+    new Request(INTERNAL_BASE_URL, { method: "HEAD" })
+  );
   if (!sourceHead.ok) {
     throw new Error(`Source stream not found: ${sourceDoKey} (status: ${sourceHead.status})`);
   }
-  if (!sourceHead.contentType) {
+  const contentType = sourceHead.headers.get("Content-Type");
+  if (!contentType) {
     throw new Error(`Source stream ${sourceDoKey} has no content type`);
   }
-  const contentType = sourceHead.contentType;
 
   // 1. Create/touch estuary stream in core with the same content type
   const estuaryDoKey = `${projectId}/${estuaryId}`;
-  const coreResponse = await putStream(env, estuaryDoKey, { expiresAt, contentType });
+  const estuaryStub = env.STREAMS.get(env.STREAMS.idFromName(estuaryDoKey));
+  const body = JSON.stringify({ expiresAt });
+  const coreResponse = await estuaryStub.routeStreamRequest(
+    estuaryDoKey,
+    false,
+    new Request(INTERNAL_BASE_URL, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body,
+    })
+  );
 
   const isNewEstuary = coreResponse.status === 201;
+  
+  // Write stream metadata to REGISTRY on creation
+  if (isNewEstuary && env.REGISTRY) {
+    await putStreamMetadata(env.REGISTRY, estuaryDoKey, {
+      public: false,
+      content_type: contentType,
+    });
+  }
   // #endregion synced-to-docs:create-estuary-stream
 
   if (!coreResponse.ok && coreResponse.status !== 409) {
-    throw new Error(`Failed to create estuary stream: ${coreResponse.body} (status: ${coreResponse.status})`);
+    const errorText = await coreResponse.text();
+    throw new Error(`Failed to create estuary stream: ${errorText} (status: ${coreResponse.status})`);
   }
 
   // If estuary stream already exists, verify content type matches
   if (coreResponse.status === 409) {
-    const estuaryHead = await headStream(env, estuaryDoKey);
-    if (estuaryHead.ok && estuaryHead.contentType && estuaryHead.contentType !== contentType) {
+    const estuaryHead = await estuaryStub.routeStreamRequest(
+      estuaryDoKey,
+      false,
+      new Request(INTERNAL_BASE_URL, { method: "HEAD" })
+    );
+    const existingContentType = estuaryHead.headers.get("Content-Type");
+    if (estuaryHead.ok && existingContentType && existingContentType !== contentType) {
       throw new Error(
-        `Content type mismatch: estuary stream is ${estuaryHead.contentType} but source stream ${streamId} is ${contentType}. ` +
+        `Content type mismatch: estuary stream is ${existingContentType} but source stream ${streamId} is ${contentType}. ` +
         `An estuary can only subscribe to streams of the same content type.`,
       );
     }
@@ -58,14 +89,18 @@ export async function subscribe(
   // #region synced-to-docs:add-subscription-to-do
   // 2. Add subscription to DO (project-scoped key)
   const streamDoKey = `${projectId}/${streamId}`;
-  const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamDoKey));
+  const subStub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(streamDoKey));
   try {
-    await stub.addSubscriber(estuaryId);
+    await subStub.addSubscriber(estuaryId);
   } catch (err) {
     // Rollback estuary if we just created it
     if (isNewEstuary) {
       try {
-        await deleteStreamInternal(env, estuaryDoKey);
+        await estuaryStub.routeStreamRequest(
+          estuaryDoKey,
+          false,
+          new Request(INTERNAL_BASE_URL, { method: "DELETE" })
+        );
       } catch (rollbackErr) {
         logError({ projectId, streamId, estuaryId, component: "subscribe-rollback" }, "failed to rollback estuary stream", rollbackErr);
       }

@@ -1,13 +1,20 @@
 import { createMetrics } from "../metrics";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import { headStream, putStream, deleteStream as deleteStreamInternal } from "../storage/streams";
+import { putStreamMetadata } from "../storage/registry";
 import type { BaseEnv } from "../http";
 import type { EstuaryInfo, TouchEstuaryResult, DeleteEstuaryResult } from "../subscriptions/types";
+
+const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 // #region synced-to-docs:get-estuary
 export async function getEstuary(env: BaseEnv, projectId: string, estuaryId: string): Promise<EstuaryInfo | null> {
   const doKey = `${projectId}/${estuaryId}`;
-  const coreResponse = await headStream(env, doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
+  const coreResponse = await stub.routeStreamRequest(
+    doKey,
+    false,
+    new Request(INTERNAL_BASE_URL, { method: "HEAD" })
+  );
   if (!coreResponse.ok) return null;
 
   const estuaryStub = env.ESTUARY_DO.get(env.ESTUARY_DO.idFromName(doKey));
@@ -18,7 +25,7 @@ export async function getEstuary(env: BaseEnv, projectId: string, estuaryId: str
     estuaryId,
     estuaryStreamPath: `/v1/stream/${projectId}/${estuaryId}`,
     subscriptions,
-    contentType: coreResponse.contentType,
+    contentType: coreResponse.headers.get("Content-Type"),
   };
 }
 // #endregion synced-to-docs:get-estuary
@@ -40,10 +47,30 @@ export async function touchEstuary(
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   const doKey = `${projectId}/${estuaryId}`;
-  const result = await putStream(env, doKey, { expiresAt, contentType });
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
+  
+  const body = JSON.stringify({ expiresAt });
+  const result = await stub.routeStreamRequest(
+    doKey,
+    false,
+    new Request(INTERNAL_BASE_URL, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body,
+    })
+  );
 
   if (!result.ok && result.status !== 409) {
-    throw new Error(`Failed to touch estuary: ${result.body} (status: ${result.status})`);
+    const errorText = await result.text();
+    throw new Error(`Failed to touch estuary: ${errorText} (status: ${result.status})`);
+  }
+
+  // Write stream metadata to REGISTRY on creation
+  if (result.status === 201 && env.REGISTRY) {
+    await putStreamMetadata(env.REGISTRY, doKey, {
+      public: false,
+      content_type: contentType,
+    });
   }
 
   // Reset the expiry alarm on the EstuaryDO
@@ -58,9 +85,15 @@ export async function touchEstuary(
 export async function deleteEstuary(env: BaseEnv, projectId: string, estuaryId: string): Promise<DeleteEstuaryResult> {
   const start = Date.now();
   const doKey = `${projectId}/${estuaryId}`;
-  const result = await deleteStreamInternal(env, doKey);
+  const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
+  const result = await stub.routeStreamRequest(
+    doKey,
+    false,
+    new Request(INTERNAL_BASE_URL, { method: "DELETE" })
+  );
   if (!result.ok && result.status !== 404) {
-    throw new Error(`Failed to delete estuary: ${result.body} (status: ${result.status})`);
+    const errorText = await result.text();
+    throw new Error(`Failed to delete estuary: ${errorText} (status: ${result.status})`);
   }
   createMetrics(env.METRICS).estuaryDelete(estuaryId, Date.now() - start);
   return { estuaryId, deleted: true };

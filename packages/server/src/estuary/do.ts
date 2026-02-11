@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../log";
-import { deleteStream } from "../storage/streams";
 import type { BaseEnv } from "../http";
 import type { SubscriptionDO } from "../subscriptions/do";
+
+const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 export interface EstuaryDOEnv {
   STREAMS: DurableObjectNamespace;
@@ -80,10 +81,15 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       }
     }
 
-    // Delete the estuary stream using internal API
+    // Delete the estuary stream using StreamDO RPC
     try {
       const doKey = `${project}/${estuaryId}`;
-      const result = await deleteStream(this.env as unknown as BaseEnv, doKey);
+      const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(doKey));
+      const result = await stub.routeStreamRequest(
+        doKey,
+        false,
+        new Request(INTERNAL_BASE_URL, { method: "DELETE" })
+      );
       if (!result.ok && result.status !== 404) {
         logError({ estuaryId, project, status: result.status, component: "estuary-alarm" }, "failed to delete estuary stream");
       }
