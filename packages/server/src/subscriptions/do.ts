@@ -22,8 +22,6 @@ import {
 import type { BaseEnv } from "../http";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
-const INTERNAL_BASE_URL = "https://internal/v1/stream";
-
 export interface SubscriptionDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
@@ -140,31 +138,8 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // so the source write would detach the buffer before fanout can use it.
     const fanoutPayload = params.payload.slice(0);
     
-    const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(sourceDoKey));
-    const headers: Record<string, string> = { "Content-Type": params.contentType };
-    if (producerHeaders) {
-      headers["X-Producer-Id"] = producerHeaders.producerId;
-      headers["X-Producer-Epoch"] = producerHeaders.producerEpoch;
-      headers["X-Producer-Seq"] = producerHeaders.producerSeq;
-    }
-    const writeResponse = await stub.routeStreamRequest(
-      sourceDoKey,
-      false,
-      new Request(INTERNAL_BASE_URL, {
-        method: "POST",
-        headers,
-        body: params.payload,
-      })
-    );
-
-    if (!writeResponse.ok) {
-      const errorText = await writeResponse.text();
-      throw new Error(`Failed to write to source stream: ${errorText} (status: ${writeResponse.status})`);
-    }
-
-    const nextOffset = writeResponse.headers.get("X-Stream-Next-Offset");
-    const upToDate = writeResponse.headers.get("X-Stream-Up-To-Date");
-    const streamClosed = writeResponse.headers.get("X-Stream-Closed");
+    const stub = env.STREAMS.get(env.STREAMS.idFromName(sourceDoKey));
+    const result = await stub.appendToStream(sourceDoKey, params.payload);
 
     // #endregion synced-to-docs:publish-to-source
 
@@ -262,10 +237,10 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     // #region synced-to-docs:publish-response
     return {
-      status: writeResponse.status,
-      nextOffset: nextOffset,
-      upToDate: upToDate,
-      streamClosed: streamClosed,
+      status: 204,
+      nextOffset: result.tailOffset.toString(),
+      upToDate: null,
+      streamClosed: null,
       body: "",
       fanoutCount: subscribers.length,
       fanoutSuccesses: successCount,

@@ -3,8 +3,6 @@ import { logError, logInfo } from "../log";
 import type { BaseEnv } from "../http";
 import type { SubscriptionDO } from "../subscriptions/do";
 
-const INTERNAL_BASE_URL = "https://internal/v1/stream";
-
 export interface EstuaryDOEnv {
   STREAMS: DurableObjectNamespace;
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
@@ -81,20 +79,13 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       }
     }
 
-    // Delete the estuary stream using StreamDO RPC
+    // Delete the estuary stream using StreamDO direct method
     try {
       const doKey = `${project}/${estuaryId}`;
       const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(doKey));
-      const result = await stub.routeStreamRequest(
-        doKey,
-        false,
-        new Request(INTERNAL_BASE_URL, { method: "DELETE" })
-      );
-      if (!result.ok && result.status !== 404) {
-        logError({ estuaryId, project, status: result.status, component: "estuary-alarm" }, "failed to delete estuary stream");
-      }
+      await stub.deleteStream(doKey);
     } catch (err) {
-      logError({ estuaryId, project, component: "estuary-alarm" }, "failed to delete estuary stream (exception)", err);
+      logError({ estuaryId, project, component: "estuary-alarm" }, "failed to delete estuary stream", err);
     }
 
     // Clean up local state

@@ -198,6 +198,130 @@ export class StreamDO extends DurableObject<StreamEnv> {
     };
   }
 
+  // Direct RPC methods for internal use (estuary, subscription)
+  // These bypass HTTP routing for in-worker DO-to-DO calls
+
+  async headStream(streamId: string): Promise<StreamMeta | null> {
+    return this.getStream(streamId);
+  }
+
+  async createOrTouchStream(
+    streamId: string,
+    contentType: string,
+    body?: Uint8Array
+  ): Promise<{ status: 200 | 201; meta: StreamMeta }> {
+    const request = new Request("https://internal", {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: body ?? null,
+    });
+    const response = await handlePut(
+      {
+        state: this.ctx,
+        env: this.env,
+        storage: this.storage,
+        timing: null,
+        longPoll: this.longPoll,
+        sseState: this.sseState,
+        getStream: this.getStream.bind(this),
+        resolveOffset: (sid, meta, offsetParam) =>
+          resolveOffsetParam(this.storage, sid, meta, offsetParam),
+        encodeOffset: (sid, meta, offset) =>
+          encodeStreamOffset(this.storage, sid, meta, offset),
+        encodeTailOffset: (sid, meta) =>
+          encodeTailOffset(this.storage, sid, meta),
+        readFromOffset: (sid, meta, offset, maxChunkBytes) =>
+          this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes, null),
+        rotateSegment: this.rotateSegment.bind(this),
+        getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
+      },
+      streamId,
+      request
+    );
+
+    const status = response.status as 200 | 201;
+    const meta = await this.getStream(streamId);
+    if (!meta) throw new Error("Stream creation failed");
+    return { status, meta };
+  }
+
+  async appendToStream(
+    streamId: string,
+    payload: Uint8Array
+  ): Promise<{ tailOffset: number }> {
+    const meta = await this.getStream(streamId);
+    if (!meta) throw new Error("Stream not found");
+    if (meta.closed) throw new Error("Stream is closed");
+
+    const request = new Request("https://internal", {
+      method: "POST",
+      headers: { "Content-Type": meta.content_type },
+      body: payload,
+    });
+
+    const response = await handlePost(
+      {
+        state: this.ctx,
+        env: this.env,
+        storage: this.storage,
+        timing: null,
+        longPoll: this.longPoll,
+        sseState: this.sseState,
+        getStream: this.getStream.bind(this),
+        resolveOffset: (sid, meta, offsetParam) =>
+          resolveOffsetParam(this.storage, sid, meta, offsetParam),
+        encodeOffset: (sid, meta, offset) =>
+          encodeStreamOffset(this.storage, sid, meta, offset),
+        encodeTailOffset: (sid, meta) =>
+          encodeTailOffset(this.storage, sid, meta),
+        readFromOffset: (sid, meta, offset, maxChunkBytes) =>
+          this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes, null),
+        rotateSegment: this.rotateSegment.bind(this),
+        getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
+      },
+      streamId,
+      request
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Append failed: ${text}`);
+    }
+
+    const updatedMeta = await this.getStream(streamId);
+    return { tailOffset: updatedMeta?.tail_offset ?? meta.tail_offset };
+  }
+
+  async deleteStream(streamId: string): Promise<void> {
+    const response = await handleDelete(
+      {
+        state: this.ctx,
+        env: this.env,
+        storage: this.storage,
+        timing: null,
+        longPoll: this.longPoll,
+        sseState: this.sseState,
+        getStream: this.getStream.bind(this),
+        resolveOffset: (sid, meta, offsetParam) =>
+          resolveOffsetParam(this.storage, sid, meta, offsetParam),
+        encodeOffset: (sid, meta, offset) =>
+          encodeStreamOffset(this.storage, sid, meta, offset),
+        encodeTailOffset: (sid, meta) =>
+          encodeTailOffset(this.storage, sid, meta),
+        readFromOffset: (sid, meta, offset, maxChunkBytes) =>
+          this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes, null),
+        rotateSegment: this.rotateSegment.bind(this),
+        getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
+      },
+      streamId
+    );
+
+    if (!response.ok && response.status !== 404) {
+      const text = await response.text();
+      throw new Error(`Delete failed: ${text}`);
+    }
+  }
+
   private async getStream(streamId: string): Promise<StreamMeta | null> {
     const result = await this.storage.getStream(streamId);
 

@@ -4,18 +4,12 @@ import { putStreamMetadata } from "../storage/registry";
 import type { BaseEnv } from "../http";
 import type { EstuaryInfo, TouchEstuaryResult, DeleteEstuaryResult } from "../subscriptions/types";
 
-const INTERNAL_BASE_URL = "https://internal/v1/stream";
-
 // #region synced-to-docs:get-estuary
 export async function getEstuary(env: BaseEnv, projectId: string, estuaryId: string): Promise<EstuaryInfo | null> {
   const doKey = `${projectId}/${estuaryId}`;
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
-  const coreResponse = await stub.routeStreamRequest(
-    doKey,
-    false,
-    new Request(INTERNAL_BASE_URL, { method: "HEAD" })
-  );
-  if (!coreResponse.ok) return null;
+  const meta = await stub.headStream(doKey);
+  if (!meta) return null;
 
   const estuaryStub = env.ESTUARY_DO.get(env.ESTUARY_DO.idFromName(doKey));
   const streamIds = await estuaryStub.getSubscriptions();
@@ -25,7 +19,7 @@ export async function getEstuary(env: BaseEnv, projectId: string, estuaryId: str
     estuaryId,
     estuaryStreamPath: `/v1/stream/${projectId}/${estuaryId}`,
     subscriptions,
-    contentType: coreResponse.headers.get("Content-Type"),
+    contentType: meta.content_type,
   };
 }
 // #endregion synced-to-docs:get-estuary
@@ -49,21 +43,8 @@ export async function touchEstuary(
   const doKey = `${projectId}/${estuaryId}`;
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   
-  const body = JSON.stringify({ expiresAt });
-  const result = await stub.routeStreamRequest(
-    doKey,
-    false,
-    new Request(INTERNAL_BASE_URL, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body,
-    })
-  );
-
-  if (!result.ok && result.status !== 409) {
-    const errorText = await result.text();
-    throw new Error(`Failed to touch estuary: ${errorText} (status: ${result.status})`);
-  }
+  const body = new TextEncoder().encode(JSON.stringify({ expiresAt }));
+  const result = await stub.createOrTouchStream(doKey, contentType, body);
 
   // Write stream metadata to REGISTRY on creation
   if (result.status === 201 && env.REGISTRY) {
@@ -86,15 +67,7 @@ export async function deleteEstuary(env: BaseEnv, projectId: string, estuaryId: 
   const start = Date.now();
   const doKey = `${projectId}/${estuaryId}`;
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
-  const result = await stub.routeStreamRequest(
-    doKey,
-    false,
-    new Request(INTERNAL_BASE_URL, { method: "DELETE" })
-  );
-  if (!result.ok && result.status !== 404) {
-    const errorText = await result.text();
-    throw new Error(`Failed to delete estuary: ${errorText} (status: ${result.status})`);
-  }
+  await stub.deleteStream(doKey);
   createMetrics(env.METRICS).estuaryDelete(estuaryId, Date.now() - start);
   return { estuaryId, deleted: true };
 }
