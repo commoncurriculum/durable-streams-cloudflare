@@ -47,6 +47,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 15. **[S2 Native Client Deep Dive](15-s2-native-client-deep-dive.md)** -- Detailed analysis of S2's authentication model and building an auth proxy to preserve JWT-based UX. Includes S2 access token scoping, JWT-to-S2-token exchange implementation, complete code examples, and migration path. Compares S2's granular permission system with Durable Streams' JWT auth.
 
+16. **[Client API & CDN Comparison](16-client-api-cdn-comparison.md)** -- Side-by-side comparison of Durable Streams HTTP-first API vs S2 SDK-first API. Analyzes developer experience, type safety, and feature parity. Examines S2's CDN compatibility and explains Durable Streams' offset/cursor-based caching design that enables 99% HIT rate and 162x cost reduction. Includes recommendations by workload type.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
