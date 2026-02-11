@@ -1,4 +1,4 @@
-import { postStream, type PostStreamResult } from "../internal-api";
+import { postStream, type PostStreamResult } from "../storage/streams";
 import type { BaseEnv } from "../http";
 import { FANOUT_BATCH_SIZE, FANOUT_RPC_TIMEOUT_MS } from "../constants";
 import { logWarn } from "../log";

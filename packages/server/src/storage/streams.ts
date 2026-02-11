@@ -1,27 +1,27 @@
 /**
- * Internal helpers for stream operations.
+ * Stream operations via direct Durable Object invocation.
  * These functions call the StreamDO directly without going through HTTP.
  */
 
-import type { BaseEnv } from "./http";
-import { putStreamMetadata } from "./storage/registry";
+import type { BaseEnv } from "../http";
+import { putStreamMetadata } from "./registry";
 
 const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
-export type StreamRpcResult = { 
-  ok: boolean; 
-  status: number; 
-  body: string | null; 
-  contentType?: string | null 
+export type StreamRpcResult = {
+  ok: boolean;
+  status: number;
+  body: string | null;
+  contentType?: string | null;
 };
 
-export type PostStreamResult = { 
-  ok: boolean; 
-  status: number; 
-  nextOffset: string | null; 
-  upToDate: string | null; 
-  streamClosed: string | null; 
-  body: string | null 
+export type PostStreamResult = {
+  ok: boolean;
+  status: number;
+  nextOffset: string | null;
+  upToDate: string | null;
+  streamClosed: string | null;
+  body: string | null;
 };
 
 /**
@@ -29,20 +29,20 @@ export type PostStreamResult = {
  */
 export async function headStream(
   env: BaseEnv,
-  doKey: string
+  doKey: string,
 ): Promise<StreamRpcResult> {
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
-    doKey, 
+    doKey,
     false,
     new Request(INTERNAL_BASE_URL, { method: "HEAD" }),
   );
   const body = response.ok ? null : await response.text();
-  return { 
-    ok: response.ok, 
-    status: response.status, 
-    body, 
-    contentType: response.headers.get("Content-Type") 
+  return {
+    ok: response.ok,
+    status: response.status,
+    body,
+    contentType: response.headers.get("Content-Type"),
   };
 }
 
@@ -64,7 +64,7 @@ export async function putStream(
   }
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
-    doKey, 
+    doKey,
     false,
     new Request(INTERNAL_BASE_URL, {
       method: "PUT",
@@ -72,14 +72,15 @@ export async function putStream(
       body: options.body,
     }),
   );
-  
+
   // Write stream metadata to REGISTRY on creation. Use ctx.waitUntil when available,
   // otherwise await the metadata write so callers without an ExecutionContext still
   // get KV metadata.
   if (response.status === 201 && env.REGISTRY) {
     const metadataPromise = putStreamMetadata(env.REGISTRY, doKey, {
       public: false,
-      content_type: response.headers.get("Content-Type") || "application/octet-stream",
+      content_type:
+        response.headers.get("Content-Type") || "application/octet-stream",
     });
     if (ctx) {
       ctx.waitUntil(metadataPromise);
@@ -87,7 +88,7 @@ export async function putStream(
       await metadataPromise;
     }
   }
-  
+
   const body = response.ok ? null : await response.text();
   return { ok: response.ok, status: response.status, body };
 }
@@ -97,11 +98,11 @@ export async function putStream(
  */
 export async function deleteStream(
   env: BaseEnv,
-  doKey: string
+  doKey: string,
 ): Promise<StreamRpcResult> {
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
-    doKey, 
+    doKey,
     false,
     new Request(INTERNAL_BASE_URL, { method: "DELETE" }),
   );
@@ -117,7 +118,11 @@ export async function postStream(
   doKey: string,
   payload: ArrayBuffer,
   contentType: string,
-  producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
+  producerHeaders?: {
+    producerId: string;
+    producerEpoch: string;
+    producerSeq: string;
+  },
 ): Promise<PostStreamResult> {
   const headers: Record<string, string> = { "Content-Type": contentType };
   if (producerHeaders) {
@@ -127,7 +132,7 @@ export async function postStream(
   }
   const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
   const response = await stub.routeStreamRequest(
-    doKey, 
+    doKey,
     false,
     new Request(INTERNAL_BASE_URL, { method: "POST", headers, body: payload }),
   );

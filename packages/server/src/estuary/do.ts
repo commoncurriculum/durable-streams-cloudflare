@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../log";
-import { deleteStream } from "../internal-api";
+import { deleteStream } from "../storage/streams";
 import type { BaseEnv } from "../http";
 import type { SubscriptionDO } from "../subscriptions/do";
 

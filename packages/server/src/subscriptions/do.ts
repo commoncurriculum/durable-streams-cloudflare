@@ -12,7 +12,7 @@ import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
 import { logError, logInfo, logWarn } from "../log";
 import { bufferToBase64 } from "../util/base64";
-import { postStream } from "../internal-api";
+import { postStream } from "../storage/streams";
 import {
   FANOUT_QUEUE_THRESHOLD,
   FANOUT_QUEUE_BATCH_SIZE,

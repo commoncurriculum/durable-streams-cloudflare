@@ -1,7 +1,7 @@
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import { headStream, putStream, deleteStream as deleteStreamInternal } from "../internal-api";
+import { headStream, putStream, deleteStream as deleteStreamInternal } from "../storage/streams";
 import type { BaseEnv } from "../http";
 import type { SubscribeResult } from "./types";
 

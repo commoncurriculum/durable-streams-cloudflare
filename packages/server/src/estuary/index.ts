@@ -1,6 +1,6 @@
 import { createMetrics } from "../metrics";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import { headStream, putStream, deleteStream as deleteStreamInternal } from "../internal-api";
+import { headStream, putStream, deleteStream as deleteStreamInternal } from "../storage/streams";
 import type { BaseEnv } from "../http";
 import type { EstuaryInfo, TouchEstuaryResult, DeleteEstuaryResult } from "../subscriptions/types";
 
