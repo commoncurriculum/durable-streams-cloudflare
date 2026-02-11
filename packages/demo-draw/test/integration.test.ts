@@ -211,7 +211,7 @@ describe("demo-draw integration", () => {
       contentType: "application/json",
       warnOnHttp: false,
     });
-    const res = await clientB.stream<DrawMessage>({ offset: "now", live: "sse" });
+    const res = await clientB.stream<DrawMessage>({ offset: "now", live: "sse", json: true });
 
     const received: DrawMessage[] = [];
     const unsub = res.subscribeJson<DrawMessage>((batch) => {
