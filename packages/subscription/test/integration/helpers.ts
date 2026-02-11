@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 export const PROJECT_ID = "test-project";
 
-export function uniqueSessionId(_prefix?: string): string {
+export function uniqueEstuaryId(_prefix?: string): string {
   return randomUUID();
 }
 
@@ -29,52 +29,52 @@ export async function waitFor(
 }
 
 export interface SubscriptionsClient {
-  subscribe(sessionId: string, streamId: string, contentType?: string): Promise<Response>;
-  unsubscribe(sessionId: string, streamId: string): Promise<Response>;
+  subscribe(estuaryId: string, streamId: string, contentType?: string): Promise<Response>;
+  unsubscribe(estuaryId: string, streamId: string): Promise<Response>;
   publish(streamId: string, payload: string, contentType?: string): Promise<Response>;
-  getSession(sessionId: string): Promise<Response>;
-  touchSession(sessionId: string): Promise<Response>;
-  deleteSession(sessionId: string): Promise<Response>;
+  getEstuary(estuaryId: string): Promise<Response>;
+  touchEstuary(estuaryId: string): Promise<Response>;
+  deleteEstuary(estuaryId: string): Promise<Response>;
 }
 
 export function createSubscriptionsClient(baseUrl: string): SubscriptionsClient {
   return {
-    async subscribe(sessionId: string, streamId: string, contentType = "application/json") {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/subscribe`, {
+    async subscribe(estuaryId: string, streamId: string, _contentType = "application/json") {
+      return fetch(`${baseUrl}/v1/estuary/subscribe/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, streamId, contentType }),
+        body: JSON.stringify({ estuaryId }),
       });
     },
 
-    async unsubscribe(sessionId: string, streamId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/unsubscribe`, {
+    async unsubscribe(estuaryId: string, streamId: string) {
+      return fetch(`${baseUrl}/v1/estuary/subscribe/${PROJECT_ID}/${streamId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, streamId }),
+        body: JSON.stringify({ estuaryId }),
       });
     },
 
     async publish(streamId: string, payload: string, contentType = "application/json") {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/publish/${streamId}`, {
+      return fetch(`${baseUrl}/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         headers: { "Content-Type": contentType },
         body: payload,
       });
     },
 
-    async getSession(sessionId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/session/${sessionId}`);
+    async getEstuary(estuaryId: string) {
+      return fetch(`${baseUrl}/v1/estuary/${PROJECT_ID}/${estuaryId}`);
     },
 
-    async touchSession(sessionId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/session/${sessionId}/touch`, {
+    async touchEstuary(estuaryId: string) {
+      return fetch(`${baseUrl}/v1/estuary/${PROJECT_ID}/${estuaryId}`, {
         method: "POST",
       });
     },
 
-    async deleteSession(sessionId: string) {
-      return fetch(`${baseUrl}/v1/${PROJECT_ID}/session/${sessionId}`, {
+    async deleteEstuary(estuaryId: string) {
+      return fetch(`${baseUrl}/v1/estuary/${PROJECT_ID}/${estuaryId}`, {
         method: "DELETE",
       });
     },
@@ -141,23 +141,22 @@ export function createCoreClient(baseUrl: string): CoreClient {
 }
 
 export interface SubscribeResponse {
-  sessionId: string;
+  estuaryId: string;
   streamId: string;
-  sessionStreamPath: string;
+  estuaryStreamPath: string;
   expiresAt: number;
-  isNewSession: boolean;
+  isNewEstuary: boolean;
 }
 
-export interface SessionResponse {
-  sessionId: string;
-  sessionStreamPath: string;
+export interface EstuaryResponse {
+  estuaryId: string;
+  estuaryStreamPath: string;
   subscriptions: Array<{
     streamId: string;
   }>;
 }
 
 export interface TouchResponse {
-  sessionId: string;
+  estuaryId: string;
   expiresAt: number;
 }
-

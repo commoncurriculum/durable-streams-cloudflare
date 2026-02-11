@@ -3,16 +3,16 @@ import { logError, logInfo } from "../log";
 import type { CoreService } from "../client";
 import type { SubscriptionDO } from "../subscriptions/do";
 
-export interface SessionDOEnv {
+export interface EstuaryDOEnv {
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
   CORE: CoreService;
   METRICS?: AnalyticsEngineDataset;
 }
 
-export class SessionDO extends DurableObject<SessionDOEnv> {
+export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
   private sql: SqlStorage;
 
-  constructor(ctx: DurableObjectState, env: SessionDOEnv) {
+  constructor(ctx: DurableObjectState, env: EstuaryDOEnv) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     ctx.blockConcurrencyWhile(async () => this.initSchema());
@@ -25,37 +25,38 @@ export class SessionDO extends DurableObject<SessionDOEnv> {
         subscribed_at INTEGER NOT NULL
       );
     `);
+    this.sql.exec("DROP TABLE IF EXISTS session_info");
     this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS session_info (
+      CREATE TABLE IF NOT EXISTS estuary_info (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         project TEXT NOT NULL,
-        session_id TEXT NOT NULL
+        estuary_id TEXT NOT NULL
       );
     `);
   }
 
-  async setExpiry(project: string, sessionId: string, ttlSeconds: number): Promise<void> {
+  async setExpiry(project: string, estuaryId: string, ttlSeconds: number): Promise<void> {
     this.sql.exec(
-      `INSERT INTO session_info (id, project, session_id) VALUES (1, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET project = excluded.project, session_id = excluded.session_id`,
+      `INSERT INTO estuary_info (id, project, estuary_id) VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET project = excluded.project, estuary_id = excluded.estuary_id`,
       project,
-      sessionId,
+      estuaryId,
     );
     await this.ctx.storage.setAlarm(Date.now() + ttlSeconds * 1000);
   }
 
   async alarm(): Promise<void> {
-    const cursor = this.sql.exec("SELECT project, session_id FROM session_info WHERE id = 1");
-    let row: { project: string; session_id: string } | undefined;
+    const cursor = this.sql.exec("SELECT project, estuary_id FROM estuary_info WHERE id = 1");
+    let row: { project: string; estuary_id: string } | undefined;
     for (const r of cursor) {
-      row = { project: r.project as string, session_id: r.session_id as string };
+      row = { project: r.project as string, estuary_id: r.estuary_id as string };
     }
     if (!row) return;
 
-    const { project, session_id: sessionId } = row;
-    logInfo({ sessionId, project, component: "session-alarm" }, "session expired, cleaning up");
+    const { project, estuary_id: estuaryId } = row;
+    logInfo({ estuaryId, project, component: "estuary-alarm" }, "estuary expired, cleaning up");
 
-    // Remove this session from all SubscriptionDOs
+    // Remove this estuary from all SubscriptionDOs
     const streamIds = await this.getSubscriptions();
     const BATCH_SIZE = 20;
     for (let i = 0; i < streamIds.length; i += BATCH_SIZE) {
@@ -64,13 +65,13 @@ export class SessionDO extends DurableObject<SessionDOEnv> {
         batch.map(async (streamId) => {
           const doKey = `${project}/${streamId}`;
           const stub = this.env.SUBSCRIPTION_DO.get(this.env.SUBSCRIPTION_DO.idFromName(doKey));
-          await stub.removeSubscriber(sessionId);
+          await stub.removeSubscriber(estuaryId);
         }),
       );
       for (let j = 0; j < results.length; j++) {
         if (results[j].status === "rejected") {
           logError(
-            { sessionId, streamId: batch[j], project, component: "session-alarm" },
+            { estuaryId, streamId: batch[j], project, component: "estuary-alarm" },
             "failed to remove subscription",
             (results[j] as PromiseRejectedResult).reason,
           );
@@ -78,20 +79,20 @@ export class SessionDO extends DurableObject<SessionDOEnv> {
       }
     }
 
-    // Delete the session stream from core
+    // Delete the estuary stream from core
     try {
-      const doKey = `${project}/${sessionId}`;
+      const doKey = `${project}/${estuaryId}`;
       const result = await this.env.CORE.deleteStream(doKey);
       if (!result.ok && result.status !== 404) {
-        logError({ sessionId, project, status: result.status, component: "session-alarm" }, "failed to delete session stream");
+        logError({ estuaryId, project, status: result.status, component: "estuary-alarm" }, "failed to delete estuary stream");
       }
     } catch (err) {
-      logError({ sessionId, project, component: "session-alarm" }, "failed to delete session stream (exception)", err);
+      logError({ estuaryId, project, component: "estuary-alarm" }, "failed to delete estuary stream (exception)", err);
     }
 
     // Clean up local state
     this.sql.exec("DELETE FROM subscriptions");
-    this.sql.exec("DELETE FROM session_info");
+    this.sql.exec("DELETE FROM estuary_info");
   }
 
   async addSubscription(streamId: string): Promise<void> {

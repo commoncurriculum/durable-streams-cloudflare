@@ -33,7 +33,7 @@ export interface SubscriptionDOEnv {
 type CircuitState = "closed" | "open" | "half-open";
 
 interface Subscriber {
-  session_id: string;
+  estuary_id: string;
   subscribed_at: number;
 }
 
@@ -43,7 +43,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private nextFanoutSeq: number;
 
   // Circuit breaker for inline fanout — protects the publish path when
-  // downstream session streams are slow or failing.
+  // downstream estuary streams are slow or failing.
   private circuitState: CircuitState = "closed";
   private consecutiveFailures = 0;
   private lastFailureTime = 0;
@@ -61,7 +61,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private initSchema(): void {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS subscribers (
-        session_id TEXT PRIMARY KEY,
+        estuary_id TEXT PRIMARY KEY,
         subscribed_at INTEGER NOT NULL
       );
     `);
@@ -91,25 +91,25 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   // #endregion synced-to-docs:do-overview
 
   // #region synced-to-docs:add-subscriber
-  async addSubscriber(sessionId: string): Promise<void> {
+  async addSubscriber(estuaryId: string): Promise<void> {
     this.sql.exec(
-      `INSERT INTO subscribers (session_id, subscribed_at)
+      `INSERT INTO subscribers (estuary_id, subscribed_at)
        VALUES (?, ?)
-       ON CONFLICT(session_id) DO NOTHING`,
-      sessionId,
+       ON CONFLICT(estuary_id) DO NOTHING`,
+      estuaryId,
       Date.now(),
     );
   }
   // #endregion synced-to-docs:add-subscriber
 
-  async removeSubscriber(sessionId: string): Promise<void> {
-    this.sql.exec("DELETE FROM subscribers WHERE session_id = ?", sessionId);
+  async removeSubscriber(estuaryId: string): Promise<void> {
+    this.sql.exec("DELETE FROM subscribers WHERE estuary_id = ?", estuaryId);
   }
 
-  async removeSubscribers(sessionIds: string[]): Promise<void> {
-    if (sessionIds.length === 0) return;
-    const placeholders = sessionIds.map(() => "?").join(", ");
-    this.sql.exec(`DELETE FROM subscribers WHERE session_id IN (${placeholders})`, ...sessionIds);
+  async removeSubscribers(estuaryIds: string[]): Promise<void> {
+    if (estuaryIds.length === 0) return;
+    const placeholders = estuaryIds.map(() => "?").join(", ");
+    this.sql.exec(`DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`, ...estuaryIds);
   }
 
   // #region synced-to-docs:get-subscribers
@@ -118,7 +118,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     return {
       streamId,
       subscribers: subscribers.map((s) => ({
-        sessionId: s.session_id,
+        estuaryId: s.estuary_id,
         subscribedAt: s.subscribed_at,
       })),
       count: subscribers.length,
@@ -164,7 +164,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
 
     // Track fanout sequence for producer-based deduplication.
-    // Each subscriber session stream gets writes from producer "fanout:<streamId>".
+    // Each subscriber estuary stream gets writes from producer "fanout:<streamId>".
     // The sequence number must be a monotonically increasing integer (0, 1, 2, ...),
     // NOT the hex-encoded source offset.
     const fanoutSeq = this.nextFanoutSeq++;
@@ -177,9 +177,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     // #region synced-to-docs:fanout
     // 2. Get subscribers (local DO SQLite query)
-    const subscribers = this.getSubscriberSessionIds();
+    const subscribers = this.getSubscriberEstuaryIds();
 
-    // 3. Fan out to all subscriber session streams
+    // 3. Fan out to all subscriber estuary streams
     let successCount = 0;
     let failureCount = 0;
     let fanoutMode: "inline" | "queued" | "circuit-open" | "skipped" = "inline";
@@ -216,7 +216,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
             successCount = result.successes;
             failureCount = result.failures;
             this.updateCircuitBreaker(result.successes, result.failures);
-            this.removeStaleSubscribers(result.staleSessionIds);
+            this.removeStaleSubscribers(result.staleEstuaryIds);
           }
         }
       } else if (!this.shouldAttemptInlineFanout()) {
@@ -236,7 +236,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
         // #endregion synced-to-docs:fanout
 
         // #region synced-to-docs:stale-cleanup
-        this.removeStaleSubscribers(result.staleSessionIds);
+        this.removeStaleSubscribers(result.staleEstuaryIds);
         // #endregion synced-to-docs:stale-cleanup
       }
 
@@ -319,7 +319,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private async enqueueFanout(
     projectId: string,
     streamId: string,
-    sessionIds: string[],
+    estuaryIds: string[],
     payload: ArrayBuffer,
     contentType: string,
     producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
@@ -328,13 +328,13 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     const payloadBase64 = bufferToBase64(payload);
 
     const messages: { body: FanoutQueueMessage }[] = [];
-    for (let i = 0; i < sessionIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
-      const batch = sessionIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+    for (let i = 0; i < estuaryIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+      const batch = estuaryIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
       messages.push({
         body: {
           projectId,
           streamId,
-          sessionIds: batch,
+          estuaryIds: batch,
           payload: payloadBase64,
           contentType,
           producerHeaders,
@@ -349,27 +349,27 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     }
   }
 
-  private removeStaleSubscribers(sessionIds: string[]): void {
-    if (sessionIds.length === 0) return;
-    const placeholders = sessionIds.map(() => "?").join(", ");
-    this.sql.exec(`DELETE FROM subscribers WHERE session_id IN (${placeholders})`, ...sessionIds);
+  private removeStaleSubscribers(estuaryIds: string[]): void {
+    if (estuaryIds.length === 0) return;
+    const placeholders = estuaryIds.map(() => "?").join(", ");
+    this.sql.exec(`DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`, ...estuaryIds);
   }
 
-  private getSubscriberSessionIds(): string[] {
-    const cursor = this.sql.exec("SELECT session_id FROM subscribers");
+  private getSubscriberEstuaryIds(): string[] {
+    const cursor = this.sql.exec("SELECT estuary_id FROM subscribers");
     const results: string[] = [];
     for (const row of cursor) {
-      results.push(row.session_id as string);
+      results.push(row.estuary_id as string);
     }
     return results;
   }
 
   private getSubscribersWithTimestamps(): Subscriber[] {
-    const cursor = this.sql.exec("SELECT session_id, subscribed_at FROM subscribers");
+    const cursor = this.sql.exec("SELECT estuary_id, subscribed_at FROM subscribers");
     const results: Subscriber[] = [];
     for (const row of cursor) {
       results.push({
-        session_id: row.session_id as string,
+        estuary_id: row.estuary_id as string,
         subscribed_at: row.subscribed_at as number,
       });
     }

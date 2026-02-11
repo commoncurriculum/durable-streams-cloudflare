@@ -3,7 +3,7 @@
  * Metrics helper for Analytics Engine observability.
  *
  * All metrics use this structure:
- * - blobs: [streamId, sessionId, eventType, errorType?] (up to 20 blobs)
+ * - blobs: [streamId, estuaryId, eventType, errorType?] (up to 20 blobs)
  * - doubles: [count, latencyMs, ...] (up to 20 doubles)
  * - indexes: [eventCategory] (1 index for querying)
  */
@@ -30,63 +30,63 @@ export class Metrics {
   }
 
   // Subscription events
-  subscribe(streamId: string, sessionId: string, isNewSession: boolean, latencyMs: number) {
+  subscribe(streamId: string, estuaryId: string, isNewEstuary: boolean, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: [streamId, sessionId, "subscribe", ""],
-      doubles: [1, latencyMs, isNewSession ? 1 : 0, 0],
+      blobs: [streamId, estuaryId, "subscribe", ""],
+      doubles: [1, latencyMs, isNewEstuary ? 1 : 0, 0],
       indexes: ["subscription"],
     });
   }
 
-  unsubscribe(streamId: string, sessionId: string, latencyMs: number) {
+  unsubscribe(streamId: string, estuaryId: string, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: [streamId, sessionId, "unsubscribe", ""],
+      blobs: [streamId, estuaryId, "unsubscribe", ""],
       doubles: [1, latencyMs, 0, 0],
       indexes: ["subscription"],
     });
   }
   // #endregion synced-to-docs:metrics-fanout-subscription
 
-  // #region synced-to-docs:metrics-session-cleanup
-  // Session lifecycle events
-  sessionCreate(sessionId: string, project: string, ttlSeconds: number, latencyMs: number) {
+  // #region synced-to-docs:metrics-estuary-cleanup
+  // Estuary lifecycle events
+  estuaryCreate(estuaryId: string, project: string, ttlSeconds: number, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: [project, sessionId, "session_create", ""],
+      blobs: [project, estuaryId, "estuary_create", ""],
       doubles: [1, latencyMs, ttlSeconds, 0],
-      indexes: ["session"],
+      indexes: ["estuary"],
     });
   }
 
-  sessionTouch(sessionId: string, latencyMs: number) {
+  estuaryTouch(estuaryId: string, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: ["", sessionId, "session_touch", ""],
+      blobs: ["", estuaryId, "estuary_touch", ""],
       doubles: [1, latencyMs, 0, 0],
-      indexes: ["session"],
+      indexes: ["estuary"],
     });
   }
 
-  sessionDelete(sessionId: string, latencyMs: number) {
+  estuaryDelete(estuaryId: string, latencyMs: number) {
     this.ae?.writeDataPoint({
-      blobs: ["", sessionId, "session_delete", ""],
+      blobs: ["", estuaryId, "estuary_delete", ""],
       doubles: [1, latencyMs, 0, 0],
-      indexes: ["session"],
+      indexes: ["estuary"],
     });
   }
 
-  sessionExpire(sessionId: string, subscriptionCount: number, ageMs: number) {
+  estuaryExpire(estuaryId: string, subscriptionCount: number, ageMs: number) {
     this.ae?.writeDataPoint({
-      blobs: ["", sessionId, "session_expire", ""],
+      blobs: ["", estuaryId, "estuary_expire", ""],
       doubles: [1, 0, subscriptionCount, ageMs],
-      indexes: ["session"],
+      indexes: ["estuary"],
     });
   }
-  // #endregion synced-to-docs:metrics-session-cleanup
+  // #endregion synced-to-docs:metrics-estuary-cleanup
 
   // Cleanup events
-  cleanupBatch(p: { expiredSessions: number; streamsDeleted: number; subscriptionsRemoved: number; subscriptionsFailed: number; latencyMs: number }) {
+  cleanupBatch(p: { expiredEstuaries: number; streamsDeleted: number; subscriptionsRemoved: number; subscriptionsFailed: number; latencyMs: number }) {
     this.ae?.writeDataPoint({
       blobs: ["", "", "cleanup_batch", ""],
-      doubles: [p.expiredSessions, p.streamsDeleted, p.subscriptionsRemoved, p.subscriptionsFailed, p.latencyMs],
+      doubles: [p.expiredEstuaries, p.streamsDeleted, p.subscriptionsRemoved, p.subscriptionsFailed, p.latencyMs],
       indexes: ["cleanup"],
     });
   }

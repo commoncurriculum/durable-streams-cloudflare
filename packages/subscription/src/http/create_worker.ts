@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { subscribeRoutes } from "./routes/subscribe";
 import { publishRoutes } from "./routes/publish";
-import { sessionRoutes } from "./routes/session";
+import { estuaryRoutes } from "./routes/estuary";
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 import { createMetrics } from "../metrics";
 import { parseRoute, lookupProjectConfig } from "./auth";
@@ -9,7 +9,6 @@ import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
 import type { AuthorizeSubscription } from "./auth";
 import type { FanoutQueueMessage } from "../subscriptions/types";
-import { parseStreamPathFromUrl } from "../util/stream-path";
 
 export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
   authorize?: AuthorizeSubscription<E>;
@@ -18,7 +17,7 @@ export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
 const CORS_ALLOW_HEADERS = [
   "Content-Type",
   "Authorization",
-  "X-Session-Id",
+  "X-Estuary-Id",
   "Producer-Id",
   "Producer-Epoch",
   "Producer-Seq",
@@ -46,7 +45,7 @@ function resolveProjectCorsOrigin(
   if (corsOrigins.includes("*")) return "*";
   if (requestOrigin && corsOrigins.includes(requestOrigin))
     return requestOrigin;
-  return corsOrigins[0];
+  return null;
 }
 
 function applyCorsHeaders(headers: Headers, origin: string | null): void {
@@ -60,8 +59,19 @@ function applyCorsHeaders(headers: Headers, origin: string | null): void {
   headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS);
 }
 
-/** Extract projectId from /v1/:project/... paths */
-const PROJECT_PATH_RE = /^\/v1\/([^/]+)\//;
+/** Extract projectId from /v1/estuary/.../:projectId/... paths */
+const PROJECT_PATH_RE = /^\/v1\/estuary\/(?:publish|subscribe)\/([^/]+)\//;
+const PROJECT_PATH_DIRECT_RE = /^\/v1\/estuary\/([^/]+)\//;
+
+function extractProjectId(pathname: string): string | null {
+  // Try 5-segment paths first: /v1/estuary/publish|subscribe/:projectId/:id
+  const actionMatch = PROJECT_PATH_RE.exec(pathname);
+  if (actionMatch) return actionMatch[1];
+  // Then 4-segment paths: /v1/estuary/:projectId/:estuaryId
+  const directMatch = PROJECT_PATH_DIRECT_RE.exec(pathname);
+  if (directMatch) return directMatch[1];
+  return null;
+}
 
 // #region synced-to-docs:worker-entry
 export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
@@ -74,8 +84,7 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   // Per-project CORS middleware — looks up corsOrigins from KV
   app.use("*", async (c, next) => {
     const url = new URL(c.req.url);
-    let parsed = parseStreamPathFromUrl(c.req.url);
-    const { projectId, streamId: _s, path: _p } = parsed || {};
+    const projectId = extractProjectId(url.pathname);
 
     let corsOrigin: string | null = null;
 
@@ -139,19 +148,21 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     return c.json({ status: "ok" });
   });
 
-  // Validate project ID before hitting routes
-  app.use("/v1/:project/*", async (c, next) => {
-    const project = c.req.param("project");
-    if (!project || !isValidProjectId(project)) {
+  // Project ID validation middleware for /v1/estuary/* routes
+  app.use("/v1/estuary/*", async (c, next) => {
+    const url = new URL(c.req.url);
+    const projectId = extractProjectId(url.pathname);
+    if (projectId && !isValidProjectId(projectId)) {
       return c.json({ error: "Invalid project ID" }, 400);
     }
     return next();
   });
 
-  // Mount routes under /v1/:project
-  app.route("/v1/:project", subscribeRoutes);
-  app.route("/v1/:project", publishRoutes);
-  app.route("/v1/:project", sessionRoutes);
+  // Mount routes under /v1/estuary
+  // Order matters: subscribe and publish (5-segment) before estuary (4-segment catch-all)
+  app.route("/v1/estuary", subscribeRoutes);
+  app.route("/v1/estuary", publishRoutes);
+  app.route("/v1/estuary", estuaryRoutes);
 
   // Catch-all
   app.all("*", (c) => {
