@@ -10,7 +10,6 @@ import {
   type DrawMessage,
   type StrokeMessage,
 } from "@/lib/stream";
-import type { DurableStream } from "@durable-streams/client";
 import { getRoomConfig } from "@/lib/config";
 
 export const Route = createFileRoute("/room/$roomId")({
