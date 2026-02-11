@@ -1,8 +1,15 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { Hono } from "hono";
 import { type } from "arktype";
-import { createStreamWorker } from "../../src/http";
 import { StreamDO } from "../../src/http/durable-object";
 import type { BaseEnv } from "../../src/http";
+import type { InFlightResult } from "../../src/http/middleware/coalesce";
+import { pathParsingMiddleware } from "../../src/http/middleware/path-parsing";
+import { corsMiddleware } from "../../src/http/middleware/cors";
+import { timingMiddleware } from "../../src/http/middleware/timing";
+import { createEdgeCacheMiddleware } from "../../src/http/middleware/edge-cache";
+import { errorResponse } from "../../src/http/shared/errors";
+import { logError } from "../../src/log";
 
 const putStreamOptions = type({
   "expiresAt?": "number",
@@ -10,27 +17,57 @@ const putStreamOptions = type({
   "contentType?": "string",
 });
 
-// Created at module scope so the in-flight coalescing Map is shared across
-// all requests in the isolate (WorkerEntrypoint creates a new instance per
-// request, so an instance field would give each request its own empty Map).
-const handler = createStreamWorker({ skipAuth: true });
+// Build a Hono app with the full edge middleware stack but NO auth.
+// This is test-only code — the production createStreamWorker() always has auth.
+// Tests exercise the stream protocol, edge caching, coalescing, etc. without
+// needing JWT tokens for every request.
+const inFlight = new Map<string, Promise<InFlightResult>>();
+const app = new Hono();
 
-// Auth-free worker for tests: skipAuth bypasses JWT auth middleware.
+app.use("*", pathParsingMiddleware);
+app.use("*", corsMiddleware);
+// No authenticationMiddleware / authorizationMiddleware — test worker is auth-free
+app.use("/v1/stream/*", timingMiddleware);
+app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
+
+// biome-ignore lint: Hono context typing is complex
+app.get("/health", (c: any) => c.text("ok", 200, { "Cache-Control": "no-store" }));
+
+// biome-ignore lint: Hono context typing is complex
+app.all("/v1/stream/*", async (c: any) => {
+  const timing = c.get("timing");
+  const doKey = c.get("streamPath");
+  const stub = c.env.STREAMS.getByName(doKey);
+  const doneOrigin = timing?.start("edge.origin");
+  const response = await stub.routeStreamRequest(doKey, !!timing, c.req.raw);
+  doneOrigin?.();
+  return response;
+});
+
+// biome-ignore lint: Hono context typing is complex
+app.all("*", (c: any) => c.text("not found", 404, { "Cache-Control": "no-store" }));
+
+// biome-ignore lint: Hono context typing is complex
+app.onError((err: Error, c: any) => {
+  logError({ streamPath: c.get("streamPath"), method: c.req.method }, "unhandled error", err);
+  return errorResponse(500, err.message ?? "internal error");
+});
+
+const handler = { fetch: app.fetch };
+
+// Auth-free test worker.
 // Extends WorkerEntrypoint so subscription integration tests can use RPC methods.
 export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   async fetch(request: Request): Promise<Response> {
-    // Route test-only debug actions via X-Debug-Action header to DO RPC methods
     const debugAction = request.headers.get("X-Debug-Action");
     if (debugAction) {
       return this.#handleDebugAction(debugAction, request);
     }
-
-    return handler.fetch!(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
+    return handler.fetch(request as unknown as Request<unknown, IncomingRequestCfProperties>, this.env, this.ctx);
   }
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
-    // Extract stream ID from /v1/stream/:projectId/:streamId or /v1/stream/:streamId
     const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
     if (!pathMatch) return new Response("not found", { status: 404 });
     const raw = pathMatch[1];

@@ -75,27 +75,3 @@ export async function authorizationMiddleware(c: any, next: () => Promise<void>)
   }
 }
 // #endregion docs-authorize-request
-
-/**
- * Permissive authorization middleware for testing.
- * Allows all requests through but still does streamMeta lookup and sets
- * Stream-Reader-Key header on HEAD responses.
- */
-// biome-ignore lint: Hono context typing is complex; middleware is wired through the app
-export async function permissiveAuthorizationMiddleware(c: any, next: () => Promise<void>): Promise<void | Response> {
-  const doKey = c.get("streamPath");
-  const method = c.req.method.toUpperCase();
-  const isStreamRead = method === "GET" || method === "HEAD";
-
-  let streamMeta: StreamMeta | null = null;
-  if (isStreamRead && doKey) {
-    streamMeta = await getStreamMeta(c.env.REGISTRY, doKey);
-  }
-  c.set("streamMeta", streamMeta);
-
-  await next();
-
-  if (method === "HEAD" && c.res?.ok && streamMeta?.readerKey) {
-    c.res.headers.set(HEADER_STREAM_READER_KEY, streamMeta.readerKey);
-  }
-}
