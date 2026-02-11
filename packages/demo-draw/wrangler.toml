@@ -4,7 +4,7 @@ compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-CORE_URL = "https://ds-stream.commonplanner.com"
+CORE_URL = "http://localhost:8787"
 PROJECT_ID = "demo-drawing"
 # SIGNING_SECRET should go in .dev.vars for local dev, or be set as a
 # Cloudflare secret for production:

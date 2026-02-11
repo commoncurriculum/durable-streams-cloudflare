@@ -2,16 +2,30 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { createServerFn } from "@tanstack/react-start";
+import { getRoomConfig } from "@/lib/config";
+import { getWriteStream } from "@/lib/stream";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
+// Example server function
+const createRoom = createServerFn({ method: "POST" }).handler(async () => {
+  const { coreUrl, projectId, writeToken } = await getRoomConfig();
+  const roomId = crypto.randomUUID().slice(0, 8);
+  let ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
+  let append = ds.append("{}", { contentType: "application/json" });
+  let create = ds.create({ contentType: "application/json" });
+  // console.log("resp", create);
+  return roomId;
+});
+
 function LandingPage() {
   const navigate = useNavigate();
 
-  const handleCreateRoom = useCallback(() => {
-    const roomId = crypto.randomUUID().slice(0, 8);
+  const handleCreateRoom = useCallback(async () => {
+    let roomId = await createRoom();
     navigate({ to: "/room/$roomId", params: { roomId } });
   }, [navigate]);
 

@@ -9,6 +9,7 @@ import { isValidProjectId } from "../constants";
 import type { AppEnv } from "../env";
 import type { AuthorizeSubscription } from "./auth";
 import type { FanoutQueueMessage } from "../subscriptions/types";
+import { parseStreamPathFromUrl } from "../util/stream-path";
 
 export interface SubscriptionWorkerConfig<E extends AppEnv = AppEnv> {
   authorize?: AuthorizeSubscription<E>;
@@ -37,17 +38,24 @@ const CORS_EXPOSE_HEADERS = [
  * Resolve the CORS origin for a request from per-project config.
  * Returns null (no CORS headers) when no corsOrigins are configured.
  */
-function resolveProjectCorsOrigin(corsOrigins: string[] | undefined, requestOrigin: string | null): string | null {
+function resolveProjectCorsOrigin(
+  corsOrigins: string[] | undefined,
+  requestOrigin: string | null
+): string | null {
   if (!corsOrigins || corsOrigins.length === 0) return null;
   if (corsOrigins.includes("*")) return "*";
-  if (requestOrigin && corsOrigins.includes(requestOrigin)) return requestOrigin;
+  if (requestOrigin && corsOrigins.includes(requestOrigin))
+    return requestOrigin;
   return corsOrigins[0];
 }
 
 function applyCorsHeaders(headers: Headers, origin: string | null): void {
   if (origin === null) return;
   headers.set("Access-Control-Allow-Origin", origin);
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
   headers.set("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
   headers.set("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS);
 }
@@ -57,7 +65,7 @@ const PROJECT_PATH_RE = /^\/v1\/([^/]+)\//;
 
 // #region synced-to-docs:worker-entry
 export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
-  config?: SubscriptionWorkerConfig<E>,
+  config?: SubscriptionWorkerConfig<E>
 ) {
   const app = new Hono<{ Bindings: E }>();
   // #endregion synced-to-docs:worker-entry
@@ -66,14 +74,21 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
   // Per-project CORS middleware — looks up corsOrigins from KV
   app.use("*", async (c, next) => {
     const url = new URL(c.req.url);
-    const projectMatch = PROJECT_PATH_RE.exec(url.pathname);
+    let parsed = parseStreamPathFromUrl(c.req.url);
+    const { projectId, streamId: _s, path: _p } = parsed || {};
+
     let corsOrigin: string | null = null;
 
-    if (projectMatch && c.env.REGISTRY) {
-      const projectId = projectMatch[1];
+    if (projectId && c.env.REGISTRY) {
       if (isValidProjectId(projectId)) {
-        const projectConfig = await lookupProjectConfig(c.env.REGISTRY, projectId);
-        corsOrigin = resolveProjectCorsOrigin(projectConfig?.corsOrigins, c.req.header("Origin") ?? null);
+        const projectConfig = await lookupProjectConfig(
+          c.env.REGISTRY,
+          projectId
+        );
+        corsOrigin = resolveProjectCorsOrigin(
+          projectConfig?.corsOrigins,
+          c.req.header("Origin") ?? null
+        );
       }
     }
 
@@ -147,7 +162,11 @@ export function createSubscriptionWorker<E extends AppEnv = AppEnv>(
     fetch: app.fetch,
 
     // Queue handler for async fanout
-    async queue(batch: MessageBatch<FanoutQueueMessage>, env: E, _ctx: ExecutionContext): Promise<void> {
+    async queue(
+      batch: MessageBatch<FanoutQueueMessage>,
+      env: E,
+      _ctx: ExecutionContext
+    ): Promise<void> {
       await handleFanoutQueue(batch, env);
     },
   };
