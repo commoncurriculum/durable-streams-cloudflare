@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { generateSecret, exportJWK } from "jose";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,8 +35,10 @@ function detectWrangler(): string | null {
   return null;
 }
 
-function generateSigningSecret(): string {
-  return randomBytes(32).toString("hex");
+export async function generateSigningSecret(): Promise<string> {
+  const secret = await generateSecret("HS256", { extractable: true });
+  const jwk = await exportJWK(secret);
+  return JSON.stringify(jwk);
 }
 
 export async function createProject() {
@@ -75,7 +77,7 @@ export async function createProject() {
 
   let signingSecret: string;
   if (secretChoice === "generate") {
-    signingSecret = generateSigningSecret();
+    signingSecret = await generateSigningSecret();
   } else {
     const input = await p.text({
       message: "Enter signing secret:",

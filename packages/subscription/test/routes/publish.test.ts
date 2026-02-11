@@ -7,7 +7,7 @@ const PROJECT_ID = "test-project";
 function createTestApp() {
   return import("../../src/http/routes/publish").then(({ publishRoutes }) => {
     const app = new Hono();
-    app.route(`/v1/:project`, publishRoutes);
+    app.route("/v1/estuary", publishRoutes);
     return app;
   });
 }
@@ -16,7 +16,7 @@ describe("POST /publish/:streamId", () => {
   describe("streamId validation", () => {
     it("rejects invalid streamId with semicolon", async () => {
       const app = await createTestApp();
-      const response = await app.request(`/v1/${PROJECT_ID}/publish/bad%3Bid`, {
+      const response = await app.request(`/v1/estuary/publish/${PROJECT_ID}/bad%3Bid`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -29,7 +29,7 @@ describe("POST /publish/:streamId", () => {
 
     it("rejects streamId with SQL-like content", async () => {
       const app = await createTestApp();
-      const response = await app.request(`/v1/${PROJECT_ID}/publish/'; DROP TABLE --`, {
+      const response = await app.request(`/v1/estuary/publish/${PROJECT_ID}/'; DROP TABLE --`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -40,7 +40,7 @@ describe("POST /publish/:streamId", () => {
 
     it("rejects streamId with quotes", async () => {
       const app = await createTestApp();
-      const response = await app.request(`/v1/${PROJECT_ID}/publish/test'id`, {
+      const response = await app.request(`/v1/estuary/publish/${PROJECT_ID}/test'id`, {
         method: "POST",
         body: JSON.stringify({ data: "test" }),
         headers: { "Content-Type": "application/json" },
@@ -56,7 +56,7 @@ describe("POST /publish/:streamId", () => {
         // Create stream first so publish doesn't 404
         await env.CORE.putStream(`${PROJECT_ID}/${id}`, { contentType: "application/json" });
 
-        const response = await app.request(`/v1/${PROJECT_ID}/publish/${encodeURIComponent(id)}`, {
+        const response = await app.request(`/v1/estuary/publish/${PROJECT_ID}/${encodeURIComponent(id)}`, {
           method: "POST",
           body: JSON.stringify({ data: "test" }),
           headers: { "Content-Type": "application/json" },
@@ -72,7 +72,7 @@ describe("POST /publish/:streamId", () => {
       await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const app = await createTestApp();
-      const res = await app.request(`/v1/${PROJECT_ID}/publish/${streamId}`, {
+      const res = await app.request(`/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         body: JSON.stringify({ message: "hello" }),
         headers: { "Content-Type": "application/json" },
@@ -86,7 +86,7 @@ describe("POST /publish/:streamId", () => {
 
     it("returns 404 when stream does not exist", async () => {
       const app = await createTestApp();
-      const res = await app.request(`/v1/${PROJECT_ID}/publish/nonexistent-stream`, {
+      const res = await app.request(`/v1/estuary/publish/${PROJECT_ID}/nonexistent-stream`, {
         method: "POST",
         body: JSON.stringify({ message: "hello" }),
         headers: { "Content-Type": "application/json" },
@@ -100,7 +100,7 @@ describe("POST /publish/:streamId", () => {
       await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "application/json" });
 
       const app = await createTestApp();
-      const res = await app.request(`/v1/${PROJECT_ID}/publish/${streamId}`, {
+      const res = await app.request(`/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         body: JSON.stringify({ message: "hello" }),
         headers: { "Content-Type": "application/json" },
@@ -117,7 +117,7 @@ describe("POST /publish/:streamId", () => {
       await env.CORE.putStream(`${PROJECT_ID}/${streamId}`, { contentType: "text/plain" });
 
       const app = await createTestApp();
-      const res = await app.request(`/v1/${PROJECT_ID}/publish/${streamId}`, {
+      const res = await app.request(`/v1/estuary/publish/${PROJECT_ID}/${streamId}`, {
         method: "POST",
         body: "test",
         headers: {

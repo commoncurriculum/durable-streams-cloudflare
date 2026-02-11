@@ -1,14 +1,14 @@
 import type { SubscriptionDO } from "./subscriptions/do";
-import type { SessionDO } from "./session/do";
+import type { EstuaryDO } from "./estuary/do";
 import type { CoreService } from "./client";
 import type { FanoutQueueMessage } from "./subscriptions/types";
 
 export interface AppEnv {
   CORE: CoreService;
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  SESSION_DO: DurableObjectNamespace<SessionDO>;
+  ESTUARY_DO: DurableObjectNamespace<EstuaryDO>;
   METRICS?: AnalyticsEngineDataset;
-  SESSION_TTL_SECONDS?: string;
+  ESTUARY_TTL_SECONDS?: string;
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
   MAX_INLINE_FANOUT?: string;

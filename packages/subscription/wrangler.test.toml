@@ -4,13 +4,13 @@ compatibility_date = "2026-02-02"
 compatibility_flags = []
 
 [vars]
-SESSION_TTL_SECONDS = "1800"
+ESTUARY_TTL_SECONDS = "1800"
 
-# Durable Objects for per-stream subscriber storage and per-session subscription tracking
+# Durable Objects for per-stream subscriber storage and per-estuary subscription tracking
 [durable_objects]
 bindings = [
   { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
-  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
 ]
 
 [[migrations]]
@@ -19,7 +19,7 @@ new_sqlite_classes = ["SubscriptionDO"]
 
 [[migrations]]
 tag = "v2"
-new_sqlite_classes = ["SessionDO"]
+new_sqlite_classes = ["EstuaryDO"]
 
 # Analytics Engine for observability metrics
 [[analytics_engine_datasets]]
@@ -35,4 +35,3 @@ id = "registry"
 [[services]]
 binding = "CORE"
 service = "durable-streams"
-

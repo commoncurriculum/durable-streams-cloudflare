@@ -4,7 +4,11 @@ compatibility_date = "2026-02-02"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-CORE_URL = "https://ds-stream.commonplanner.com"
+# Public URL of the core worker. The client uses this to open SSE connections.
+# For local dev, this can be overridden in .dev.vars or the code will default
+# to http://localhost:8787 (see src/lib/config.ts).
+# For production, set this to your deployed core worker URL:
+#   CORE_URL = "https://durable-streams.your-subdomain.workers.dev"
 PROJECT_ID = "demo-drawing"
 # SIGNING_SECRET should go in .dev.vars for local dev, or be set as a
 # Cloudflare secret for production:

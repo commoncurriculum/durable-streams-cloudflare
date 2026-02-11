@@ -22,19 +22,19 @@ function encodePayload(text: string): string {
 }
 
 describe("handleFanoutQueue", () => {
-  it("decodes base64 payload and fans out to session streams", async () => {
+  it("decodes base64 payload and fans out to estuary streams", async () => {
     const streamId = `stream-${crypto.randomUUID()}`;
     const s1 = crypto.randomUUID();
     const s2 = crypto.randomUUID();
 
-    // Create session streams with matching content type so fanout succeeds
+    // Create estuary streams with matching content type so fanout succeeds
     await env.CORE.putStream(`${PROJECT_ID}/${s1}`, { contentType: "text/plain" });
     await env.CORE.putStream(`${PROJECT_ID}/${s2}`, { contentType: "text/plain" });
 
     const msg = createMessage({
       projectId: PROJECT_ID,
       streamId,
-      sessionIds: [s1, s2],
+      estuaryIds: [s1, s2],
       payload: encodePayload("hello world"),
       contentType: "text/plain",
     });
@@ -50,23 +50,23 @@ describe("handleFanoutQueue", () => {
 
   it("removes stale subscribers when fanout returns 404", async () => {
     const streamId = `stream-${crypto.randomUUID()}`;
-    const activeSession = crypto.randomUUID();
-    const staleSession = crypto.randomUUID();
+    const activeEstuary = crypto.randomUUID();
+    const staleEstuary = crypto.randomUUID();
 
     // Only create the active session stream with matching content type
-    await env.CORE.putStream(`${PROJECT_ID}/${activeSession}`, { contentType: "text/plain" });
-    // staleSession stream does NOT exist — will 404
+    await env.CORE.putStream(`${PROJECT_ID}/${activeEstuary}`, { contentType: "text/plain" });
+    // staleEstuary stream does NOT exist — will 404
 
     // Add both as subscribers to the DO
     const doKey = `${PROJECT_ID}/${streamId}`;
     const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
-    await stub.addSubscriber(activeSession);
-    await stub.addSubscriber(staleSession);
+    await stub.addSubscriber(activeEstuary);
+    await stub.addSubscriber(staleEstuary);
 
     const msg = createMessage({
       projectId: PROJECT_ID,
       streamId,
-      sessionIds: [activeSession, staleSession],
+      estuaryIds: [activeEstuary, staleEstuary],
       payload: encodePayload("test"),
       contentType: "text/plain",
     });
@@ -83,11 +83,11 @@ describe("handleFanoutQueue", () => {
     // Verify stale subscriber was removed from the DO
     const subs = await stub.getSubscribers(streamId);
     expect(subs.count).toBe(1);
-    expect(subs.subscribers[0].sessionId).toBe(activeSession);
+    expect(subs.subscribers[0].estuaryId).toBe(activeEstuary);
   });
 
   it("retries when all fanout writes fail with server errors", async () => {
-    // No session streams exist and sessions don't exist → 404s
+    // No estuary streams exist and sessions don't exist → 404s
     // But 404s are stale, not server errors, so we need a different approach.
     // Simulate server error by using a mock CORE that returns 500.
     const mockPostStream = vi.fn().mockResolvedValue({ ok: false, status: 500 });
@@ -99,7 +99,7 @@ describe("handleFanoutQueue", () => {
     const msg = createMessage({
       projectId: PROJECT_ID,
       streamId: "test-stream",
-      sessionIds: ["s1", "s2"],
+      estuaryIds: ["s1", "s2"],
       payload: encodePayload("test"),
       contentType: "text/plain",
     });
@@ -120,7 +120,7 @@ describe("handleFanoutQueue", () => {
     const msg = createMessage({
       projectId: PROJECT_ID,
       streamId: "test-stream",
-      sessionIds: ["s1"],
+      estuaryIds: ["s1"],
       payload: "!!!invalid-base64!!!",
       contentType: "text/plain",
     });
@@ -148,14 +148,14 @@ describe("handleFanoutQueue", () => {
     const msg1 = createMessage({
       projectId: PROJECT_ID,
       streamId: "stream-1",
-      sessionIds: [s1],
+      estuaryIds: [s1],
       payload: encodePayload("msg1"),
       contentType: "text/plain",
     });
     const msg2 = createMessage({
       projectId: PROJECT_ID,
       streamId: "stream-1",
-      sessionIds: [s2],
+      estuaryIds: [s2],
       payload: encodePayload("msg2"),
       contentType: "text/plain",
     });

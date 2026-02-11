@@ -2,11 +2,11 @@ export type SubscriptionAuthResult = { ok: true } | { ok: false; response: Respo
 
 export type SubscriptionRoute =
   | { action: "publish"; project: string; streamId: string }
-  | { action: "subscribe"; project: string; streamId: string; sessionId: string }
-  | { action: "unsubscribe"; project: string; streamId: string; sessionId: string }
-  | { action: "getSession"; project: string; sessionId: string }
-  | { action: "touchSession"; project: string; sessionId: string }
-  | { action: "deleteSession"; project: string; sessionId: string };
+  | { action: "subscribe"; project: string; streamId: string; estuaryId: string }
+  | { action: "unsubscribe"; project: string; streamId: string; estuaryId: string }
+  | { action: "getEstuary"; project: string; estuaryId: string }
+  | { action: "touchEstuary"; project: string; estuaryId: string }
+  | { action: "deleteEstuary"; project: string; estuaryId: string };
 
 export type AuthorizeSubscription<E = unknown> = (
   request: Request,
@@ -24,13 +24,10 @@ export type ProjectJwtEnv = {
   REGISTRY: KVNamespace;
 };
 
-// Path-based route patterns with project segment
-const PUBLISH_RE = /^\/v1\/([^/]+)\/publish\/(.+)$/;
-const SESSION_GET_RE = /^\/v1\/([^/]+)\/session\/([^/]+)$/;
-const SESSION_TOUCH_RE = /^\/v1\/([^/]+)\/session\/([^/]+)\/touch$/;
-const SESSION_DELETE_RE = /^\/v1\/([^/]+)\/session\/([^/]+)$/;
-const SUBSCRIBE_RE = /^\/v1\/([^/]+)\/subscribe$/;
-const UNSUBSCRIBE_RE = /^\/v1\/([^/]+)\/unsubscribe$/;
+// Path-based route patterns under /v1/estuary/...
+const PUBLISH_RE = /^\/v1\/estuary\/publish\/([^/]+)\/(.+)$/;
+const SUBSCRIBE_ACTION_RE = /^\/v1\/estuary\/subscribe\/([^/]+)\/(.+)$/;
+const ESTUARY_RE = /^\/v1\/estuary\/([^/]+)\/([^/]+)$/;
 
 /**
  * Parse the incoming request into a SubscriptionRoute for auth decisions.
@@ -41,7 +38,7 @@ export async function parseRoute(
   pathname: string,
   request: Request,
 ): Promise<SubscriptionRoute | null> {
-  // Publish: POST /v1/:project/publish/:streamId
+  // Publish: POST /v1/estuary/publish/:projectId/:streamId
   if (method === "POST") {
     const publishMatch = PUBLISH_RE.exec(pathname);
     if (publishMatch) {
@@ -49,39 +46,14 @@ export async function parseRoute(
     }
   }
 
-  // Session touch: POST /v1/:project/session/:sessionId/touch
+  // Subscribe: POST /v1/estuary/subscribe/:projectId/:streamId (body: { estuaryId })
   if (method === "POST") {
-    const touchMatch = SESSION_TOUCH_RE.exec(pathname);
-    if (touchMatch) {
-      return { action: "touchSession", project: touchMatch[1], sessionId: touchMatch[2] };
-    }
-  }
-
-  // Session get: GET /v1/:project/session/:sessionId
-  if (method === "GET") {
-    const getMatch = SESSION_GET_RE.exec(pathname);
-    if (getMatch) {
-      return { action: "getSession", project: getMatch[1], sessionId: getMatch[2] };
-    }
-  }
-
-  // Session delete: DELETE /v1/:project/session/:sessionId
-  if (method === "DELETE" && SESSION_DELETE_RE.test(pathname)) {
-    const deleteMatch = SESSION_DELETE_RE.exec(pathname);
-    if (deleteMatch) {
-      return { action: "deleteSession", project: deleteMatch[1], sessionId: deleteMatch[2] };
-    }
-  }
-
-  // Body-based routes: subscribe and unsubscribe
-  // Uses request.clone() so the body is still available for Hono
-  if (method === "POST") {
-    const subscribeMatch = SUBSCRIBE_RE.exec(pathname);
+    const subscribeMatch = SUBSCRIBE_ACTION_RE.exec(pathname);
     if (subscribeMatch) {
       try {
         const body = await request.clone().json() as Record<string, unknown>;
-        if (typeof body.streamId === "string" && typeof body.sessionId === "string") {
-          return { action: "subscribe", project: subscribeMatch[1], streamId: body.streamId, sessionId: body.sessionId };
+        if (typeof body.estuaryId === "string") {
+          return { action: "subscribe", project: subscribeMatch[1], streamId: subscribeMatch[2], estuaryId: body.estuaryId };
         }
       } catch {
         // Malformed body — let ArkType validation handle it downstream
@@ -90,18 +62,36 @@ export async function parseRoute(
     }
   }
 
+  // Unsubscribe: DELETE /v1/estuary/subscribe/:projectId/:streamId (body: { estuaryId })
   if (method === "DELETE") {
-    const unsubscribeMatch = UNSUBSCRIBE_RE.exec(pathname);
+    const unsubscribeMatch = SUBSCRIBE_ACTION_RE.exec(pathname);
     if (unsubscribeMatch) {
       try {
         const body = await request.clone().json() as Record<string, unknown>;
-        if (typeof body.streamId === "string" && typeof body.sessionId === "string") {
-          return { action: "unsubscribe", project: unsubscribeMatch[1], streamId: body.streamId, sessionId: body.sessionId };
+        if (typeof body.estuaryId === "string") {
+          return { action: "unsubscribe", project: unsubscribeMatch[1], streamId: unsubscribeMatch[2], estuaryId: body.estuaryId };
         }
       } catch {
         // Malformed body — let ArkType validation handle it downstream
       }
       return null;
+    }
+  }
+
+  // Estuary routes: GET/POST/DELETE /v1/estuary/:projectId/:estuaryId
+  const estuaryMatch = ESTUARY_RE.exec(pathname);
+  if (estuaryMatch) {
+    const project = estuaryMatch[1];
+    const estuaryId = estuaryMatch[2];
+
+    if (method === "GET") {
+      return { action: "getEstuary", project, estuaryId };
+    }
+    if (method === "POST") {
+      return { action: "touchEstuary", project, estuaryId };
+    }
+    if (method === "DELETE") {
+      return { action: "deleteEstuary", project, estuaryId };
     }
   }
 
@@ -145,18 +135,18 @@ export async function lookupProjectConfig(
   const raw = await kv.get(projectId, "json");
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
-  
+
   // Normalize legacy single-secret format to array format
   if (!Array.isArray(record.signingSecrets) && typeof record.signingSecret === "string") {
     record.signingSecrets = [record.signingSecret];
     delete record.signingSecret;
   }
-  
+
   // Validate we have signing secrets
   if (!Array.isArray(record.signingSecrets) || record.signingSecrets.length === 0) {
     return null;
   }
-  
+
   return {
     signingSecrets: record.signingSecrets.filter((s): s is string => typeof s === "string" && s.length > 0),
     ...extractCorsOrigins(record),
@@ -204,15 +194,15 @@ async function verifyProjectJwtMultiKey(
 // ============================================================================
 
 /** Actions that require write scope */
-const WRITE_ACTIONS = new Set(["publish", "unsubscribe", "deleteSession"]);
+const WRITE_ACTIONS = new Set(["publish", "unsubscribe", "deleteEstuary"]);
 
 /**
  * Per-project JWT auth for subscription routes.
  *
  * Scope mapping:
  * - publish → requires "write"
- * - subscribe, getSession, touchSession → "read" or "write"
- * - unsubscribe, deleteSession → requires "write"
+ * - subscribe, getEstuary, touchEstuary → "read" or "write"
+ * - unsubscribe, deleteEstuary → requires "write"
  */
 export function projectJwtAuth(): AuthorizeSubscription<ProjectJwtEnv> {
   return async (request, route, env) => {

@@ -41,7 +41,7 @@ describe("Per-project CORS from KV", () => {
 
     const worker = await createTestWorker();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`, {
         headers: { Origin: "https://any-origin.com" },
       }),
       createTestEnv(),
@@ -59,7 +59,7 @@ describe("Per-project CORS from KV", () => {
 
     const worker = await createTestWorker();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`, {
         headers: { Origin: "https://test.com" },
       }),
       createTestEnv(),
@@ -76,7 +76,7 @@ describe("Per-project CORS from KV", () => {
 
     const worker = await createTestWorker();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`, {
         headers: { Origin: "https://any-origin.com" },
       }),
       createTestEnv(),
@@ -89,7 +89,7 @@ describe("Per-project CORS from KV", () => {
   it("project routes with no KV entry have no CORS headers", async () => {
     const worker = await createTestWorker();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`, {
         headers: { Origin: "https://any-origin.com" },
       }),
       createTestEnv(),
@@ -107,7 +107,7 @@ describe("Per-project CORS from KV", () => {
 
     const worker = await createTestWorker();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`, {
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`, {
         method: "OPTIONS",
         headers: {
           Origin: "https://example.com",

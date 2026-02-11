@@ -4,13 +4,13 @@ compatibility_date = "2025-02-02"
 compatibility_flags = []
 
 [vars]
-SESSION_TTL_SECONDS = "86400"
+ESTUARY_TTL_SECONDS = "86400"
 
-# Durable Objects for per-stream subscriber storage and per-session subscription tracking
+# Durable Objects for per-stream subscriber storage and per-estuary subscription tracking
 [durable_objects]
 bindings = [
   { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
-  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
 ]
 
 [[migrations]]
@@ -21,6 +21,10 @@ new_sqlite_classes = ["SubscriptionDO"]
 tag = "v2"
 new_sqlite_classes = ["SessionDO"]
 
+[[migrations]]
+tag = "v3"
+renamed_classes = [{from = "SessionDO", to = "EstuaryDO"}]
+
 # Analytics Engine for observability metrics
 [[analytics_engine_datasets]]
 binding = "METRICS"
@@ -29,7 +33,7 @@ dataset = "subscriptions_metrics"
 # KV namespace for per-project signing secrets
 [[kv_namespaces]]
 binding = "REGISTRY"
-id = "<your-kv-namespace-id>"
+id = "registry"
 
 # Service binding to core worker (required)
 [[services]]
@@ -49,5 +53,3 @@ queue = "subscription-fanout"
 # max_batch_timeout = 1
 # max_retries = 3
 # dead_letter_queue = "subscription-fanout-dlq"
-
-

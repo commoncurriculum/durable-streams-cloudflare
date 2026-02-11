@@ -28,14 +28,14 @@ describe("createSubscriptionWorker", () => {
     const { createSubscriptionWorker } = await import("../src/http/create_worker");
     const worker = createSubscriptionWorker();
 
-    // GET session should not be blocked (no auth configured)
+    // GET estuary should not be blocked (no auth configured)
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/session/test-session`),
+      new Request(`http://localhost/v1/estuary/${PROJECT_ID}/test-estuary`),
       createBaseEnv(),
       {} as ExecutionContext,
     );
 
-    // Will get 404 from the session handler (session doesn't exist), not 401
+    // Will get 404 from the estuary handler (estuary doesn't exist), not 401
     expect(response.status).not.toBe(401);
   });
 
@@ -48,7 +48,7 @@ describe("createSubscriptionWorker", () => {
     });
 
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/estuary/publish/${PROJECT_ID}/my-stream`, { method: "POST", body: "{}" }),
       createBaseEnv(),
       {} as ExecutionContext,
     );
@@ -88,7 +88,7 @@ describe("createSubscriptionWorker", () => {
     });
 
     await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/estuary/publish/${PROJECT_ID}/my-stream`, { method: "POST", body: "{}" }),
       createBaseEnv(),
       {} as ExecutionContext,
     );
@@ -104,7 +104,7 @@ describe("createSubscriptionWorker", () => {
     await env.REGISTRY.put(PROJECT_ID, JSON.stringify({ signingSecret: "test-secret" }));
 
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, { method: "POST", body: "{}" }),
+      new Request(`http://localhost/v1/estuary/publish/${PROJECT_ID}/my-stream`, { method: "POST", body: "{}" }),
       createBaseEnv(),
       {} as ExecutionContext,
     );
@@ -117,7 +117,7 @@ describe("createSubscriptionWorker", () => {
     const worker = createSubscriptionWorker();
 
     const response = await worker.fetch(
-      new Request("http://localhost/v1/bad%20project!/publish/my-stream", { method: "POST", body: "{}" }),
+      new Request("http://localhost/v1/estuary/publish/bad%20project!/my-stream", { method: "POST", body: "{}" }),
       createBaseEnv(),
       {} as ExecutionContext,
     );
@@ -136,7 +136,7 @@ describe("createSubscriptionWorker", () => {
     // Construct env without REGISTRY to trigger the 500 path
     const { REGISTRY: _, ...envWithoutKeys } = createBaseEnv();
     const response = await worker.fetch(
-      new Request(`http://localhost/v1/${PROJECT_ID}/publish/my-stream`, {
+      new Request(`http://localhost/v1/estuary/publish/${PROJECT_ID}/my-stream`, {
         method: "POST",
         body: "{}",
         headers: { Authorization: "Bearer some-token" },

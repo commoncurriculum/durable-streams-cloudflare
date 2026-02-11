@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { SignJWT } from "jose";
 import { createStreamWorker } from "../../../src/http";
 import type { BaseEnv } from "../../../src/http";
 
@@ -7,31 +8,14 @@ import type { BaseEnv } from "../../../src/http";
 // JWT Test Helpers
 // ============================================================================
 
-function base64UrlEncode(data: Uint8Array): string {
-  const binary = String.fromCharCode(...data);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
 async function createTestJwt(
   claims: Record<string, unknown>,
   secret: string,
 ): Promise<string> {
-  const header = { alg: "HS256", typ: "JWT" };
-  const headerB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)));
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signingInput));
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-
-  return `${headerB64}.${payloadB64}.${signatureB64}`;
+  const key = new TextEncoder().encode(secret);
+  return new SignJWT(claims)
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .sign(key);
 }
 
 // ============================================================================

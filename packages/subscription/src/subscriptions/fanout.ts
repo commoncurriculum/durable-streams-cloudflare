@@ -17,17 +17,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Fan out a payload to a list of subscriber session streams.
+ * Fan out a payload to a list of subscriber estuary streams.
  *
  * Batches writes in groups of FANOUT_BATCH_SIZE using Promise.allSettled().
  * Each RPC call has a per-call timeout (FANOUT_RPC_TIMEOUT_MS).
- * Returns successes, failures, and stale session IDs (404s) so the caller
+ * Returns successes, failures, and stale estuary IDs (404s) so the caller
  * can decide how to handle cleanup.
  */
 export async function fanoutToSubscribers(
   env: { CORE: CoreService },
   projectId: string,
-  sessionIds: string[],
+  estuaryIds: string[],
   payload: ArrayBuffer,
   contentType: string,
   producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
@@ -35,14 +35,14 @@ export async function fanoutToSubscribers(
 ): Promise<FanoutResult> {
   let successes = 0;
   let failures = 0;
-  const staleSessionIds: string[] = [];
+  const staleEstuaryIds: string[] = [];
 
   const results: PromiseSettledResult<PostStreamResult>[] = [];
-  for (let i = 0; i < sessionIds.length; i += FANOUT_BATCH_SIZE) {
-    const batch = sessionIds.slice(i, i + FANOUT_BATCH_SIZE);
+  for (let i = 0; i < estuaryIds.length; i += FANOUT_BATCH_SIZE) {
+    const batch = estuaryIds.slice(i, i + FANOUT_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
-      batch.map((sessionId) => {
-        const doKey = `${projectId}/${sessionId}`;
+      batch.map((estuaryId) => {
+        const doKey = `${projectId}/${estuaryId}`;
         // Clone payload — ArrayBuffers are transferred across RPC boundaries,
         // so each postStream call needs its own copy.
         return withTimeout(
@@ -60,17 +60,17 @@ export async function fanoutToSubscribers(
       if (result.value.ok) {
         successes++;
       } else if (result.value.status === 404) {
-        staleSessionIds.push(sessionIds[i]);
+        staleEstuaryIds.push(estuaryIds[i]);
         failures++;
       } else {
-        logWarn({ sessionId: sessionIds[i], status: result.value.status, component: "fanout" }, "fanout RPC returned error status");
+        logWarn({ estuaryId: estuaryIds[i], status: result.value.status, component: "fanout" }, "fanout RPC returned error status");
         failures++;
       }
     } else {
-      logWarn({ sessionId: sessionIds[i], component: "fanout" }, "fanout RPC rejected", result.reason);
+      logWarn({ estuaryId: estuaryIds[i], component: "fanout" }, "fanout RPC rejected", result.reason);
       failures++;
     }
   }
 
-  return { successes, failures, staleSessionIds };
+  return { successes, failures, staleEstuaryIds };
 }
