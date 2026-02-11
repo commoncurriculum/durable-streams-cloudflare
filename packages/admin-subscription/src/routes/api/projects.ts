@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { generateSecret, exportJWK } from "jose";
 import type { CoreService } from "../../types";
 
 export const Route = createFileRoute("/api/projects")({
@@ -24,7 +25,6 @@ export const Route = createFileRoute("/api/projects")({
             });
           }
 
-          const { generateSecret, exportJWK } = await import("jose");
           const key = await generateSecret("HS256");
           const secret = JSON.stringify(await exportJWK(key));
 
