@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import { DurableObject } from "cloudflare:workers";
 import { isExpired } from "./shared/expiry";
 import {
@@ -31,6 +32,20 @@ import { handleDelete } from "./v1/streams/delete";
 import { handleGet, handleHead } from "./v1/streams/read";
 import { errorResponse } from "./shared/errors";
 
+// ============================================================================
+// Types
+// ============================================================================
+
+type DoAppEnv = {
+  Bindings: {
+    streamId: string;
+    timingEnabled: boolean;
+  };
+  Variables: {
+    streamContext: StreamContext;
+  };
+};
+
 export type StreamIntrospection = {
   meta: StreamMeta;
   ops: OpsStats;
@@ -47,14 +62,92 @@ export class StreamDO extends DurableObject<StreamEnv> {
   private sseState: SseState = { clients: new Map(), nextId: 0 };
   private readPath: ReadPath;
   private rotating = false;
+  private app: Hono<DoAppEnv>;
 
   constructor(ctx: DurableObjectState, env: StreamEnv) {
     super(ctx, env);
     this.storage = new DoSqliteStorage(ctx.storage.sql);
     this.readPath = new ReadPath(env, this.storage);
+    this.app = this.createApp();
     ctx.blockConcurrencyWhile(async () => {
       this.storage.initSchema();
     });
+  }
+
+  private createApp(): Hono<DoAppEnv> {
+    const app = new Hono<DoAppEnv>();
+
+    // Debug coalesce stats endpoint
+    app.use("*", async (c, next) => {
+      if (
+        this.env.DEBUG_COALESCE === "1" &&
+        c.req.raw.headers.get("X-Debug-Coalesce") === "1"
+      ) {
+        return c.json(this.readPath.getStats(), 200, {
+          "Cache-Control": "no-store",
+        });
+      }
+      return next();
+    });
+
+    // #region docs-build-context
+    // Build StreamContext and timing for each request
+    app.use("*", async (c, next) => {
+      const timing = c.env.timingEnabled ? new Timing() : null;
+      const doneTotal = timing?.start("do.total");
+
+      c.set("streamContext", {
+        state: this.ctx,
+        env: this.env,
+        storage: this.storage,
+        timing,
+        longPoll: this.longPoll,
+        sseState: this.sseState,
+        getStream: this.getStream.bind(this),
+        resolveOffset: (sid, meta, offsetParam) =>
+          resolveOffsetParam(this.storage, sid, meta, offsetParam),
+        encodeOffset: (sid, meta, offset) =>
+          encodeStreamOffset(this.storage, sid, meta, offset),
+        encodeTailOffset: (sid, meta) =>
+          encodeTailOffset(this.storage, sid, meta),
+        readFromOffset: (sid, meta, offset, maxChunkBytes) =>
+          this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes, timing),
+        rotateSegment: this.rotateSegment.bind(this),
+        getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
+      });
+
+      await next();
+
+      doneTotal?.();
+      c.res = attachTiming(c.res, timing);
+    });
+    // #endregion docs-build-context
+
+    // Routes
+    app.put("*", (c) =>
+      handlePut(c.var.streamContext, c.env.streamId, c.req.raw));
+    app.post("*", (c) =>
+      handlePost(c.var.streamContext, c.env.streamId, c.req.raw));
+    app.get("*", (c) =>
+      handleGet(c.var.streamContext, c.env.streamId, c.req.raw, new URL(c.req.url)));
+    app.on("HEAD", "*", (c) =>
+      handleHead(c.var.streamContext, c.env.streamId));
+    app.delete("*", (c) =>
+      handleDelete(c.var.streamContext, c.env.streamId));
+
+    app.onError((err, c) => {
+      logError(
+        { streamId: c.env.streamId, method: c.req.method },
+        "unhandled error in route handler",
+        err
+      );
+      return errorResponse(
+        500,
+        err instanceof Error ? err.message : "internal error"
+      );
+    });
+
+    return app;
   }
 
   // Handle WebSocket upgrade requests via fetch() — RPC cannot serialize WebSocket responses
@@ -77,74 +170,9 @@ export class StreamDO extends DurableObject<StreamEnv> {
     timingEnabled: boolean,
     request: Request
   ): Promise<Response> {
-    const timing = timingEnabled ? new Timing() : null;
-    const doneTotal = timing?.start("do.total");
-
-    if (
-      this.env.DEBUG_COALESCE === "1" &&
-      request.headers.get("X-Debug-Coalesce") === "1"
-    ) {
-      return new Response(JSON.stringify(this.readPath.getStats()), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
-
-    // #endregion docs-do-rpc
-
-    // #region docs-build-context
-    const ctx: StreamContext = {
-      state: this.ctx,
-      env: this.env,
-      storage: this.storage,
-      timing,
-      longPoll: this.longPoll,
-      sseState: this.sseState,
-      getStream: this.getStream.bind(this),
-      resolveOffset: (streamId, meta, offsetParam) =>
-        resolveOffsetParam(this.storage, streamId, meta, offsetParam),
-      encodeOffset: (streamId, meta, offset) =>
-        encodeStreamOffset(this.storage, streamId, meta, offset),
-      encodeTailOffset: (streamId, meta) =>
-        encodeTailOffset(this.storage, streamId, meta),
-      readFromOffset: (streamId, meta, offset, maxChunkBytes) =>
-        this.readPath.readFromOffset(
-          streamId,
-          meta,
-          offset,
-          maxChunkBytes,
-          timing
-        ),
-      rotateSegment: this.rotateSegment.bind(this),
-      getWebSockets: (tag?: string) => this.ctx.getWebSockets(tag),
-    };
-
-    const url = new URL(request.url);
-    const method = request.method.toUpperCase();
-    let response;
-
-    try {
-      if (method === "PUT") response = await handlePut(ctx, streamId, request);
-      else if (method === "POST") response = await handlePost(ctx, streamId, request);
-      else if (method === "GET") response = await handleGet(ctx, streamId, request, url);
-      else if (method === "HEAD") response = await handleHead(ctx, streamId);
-      else if (method === "DELETE") response = await handleDelete(ctx, streamId);
-      else response = errorResponse(405, "method not allowed");
-    } catch (e) {
-      logError({ streamId, method }, "unhandled error in route handler", e);
-      response = errorResponse(
-        500,
-        e instanceof Error ? e.message : "internal error"
-      );
-    }
-
-    doneTotal?.();
-    return attachTiming(response, timing);
-    // #endregion docs-build-context
+    return this.app.fetch(request, { streamId, timingEnabled });
   }
+  // #endregion docs-do-rpc
 
   async getIntrospection(
     streamId: string
