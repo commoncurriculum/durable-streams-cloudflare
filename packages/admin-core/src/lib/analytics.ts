@@ -163,7 +163,7 @@ export const createProject = createServerFn({ method: "POST" })
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
-    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256")));
+    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
     
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
@@ -311,7 +311,7 @@ export const generateSigningKey = createServerFn({ method: "POST" })
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
     
-    const newSecret = JSON.stringify(await exportJWK(await generateSecret("HS256")));
+    const newSecret = JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
     const result = await core.addSigningKey(projectId, newSecret);
     return { keyCount: result.keyCount, secret: newSecret };
   });

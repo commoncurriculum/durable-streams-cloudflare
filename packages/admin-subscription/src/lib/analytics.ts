@@ -194,7 +194,7 @@ export const createProject = createServerFn({ method: "POST" })
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
-    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256")));
+    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
     
     // Use core RPC to create the project (no auth needed via service binding)
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
