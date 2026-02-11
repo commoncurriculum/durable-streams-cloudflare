@@ -49,6 +49,7 @@ function DrawingRoom() {
     async function init() {
       // Subscribe to the stream directly from core (reads are public)
       const ds = subscribeToStream(coreUrl, projectId, roomId);
+      console.log('ds', ds)
 
       // Try to read — if the stream doesn't exist yet, retry after a delay
       let res;
