@@ -128,10 +128,13 @@ export class StreamDO extends DurableObject<StreamEnv> {
       handlePut(c.var.streamContext, c.env.streamId, c.req.raw));
     app.post("*", (c) =>
       handlePost(c.var.streamContext, c.env.streamId, c.req.raw));
-    app.get("*", (c) =>
-      handleGet(c.var.streamContext, c.env.streamId, c.req.raw, new URL(c.req.url)));
-    app.on("HEAD", "*", (c) =>
-      handleHead(c.var.streamContext, c.env.streamId));
+    // Hono's app.get() matches both GET and HEAD, so dispatch manually
+    app.get("*", (c) => {
+      if (c.req.method === "HEAD") {
+        return handleHead(c.var.streamContext, c.env.streamId);
+      }
+      return handleGet(c.var.streamContext, c.env.streamId, c.req.raw, new URL(c.req.url));
+    });
     app.delete("*", (c) =>
       handleDelete(c.var.streamContext, c.env.streamId));
 

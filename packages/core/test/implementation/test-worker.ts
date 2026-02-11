@@ -13,9 +13,9 @@ const putStreamOptions = type({
 // Created at module scope so the in-flight coalescing Map is shared across
 // all requests in the isolate (WorkerEntrypoint creates a new instance per
 // request, so an instance field would give each request its own empty Map).
-const handler = createStreamWorker();
+const handler = createStreamWorker({ skipAuth: true });
 
-// Auth-free worker for tests: no auth callbacks = no auth checks.
+// Auth-free worker for tests: skipAuth bypasses JWT auth middleware.
 // Extends WorkerEntrypoint so subscription integration tests can use RPC methods.
 export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   async fetch(request: Request): Promise<Response> {

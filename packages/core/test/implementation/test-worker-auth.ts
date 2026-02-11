@@ -3,13 +3,9 @@ import { createStreamWorker } from "../../src/http";
 import { StreamDO } from "../../src/http/durable-object";
 import type { BaseEnv } from "../../src/http";
 
-// Auth-enabled worker for reader key tests: uses a permissive auth callback
-// that always passes. This ensures authorizeRead is set so reader keys are
-// generated on stream creation, while still allowing all requests through.
-const handler = createStreamWorker({
-  authorizeRead: () => ({ ok: true }),
-  authorizeMutation: () => ({ ok: true }),
-});
+// Auth worker for reader key tests: permissiveAuth allows all requests through
+// but still runs streamMeta lookup and sets Stream-Reader-Key on HEAD responses.
+const handler = createStreamWorker({ permissiveAuth: true });
 
 export default class TestCoreWorkerAuth extends WorkerEntrypoint<BaseEnv> {
   async fetch(request: Request): Promise<Response> {

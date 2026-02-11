@@ -13,7 +13,7 @@ import type {
 import { pathParsingMiddleware } from "./middleware/path-parsing";
 import { corsMiddleware } from "./middleware/cors";
 import { authenticationMiddleware } from "./middleware/authentication";
-import { authorizationMiddleware } from "./middleware/authorization";
+import { authorizationMiddleware, permissiveAuthorizationMiddleware } from "./middleware/authorization";
 import { timingMiddleware } from "./middleware/timing";
 import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
 
@@ -57,9 +57,16 @@ export { PROJECT_ID_PATTERN } from "./shared/stream-path";
 // Factory
 // ============================================================================
 
+export type StreamWorkerOptions = {
+  /** Skip authentication and authorization middleware (for testing). */
+  skipAuth?: boolean;
+  /** Allow all requests through but still look up streamMeta and set reader key headers (for testing). */
+  permissiveAuth?: boolean;
+};
+
 export function createStreamWorker<
   E extends BaseEnv = BaseEnv
->(): ExportedHandler<E> {
+>(options?: StreamWorkerOptions): ExportedHandler<E> {
   type AppEnv = {
     Bindings: E;
     Variables: {
@@ -81,10 +88,16 @@ export function createStreamWorker<
   // Global middleware
   app.use("*", pathParsingMiddleware);
   app.use("*", corsMiddleware);
-  app.use("*", authenticationMiddleware);
+  if (!options?.skipAuth) {
+    app.use("*", authenticationMiddleware);
+  }
 
   // Stream-scoped middleware
-  app.use("/v1/stream/*", authorizationMiddleware);
+  if (options?.permissiveAuth) {
+    app.use("/v1/stream/*", permissiveAuthorizationMiddleware);
+  } else if (!options?.skipAuth) {
+    app.use("/v1/stream/*", authorizationMiddleware);
+  }
   app.use("/v1/stream/*", timingMiddleware);
   app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
   // #endregion docs-request-arrives
