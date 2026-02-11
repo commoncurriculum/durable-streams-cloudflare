@@ -1,10 +1,10 @@
 import { createMetrics } from "../metrics";
-import type { AppEnv } from "../env";
+import type { BaseEnv } from "../http";
 import type { UnsubscribeResult } from "./types";
 
 // #region synced-to-docs:unsubscribe
 export async function unsubscribe(
-  env: AppEnv,
+  env: BaseEnv,
   projectId: string,
   streamId: string,
   estuaryId: string,

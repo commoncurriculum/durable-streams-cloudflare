@@ -1,11 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../log";
-import type { CoreService } from "../client";
+import { deleteStream } from "../internal-api";
+import type { BaseEnv } from "../http";
 import type { SubscriptionDO } from "../subscriptions/do";
 
 export interface EstuaryDOEnv {
+  STREAMS: DurableObjectNamespace;
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
-  CORE: CoreService;
   METRICS?: AnalyticsEngineDataset;
 }
 
@@ -79,10 +80,10 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       }
     }
 
-    // Delete the estuary stream from core
+    // Delete the estuary stream using internal API
     try {
       const doKey = `${project}/${estuaryId}`;
-      const result = await this.env.CORE.deleteStream(doKey);
+      const result = await deleteStream(this.env as unknown as BaseEnv, doKey);
       if (!result.ok && result.status !== 404) {
         logError({ estuaryId, project, status: result.status, component: "estuary-alarm" }, "failed to delete estuary stream");
       }

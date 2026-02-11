@@ -1,12 +1,13 @@
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import type { AppEnv } from "../env";
+import { headStream, putStream, deleteStream as deleteStreamInternal } from "../internal-api";
+import type { BaseEnv } from "../http";
 import type { SubscribeResult } from "./types";
 
 // #region synced-to-docs:create-estuary-stream
 export async function subscribe(
-  env: AppEnv,
+  env: BaseEnv,
   projectId: string,
   streamId: string,
   estuaryId: string,
@@ -23,7 +24,7 @@ export async function subscribe(
 
   // 0. Look up the source stream's content type so the estuary stream matches
   const sourceDoKey = `${projectId}/${streamId}`;
-  const sourceHead = await env.CORE.headStream(sourceDoKey);
+  const sourceHead = await headStream(env, sourceDoKey);
   if (!sourceHead.ok) {
     throw new Error(`Source stream not found: ${sourceDoKey} (status: ${sourceHead.status})`);
   }
@@ -34,7 +35,7 @@ export async function subscribe(
 
   // 1. Create/touch estuary stream in core with the same content type
   const estuaryDoKey = `${projectId}/${estuaryId}`;
-  const coreResponse = await env.CORE.putStream(estuaryDoKey, { expiresAt, contentType });
+  const coreResponse = await putStream(env, estuaryDoKey, { expiresAt, contentType });
 
   const isNewEstuary = coreResponse.ok;
   // #endregion synced-to-docs:create-estuary-stream
@@ -45,7 +46,7 @@ export async function subscribe(
 
   // If estuary stream already exists, verify content type matches
   if (coreResponse.status === 409) {
-    const estuaryHead = await env.CORE.headStream(estuaryDoKey);
+    const estuaryHead = await headStream(env, estuaryDoKey);
     if (estuaryHead.ok && estuaryHead.contentType && estuaryHead.contentType !== contentType) {
       throw new Error(
         `Content type mismatch: estuary stream is ${estuaryHead.contentType} but source stream ${streamId} is ${contentType}. ` +
@@ -64,7 +65,7 @@ export async function subscribe(
     // Rollback estuary if we just created it
     if (isNewEstuary) {
       try {
-        await env.CORE.deleteStream(estuaryDoKey);
+        await deleteStreamInternal(env, estuaryDoKey);
       } catch (rollbackErr) {
         logError({ projectId, streamId, estuaryId, component: "subscribe-rollback" }, "failed to rollback estuary stream", rollbackErr);
       }

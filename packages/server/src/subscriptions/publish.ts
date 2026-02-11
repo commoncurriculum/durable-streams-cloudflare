@@ -1,8 +1,8 @@
 import type { PublishParams, PublishResult } from "./types";
-import type { AppEnv } from "../env";
+import type { BaseEnv } from "../http";
 
 export async function publish(
-  env: AppEnv,
+  env: BaseEnv,
   projectId: string,
   streamId: string,
   params: PublishParams,

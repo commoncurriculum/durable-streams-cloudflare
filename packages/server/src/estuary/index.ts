@@ -1,12 +1,13 @@
 import { createMetrics } from "../metrics";
 import { DEFAULT_ESTUARY_TTL_SECONDS } from "../constants";
-import type { AppEnv } from "../env";
+import { headStream, putStream, deleteStream as deleteStreamInternal } from "../internal-api";
+import type { BaseEnv } from "../http";
 import type { EstuaryInfo, TouchEstuaryResult, DeleteEstuaryResult } from "../subscriptions/types";
 
 // #region synced-to-docs:get-estuary
-export async function getEstuary(env: AppEnv, projectId: string, estuaryId: string): Promise<EstuaryInfo | null> {
+export async function getEstuary(env: BaseEnv, projectId: string, estuaryId: string): Promise<EstuaryInfo | null> {
   const doKey = `${projectId}/${estuaryId}`;
-  const coreResponse = await env.CORE.headStream(doKey);
+  const coreResponse = await headStream(env, doKey);
   if (!coreResponse.ok) return null;
 
   const estuaryStub = env.ESTUARY_DO.get(env.ESTUARY_DO.idFromName(doKey));
@@ -23,7 +24,12 @@ export async function getEstuary(env: AppEnv, projectId: string, estuaryId: stri
 // #endregion synced-to-docs:get-estuary
 
 // #region synced-to-docs:touch-estuary
-export async function touchEstuary(env: AppEnv, projectId: string, estuaryId: string, contentType = "application/json"): Promise<TouchEstuaryResult> {
+export async function touchEstuary(
+  env: BaseEnv, 
+  projectId: string, 
+  estuaryId: string, 
+  contentType = "application/json"
+): Promise<TouchEstuaryResult> {
   const start = Date.now();
   const parsed = env.ESTUARY_TTL_SECONDS
     ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10)
@@ -34,7 +40,7 @@ export async function touchEstuary(env: AppEnv, projectId: string, estuaryId: st
   const expiresAt = Date.now() + ttlSeconds * 1000;
 
   const doKey = `${projectId}/${estuaryId}`;
-  const result = await env.CORE.putStream(doKey, { expiresAt, contentType });
+  const result = await putStream(env, doKey, { expiresAt, contentType });
 
   if (!result.ok && result.status !== 409) {
     throw new Error(`Failed to touch estuary: ${result.body} (status: ${result.status})`);
@@ -49,10 +55,10 @@ export async function touchEstuary(env: AppEnv, projectId: string, estuaryId: st
 }
 // #endregion synced-to-docs:touch-estuary
 
-export async function deleteEstuary(env: AppEnv, projectId: string, estuaryId: string): Promise<DeleteEstuaryResult> {
+export async function deleteEstuary(env: BaseEnv, projectId: string, estuaryId: string): Promise<DeleteEstuaryResult> {
   const start = Date.now();
   const doKey = `${projectId}/${estuaryId}`;
-  const result = await env.CORE.deleteStream(doKey);
+  const result = await deleteStreamInternal(env, doKey);
   if (!result.ok && result.status !== 404) {
     throw new Error(`Failed to delete estuary: ${result.body} (status: ${result.status})`);
   }
