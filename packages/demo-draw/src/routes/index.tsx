@@ -14,10 +14,9 @@ export const Route = createFileRoute("/")({
 const createRoom = createServerFn({ method: "POST" }).handler(async () => {
   const { coreUrl, projectId, writeToken } = await getRoomConfig();
   const roomId = crypto.randomUUID().slice(0, 8);
-  let ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
-  let append = ds.append("{}", { contentType: "application/json" });
-  let create = ds.create({ contentType: "application/json" });
-  // console.log("resp", create);
+  const ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
+  await ds.create({ contentType: "application/json" });
+  await ds.append("{}", { contentType: "application/json" });
   return roomId;
 });
 
