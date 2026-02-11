@@ -1,10 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../log";
-import type { BaseEnv } from "../http";
 import type { SubscriptionDO } from "../subscriptions/do";
+import type { StreamDO } from "../http/durable-object";
 
 export interface EstuaryDOEnv {
-  STREAMS: DurableObjectNamespace;
+  STREAMS: DurableObjectNamespace<StreamDO>;
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
   METRICS?: AnalyticsEngineDataset;
 }

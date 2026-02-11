@@ -131,15 +131,12 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     // 1. Write to source stream in core (project-scoped)
     const sourceDoKey = `${projectId}/${streamId}`;
-    const producerHeaders = params.producerId && params.producerEpoch && params.producerSeq
-      ? { producerId: params.producerId, producerEpoch: params.producerEpoch, producerSeq: params.producerSeq }
-      : undefined;
     // Clone payload — ArrayBuffers are transferred across RPC boundaries,
     // so the source write would detach the buffer before fanout can use it.
     const fanoutPayload = params.payload.slice(0);
     
-    const stub = env.STREAMS.get(env.STREAMS.idFromName(sourceDoKey));
-    const result = await stub.appendToStream(sourceDoKey, params.payload);
+    const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(sourceDoKey));
+    const result = await stub.appendToStream(sourceDoKey, new Uint8Array(params.payload));
 
     // #endregion synced-to-docs:publish-to-source
 
