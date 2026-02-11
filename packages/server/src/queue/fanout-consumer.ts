@@ -2,7 +2,7 @@ import { fanoutToSubscribers } from "../subscriptions/fanout";
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { base64ToBuffer } from "../util/base64";
-import type { AppEnv } from "../env";
+import type { BaseEnv } from "../http";
 import type { FanoutQueueMessage } from "../subscriptions/types";
 
 /**
@@ -13,7 +13,7 @@ import type { FanoutQueueMessage } from "../subscriptions/types";
  */
 export async function handleFanoutQueue(
   batch: MessageBatch<FanoutQueueMessage>,
-  env: AppEnv,
+  env: BaseEnv,
 ): Promise<void> {
   const metrics = createMetrics(env.METRICS);
 

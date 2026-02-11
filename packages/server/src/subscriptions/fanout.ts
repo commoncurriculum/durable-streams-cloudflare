@@ -1,4 +1,5 @@
-import type { CoreService, PostStreamResult } from "../client";
+import { postStream, type PostStreamResult } from "../internal-api";
+import type { BaseEnv } from "../http";
 import { FANOUT_BATCH_SIZE, FANOUT_RPC_TIMEOUT_MS } from "../constants";
 import { logWarn } from "../log";
 import type { FanoutResult } from "./types";
@@ -25,7 +26,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * can decide how to handle cleanup.
  */
 export async function fanoutToSubscribers(
-  env: { CORE: CoreService },
+  env: BaseEnv,
   projectId: string,
   estuaryIds: string[],
   payload: ArrayBuffer,
@@ -46,7 +47,7 @@ export async function fanoutToSubscribers(
         // Clone payload — ArrayBuffers are transferred across RPC boundaries,
         // so each postStream call needs its own copy.
         return withTimeout(
-          env.CORE.postStream(doKey, payload.slice(0), contentType, producerHeaders),
+          postStream(env, doKey, payload.slice(0), contentType, producerHeaders),
           rpcTimeoutMs,
         );
       }),

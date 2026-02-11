@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { arktypeValidator } from "@hono/arktype-validator";
+import { logger } from "hono/logger";
 import type { StreamDO } from "./durable-object";
 import type { InFlightResult } from "./middleware/coalesce";
 import type { StreamMeta } from "./middleware/cache";
@@ -27,6 +28,11 @@ import {
   getConfig,
   putConfig,
 } from "./v1/config";
+import { subscribeRoutes } from "./v1/estuary/subscribe";
+import { estuaryRoutes } from "./v1/estuary";
+
+// Queue handler
+import { handleFanoutQueue } from "../queue/fanout-consumer";
 
 // Error handling
 import { errorResponse } from "./shared/errors";
@@ -86,6 +92,9 @@ export function createStreamWorker<
   const inFlight = new Map<string, Promise<InFlightResult>>();
   const app = new Hono<AppEnv>();
 
+  // Hono's logger middleware for HTTP request logging
+  app.use("*", logger());
+
   // #region docs-request-arrives
   // Global middleware
   app.use("*", pathParsingMiddleware);
@@ -116,6 +125,10 @@ export function createStreamWorker<
     arktypeValidator("json", configBodySchema),
     putConfig
   );
+
+  // Estuary routes (subscription management)
+  app.route("/v1/estuary", subscribeRoutes);
+  app.route("/v1/estuary", estuaryRoutes);
 
   // #region docs-route-to-do
   // Stream route — all pre/post-processing handled by middleware
@@ -149,5 +162,14 @@ export function createStreamWorker<
 
   return {
     fetch: app.fetch,
+    
+    // Queue handler for async fanout
+    async queue(
+      batch: MessageBatch<FanoutQueueMessage>,
+      env: E,
+      _ctx: ExecutionContext
+    ): Promise<void> {
+      await handleFanoutQueue(batch, env);
+    },
   };
 }

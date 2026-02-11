@@ -12,6 +12,7 @@ import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../metrics";
 import { logError, logInfo, logWarn } from "../log";
 import { bufferToBase64 } from "../util/base64";
+import { postStream } from "../internal-api";
 import {
   FANOUT_QUEUE_THRESHOLD,
   FANOUT_QUEUE_BATCH_SIZE,
@@ -19,12 +20,10 @@ import {
   CIRCUIT_BREAKER_FAILURE_THRESHOLD,
   CIRCUIT_BREAKER_RECOVERY_MS,
 } from "../constants";
-import type { CoreService } from "../client";
+import type { BaseEnv } from "../http";
 import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
 
-export interface SubscriptionDOEnv {
-  CORE: CoreService;
-  METRICS?: AnalyticsEngineDataset;
+export interface SubscriptionDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
   FANOUT_QUEUE_THRESHOLD?: string;
   MAX_INLINE_FANOUT?: string;
@@ -139,7 +138,8 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // Clone payload — ArrayBuffers are transferred across RPC boundaries,
     // so the source write would detach the buffer before fanout can use it.
     const fanoutPayload = params.payload.slice(0);
-    const writeResult = await this.env.CORE.postStream(
+    const writeResult = await postStream(
+      this.env as BaseEnv,
       sourceDoKey,
       params.payload,
       params.contentType,
