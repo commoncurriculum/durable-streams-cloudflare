@@ -37,17 +37,32 @@ export async function fanoutToSubscribers(
   let failures = 0;
   const staleEstuaryIds: string[] = [];
 
-  const results: PromiseSettledResult<{ tailOffset: number }>[] = [];
+  const results: PromiseSettledResult<Response>[] = [];
   for (let i = 0; i < estuaryIds.length; i += FANOUT_BATCH_SIZE) {
     const batch = estuaryIds.slice(i, i + FANOUT_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((estuaryId) => {
         const doKey = `${projectId}/${estuaryId}`;
         const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
-        // Clone payload — ArrayBuffers are transferred across RPC boundaries,
-        // so each appendToStream call needs its own copy.
+        
+        // Build POST request to append to stream
+        const headers = new Headers({ "Content-Type": contentType });
+        if (producerHeaders) {
+          headers.set("X-Producer-Id", producerHeaders.producerId);
+          headers.set("X-Producer-Epoch", producerHeaders.producerEpoch);
+          headers.set("X-Producer-Seq", producerHeaders.producerSeq);
+        }
+        
+        const request = new Request(`https://do/v1/stream/${doKey}`, {
+          method: "POST",
+          headers,
+          // Clone payload — ArrayBuffers are transferred across RPC boundaries,
+          // so each routeStreamRequest call needs its own copy.
+          body: payload.slice(0),
+        });
+        
         return withTimeout(
-          stub.appendToStream(doKey, new Uint8Array(payload.slice(0))),
+          stub.routeStreamRequest(doKey, false, request),
           rpcTimeoutMs,
         );
       }),
@@ -58,15 +73,21 @@ export async function fanoutToSubscribers(
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "fulfilled") {
-      successes++;
+      const response = result.value;
+      if (response.ok) {
+        successes++;
+      } else if (response.status === 404) {
+        // Stale subscriber - stream doesn't exist
+        staleEstuaryIds.push(estuaryIds[i]);
+        failures++;
+      } else {
+        // Other error
+        logWarn({ estuaryId: estuaryIds[i], component: "fanout", status: response.status }, "fanout RPC failed");
+        failures++;
+      }
     } else {
       const error = result.reason;
-      // Check if it's a "Stream not found" error (stale subscriber)
-      if (error instanceof Error && error.message.includes("Stream not found")) {
-        staleEstuaryIds.push(estuaryIds[i]);
-      } else {
-        logWarn({ estuaryId: estuaryIds[i], component: "fanout" }, "fanout RPC rejected", error);
-      }
+      logWarn({ estuaryId: estuaryIds[i], component: "fanout" }, "fanout RPC rejected", error);
       failures++;
     }
   }

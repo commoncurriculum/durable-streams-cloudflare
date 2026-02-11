@@ -79,11 +79,12 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       }
     }
 
-    // Delete the estuary stream using StreamDO direct method
+    // Delete the estuary stream via HTTP interface
     try {
       const doKey = `${project}/${estuaryId}`;
       const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(doKey));
-      await stub.deleteStream(doKey);
+      const deleteRequest = new Request(`https://do/v1/stream/${doKey}`, { method: "DELETE" });
+      await stub.routeStreamRequest(doKey, false, deleteRequest);
     } catch (err) {
       logError({ estuaryId, project, component: "estuary-alarm" }, "failed to delete estuary stream", err);
     }
