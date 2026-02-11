@@ -164,12 +164,12 @@ export function createStreamWorker<
     fetch: app.fetch,
     
     // Queue handler for async fanout
-    async queue(
-      batch: MessageBatch<FanoutQueueMessage>,
+    queue: async (
+      batch: MessageBatch,
       env: E,
       _ctx: ExecutionContext
-    ): Promise<void> {
-      await handleFanoutQueue(batch, env);
+    ): Promise<void> => {
+      await handleFanoutQueue(batch as MessageBatch<FanoutQueueMessage>, env);
     },
   };
 }

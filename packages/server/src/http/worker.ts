@@ -13,7 +13,6 @@ import {
   removeCorsOrigin as registryRemoveCorsOrigin,
   updatePrivacy as registryUpdatePrivacy,
   rotateStreamReaderKey,
-  putStreamMetadata,
   listProjects,
   listProjectStreams,
   getStreamEntry,
@@ -24,8 +23,6 @@ import {
 // all requests in the isolate (WorkerEntrypoint creates a new instance per
 // request, so an instance field would give each request its own empty Map).
 const handler = createStreamWorker();
-
-const INTERNAL_BASE_URL = "https://internal/v1/stream";
 
 export default class ServerWorker extends WorkerEntrypoint<BaseEnv> {
   // HTTP traffic delegates to existing factory (external callers, unchanged)
