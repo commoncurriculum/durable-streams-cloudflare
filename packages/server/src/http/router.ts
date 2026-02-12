@@ -16,6 +16,7 @@ import { authorizationMiddleware } from "./middleware/authorization";
 import { timingMiddleware, createTimer } from "./middleware/timing";
 import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
 import { bodySizeLimit } from "./middleware/body-size";
+import { rejectEmptyQueryParams } from "./middleware/query-validation";
 
 // Limits
 import { MAX_APPEND_BYTES } from "./shared/limits";
@@ -100,6 +101,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
   app.use("/v1/stream/*", authorizationMiddleware);
   app.use("/v1/stream/*", timingMiddleware());
   app.use("/v1/stream/*", bodySizeLimit(MAX_APPEND_BYTES));
+  app.use("/v1/stream/*", rejectEmptyQueryParams(["offset", "cursor"]));
   app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
   // #endregion docs-request-arrives
 

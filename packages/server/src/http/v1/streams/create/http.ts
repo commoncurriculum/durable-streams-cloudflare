@@ -23,18 +23,14 @@ export async function createStreamHttp(
   return ctx.state.blockConcurrencyWhile(async () => {
     try {
       const url = new URL(request.url);
-      const bodyBytes = new Uint8Array(await request.arrayBuffer());
 
-      // 1. Validate Content-Length header matches actual body (HTTP protocol requirement)
-      const contentLengthHeader = request.headers.get("Content-Length");
-      if (contentLengthHeader !== null) {
-        const declaredLength = Number.parseInt(contentLengthHeader, 10);
-        if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
-          return errorResponse(
-            400,
-            `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
-          );
-        }
+      // 1. Read body with error handling for platform-level errors
+      let bodyBytes: Uint8Array;
+      try {
+        bodyBytes = new Uint8Array(await request.arrayBuffer());
+      } catch {
+        // If reading the body fails, treat it as payload too large
+        return errorResponse(413, "payload too large");
       }
 
       // 2. Parse producer headers (can fail with HTTP error response)

@@ -9,8 +9,8 @@ import { errorResponse } from "../shared/errors";
  */
 export function bodySizeLimit(maxSize: number): MiddlewareHandler {
   return async (c, next) => {
-    // Only validate POST requests (GET, HEAD, DELETE, PUT don't have bodies in this API)
-    if (c.req.method !== "POST") {
+    // Only validate POST and PUT requests (both can have bodies)
+    if (c.req.method !== "POST" && c.req.method !== "PUT") {
       return next();
     }
 
