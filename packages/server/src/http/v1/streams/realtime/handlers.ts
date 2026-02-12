@@ -100,12 +100,12 @@ export class LongPollQueue {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w.timer !== timer);
         resolve(true);
-      }, timeoutMs);
+      }, timeoutMs) as unknown as number;
 
       const waiter: Waiter = {
         offset,
         url,
-        timer: timer as unknown as number,
+        timer,
         resolve: (result) => resolve(result.timedOut),
       };
 

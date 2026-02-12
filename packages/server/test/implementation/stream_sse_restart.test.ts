@@ -61,9 +61,9 @@ class SseReader {
 
     for (const line of lines) {
       if (line.startsWith("event:")) {
-        event = line.slice("event:").trim();
+        event = line.slice("event:".length).trim();
       } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice("data:").trim());
+        dataLines.push(line.slice("data:".length).trim());
       }
     }
 

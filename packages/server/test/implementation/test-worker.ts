@@ -154,7 +154,7 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   async routeRequest(doKey: string, request: Request): Promise<Response> {
     const stub = this.env.STREAMS.getByName(doKey);
-    return stub.routeStreamRequest(doKey, false, request);
+    return stub.routeStreamRequest(doKey, request);
   }
 
   async headStream(doKey: string): Promise<{
@@ -166,7 +166,6 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey,
-      false,
       new Request("https://internal/v1/stream", { method: "HEAD" }),
     );
     const body = response.ok ? null : await response.text();
@@ -196,7 +195,6 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey,
-      false,
       new Request("https://internal/v1/stream", {
         method: "PUT",
         headers,
@@ -211,7 +209,6 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey,
-      false,
       new Request("https://internal/v1/stream", { method: "DELETE" }),
     );
     const body = response.ok ? null : await response.text();
@@ -244,7 +241,6 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
       doKey,
-      false,
       new Request("https://internal/v1/stream", {
         method: "POST",
         headers,

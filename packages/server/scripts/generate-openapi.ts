@@ -40,6 +40,7 @@ async function main() {
 
   // Optional YAML output — only if js-yaml is installed
   try {
+    // @ts-expect-error js-yaml is an optional dependency
     const yaml = await import("js-yaml");
     fs.writeFileSync(yamlPath, yaml.dump(specs));
     console.log(`✔ Wrote ${yamlPath}`);
