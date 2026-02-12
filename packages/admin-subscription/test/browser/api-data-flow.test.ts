@@ -68,12 +68,9 @@ test("published message is readable on the session stream via core", async () =>
   const { token } = (await tokenRes.json()) as { token: string };
 
   // Read the session's stream from core
-  const readRes = await fetch(
-    `${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const readRes = await fetch(`${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   expect(readRes.status).toBe(200);
 
   const body = await readRes.text();
@@ -97,12 +94,9 @@ test("minted JWT authenticates successfully against core", async () => {
   expect(expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
 
   // Use JWT to read from core — should get 200 (not 401/403)
-  const readRes = await fetch(
-    `${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const readRes = await fetch(`${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   expect(readRes.status).toBe(200);
 });
 
@@ -117,12 +111,9 @@ test("core stream exists after session creation", async () => {
   const { token } = (await tokenRes.json()) as { token: string };
 
   // HEAD the stream on core
-  const headRes = await fetch(
-    `${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`,
-    {
-      method: "HEAD",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const headRes = await fetch(`${CORE_URL}/v1/stream/${PROJECT_ID}/${sessionId}`, {
+    method: "HEAD",
+    headers: { Authorization: `Bearer ${token}` },
+  });
   expect(headRes.status).toBe(200);
 });

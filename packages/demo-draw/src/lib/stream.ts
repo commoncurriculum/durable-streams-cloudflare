@@ -34,9 +34,7 @@ export function getWriteStream(
   return new DurableStream({
     url: `${coreUrl}${streamPath(projectId, roomId)}`,
     contentType: "application/json",
-    headers: writeToken
-      ? { Authorization: `Bearer ${writeToken}` }
-      : undefined,
+    headers: writeToken ? { Authorization: `Bearer ${writeToken}` } : undefined,
     params: { public: "true" },
     warnOnHttp: false,
   });

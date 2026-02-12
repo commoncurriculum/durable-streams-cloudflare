@@ -58,12 +58,19 @@ describe("demo-draw integration", () => {
     coreProc = spawn(
       "pnpm",
       [
-        "exec", "wrangler", "dev", "--local",
-        "--port", String(corePort),
-        "--inspector-port", "0",
+        "exec",
+        "wrangler",
+        "dev",
+        "--local",
+        "--port",
+        String(corePort),
+        "--inspector-port",
+        "0",
         "--show-interactive-dev-session=false",
-        "--config", "wrangler.test.toml",
-        "--name", CORE_WORKER_NAME,
+        "--config",
+        "wrangler.test.toml",
+        "--name",
+        CORE_WORKER_NAME,
       ],
       { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
     );
@@ -75,14 +82,23 @@ describe("demo-draw integration", () => {
     demoProc = spawn(
       "pnpm",
       [
-        "exec", "wrangler", "dev", "--local",
-        "--port", String(demoPort),
-        "--inspector-port", "0",
+        "exec",
+        "wrangler",
+        "dev",
+        "--local",
+        "--port",
+        String(demoPort),
+        "--inspector-port",
+        "0",
         "--show-interactive-dev-session=false",
-        "--config", "dist/server/wrangler.json",
-        "--var", `CORE_URL:${coreUrl}`,
-        "--var", `PROJECT_ID:${PROJECT_ID}`,
-        "--var", `SIGNING_SECRET:${SIGNING_SECRET}`,
+        "--config",
+        "dist/server/wrangler.json",
+        "--var",
+        `CORE_URL:${coreUrl}`,
+        "--var",
+        `PROJECT_ID:${PROJECT_ID}`,
+        "--var",
+        `SIGNING_SECRET:${SIGNING_SECRET}`,
       ],
       { cwd: ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
     );
@@ -129,7 +145,13 @@ describe("demo-draw integration", () => {
     });
 
     await ds.create({
-      body: JSON.stringify({ type: "stroke", userId: "test", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
+      body: JSON.stringify({
+        type: "stroke",
+        userId: "test",
+        points: [[0, 0, 0.5]],
+        color: "#000",
+        width: 8,
+      }),
     });
 
     const head = await ds.head();
@@ -145,10 +167,22 @@ describe("demo-draw integration", () => {
     });
 
     await ds.create({
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
+      body: JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[0, 0, 0.5]],
+        color: "#000",
+        width: 8,
+      }),
     });
     await ds.append(
-      JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#EF4444", width: 4 }),
+      JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[10, 10, 0.5]],
+        color: "#EF4444",
+        width: 4,
+      }),
     );
 
     const res = await ds.stream({ offset: "-1", live: false });
@@ -169,13 +203,31 @@ describe("demo-draw integration", () => {
       warnOnHttp: false,
     });
     await clientA.create({
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#EF4444", width: 8 }),
+      body: JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[0, 0, 0.5]],
+        color: "#EF4444",
+        width: 8,
+      }),
     });
     await clientA.append(
-      JSON.stringify({ type: "stroke", userId: "A", points: [[10, 10, 0.5]], color: "#22C55E", width: 4 }),
+      JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[10, 10, 0.5]],
+        color: "#22C55E",
+        width: 4,
+      }),
     );
     await clientA.append(
-      JSON.stringify({ type: "stroke", userId: "A", points: [[20, 20, 0.5]], color: "#3B82F6", width: 12 }),
+      JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[20, 20, 0.5]],
+        color: "#3B82F6",
+        width: 12,
+      }),
     );
 
     // Client B catches up
@@ -186,7 +238,9 @@ describe("demo-draw integration", () => {
     });
     const res = await clientB.stream({ offset: "-1", live: false });
     const items = await res.json<DrawMessage>();
-    const colors = items.filter((m): m is DrawMessage & { color: string } => m.type === "stroke").map((m) => m.color);
+    const colors = items
+      .filter((m): m is DrawMessage & { color: string } => m.type === "stroke")
+      .map((m) => m.color);
     expect(colors).toContain("#EF4444");
     expect(colors).toContain("#22C55E");
     expect(colors).toContain("#3B82F6");
@@ -202,7 +256,13 @@ describe("demo-draw integration", () => {
       warnOnHttp: false,
     });
     await clientA.create({
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#000", width: 8 }),
+      body: JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[0, 0, 0.5]],
+        color: "#000",
+        width: 8,
+      }),
     });
 
     // Client B subscribes via SSE
@@ -220,12 +280,21 @@ describe("demo-draw integration", () => {
 
     // Client A appends a new stroke
     await clientA.append(
-      JSON.stringify({ type: "stroke", userId: "A", points: [[99, 99, 1.0]], color: "#EC4899", width: 6 }),
+      JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[99, 99, 1.0]],
+        color: "#EC4899",
+        width: 6,
+      }),
     );
 
     // Wait for client B to receive it
     const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline && !received.some((m) => m.type === "stroke" && m.color === "#EC4899")) {
+    while (
+      Date.now() < deadline &&
+      !received.some((m) => m.type === "stroke" && m.color === "#EC4899")
+    ) {
       await new Promise((r) => setTimeout(r, 100));
     }
 
@@ -246,11 +315,23 @@ describe("demo-draw integration", () => {
       warnOnHttp: false,
     });
     await clientA.create({
-      body: JSON.stringify({ type: "stroke", userId: "A", points: [[0, 0, 0.5]], color: "#EF4444", width: 8 }),
+      body: JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[0, 0, 0.5]],
+        color: "#EF4444",
+        width: 8,
+      }),
     });
     await clientA.append(JSON.stringify({ type: "clear", userId: "A" }));
     await clientA.append(
-      JSON.stringify({ type: "stroke", userId: "A", points: [[50, 50, 0.5]], color: "#3B82F6", width: 4 }),
+      JSON.stringify({
+        type: "stroke",
+        userId: "A",
+        points: [[50, 50, 0.5]],
+        color: "#3B82F6",
+        width: 4,
+      }),
     );
 
     // Client B catches up

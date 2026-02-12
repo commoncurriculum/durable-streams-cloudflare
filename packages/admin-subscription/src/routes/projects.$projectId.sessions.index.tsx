@@ -78,9 +78,7 @@ function SessionsIndex() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  {item.createdAt
-                    ? new Date(item.createdAt).toLocaleString()
-                    : "—"}
+                  {item.createdAt ? new Date(item.createdAt).toLocaleString() : "—"}
                 </TableCell>
               </TableRow>
             )}

@@ -36,12 +36,7 @@ function LandingPage() {
           description="Create a room and share the link. Anyone with it can draw in real-time."
         />
         <CardContent>
-          <Button
-            intent="primary"
-            size="lg"
-            className="w-full"
-            onPress={handleCreateRoom}
-          >
+          <Button intent="primary" size="lg" className="w-full" onPress={handleCreateRoom}>
             Create Room
           </Button>
         </CardContent>

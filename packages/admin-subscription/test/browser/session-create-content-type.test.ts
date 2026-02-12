@@ -26,9 +26,7 @@ test("session created via Create Session button has application/json content-typ
   const sessionId = url.split("/sessions/")[1];
 
   // Fetch the session detail API and assert content-type
-  const res = await fetch(
-    `${ADMIN_URL}/api/projects/${PROJECT_ID}/sessions/${sessionId}`,
-  );
+  const res = await fetch(`${ADMIN_URL}/api/projects/${PROJECT_ID}/sessions/${sessionId}`);
   expect(res.ok).toBe(true);
 
   const data = (await res.json()) as { contentType?: string };

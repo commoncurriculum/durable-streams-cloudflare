@@ -38,10 +38,7 @@ function SessionDetailPage() {
   });
 
   const doAction = useCallback(
-    async (
-      action: "subscribe" | "unsubscribe" | "touch" | "delete",
-      streamId?: string,
-    ) => {
+    async (action: "subscribe" | "unsubscribe" | "touch" | "delete", streamId?: string) => {
       setSending(true);
       try {
         const payload: Parameters<typeof sendSessionAction>[0]["data"] =
@@ -83,10 +80,7 @@ function SessionDetailPage() {
           }
         }
         if (lastError) {
-          addEvent(
-            "error",
-            lastError instanceof Error ? lastError.message : String(lastError),
-          );
+          addEvent("error", lastError instanceof Error ? lastError.message : String(lastError));
         }
       } finally {
         setSending(false);
@@ -118,8 +112,7 @@ function SessionDetailPage() {
         addEvent("control", "No earlier messages found");
       } else {
         for (const item of items) {
-          const display =
-            typeof item === "string" ? item : JSON.stringify(item, null, 2);
+          const display = typeof item === "string" ? item : JSON.stringify(item, null, 2);
           addEvent("data", display);
         }
         addEvent("control", `Loaded ${items.length} earlier message(s)`);
@@ -142,19 +135,11 @@ function SessionDetailPage() {
   }
 
   if (error) {
-    return (
-      <div className="py-12 text-center text-red-400">
-        {error.message}
-      </div>
-    );
+    return <div className="py-12 text-center text-red-400">{error.message}</div>;
   }
 
   if (!data) {
-    return (
-      <div className="py-12 text-center text-zinc-500">
-        Session not found
-      </div>
-    );
+    return <div className="py-12 text-center text-zinc-500">Session not found</div>;
   }
 
   const d = data as SessionData;
@@ -200,11 +185,20 @@ function SessionDetailPage() {
                   <XAxis dataKey="time" stroke="#52525b" fontSize={11} />
                   <YAxis stroke="#52525b" fontSize={11} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 6 }}
+                    contentStyle={{
+                      backgroundColor: "#18181b",
+                      border: "1px solid #3f3f46",
+                      borderRadius: 6,
+                    }}
                     labelStyle={{ color: "#a1a1aa" }}
                     itemStyle={{ color: "#3b82f6" }}
                   />
-                  <Area type="monotone" dataKey="messages" stroke="#3b82f6" fill="url(#sessionMsgGradient)" />
+                  <Area
+                    type="monotone"
+                    dataKey="messages"
+                    stroke="#3b82f6"
+                    fill="url(#sessionMsgGradient)"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -229,18 +223,13 @@ function SessionDetailPage() {
                 </thead>
                 <tbody>
                   {subscriptions.map((s, i) => {
-                    const sid =
-                      typeof s === "string"
-                        ? s
-                        : s.streamId || s.stream_id || "\u2014";
+                    const sid = typeof s === "string" ? s : s.streamId || s.stream_id || "\u2014";
                     return (
                       <tr
                         key={i}
                         className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
                       >
-                        <td className="px-4 py-2 font-mono text-sm text-zinc-400">
-                          {sid}
-                        </td>
+                        <td className="px-4 py-2 font-mono text-sm text-zinc-400">{sid}</td>
                         <td className="px-4 py-2 text-right">
                           <button
                             onClick={() => doAction("unsubscribe", sid)}
@@ -256,9 +245,7 @@ function SessionDetailPage() {
                 </tbody>
               </table>
             ) : (
-              <div className="py-8 text-center text-zinc-500">
-                No active subscriptions
-              </div>
+              <div className="py-8 text-center text-zinc-500">No active subscriptions</div>
             )}
           </div>
         </div>
@@ -330,10 +317,7 @@ function SessionDetailPage() {
                 <StreamStatusBadge status={status} />
               </div>
             </div>
-            <div
-              className="flex-1 space-y-1 overflow-y-auto p-2"
-              style={{ maxHeight: 500 }}
-            >
+            <div className="flex-1 space-y-1 overflow-y-auto p-2" style={{ maxHeight: 500 }}>
               {events.length === 0 ? (
                 <div className="py-12 text-center text-sm text-zinc-500">
                   Subscribe to a stream and publish to see live events
@@ -352,9 +336,7 @@ function SessionDetailPage() {
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </div>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</div>
       <div className="mt-0.5 font-mono text-sm">{value}</div>
     </div>
   );
@@ -366,11 +348,7 @@ function StreamStatusBadge({ status }: { status: string }) {
     connecting: "text-amber-400",
     disconnected: "text-zinc-500",
   };
-  return (
-    <span className={`font-mono text-xs ${colors[status] ?? "text-zinc-500"}`}>
-      {status}
-    </span>
-  );
+  return <span className={`font-mono text-xs ${colors[status] ?? "text-zinc-500"}`}>{status}</span>;
 }
 
 function LogEntry({ event }: { event: StreamEvent }) {
@@ -398,9 +376,7 @@ function LogEntry({ event }: { event: StreamEvent }) {
         {event.type}
       </span>
       {isLong ? (
-        <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-400">
-          {event.content}
-        </pre>
+        <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-400">{event.content}</pre>
       ) : (
         <span className="ml-2 text-zinc-400">{event.content}</span>
       )}

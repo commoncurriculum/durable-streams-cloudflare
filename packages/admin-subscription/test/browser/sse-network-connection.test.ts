@@ -17,8 +17,7 @@ test.beforeAll(async ({ browser }) => {
 test("session detail page makes an SSE request to core worker", async ({ page }) => {
   // Listen for an outgoing request to the core worker's stream endpoint
   const sseRequestPromise = page.waitForRequest(
-    (req) =>
-      req.url().includes("/v1/stream/") && req.url().includes(sessionId),
+    (req) => req.url().includes("/v1/stream/") && req.url().includes(sessionId),
     { timeout: 15_000 },
   );
 

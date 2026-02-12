@@ -7,7 +7,10 @@ const STREAM_ID = "sse-test-stream";
 
 async function waitForStreamConsole(page: Page, maxAttempts = 5) {
   for (let i = 0; i < maxAttempts; i++) {
-    const visible = await page.getByText("Live Event Log").isVisible().catch(() => false);
+    const visible = await page
+      .getByText("Live Event Log")
+      .isVisible()
+      .catch(() => false);
     if (visible) return;
     await page.waitForTimeout(1000);
     await page.reload();
@@ -51,8 +54,7 @@ test.beforeAll(async ({ browser }) => {
 
 test("stream detail page makes an SSE request to the core worker", async ({ page }) => {
   const sseRequestPromise = page.waitForRequest(
-    (req) =>
-      req.url().includes("/v1/stream/") && req.url().includes(STREAM_ID),
+    (req) => req.url().includes("/v1/stream/") && req.url().includes(STREAM_ID),
     { timeout: 15_000 },
   );
 

@@ -9,6 +9,9 @@
     "dev": "vite dev --port 8792",
     "build": "vite build",
     "preview": "vite preview",
+    "format": "oxfmt --write src test",
+    "format:check": "oxfmt --check src test",
+    "lint": "oxlint src test",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run"
   },

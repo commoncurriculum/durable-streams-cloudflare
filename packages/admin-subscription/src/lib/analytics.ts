@@ -7,17 +7,11 @@ import { mintJwt } from "./jwt";
 const STREAM_ID_PATTERN = /^[a-zA-Z0-9_\-:.]+$/;
 
 async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
-  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
-    | string
-    | undefined;
-  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
-    | string
-    | undefined;
+  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
 
   if (!accountId || !apiToken) {
-    throw new Error(
-      "CF_ACCOUNT_ID and CF_API_TOKEN are required for analytics queries",
-    );
+    throw new Error("CF_ACCOUNT_ID and CF_API_TOKEN are required for analytics queries");
   }
 
   const response = await fetch(
@@ -34,9 +28,7 @@ async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `Analytics Engine query failed (${response.status}): ${text}`,
-    );
+    throw new Error(`Analytics Engine query failed (${response.status}): ${text}`);
   }
 
   const body = (await response.json()) as { data?: AnalyticsRow[] };
@@ -44,7 +36,10 @@ async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
 }
 
 function getDatasetName(): string {
-  return ((env as Record<string, unknown>).ANALYTICS_DATASET as string | undefined) ?? "subscriptions_metrics";
+  return (
+    ((env as Record<string, unknown>).ANALYTICS_DATASET as string | undefined) ??
+    "subscriptions_metrics"
+  );
 }
 
 const QUERIES = {
@@ -143,35 +138,25 @@ export const getStats = createServerFn({ method: "GET" }).handler(async () => {
   return { stats, fanout, cleanup };
 });
 
-export const getSessions = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.activeSessions());
-  },
-);
+export const getSessions = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.activeSessions());
+});
 
-export const getStreams = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.activeStreams());
-  },
-);
+export const getStreams = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.activeStreams());
+});
 
-export const getHotStreams = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.hotStreams(20));
-  },
-);
+export const getHotStreams = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.hotStreams(20));
+});
 
-export const getTimeseries = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.timeseries(60));
-  },
-);
+export const getTimeseries = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.timeseries(60));
+});
 
-export const getErrors = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.publishErrors());
-  },
-);
+export const getErrors = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.publishErrors());
+});
 
 export const inspectSession = createServerFn({ method: "GET" })
   .inputValidator((data: { sessionId: string; projectId: string }) => data)
@@ -193,15 +178,18 @@ export const createProject = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
-    if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
-    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
-    
+    if (!/^[a-zA-Z0-9_-]+$/.test(projectId))
+      throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
+    const secret =
+      data.signingSecret?.trim() ||
+      JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
+
     // Use core RPC to create the project (no auth needed via service binding)
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     await core.registerProject(projectId, secret, { corsOrigins: ["*"] });
-    
+
     return { ok: true, signingSecret: secret };
   });
 
@@ -279,16 +267,26 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         const doKey = `${data.projectId}/${data.streamId}`;
         const putResult = await core.putStream(doKey, { contentType: "application/json" });
         if (!putResult.ok) {
-          throw new Error(`Failed to ensure stream exists (${putResult.status}): ${putResult.body}`);
+          throw new Error(
+            `Failed to ensure stream exists (${putResult.status}): ${putResult.body}`,
+          );
         }
-        const result = await subscription.adminSubscribe(data.projectId, data.streamId, data.sessionId);
+        const result = await subscription.adminSubscribe(
+          data.projectId,
+          data.streamId,
+          data.sessionId,
+        );
         return { status: 200, statusText: "OK", body: result };
       }
       case "unsubscribe": {
         if (!data.sessionId || !data.streamId) {
           throw new Error("unsubscribe requires sessionId and streamId");
         }
-        const result = await subscription.adminUnsubscribe(data.projectId, data.streamId, data.sessionId);
+        const result = await subscription.adminUnsubscribe(
+          data.projectId,
+          data.streamId,
+          data.sessionId,
+        );
         return { status: 200, statusText: "OK", body: result };
       }
       case "publish": {
@@ -304,10 +302,17 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         const doKey = `${data.projectId}/${data.streamId}`;
         const putResult = await core.putStream(doKey, { contentType });
         if (!putResult.ok) {
-          throw new Error(`Failed to ensure stream exists (${putResult.status}): ${putResult.body}`);
+          throw new Error(
+            `Failed to ensure stream exists (${putResult.status}): ${putResult.body}`,
+          );
         }
         const payload = new TextEncoder().encode(data.body ?? "");
-        const result = await subscription.adminPublish(data.projectId, data.streamId, payload.buffer as ArrayBuffer, contentType) as {
+        const result = (await subscription.adminPublish(
+          data.projectId,
+          data.streamId,
+          payload.buffer as ArrayBuffer,
+          contentType,
+        )) as {
           status: number;
           body?: string;
         };
@@ -320,7 +325,11 @@ export const sendSessionAction = createServerFn({ method: "POST" })
         if (!data.sessionId) {
           throw new Error("touch requires sessionId");
         }
-        const result = await subscription.adminTouchSession(data.projectId, data.sessionId, "application/json");
+        const result = await subscription.adminTouchSession(
+          data.projectId,
+          data.sessionId,
+          "application/json",
+        );
         return { status: 200, statusText: "OK", body: result };
       }
       case "delete": {
@@ -339,55 +348,43 @@ export const sendSessionAction = createServerFn({ method: "POST" })
 
 let cachedCoreUrl: string | undefined;
 
-export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
-  async () => {
-    if (cachedCoreUrl) return cachedCoreUrl;
+export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(async () => {
+  if (cachedCoreUrl) return cachedCoreUrl;
 
-    const coreUrl = (env as Record<string, unknown>).CORE_URL as
-      | string
-      | undefined;
-    if (coreUrl) {
-      cachedCoreUrl = coreUrl;
-      return cachedCoreUrl;
-    }
-
-    // Fallback: resolve via Cloudflare API
-    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
-      | string
-      | undefined;
-    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
-      | string
-      | undefined;
-
-    if (!accountId || !apiToken) {
-      throw new Error(
-        "CORE_URL or CF_ACCOUNT_ID + CF_API_TOKEN required to resolve core URL",
-      );
-    }
-
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-      { headers: { Authorization: `Bearer ${apiToken}` } },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to resolve workers subdomain (${response.status})`,
-      );
-    }
-
-    const body = (await response.json()) as {
-      result?: { subdomain?: string };
-    };
-    const subdomain = body.result?.subdomain;
-    if (!subdomain) {
-      throw new Error("Could not resolve workers subdomain");
-    }
-
-    cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+  const coreUrl = (env as Record<string, unknown>).CORE_URL as string | undefined;
+  if (coreUrl) {
+    cachedCoreUrl = coreUrl;
     return cachedCoreUrl;
-  },
-);
+  }
+
+  // Fallback: resolve via Cloudflare API
+  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+
+  if (!accountId || !apiToken) {
+    throw new Error("CORE_URL or CF_ACCOUNT_ID + CF_API_TOKEN required to resolve core URL");
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+    { headers: { Authorization: `Bearer ${apiToken}` } },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to resolve workers subdomain (${response.status})`);
+  }
+
+  const body = (await response.json()) as {
+    result?: { subdomain?: string };
+  };
+  const subdomain = body.result?.subdomain;
+  if (!subdomain) {
+    throw new Error("Could not resolve workers subdomain");
+  }
+
+  cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+  return cachedCoreUrl;
+});
 
 // ---------------------------------------------------------------------------
 // JWT minting for browser → core auth
@@ -419,4 +416,3 @@ export const mintStreamToken = createServerFn({ method: "GET" })
 
     return { token, expiresAt };
   });
-

@@ -8,462 +8,445 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as ProjectsRouteImport } from './routes/projects'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
-import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
-import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
-import { Route as ApiProjectsRouteImport } from './routes/api/projects'
-import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects.$projectId.index'
-import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects.$projectId.sessions'
-import { Route as ProjectsProjectIdPublishRouteImport } from './routes/projects.$projectId.publish'
-import { Route as ProjectsProjectIdSessionsIndexRouteImport } from './routes/projects.$projectId.sessions.index'
-import { Route as ProjectsProjectIdSessionsIdRouteImport } from './routes/projects.$projectId.sessions.$id'
-import { Route as ApiProjectsProjectIdTokenRouteImport } from './routes/api/projects.$projectId.token'
-import { Route as ApiProjectsProjectIdSessionsRouteImport } from './routes/api/projects.$projectId.sessions'
-import { Route as ApiProjectsProjectIdPublishRouteImport } from './routes/api/projects.$projectId.publish'
-import { Route as ApiProjectsProjectIdSessionsSessionIdIndexRouteImport } from './routes/api/projects.$projectId.sessions.$sessionId.index'
-import { Route as ApiProjectsProjectIdSessionsSessionIdUnsubscribeRouteImport } from './routes/api/projects.$projectId.sessions.$sessionId.unsubscribe'
-import { Route as ApiProjectsProjectIdSessionsSessionIdSubscribeRouteImport } from './routes/api/projects.$projectId.sessions.$sessionId.subscribe'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as ProjectsRouteImport } from "./routes/projects";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as ProjectsIndexRouteImport } from "./routes/projects.index";
+import { Route as ProjectsProjectIdRouteImport } from "./routes/projects.$projectId";
+import { Route as ApiSessionsRouteImport } from "./routes/api/sessions";
+import { Route as ApiProjectsRouteImport } from "./routes/api/projects";
+import { Route as ProjectsProjectIdIndexRouteImport } from "./routes/projects.$projectId.index";
+import { Route as ProjectsProjectIdSessionsRouteImport } from "./routes/projects.$projectId.sessions";
+import { Route as ProjectsProjectIdPublishRouteImport } from "./routes/projects.$projectId.publish";
+import { Route as ProjectsProjectIdSessionsIndexRouteImport } from "./routes/projects.$projectId.sessions.index";
+import { Route as ProjectsProjectIdSessionsIdRouteImport } from "./routes/projects.$projectId.sessions.$id";
+import { Route as ApiProjectsProjectIdTokenRouteImport } from "./routes/api/projects.$projectId.token";
+import { Route as ApiProjectsProjectIdSessionsRouteImport } from "./routes/api/projects.$projectId.sessions";
+import { Route as ApiProjectsProjectIdPublishRouteImport } from "./routes/api/projects.$projectId.publish";
+import { Route as ApiProjectsProjectIdSessionsSessionIdIndexRouteImport } from "./routes/api/projects.$projectId.sessions.$sessionId.index";
+import { Route as ApiProjectsProjectIdSessionsSessionIdUnsubscribeRouteImport } from "./routes/api/projects.$projectId.sessions.$sessionId.unsubscribe";
+import { Route as ApiProjectsProjectIdSessionsSessionIdSubscribeRouteImport } from "./routes/api/projects.$projectId.sessions.$sessionId.subscribe";
 
 const ProjectsRoute = ProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
+  id: "/projects",
+  path: "/projects",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => ProjectsRoute,
-} as any)
+} as any);
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
-  id: '/$projectId',
-  path: '/$projectId',
+  id: "/$projectId",
+  path: "/$projectId",
   getParentRoute: () => ProjectsRoute,
-} as any)
+} as any);
 const ApiSessionsRoute = ApiSessionsRouteImport.update({
-  id: '/api/sessions',
-  path: '/api/sessions',
+  id: "/api/sessions",
+  path: "/api/sessions",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ApiProjectsRoute = ApiProjectsRouteImport.update({
-  id: '/api/projects',
-  path: '/api/projects',
+  id: "/api/projects",
+  path: "/api/projects",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => ProjectsProjectIdRoute,
-} as any)
-const ProjectsProjectIdSessionsRoute =
-  ProjectsProjectIdSessionsRouteImport.update({
-    id: '/sessions',
-    path: '/sessions',
-    getParentRoute: () => ProjectsProjectIdRoute,
-  } as any)
-const ProjectsProjectIdPublishRoute =
-  ProjectsProjectIdPublishRouteImport.update({
-    id: '/publish',
-    path: '/publish',
-    getParentRoute: () => ProjectsProjectIdRoute,
-  } as any)
-const ProjectsProjectIdSessionsIndexRoute =
-  ProjectsProjectIdSessionsIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => ProjectsProjectIdSessionsRoute,
-  } as any)
-const ProjectsProjectIdSessionsIdRoute =
-  ProjectsProjectIdSessionsIdRouteImport.update({
-    id: '/$id',
-    path: '/$id',
-    getParentRoute: () => ProjectsProjectIdSessionsRoute,
-  } as any)
-const ApiProjectsProjectIdTokenRoute =
-  ApiProjectsProjectIdTokenRouteImport.update({
-    id: '/$projectId/token',
-    path: '/$projectId/token',
-    getParentRoute: () => ApiProjectsRoute,
-  } as any)
-const ApiProjectsProjectIdSessionsRoute =
-  ApiProjectsProjectIdSessionsRouteImport.update({
-    id: '/$projectId/sessions',
-    path: '/$projectId/sessions',
-    getParentRoute: () => ApiProjectsRoute,
-  } as any)
-const ApiProjectsProjectIdPublishRoute =
-  ApiProjectsProjectIdPublishRouteImport.update({
-    id: '/$projectId/publish',
-    path: '/$projectId/publish',
-    getParentRoute: () => ApiProjectsRoute,
-  } as any)
+} as any);
+const ProjectsProjectIdSessionsRoute = ProjectsProjectIdSessionsRouteImport.update({
+  id: "/sessions",
+  path: "/sessions",
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any);
+const ProjectsProjectIdPublishRoute = ProjectsProjectIdPublishRouteImport.update({
+  id: "/publish",
+  path: "/publish",
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any);
+const ProjectsProjectIdSessionsIndexRoute = ProjectsProjectIdSessionsIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => ProjectsProjectIdSessionsRoute,
+} as any);
+const ProjectsProjectIdSessionsIdRoute = ProjectsProjectIdSessionsIdRouteImport.update({
+  id: "/$id",
+  path: "/$id",
+  getParentRoute: () => ProjectsProjectIdSessionsRoute,
+} as any);
+const ApiProjectsProjectIdTokenRoute = ApiProjectsProjectIdTokenRouteImport.update({
+  id: "/$projectId/token",
+  path: "/$projectId/token",
+  getParentRoute: () => ApiProjectsRoute,
+} as any);
+const ApiProjectsProjectIdSessionsRoute = ApiProjectsProjectIdSessionsRouteImport.update({
+  id: "/$projectId/sessions",
+  path: "/$projectId/sessions",
+  getParentRoute: () => ApiProjectsRoute,
+} as any);
+const ApiProjectsProjectIdPublishRoute = ApiProjectsProjectIdPublishRouteImport.update({
+  id: "/$projectId/publish",
+  path: "/$projectId/publish",
+  getParentRoute: () => ApiProjectsRoute,
+} as any);
 const ApiProjectsProjectIdSessionsSessionIdIndexRoute =
   ApiProjectsProjectIdSessionsSessionIdIndexRouteImport.update({
-    id: '/$sessionId/',
-    path: '/$sessionId/',
+    id: "/$sessionId/",
+    path: "/$sessionId/",
     getParentRoute: () => ApiProjectsProjectIdSessionsRoute,
-  } as any)
+  } as any);
 const ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute =
   ApiProjectsProjectIdSessionsSessionIdUnsubscribeRouteImport.update({
-    id: '/$sessionId/unsubscribe',
-    path: '/$sessionId/unsubscribe',
+    id: "/$sessionId/unsubscribe",
+    path: "/$sessionId/unsubscribe",
     getParentRoute: () => ApiProjectsProjectIdSessionsRoute,
-  } as any)
+  } as any);
 const ApiProjectsProjectIdSessionsSessionIdSubscribeRoute =
   ApiProjectsProjectIdSessionsSessionIdSubscribeRouteImport.update({
-    id: '/$sessionId/subscribe',
-    path: '/$sessionId/subscribe',
+    id: "/$sessionId/subscribe",
+    path: "/$sessionId/subscribe",
     getParentRoute: () => ApiProjectsProjectIdSessionsRoute,
-  } as any)
+  } as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/projects': typeof ProjectsRouteWithChildren
-  '/api/projects': typeof ApiProjectsRouteWithChildren
-  '/api/sessions': typeof ApiSessionsRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
-  '/projects/': typeof ProjectsIndexRoute
-  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
-  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
-  '/api/projects/$projectId/publish': typeof ApiProjectsProjectIdPublishRoute
-  '/api/projects/$projectId/sessions': typeof ApiProjectsProjectIdSessionsRouteWithChildren
-  '/api/projects/$projectId/token': typeof ApiProjectsProjectIdTokenRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
-  '/projects/$projectId/sessions/': typeof ProjectsProjectIdSessionsIndexRoute
-  '/api/projects/$projectId/sessions/$sessionId/subscribe': typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId/unsubscribe': typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId/': typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute
+  "/": typeof IndexRoute;
+  "/projects": typeof ProjectsRouteWithChildren;
+  "/api/projects": typeof ApiProjectsRouteWithChildren;
+  "/api/sessions": typeof ApiSessionsRoute;
+  "/projects/$projectId": typeof ProjectsProjectIdRouteWithChildren;
+  "/projects/": typeof ProjectsIndexRoute;
+  "/projects/$projectId/publish": typeof ProjectsProjectIdPublishRoute;
+  "/projects/$projectId/sessions": typeof ProjectsProjectIdSessionsRouteWithChildren;
+  "/projects/$projectId/": typeof ProjectsProjectIdIndexRoute;
+  "/api/projects/$projectId/publish": typeof ApiProjectsProjectIdPublishRoute;
+  "/api/projects/$projectId/sessions": typeof ApiProjectsProjectIdSessionsRouteWithChildren;
+  "/api/projects/$projectId/token": typeof ApiProjectsProjectIdTokenRoute;
+  "/projects/$projectId/sessions/$id": typeof ProjectsProjectIdSessionsIdRoute;
+  "/projects/$projectId/sessions/": typeof ProjectsProjectIdSessionsIndexRoute;
+  "/api/projects/$projectId/sessions/$sessionId/subscribe": typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId/unsubscribe": typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId/": typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/api/projects': typeof ApiProjectsRouteWithChildren
-  '/api/sessions': typeof ApiSessionsRoute
-  '/projects': typeof ProjectsIndexRoute
-  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
-  '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
-  '/api/projects/$projectId/publish': typeof ApiProjectsProjectIdPublishRoute
-  '/api/projects/$projectId/sessions': typeof ApiProjectsProjectIdSessionsRouteWithChildren
-  '/api/projects/$projectId/token': typeof ApiProjectsProjectIdTokenRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsIndexRoute
-  '/api/projects/$projectId/sessions/$sessionId/subscribe': typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId/unsubscribe': typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId': typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute
+  "/": typeof IndexRoute;
+  "/api/projects": typeof ApiProjectsRouteWithChildren;
+  "/api/sessions": typeof ApiSessionsRoute;
+  "/projects": typeof ProjectsIndexRoute;
+  "/projects/$projectId/publish": typeof ProjectsProjectIdPublishRoute;
+  "/projects/$projectId": typeof ProjectsProjectIdIndexRoute;
+  "/api/projects/$projectId/publish": typeof ApiProjectsProjectIdPublishRoute;
+  "/api/projects/$projectId/sessions": typeof ApiProjectsProjectIdSessionsRouteWithChildren;
+  "/api/projects/$projectId/token": typeof ApiProjectsProjectIdTokenRoute;
+  "/projects/$projectId/sessions/$id": typeof ProjectsProjectIdSessionsIdRoute;
+  "/projects/$projectId/sessions": typeof ProjectsProjectIdSessionsIndexRoute;
+  "/api/projects/$projectId/sessions/$sessionId/subscribe": typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId/unsubscribe": typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId": typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/projects': typeof ProjectsRouteWithChildren
-  '/api/projects': typeof ApiProjectsRouteWithChildren
-  '/api/sessions': typeof ApiSessionsRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
-  '/projects/': typeof ProjectsIndexRoute
-  '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
-  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
-  '/api/projects/$projectId/publish': typeof ApiProjectsProjectIdPublishRoute
-  '/api/projects/$projectId/sessions': typeof ApiProjectsProjectIdSessionsRouteWithChildren
-  '/api/projects/$projectId/token': typeof ApiProjectsProjectIdTokenRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
-  '/projects/$projectId/sessions/': typeof ProjectsProjectIdSessionsIndexRoute
-  '/api/projects/$projectId/sessions/$sessionId/subscribe': typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId/unsubscribe': typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute
-  '/api/projects/$projectId/sessions/$sessionId/': typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/projects": typeof ProjectsRouteWithChildren;
+  "/api/projects": typeof ApiProjectsRouteWithChildren;
+  "/api/sessions": typeof ApiSessionsRoute;
+  "/projects/$projectId": typeof ProjectsProjectIdRouteWithChildren;
+  "/projects/": typeof ProjectsIndexRoute;
+  "/projects/$projectId/publish": typeof ProjectsProjectIdPublishRoute;
+  "/projects/$projectId/sessions": typeof ProjectsProjectIdSessionsRouteWithChildren;
+  "/projects/$projectId/": typeof ProjectsProjectIdIndexRoute;
+  "/api/projects/$projectId/publish": typeof ApiProjectsProjectIdPublishRoute;
+  "/api/projects/$projectId/sessions": typeof ApiProjectsProjectIdSessionsRouteWithChildren;
+  "/api/projects/$projectId/token": typeof ApiProjectsProjectIdTokenRoute;
+  "/projects/$projectId/sessions/$id": typeof ProjectsProjectIdSessionsIdRoute;
+  "/projects/$projectId/sessions/": typeof ProjectsProjectIdSessionsIndexRoute;
+  "/api/projects/$projectId/sessions/$sessionId/subscribe": typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId/unsubscribe": typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute;
+  "/api/projects/$projectId/sessions/$sessionId/": typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/projects'
-    | '/api/projects'
-    | '/api/sessions'
-    | '/projects/$projectId'
-    | '/projects/'
-    | '/projects/$projectId/publish'
-    | '/projects/$projectId/sessions'
-    | '/projects/$projectId/'
-    | '/api/projects/$projectId/publish'
-    | '/api/projects/$projectId/sessions'
-    | '/api/projects/$projectId/token'
-    | '/projects/$projectId/sessions/$id'
-    | '/projects/$projectId/sessions/'
-    | '/api/projects/$projectId/sessions/$sessionId/subscribe'
-    | '/api/projects/$projectId/sessions/$sessionId/unsubscribe'
-    | '/api/projects/$projectId/sessions/$sessionId/'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/projects"
+    | "/api/projects"
+    | "/api/sessions"
+    | "/projects/$projectId"
+    | "/projects/"
+    | "/projects/$projectId/publish"
+    | "/projects/$projectId/sessions"
+    | "/projects/$projectId/"
+    | "/api/projects/$projectId/publish"
+    | "/api/projects/$projectId/sessions"
+    | "/api/projects/$projectId/token"
+    | "/projects/$projectId/sessions/$id"
+    | "/projects/$projectId/sessions/"
+    | "/api/projects/$projectId/sessions/$sessionId/subscribe"
+    | "/api/projects/$projectId/sessions/$sessionId/unsubscribe"
+    | "/api/projects/$projectId/sessions/$sessionId/";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/api/projects'
-    | '/api/sessions'
-    | '/projects'
-    | '/projects/$projectId/publish'
-    | '/projects/$projectId'
-    | '/api/projects/$projectId/publish'
-    | '/api/projects/$projectId/sessions'
-    | '/api/projects/$projectId/token'
-    | '/projects/$projectId/sessions/$id'
-    | '/projects/$projectId/sessions'
-    | '/api/projects/$projectId/sessions/$sessionId/subscribe'
-    | '/api/projects/$projectId/sessions/$sessionId/unsubscribe'
-    | '/api/projects/$projectId/sessions/$sessionId'
+    | "/"
+    | "/api/projects"
+    | "/api/sessions"
+    | "/projects"
+    | "/projects/$projectId/publish"
+    | "/projects/$projectId"
+    | "/api/projects/$projectId/publish"
+    | "/api/projects/$projectId/sessions"
+    | "/api/projects/$projectId/token"
+    | "/projects/$projectId/sessions/$id"
+    | "/projects/$projectId/sessions"
+    | "/api/projects/$projectId/sessions/$sessionId/subscribe"
+    | "/api/projects/$projectId/sessions/$sessionId/unsubscribe"
+    | "/api/projects/$projectId/sessions/$sessionId";
   id:
-    | '__root__'
-    | '/'
-    | '/projects'
-    | '/api/projects'
-    | '/api/sessions'
-    | '/projects/$projectId'
-    | '/projects/'
-    | '/projects/$projectId/publish'
-    | '/projects/$projectId/sessions'
-    | '/projects/$projectId/'
-    | '/api/projects/$projectId/publish'
-    | '/api/projects/$projectId/sessions'
-    | '/api/projects/$projectId/token'
-    | '/projects/$projectId/sessions/$id'
-    | '/projects/$projectId/sessions/'
-    | '/api/projects/$projectId/sessions/$sessionId/subscribe'
-    | '/api/projects/$projectId/sessions/$sessionId/unsubscribe'
-    | '/api/projects/$projectId/sessions/$sessionId/'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/projects"
+    | "/api/projects"
+    | "/api/sessions"
+    | "/projects/$projectId"
+    | "/projects/"
+    | "/projects/$projectId/publish"
+    | "/projects/$projectId/sessions"
+    | "/projects/$projectId/"
+    | "/api/projects/$projectId/publish"
+    | "/api/projects/$projectId/sessions"
+    | "/api/projects/$projectId/token"
+    | "/projects/$projectId/sessions/$id"
+    | "/projects/$projectId/sessions/"
+    | "/api/projects/$projectId/sessions/$sessionId/subscribe"
+    | "/api/projects/$projectId/sessions/$sessionId/unsubscribe"
+    | "/api/projects/$projectId/sessions/$sessionId/";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  ProjectsRoute: typeof ProjectsRouteWithChildren
-  ApiProjectsRoute: typeof ApiProjectsRouteWithChildren
-  ApiSessionsRoute: typeof ApiSessionsRoute
+  IndexRoute: typeof IndexRoute;
+  ProjectsRoute: typeof ProjectsRouteWithChildren;
+  ApiProjectsRoute: typeof ApiProjectsRouteWithChildren;
+  ApiSessionsRoute: typeof ApiSessionsRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/projects': {
-      id: '/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/': {
-      id: '/projects/'
-      path: '/'
-      fullPath: '/projects/'
-      preLoaderRoute: typeof ProjectsIndexRouteImport
-      parentRoute: typeof ProjectsRoute
-    }
-    '/projects/$projectId': {
-      id: '/projects/$projectId'
-      path: '/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof ProjectsProjectIdRouteImport
-      parentRoute: typeof ProjectsRoute
-    }
-    '/api/sessions': {
-      id: '/api/sessions'
-      path: '/api/sessions'
-      fullPath: '/api/sessions'
-      preLoaderRoute: typeof ApiSessionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/projects': {
-      id: '/api/projects'
-      path: '/api/projects'
-      fullPath: '/api/projects'
-      preLoaderRoute: typeof ApiProjectsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/$projectId/': {
-      id: '/projects/$projectId/'
-      path: '/'
-      fullPath: '/projects/$projectId/'
-      preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport
-      parentRoute: typeof ProjectsProjectIdRoute
-    }
-    '/projects/$projectId/sessions': {
-      id: '/projects/$projectId/sessions'
-      path: '/sessions'
-      fullPath: '/projects/$projectId/sessions'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsRouteImport
-      parentRoute: typeof ProjectsProjectIdRoute
-    }
-    '/projects/$projectId/publish': {
-      id: '/projects/$projectId/publish'
-      path: '/publish'
-      fullPath: '/projects/$projectId/publish'
-      preLoaderRoute: typeof ProjectsProjectIdPublishRouteImport
-      parentRoute: typeof ProjectsProjectIdRoute
-    }
-    '/projects/$projectId/sessions/': {
-      id: '/projects/$projectId/sessions/'
-      path: '/'
-      fullPath: '/projects/$projectId/sessions/'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsIndexRouteImport
-      parentRoute: typeof ProjectsProjectIdSessionsRoute
-    }
-    '/projects/$projectId/sessions/$id': {
-      id: '/projects/$projectId/sessions/$id'
-      path: '/$id'
-      fullPath: '/projects/$projectId/sessions/$id'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsIdRouteImport
-      parentRoute: typeof ProjectsProjectIdSessionsRoute
-    }
-    '/api/projects/$projectId/token': {
-      id: '/api/projects/$projectId/token'
-      path: '/$projectId/token'
-      fullPath: '/api/projects/$projectId/token'
-      preLoaderRoute: typeof ApiProjectsProjectIdTokenRouteImport
-      parentRoute: typeof ApiProjectsRoute
-    }
-    '/api/projects/$projectId/sessions': {
-      id: '/api/projects/$projectId/sessions'
-      path: '/$projectId/sessions'
-      fullPath: '/api/projects/$projectId/sessions'
-      preLoaderRoute: typeof ApiProjectsProjectIdSessionsRouteImport
-      parentRoute: typeof ApiProjectsRoute
-    }
-    '/api/projects/$projectId/publish': {
-      id: '/api/projects/$projectId/publish'
-      path: '/$projectId/publish'
-      fullPath: '/api/projects/$projectId/publish'
-      preLoaderRoute: typeof ApiProjectsProjectIdPublishRouteImport
-      parentRoute: typeof ApiProjectsRoute
-    }
-    '/api/projects/$projectId/sessions/$sessionId/': {
-      id: '/api/projects/$projectId/sessions/$sessionId/'
-      path: '/$sessionId'
-      fullPath: '/api/projects/$projectId/sessions/$sessionId/'
-      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdIndexRouteImport
-      parentRoute: typeof ApiProjectsProjectIdSessionsRoute
-    }
-    '/api/projects/$projectId/sessions/$sessionId/unsubscribe': {
-      id: '/api/projects/$projectId/sessions/$sessionId/unsubscribe'
-      path: '/$sessionId/unsubscribe'
-      fullPath: '/api/projects/$projectId/sessions/$sessionId/unsubscribe'
-      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRouteImport
-      parentRoute: typeof ApiProjectsProjectIdSessionsRoute
-    }
-    '/api/projects/$projectId/sessions/$sessionId/subscribe': {
-      id: '/api/projects/$projectId/sessions/$sessionId/subscribe'
-      path: '/$sessionId/subscribe'
-      fullPath: '/api/projects/$projectId/sessions/$sessionId/subscribe'
-      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRouteImport
-      parentRoute: typeof ApiProjectsProjectIdSessionsRoute
-    }
+    "/projects": {
+      id: "/projects";
+      path: "/projects";
+      fullPath: "/projects";
+      preLoaderRoute: typeof ProjectsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/projects/": {
+      id: "/projects/";
+      path: "/";
+      fullPath: "/projects/";
+      preLoaderRoute: typeof ProjectsIndexRouteImport;
+      parentRoute: typeof ProjectsRoute;
+    };
+    "/projects/$projectId": {
+      id: "/projects/$projectId";
+      path: "/$projectId";
+      fullPath: "/projects/$projectId";
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport;
+      parentRoute: typeof ProjectsRoute;
+    };
+    "/api/sessions": {
+      id: "/api/sessions";
+      path: "/api/sessions";
+      fullPath: "/api/sessions";
+      preLoaderRoute: typeof ApiSessionsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/projects": {
+      id: "/api/projects";
+      path: "/api/projects";
+      fullPath: "/api/projects";
+      preLoaderRoute: typeof ApiProjectsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/projects/$projectId/": {
+      id: "/projects/$projectId/";
+      path: "/";
+      fullPath: "/projects/$projectId/";
+      preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport;
+      parentRoute: typeof ProjectsProjectIdRoute;
+    };
+    "/projects/$projectId/sessions": {
+      id: "/projects/$projectId/sessions";
+      path: "/sessions";
+      fullPath: "/projects/$projectId/sessions";
+      preLoaderRoute: typeof ProjectsProjectIdSessionsRouteImport;
+      parentRoute: typeof ProjectsProjectIdRoute;
+    };
+    "/projects/$projectId/publish": {
+      id: "/projects/$projectId/publish";
+      path: "/publish";
+      fullPath: "/projects/$projectId/publish";
+      preLoaderRoute: typeof ProjectsProjectIdPublishRouteImport;
+      parentRoute: typeof ProjectsProjectIdRoute;
+    };
+    "/projects/$projectId/sessions/": {
+      id: "/projects/$projectId/sessions/";
+      path: "/";
+      fullPath: "/projects/$projectId/sessions/";
+      preLoaderRoute: typeof ProjectsProjectIdSessionsIndexRouteImport;
+      parentRoute: typeof ProjectsProjectIdSessionsRoute;
+    };
+    "/projects/$projectId/sessions/$id": {
+      id: "/projects/$projectId/sessions/$id";
+      path: "/$id";
+      fullPath: "/projects/$projectId/sessions/$id";
+      preLoaderRoute: typeof ProjectsProjectIdSessionsIdRouteImport;
+      parentRoute: typeof ProjectsProjectIdSessionsRoute;
+    };
+    "/api/projects/$projectId/token": {
+      id: "/api/projects/$projectId/token";
+      path: "/$projectId/token";
+      fullPath: "/api/projects/$projectId/token";
+      preLoaderRoute: typeof ApiProjectsProjectIdTokenRouteImport;
+      parentRoute: typeof ApiProjectsRoute;
+    };
+    "/api/projects/$projectId/sessions": {
+      id: "/api/projects/$projectId/sessions";
+      path: "/$projectId/sessions";
+      fullPath: "/api/projects/$projectId/sessions";
+      preLoaderRoute: typeof ApiProjectsProjectIdSessionsRouteImport;
+      parentRoute: typeof ApiProjectsRoute;
+    };
+    "/api/projects/$projectId/publish": {
+      id: "/api/projects/$projectId/publish";
+      path: "/$projectId/publish";
+      fullPath: "/api/projects/$projectId/publish";
+      preLoaderRoute: typeof ApiProjectsProjectIdPublishRouteImport;
+      parentRoute: typeof ApiProjectsRoute;
+    };
+    "/api/projects/$projectId/sessions/$sessionId/": {
+      id: "/api/projects/$projectId/sessions/$sessionId/";
+      path: "/$sessionId";
+      fullPath: "/api/projects/$projectId/sessions/$sessionId/";
+      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdIndexRouteImport;
+      parentRoute: typeof ApiProjectsProjectIdSessionsRoute;
+    };
+    "/api/projects/$projectId/sessions/$sessionId/unsubscribe": {
+      id: "/api/projects/$projectId/sessions/$sessionId/unsubscribe";
+      path: "/$sessionId/unsubscribe";
+      fullPath: "/api/projects/$projectId/sessions/$sessionId/unsubscribe";
+      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRouteImport;
+      parentRoute: typeof ApiProjectsProjectIdSessionsRoute;
+    };
+    "/api/projects/$projectId/sessions/$sessionId/subscribe": {
+      id: "/api/projects/$projectId/sessions/$sessionId/subscribe";
+      path: "/$sessionId/subscribe";
+      fullPath: "/api/projects/$projectId/sessions/$sessionId/subscribe";
+      preLoaderRoute: typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRouteImport;
+      parentRoute: typeof ApiProjectsProjectIdSessionsRoute;
+    };
   }
 }
 
 interface ProjectsProjectIdSessionsRouteChildren {
-  ProjectsProjectIdSessionsIdRoute: typeof ProjectsProjectIdSessionsIdRoute
-  ProjectsProjectIdSessionsIndexRoute: typeof ProjectsProjectIdSessionsIndexRoute
+  ProjectsProjectIdSessionsIdRoute: typeof ProjectsProjectIdSessionsIdRoute;
+  ProjectsProjectIdSessionsIndexRoute: typeof ProjectsProjectIdSessionsIndexRoute;
 }
 
-const ProjectsProjectIdSessionsRouteChildren: ProjectsProjectIdSessionsRouteChildren =
-  {
-    ProjectsProjectIdSessionsIdRoute: ProjectsProjectIdSessionsIdRoute,
-    ProjectsProjectIdSessionsIndexRoute: ProjectsProjectIdSessionsIndexRoute,
-  }
+const ProjectsProjectIdSessionsRouteChildren: ProjectsProjectIdSessionsRouteChildren = {
+  ProjectsProjectIdSessionsIdRoute: ProjectsProjectIdSessionsIdRoute,
+  ProjectsProjectIdSessionsIndexRoute: ProjectsProjectIdSessionsIndexRoute,
+};
 
-const ProjectsProjectIdSessionsRouteWithChildren =
-  ProjectsProjectIdSessionsRoute._addFileChildren(
-    ProjectsProjectIdSessionsRouteChildren,
-  )
+const ProjectsProjectIdSessionsRouteWithChildren = ProjectsProjectIdSessionsRoute._addFileChildren(
+  ProjectsProjectIdSessionsRouteChildren,
+);
 
 interface ProjectsProjectIdRouteChildren {
-  ProjectsProjectIdPublishRoute: typeof ProjectsProjectIdPublishRoute
-  ProjectsProjectIdSessionsRoute: typeof ProjectsProjectIdSessionsRouteWithChildren
-  ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
+  ProjectsProjectIdPublishRoute: typeof ProjectsProjectIdPublishRoute;
+  ProjectsProjectIdSessionsRoute: typeof ProjectsProjectIdSessionsRouteWithChildren;
+  ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute;
 }
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdPublishRoute: ProjectsProjectIdPublishRoute,
   ProjectsProjectIdSessionsRoute: ProjectsProjectIdSessionsRouteWithChildren,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
-}
+};
 
-const ProjectsProjectIdRouteWithChildren =
-  ProjectsProjectIdRoute._addFileChildren(ProjectsProjectIdRouteChildren)
+const ProjectsProjectIdRouteWithChildren = ProjectsProjectIdRoute._addFileChildren(
+  ProjectsProjectIdRouteChildren,
+);
 
 interface ProjectsRouteChildren {
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
-  ProjectsIndexRoute: typeof ProjectsIndexRoute
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren;
+  ProjectsIndexRoute: typeof ProjectsIndexRoute;
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
   ProjectsIndexRoute: ProjectsIndexRoute,
-}
+};
 
-const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
-  ProjectsRouteChildren,
-)
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(ProjectsRouteChildren);
 
 interface ApiProjectsProjectIdSessionsRouteChildren {
-  ApiProjectsProjectIdSessionsSessionIdSubscribeRoute: typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute
-  ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute: typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute
-  ApiProjectsProjectIdSessionsSessionIdIndexRoute: typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute
+  ApiProjectsProjectIdSessionsSessionIdSubscribeRoute: typeof ApiProjectsProjectIdSessionsSessionIdSubscribeRoute;
+  ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute: typeof ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute;
+  ApiProjectsProjectIdSessionsSessionIdIndexRoute: typeof ApiProjectsProjectIdSessionsSessionIdIndexRoute;
 }
 
-const ApiProjectsProjectIdSessionsRouteChildren: ApiProjectsProjectIdSessionsRouteChildren =
-  {
-    ApiProjectsProjectIdSessionsSessionIdSubscribeRoute:
-      ApiProjectsProjectIdSessionsSessionIdSubscribeRoute,
-    ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute:
-      ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute,
-    ApiProjectsProjectIdSessionsSessionIdIndexRoute:
-      ApiProjectsProjectIdSessionsSessionIdIndexRoute,
-  }
+const ApiProjectsProjectIdSessionsRouteChildren: ApiProjectsProjectIdSessionsRouteChildren = {
+  ApiProjectsProjectIdSessionsSessionIdSubscribeRoute:
+    ApiProjectsProjectIdSessionsSessionIdSubscribeRoute,
+  ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute:
+    ApiProjectsProjectIdSessionsSessionIdUnsubscribeRoute,
+  ApiProjectsProjectIdSessionsSessionIdIndexRoute: ApiProjectsProjectIdSessionsSessionIdIndexRoute,
+};
 
 const ApiProjectsProjectIdSessionsRouteWithChildren =
-  ApiProjectsProjectIdSessionsRoute._addFileChildren(
-    ApiProjectsProjectIdSessionsRouteChildren,
-  )
+  ApiProjectsProjectIdSessionsRoute._addFileChildren(ApiProjectsProjectIdSessionsRouteChildren);
 
 interface ApiProjectsRouteChildren {
-  ApiProjectsProjectIdPublishRoute: typeof ApiProjectsProjectIdPublishRoute
-  ApiProjectsProjectIdSessionsRoute: typeof ApiProjectsProjectIdSessionsRouteWithChildren
-  ApiProjectsProjectIdTokenRoute: typeof ApiProjectsProjectIdTokenRoute
+  ApiProjectsProjectIdPublishRoute: typeof ApiProjectsProjectIdPublishRoute;
+  ApiProjectsProjectIdSessionsRoute: typeof ApiProjectsProjectIdSessionsRouteWithChildren;
+  ApiProjectsProjectIdTokenRoute: typeof ApiProjectsProjectIdTokenRoute;
 }
 
 const ApiProjectsRouteChildren: ApiProjectsRouteChildren = {
   ApiProjectsProjectIdPublishRoute: ApiProjectsProjectIdPublishRoute,
-  ApiProjectsProjectIdSessionsRoute:
-    ApiProjectsProjectIdSessionsRouteWithChildren,
+  ApiProjectsProjectIdSessionsRoute: ApiProjectsProjectIdSessionsRouteWithChildren,
   ApiProjectsProjectIdTokenRoute: ApiProjectsProjectIdTokenRoute,
-}
+};
 
-const ApiProjectsRouteWithChildren = ApiProjectsRoute._addFileChildren(
-  ApiProjectsRouteChildren,
-)
+const ApiProjectsRouteWithChildren = ApiProjectsRoute._addFileChildren(ApiProjectsRouteChildren);
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   ApiProjectsRoute: ApiProjectsRouteWithChildren,
   ApiSessionsRoute: ApiSessionsRoute,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();
 
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
+import type { getRouter } from "./router.tsx";
+import type { createStart } from "@tanstack/react-start";
+declare module "@tanstack/react-start" {
   interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
+    ssr: true;
+    router: Awaited<ReturnType<typeof getRouter>>;
   }
 }

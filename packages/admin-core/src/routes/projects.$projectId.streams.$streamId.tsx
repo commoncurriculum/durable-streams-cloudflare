@@ -6,14 +6,7 @@ import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream"
 import { stream as readStreamClient } from "@durable-streams/client";
 import { streamUrl } from "../lib/stream-url";
 import { useCoreUrl, useStreamToken, useStreamTimeseries } from "../lib/queries";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 type StreamMeta = {
   stream_id: string;
@@ -60,9 +53,7 @@ type StreamInspectData = {
   longPollWaiterCount: number;
 };
 
-export const Route = createFileRoute(
-  "/projects/$projectId/streams/$streamId",
-)({
+export const Route = createFileRoute("/projects/$projectId/streams/$streamId")({
   loader: async ({ params }) => {
     const doKey = `${params.projectId}/${params.streamId}`;
     try {
@@ -84,7 +75,14 @@ function StreamDetailPage() {
     return <CreateStreamForm projectId={projectId} streamId={streamId} doKey={doKey} />;
   }
 
-  return <StreamConsole projectId={projectId} streamId={streamId} doKey={doKey} data={data as StreamInspectData} />;
+  return (
+    <StreamConsole
+      projectId={projectId}
+      streamId={streamId}
+      doKey={doKey}
+      data={data as StreamInspectData}
+    />
+  );
 }
 
 /* ─── State A: Stream not found ─── */
@@ -175,9 +173,7 @@ function CreateStreamForm({
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
+            <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</div>
           )}
 
           <button
@@ -221,7 +217,12 @@ function StreamConsole({
     messages: r.messages,
   }));
 
-  const { status: sseStatus, events, addEvent, clearEvents } = useDurableStream({
+  const {
+    status: sseStatus,
+    events,
+    addEvent,
+    clearEvents,
+  } = useDurableStream({
     coreUrl,
     projectId,
     streamKey: streamId,
@@ -254,10 +255,7 @@ function StreamConsole({
     }
   }
 
-  const segmentFill = Math.min(
-    (ops.sizeBytes / (4 * 1024 * 1024)) * 100,
-    100,
-  );
+  const segmentFill = Math.min((ops.sizeBytes / (4 * 1024 * 1024)) * 100, 100);
 
   return (
     <div className="space-y-6">
@@ -287,9 +285,7 @@ function StreamConsole({
 
       {/* Message Volume chart */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h3 className="mb-3 text-sm font-medium text-zinc-400">
-          Message Volume
-        </h3>
+        <h3 className="mb-3 text-sm font-medium text-zinc-400">Message Volume</h3>
         {(timeseriesData?.length ?? 0) > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={chartData}>
@@ -335,10 +331,7 @@ function StreamConsole({
           {/* Metadata grid */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {metaFields.map(([label, val]) => (
-              <div
-                key={label}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3"
-              >
+              <div key={label} className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
                 <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
                   {label}
                 </div>
@@ -355,9 +348,7 @@ function StreamConsole({
             <div className="mt-1 font-mono text-2xl font-bold text-blue-400">
               {ops.messageCount}
             </div>
-            <div className="mt-2 text-xs text-zinc-500">
-              {formatBytes(ops.sizeBytes)}
-            </div>
+            <div className="mt-2 text-xs text-zinc-500">{formatBytes(ops.sizeBytes)}</div>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className="h-full rounded-full bg-blue-500 transition-all"
@@ -383,7 +374,7 @@ function StreamConsole({
                   </tr>
                 </thead>
                 <tbody>
-                    {segments.map((s) => (
+                  {segments.map((s) => (
                     <tr
                       key={s.read_seq}
                       className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
@@ -439,7 +430,16 @@ function StreamConsole({
         </div>
 
         {/* Right column: live event log */}
-        <EventLog coreUrl={coreUrl} token={tokenData?.token} projectId={projectId} streamId={streamId} events={events} sseStatus={sseStatus} clearEvents={clearEvents} addEvent={addEvent} />
+        <EventLog
+          coreUrl={coreUrl}
+          token={tokenData?.token}
+          projectId={projectId}
+          streamId={streamId}
+          events={events}
+          sseStatus={sseStatus}
+          clearEvents={clearEvents}
+          addEvent={addEvent}
+        />
       </div>
     </div>
   );
@@ -605,10 +605,7 @@ function EventLog({
             {fetching ? "Loading..." : "Fetch Earlier Messages"}
           </button>
           {events.length > 0 && (
-            <button
-              onClick={clearEvents}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
-            >
+            <button onClick={clearEvents} className="text-xs text-zinc-500 hover:text-zinc-300">
               Clear
             </button>
           )}
@@ -617,9 +614,7 @@ function EventLog({
       </div>
       <div className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-zinc-800 p-2">
         {events.length === 0 ? (
-          <div className="py-12 text-center text-sm text-zinc-500">
-            Waiting for events...
-          </div>
+          <div className="py-12 text-center text-sm text-zinc-500">Waiting for events...</div>
         ) : (
           events.map((evt, i) => <LogEntry key={i} event={evt} />)
         )}
@@ -672,9 +667,7 @@ function SseStatusBadge({ status }: { status: string }) {
     error: "text-red-400",
   };
   return (
-    <span className={`font-mono text-xs ${colors[status] ?? "text-zinc-500"}`}>
-      SSE: {status}
-    </span>
+    <span className={`font-mono text-xs ${colors[status] ?? "text-zinc-500"}`}>SSE: {status}</span>
   );
 }
 
@@ -703,9 +696,7 @@ function LogEntry({ event }: { event: StreamEvent }) {
         {event.type}
       </span>
       {isLong ? (
-        <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-400">
-          {event.content}
-        </pre>
+        <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-400">{event.content}</pre>
       ) : (
         <span className="ml-2 text-zinc-400">{event.content}</span>
       )}
@@ -722,7 +713,5 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>
-  );
+  return <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>;
 }

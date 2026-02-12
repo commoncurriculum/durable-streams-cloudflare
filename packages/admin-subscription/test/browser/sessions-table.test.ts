@@ -18,7 +18,9 @@ test("sessions table shows Session ID column header", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions`);
   await page.waitForLoadState("networkidle");
 
-  await expect(page.locator("th").filter({ hasText: "Session ID" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("th").filter({ hasText: "Session ID" })).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 // ── Session in table ──
@@ -29,7 +31,9 @@ test("created session appears in the table", async ({ page }) => {
   // Wait for table to render
   await page.waitForSelector("th", { timeout: 5_000 });
 
-  await expect(page.locator("main").locator(`text=${sessionId}`).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("main").locator(`text=${sessionId}`).first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 // ── Clicking navigates to detail ──

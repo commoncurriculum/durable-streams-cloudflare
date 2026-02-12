@@ -1,0 +1,67 @@
+name = "durable-streams"
+main = "src/http/worker.ts"
+compatibility_date = "2026-02-02"
+compatibility_flags = []
+
+[durable_objects]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" },
+  { name = "SUBSCRIPTION_DO", class_name = "SubscriptionDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["SubscriptionDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["EstuaryDO"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
+# KV namespace for per-project signing secrets and stream metadata
+# Replace with your actual KV namespace ID from: wrangler kv namespace create REGISTRY
+[[kv_namespaces]]
+binding = "REGISTRY"
+id = "registry"
+
+# Queue-based fanout for hot topics.
+# Without this binding, fanout is always inline.
+[[queues.producers]]
+binding = "FANOUT_QUEUE"
+queue = "subscription-fanout"
+
+# Uncomment to enable queue consumer (processes async fanout messages):
+# [[queues.consumers]]
+# queue = "subscription-fanout"
+# max_batch_size = 10
+# max_batch_timeout = 1
+# max_retries = 3
+# dead_letter_queue = "subscription-fanout-dlq"
+
+[vars]
+# SEGMENT_MAX_MESSAGES = "1000"
+# SEGMENT_MAX_BYTES = "4194304"
+# Comma-separated CORS origins allowed for ALL projects (in addition to per-project origins)
+# CORS_ORIGINS = "https://admin.example.com,https://dashboard.example.com"
+ESTUARY_TTL_SECONDS = "86400"
+
+# Rules for importing migration SQL files as text
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
+[observability]
+enabled = true

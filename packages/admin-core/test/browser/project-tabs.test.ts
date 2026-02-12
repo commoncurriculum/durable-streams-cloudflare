@@ -47,7 +47,9 @@ test("Streams tab navigates correctly", async ({ page }) => {
   await streamsTab.click();
 
   await page.waitForURL(`**/projects/${PROJECT_ID}/streams`, { timeout: 5_000 });
-  await expect(page.locator('input[placeholder="Enter stream ID..."]')).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('input[placeholder="Enter stream ID..."]')).toBeVisible({
+    timeout: 3_000,
+  });
 });
 
 test("Settings tab navigates correctly", async ({ page }) => {

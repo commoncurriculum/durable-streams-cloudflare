@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useProjectStreams } from "../lib/queries";
 import { formatBytes, relTime } from "../lib/formatters";
-import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableColumn,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export const Route = createFileRoute("/projects/$projectId/streams/")({
   component: StreamsIndexPage,

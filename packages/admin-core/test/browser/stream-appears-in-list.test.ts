@@ -6,7 +6,10 @@ const STREAM_ID = "listed-stream";
 
 async function waitForStreamConsole(page: Page, maxAttempts = 5) {
   for (let i = 0; i < maxAttempts; i++) {
-    const visible = await page.getByText("Live Event Log").isVisible().catch(() => false);
+    const visible = await page
+      .getByText("Live Event Log")
+      .isVisible()
+      .catch(() => false);
     if (visible) return;
     await page.waitForTimeout(1000);
     await page.reload();
@@ -46,7 +49,7 @@ test("created stream appears in the streams table for its project", async ({ pag
   await page.waitForLoadState("networkidle");
 
   // The stream we just created should appear in the table
-  await expect(
-    page.locator("main").locator(`text=${STREAM_ID}`).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("main").locator(`text=${STREAM_ID}`).first()).toBeVisible({
+    timeout: 15_000,
+  });
 });

@@ -48,18 +48,12 @@ export function Toolbar({ drawing }: ToolbarProps) {
           onChange={(e) => drawing.setWidth(Number(e.target.value))}
           className="w-24 accent-primary"
         />
-        <span className="w-5 text-center text-xs tabular-nums">
-          {drawing.currentWidth}
-        </span>
+        <span className="w-5 text-center text-xs tabular-nums">{drawing.currentWidth}</span>
       </label>
 
       <div className="mx-2 h-6 w-px bg-border" />
 
-      <Button
-        intent="danger"
-        size="xs"
-        onPress={() => drawing.handleClear()}
-      >
+      <Button intent="danger" size="xs" onPress={() => drawing.handleClear()}>
         Clear
       </Button>
     </div>

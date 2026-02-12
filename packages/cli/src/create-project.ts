@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
 
-function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdout: string; stderr: string } {
+function runMayFail(
+  cmd: string,
+  opts?: { input?: string },
+): { ok: boolean; stdout: string; stderr: string } {
   const result = spawnSync(cmd, {
     encoding: "utf-8",
     stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
@@ -47,8 +50,7 @@ export async function createProject() {
   const wranglerCmd = detectWrangler();
   if (!wranglerCmd) {
     p.log.error(
-      "wrangler is required but was not found.\n" +
-      "Install it with: npm install -g wrangler"
+      "wrangler is required but was not found.\n" + "Install it with: npm install -g wrangler",
     );
     process.exit(1);
   }
@@ -81,7 +83,7 @@ export async function createProject() {
   } else {
     const input = await p.text({
       message: "Enter signing secret:",
-      validate: (v) => v.length < 16 ? "Secret must be at least 16 characters" : undefined,
+      validate: (v) => (v.length < 16 ? "Secret must be at least 16 characters" : undefined),
     });
     if (p.isCancel(input)) cancelled();
     signingSecret = input;
@@ -105,7 +107,7 @@ export async function createProject() {
     ...(detectedNamespaceId
       ? { defaultValue: detectedNamespaceId, placeholder: `Auto-detected: ${detectedNamespaceId}` }
       : { placeholder: "Find this in your wrangler.toml or CF dashboard" }),
-    validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
+    validate: (v) => (v.length === 0 ? "Namespace ID is required" : undefined),
   });
   if (p.isCancel(namespaceId)) cancelled();
 

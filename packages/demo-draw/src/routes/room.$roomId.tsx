@@ -23,11 +23,10 @@ function DrawingRoom() {
   const [userId] = useState(() => crypto.randomUUID().slice(0, 8));
   const renderRemoteRef = useRef<((msg: DrawMessage) => void) | null>(null);
 
-
   const handleStrokeEnd = useCallback(
     async (msg: StrokeMessage) => {
-        const ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
-        await ds.append(JSON.stringify(msg));
+      const ds = getWriteStream(coreUrl, projectId, roomId, writeToken);
+      await ds.append(JSON.stringify(msg));
     },
     [coreUrl, projectId, roomId, writeToken],
   );
@@ -49,7 +48,7 @@ function DrawingRoom() {
     async function init() {
       // Subscribe to the stream directly from core (reads are public)
       const ds = subscribeToStream(coreUrl, projectId, roomId);
-      console.log('ds', ds)
+      console.log("ds", ds);
 
       // Try to read — if the stream doesn't exist yet, retry after a delay
       let res;

@@ -9,8 +9,7 @@ export const Route = createFileRoute("/api/streams/$projectId/$id")({
         PUT: async ({ params, request }) => {
           const doKey = `${params.projectId}/${params.id}`;
           const core = (env as Record<string, unknown>).CORE as CoreService;
-          const contentType =
-            request.headers.get("Content-Type") || "application/json";
+          const contentType = request.headers.get("Content-Type") || "application/json";
           const body = await request.arrayBuffer().catch(() => undefined);
           const result = await core.putStream(doKey, { contentType, body });
           return new Response(null, { status: result.ok ? 201 : result.status });
@@ -18,13 +17,11 @@ export const Route = createFileRoute("/api/streams/$projectId/$id")({
         POST: async ({ params, request }) => {
           const doKey = `${params.projectId}/${params.id}`;
           const core = (env as Record<string, unknown>).CORE as CoreService;
-          const contentType =
-            request.headers.get("Content-Type") || "application/json";
+          const contentType = request.headers.get("Content-Type") || "application/json";
           const payload = await request.arrayBuffer();
           const result = await core.postStream(doKey, payload, contentType);
           const headers: Record<string, string> = {};
-          if (result.nextOffset)
-            headers["Stream-Next-Offset"] = result.nextOffset;
+          if (result.nextOffset) headers["Stream-Next-Offset"] = result.nextOffset;
           return new Response(null, {
             status: result.ok ? 204 : result.status,
             headers,
@@ -40,9 +37,7 @@ export const Route = createFileRoute("/api/streams/$projectId/$id")({
             status: result.status,
             headers: {
               "Content-Type": result.contentType || "application/json",
-              ...(result.nextOffset
-                ? { "Stream-Next-Offset": result.nextOffset }
-                : {}),
+              ...(result.nextOffset ? { "Stream-Next-Offset": result.nextOffset } : {}),
             },
           });
         },

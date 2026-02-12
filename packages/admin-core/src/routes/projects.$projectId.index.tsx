@@ -19,9 +19,7 @@ function ProjectOverview() {
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</div>
       <div className="font-mono text-2xl font-bold text-blue-400">{value}</div>
     </div>
   );

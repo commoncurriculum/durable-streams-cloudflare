@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { Switch as SwitchPrimitive, type SwitchProps } from "react-aria-components"
-import { twJoin, twMerge } from "tailwind-merge"
-import { cx } from "@/lib/primitive"
-import { Label } from "./field"
+import { Switch as SwitchPrimitive, type SwitchProps } from "react-aria-components";
+import { twJoin, twMerge } from "tailwind-merge";
+import { cx } from "@/lib/primitive";
+import { Label } from "./field";
 
 export function Switch({ children, className, ...props }: SwitchProps) {
   return (
@@ -64,9 +64,9 @@ export function Switch({ children, className, ...props }: SwitchProps) {
         </>
       )}
     </SwitchPrimitive>
-  )
+  );
 }
 
 export function SwitchLabel(props: React.ComponentProps<typeof Label>) {
-  return <Label elementType="span" {...props} />
+  return <Label elementType="span" {...props} />;
 }

@@ -13,24 +13,25 @@ export const Route = createFileRoute("/api/sessions")({
           };
           const projectId = body.projectId?.trim();
           if (!projectId) {
-            return new Response(
-              JSON.stringify({ error: "projectId required" }),
-              { status: 400, headers: { "Content-Type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: "projectId required" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           const sessionId = body.sessionId?.trim() || crypto.randomUUID();
 
-          const subscription = (env as Record<string, unknown>)
-            .SUBSCRIPTION as SubscriptionService | undefined;
+          const subscription = (env as Record<string, unknown>).SUBSCRIPTION as
+            | SubscriptionService
+            | undefined;
           if (subscription) {
             await subscription.adminTouchSession(projectId, sessionId, "application/json");
           }
 
-          return new Response(
-            JSON.stringify({ ok: true, sessionId }),
-            { status: 201, headers: { "Content-Type": "application/json" } },
-          );
+          return new Response(JSON.stringify({ ok: true, sessionId }), {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          });
         },
       }),
   },

@@ -1,8 +1,4 @@
-import {
-  createFileRoute,
-  Outlet,
-  useNavigate,
-} from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 export const Route = createFileRoute("/projects/$projectId/streams")({

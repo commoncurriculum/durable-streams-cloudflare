@@ -8,6 +8,9 @@
     "diagnose": "tsx src/diagnose-cdn.ts",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "format": "oxfmt --write src",
+    "format:check": "oxfmt --check src",
+    "lint": "oxlint src",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json"
   },
   "dependencies": {

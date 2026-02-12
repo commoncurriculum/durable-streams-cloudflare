@@ -57,13 +57,11 @@ export default async function globalSetup() {
   const wranglerJsonPath = path.join(ROOT, "dist/server/wrangler.json");
   const wranglerJson = JSON.parse(fs.readFileSync(wranglerJsonPath, "utf-8"));
   if (wranglerJson.services) {
-    wranglerJson.services = wranglerJson.services.map(
-      (s: { binding: string; service: string }) => {
-        if (s.binding === "CORE") return { ...s, service: CORE_WORKER_NAME };
-        if (s.binding === "SUBSCRIPTION") return { ...s, service: SUBSCRIPTION_WORKER_NAME };
-        return s;
-      },
-    );
+    wranglerJson.services = wranglerJson.services.map((s: { binding: string; service: string }) => {
+      if (s.binding === "CORE") return { ...s, service: CORE_WORKER_NAME };
+      if (s.binding === "SUBSCRIPTION") return { ...s, service: SUBSCRIPTION_WORKER_NAME };
+      return s;
+    });
   }
   if (wranglerJson.kv_namespaces) {
     wranglerJson.kv_namespaces = wranglerJson.kv_namespaces.map(
@@ -78,12 +76,19 @@ export default async function globalSetup() {
   const coreProc = spawn(
     "pnpm",
     [
-      "exec", "wrangler", "dev", "--local",
-      "--port", String(corePort),
-      "--inspector-port", "0",
+      "exec",
+      "wrangler",
+      "dev",
+      "--local",
+      "--port",
+      String(corePort),
+      "--inspector-port",
+      "0",
       "--show-interactive-dev-session=false",
-      "--name", CORE_WORKER_NAME,
-      "--persist-to", PERSIST_DIR,
+      "--name",
+      CORE_WORKER_NAME,
+      "--persist-to",
+      PERSIST_DIR,
     ],
     { cwd: CORE_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
@@ -104,13 +109,21 @@ export default async function globalSetup() {
   const subscriptionProc = spawn(
     "pnpm",
     [
-      "exec", "wrangler", "dev", "--local",
-      "--port", String(subscriptionPort),
-      "--inspector-port", "0",
+      "exec",
+      "wrangler",
+      "dev",
+      "--local",
+      "--port",
+      String(subscriptionPort),
+      "--inspector-port",
+      "0",
       "--show-interactive-dev-session=false",
-      "--name", SUBSCRIPTION_WORKER_NAME,
-      "--config", subWranglerTmpPath,
-      "--persist-to", PERSIST_DIR,
+      "--name",
+      SUBSCRIPTION_WORKER_NAME,
+      "--config",
+      subWranglerTmpPath,
+      "--persist-to",
+      PERSIST_DIR,
     ],
     { cwd: SUBSCRIPTION_ROOT, stdio: "pipe", env: { ...process.env, CI: "1" } },
   );
@@ -123,13 +136,21 @@ export default async function globalSetup() {
   const adminProc = spawn(
     "pnpm",
     [
-      "exec", "wrangler", "dev", "--local",
-      "--port", String(adminPort),
-      "--inspector-port", "0",
+      "exec",
+      "wrangler",
+      "dev",
+      "--local",
+      "--port",
+      String(adminPort),
+      "--inspector-port",
+      "0",
       "--show-interactive-dev-session=false",
-      "--config", "dist/server/wrangler.json",
-      "--persist-to", PERSIST_DIR,
-      "--var", `CORE_URL:${coreUrl}`,
+      "--config",
+      "dist/server/wrangler.json",
+      "--persist-to",
+      PERSIST_DIR,
+      "--var",
+      `CORE_URL:${coreUrl}`,
     ],
     {
       cwd: ROOT,

@@ -4,30 +4,23 @@
 
 Durable Streams on Cloudflare — a port of the [Durable Streams](https://github.com/electric-sql/durable-streams) protocol to Cloudflare Workers + Durable Objects, plus a pub/sub subscription layer on top.
 
-Two independent Workers that deploy separately. Subscription depends on core, but core works standalone.
+Single unified Worker with all functionality.
 
 ## Packages
 
-| Package | What |
-|---------|------|
-| `packages/core` | Durable Streams protocol. One DO per stream, SQLite hot log, R2 cold segments. |
-| `packages/subscription` | Pub/sub fan-out. Sessions, fan-out, TTL cleanup, Analytics Engine metrics. |
-| `packages/admin-core` | Admin dashboard for core. |
-| `packages/admin-subscription` | Admin dashboard for subscription. |
-| `packages/docs` | Slidev presentations. |
+| Package           | What                                                                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/server` | Durable Streams protocol + pub/sub fan-out. One DO per stream, SQLite hot log, R2 cold segments, subscriptions, sessions, TTL cleanup, Analytics Engine metrics. |
+| `packages/docs`   | Slidev presentations.                                                                                                                                            |
+| `packages/cli`    | Setup wizard and project management.                                                                                                                             |
 
 Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vitest configs. **Read those directly** — don't rely on this file for their contents.
 
 ## Where to Find Things
 
-- **Design docs**: `docs/00-index.md` is the table of contents for all design documentation (12 chapters)
-- **Architecture**: `docs/01-architecture.md` — core module map, data model, request flow
-- **Cost analysis**: `docs/02-cost-analysis.md` — billing model, cost-driven design decisions
-- **CDN caching**: `docs/05-cache-architecture.md` (current design), `docs/04-cache-evolution.md` (history)
-- **Request collapsing**: `docs/06-request-collapsing.md` — sentinel coalescing, loadtest results
-- **CDN investigation**: `docs/07-cdn-miss-investigation.md` — production CDN testing, nginx IPv6 fix
-- **Subscription design**: `docs/09-subscription-design.md` — hot push / cold catch-up
-- **API endpoints**: each package README documents its routes
+- **Architecture**: `packages/server/call-graph.md` — request flow diagrams, DO communication patterns
+- **API endpoints**: `packages/server/README.md` documents all routes
+- **Code organization**: `packages/server/src/http/v1/streams/` — all stream operations
 - **Auth patterns**: each package README has auth examples
 - **Env vars and wrangler bindings**: each package's `wrangler.toml` and README
 - **CI**: `.github/workflows/ci.yml`
@@ -35,54 +28,34 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 ## Tech Stack
 
 - **Runtime**: Cloudflare Workers + Durable Objects (SQLite) + R2 + Analytics Engine
-- **HTTP**: Hono v4 + ArkType v2 + `@hono/arktype-validator` (core + subscription workers)
-- **Admin dashboards**: TanStack Start + TanStack Query + Recharts + Tailwind CSS v4, deployed via @cloudflare/vite-plugin
+- **HTTP**: Hono v4 + ArkType v2 + `@hono/arktype-validator`
 - **Build**: TypeScript strict via `tsc` (shared `tsconfig.build.json` at root)
-- **Test**: Vitest. Core has 4 vitest configs (unit, implementation, conformance, performance). Subscription has 2 (unit, integration). Integration tests use wrangler `unstable_dev`.
+- **Test**: Vitest. Server has 3 vitest configs (unit, integration, conformance). Integration tests use wrangler `unstable_dev`.
 - **Lint/Format**: oxlint + oxfmt (NOT ESLint/Prettier)
 - **Package Manager**: pnpm (see `packageManager` in root `package.json` for exact version)
 
 ## Critical Design Constraints
 
-- **Edge request collapsing is a CORE design goal.** The entire point of the edge cache layer (`caches.default` in `create_worker.ts`) is to collapse concurrent reads at the same stream position into a single DO round-trip. Without this, the system cannot scale fan-out reads — 1M followers of a stream means 1M hits to the Durable Object, which is unacceptable. Any change to the edge cache must preserve (or improve) collapsing for live tail long-poll reads. See `docs/06-request-collapsing.md` for the full design and `docs/07-cdn-miss-investigation.md` for production CDN testing results.
+- **Edge request collapsing is a CORE design goal.** The entire point of the edge cache layer (`caches.default` in the edge worker) is to collapse concurrent reads at the same stream position into a single DO round-trip. Without this, the system cannot scale fan-out reads — 1M followers of a stream means 1M hits to the Durable Object, which is unacceptable. Any change to the edge cache must preserve (or improve) collapsing for live tail long-poll reads.
 
 ## Key Conventions
 
-- Core and subscription workers follow the same pattern: `createXWorker()` factory + exported DO class. Entry point is always `src/http/worker.ts`.
-- Admin dashboards are TanStack Start apps: `src/server.ts` entry, file-based routing in `src/routes/`, server functions in `src/lib/analytics.ts`, TanStack Query hooks in `src/lib/queries.ts`.
-- `pnpm dev` at root runs all 4 workers in parallel with unique ports.
-
-## Admin Dashboards (admin-core + admin-subscription)
-
-Both admin packages are **TanStack Start** apps on Cloudflare Workers. They share the same architecture — read one and you understand both. Start from `wrangler.toml` for bindings, `src/routes/` for pages, `src/lib/analytics.ts` for server functions.
-
-### How It Works
-
-- **Server functions** use `createServerFn` and access Cloudflare bindings via `import { env } from "cloudflare:workers"`. They call backend workers through service bindings (see each package's `wrangler.toml` for binding names).
-- **Route loaders** fetch data server-side so it appears in the SSR HTML. Without a loader, `useQuery` only runs client-side and SSR renders a loading skeleton. If a plain `fetch` to the page should return real data, that page needs a loader.
-- **`useQuery` with `refetchInterval`** handles client-side polling for pages where a skeleton on first paint is fine (e.g., overview dashboards).
-- **Parent routes** with child routes must render `<Outlet />` or children won't appear.
-
-### Gotchas
-
-- `router.tsx` must export `getRouter` (not `createRouter`) — TanStack Start's server handler expects this exact name.
-- `cloudflare:workers` is not available in vitest. You cannot import any source file that transitively touches it. Tests that need to check source files read them as strings.
-- Integration tests build with `vite build` then run the built output via `wrangler dev --local --config dist/server/wrangler.json`. Always rebuild before running them.
-- The `@cloudflare/vite-plugin` inspector port is set via `CF_INSPECTOR_PORT` env var in `vite.config.ts` to avoid conflicts when running multiple workers.
+- Server worker pattern: `createStreamWorker()` factory in `src/http/router.ts` + DO classes in `src/http/v1/streams/index.ts` (StreamDO), `src/subscriptions/do.ts` (SubscriptionDO), `src/estuary/do.ts` (EstuaryDO). Entry point is `src/http/worker.ts`.
+- Edge worker (`router.ts`) handles: auth, CORS, edge caching, routing to correct DO
+- DOs handle: all state mutations, SQLite operations, broadcasts, serialization via `blockConcurrencyWhile`
 
 ## Testing
 
-- **Gotcha**: Core's `pnpm test` runs implementation tests (live wrangler workers), NOT unit tests. Use `pnpm test:unit` explicitly for pure function tests.
-- Integration tests (core implementation + subscription integration) start real wrangler workers via `global-setup.ts` files in the test directories.
+- **Server tests**: `pnpm -C packages/server test` runs integration tests. Use `pnpm test:unit` for pure function tests, `pnpm conformance` for protocol conformance.
+- Integration tests start real wrangler workers via `global-setup.ts` files in test directories.
 - **Cloudflare Vitest integration**: Use `@cloudflare/vitest-pool-workers` for tests that need Cloudflare runtime APIs (DurableObject, WorkerEntrypoint, bindings, etc.) without mocking. Docs: https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/
 - **Miniflare**: Local simulator for Workers runtime, used under the hood by `wrangler dev` and `@cloudflare/vitest-pool-workers`. Docs: https://developers.cloudflare.com/workers/testing/miniflare/
 
 ### Common Test Pitfalls
 
-- **Content-type mismatch (409)**: Core validates that append content-type matches the stream's content-type. When creating streams in tests with `env.CORE.putStream(key)`, the default content-type is `application/json`. If the test then publishes with `text/plain`, core returns 409. Fix: pass `{ contentType: "text/plain" }` to `putStream` to match whatever the test sends.
+- **Content-type mismatch (409)**: Server validates that append content-type matches the stream's content-type. When creating streams in tests, the default content-type is `application/json`. If the test then publishes with `text/plain`, server returns 409. Fix: pass matching content-type when creating the stream.
 - **Mocks — use sparingly, only for failure paths**: `@cloudflare/vitest-pool-workers` provides real Cloudflare bindings — prefer them over mocks. Mocks are acceptable only when the real binding cannot produce the needed condition:
-  - `CORE.postStream`/`CORE.deleteStream` mocked to return `{ ok: false, status: 500 }` — simulates core server errors that can't be triggered from a test.
-  - `CORE.headStream` mocked to return `{ ok: false, status: 404 }` — simulates a session whose backing stream was deleted externally.
+  - `STREAMS.appendToStream` mocked to throw — simulates server errors that can't be triggered from a test.
   - `REGISTRY.get` mocked to return specific JSON — controls JWT signing secrets for auth tests.
   - `REGISTRY` removed from env entirely — tests the "misconfigured deployment" 500 path.
   - `env.METRICS.writeDataPoint` mocked — Analytics Engine is unavailable in vitest pool workers.
@@ -110,24 +83,32 @@ Both core and subscription use [ArkType v2](https://arktype.io/) for schema vali
 pnpm -r run typecheck
 ```
 
-Runs `tsc --noEmit` in every package that has a `typecheck` script (core, subscription, admin-core, admin-subscription, cli).
+Runs `tsc --noEmit` in every package that has a `typecheck` script.
 
-### 2. Lint (core + subscription)
+### 2. Format check (all packages)
 
 ```sh
-pnpm -C packages/core run lint
-pnpm -C packages/subscription run lint
+pnpm -r run format:check
 ```
 
-Runs `oxlint src test` in each package. Fix all errors **and** warnings — CI treats warnings as informational today but errors are fatal.
+Runs `oxfmt --check` in every package with source code. Fails if any file needs formatting. To auto-fix: `pnpm -r run format`
 
-### 3. Tests (all packages)
+### 3. Lint (all packages)
+
+```sh
+pnpm -r run lint
+```
+
+Runs `oxlint src test` (or `oxlint src` for packages without tests). Fix all errors **and** warnings — CI treats warnings as informational today but errors are fatal.
+
+### 4. Tests (all packages)
 
 ```sh
 pnpm -r run test
 ```
 
 This runs each package's default `test` script:
+
 - **core**: runs implementation tests (live wrangler workers via `vitest.implementation.config.ts`)
 - **subscription**: runs unit tests via `@cloudflare/vitest-pool-workers` (excludes `test/integration/`)
 - **admin-core**: runs vitest integration tests (builds with vite, starts core + admin workers) **then** Playwright browser tests (chromium). Requires `playwright install chromium` first.
@@ -159,29 +140,18 @@ Starts both core and subscription workers, then runs `test/integration/**/*.test
 
 ### Quick Copy-Paste
 
-Run all 6 CI checks sequentially (stop on first failure):
+Run all CI checks:
 
 ```sh
-pnpm test:all
+pnpm -r run typecheck
+pnpm -C packages/server run lint
+pnpm -C packages/server run test:unit
+pnpm -C packages/server run conformance
+pnpm -C packages/server run test
 ```
 
-This runs: typecheck → lint → core unit tests → conformance → all package tests (including Playwright browser tests) → subscription integration.
+### What the `test` Script Runs
 
-### What Each Package's `test` Script Actually Runs
-
-| Package | `pnpm test` runs | Config |
-|---------|-------------------|--------|
-| `packages/core` | Implementation tests (live workers) | `vitest.implementation.config.ts` |
-| `packages/subscription` | Unit tests (miniflare pool) | `vitest.config.ts` (excludes `test/integration/`) |
-| `packages/admin-core` | Vitest integration + Playwright browser tests | `vitest.config.ts` + `playwright.config.ts` |
-| `packages/admin-subscription` | Smoke tests | `vitest.config.ts` |
-
-## Documentation Regions (subscription only)
-
-Subscription source files have `// #region synced-to-docs:<name>` markers referenced by `packages/subscription/docs/walkthrough.md` (Slidev). When refactoring:
-
-- Moving code within a file: markers move automatically, no action needed.
-- Moving code to a different file: **move the region markers with it**.
-- Deleting code with markers: remove markers AND the `<<<` reference in the walkthrough.
-
-To find all current regions: `grep -r "synced-to-docs:" packages/subscription/src`
+| Package           | `pnpm test` runs                 | Config             |
+| ----------------- | -------------------------------- | ------------------ |
+| `packages/server` | Integration tests (live workers) | `vitest.config.ts` |

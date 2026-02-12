@@ -71,5 +71,7 @@ test("clicking a project in the table navigates to its detail page", async ({ pa
   await projectLink.click();
 
   await page.waitForURL(`**/projects/${PROJECT_ID}`);
-  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({
+    timeout: 5_000,
+  });
 });
