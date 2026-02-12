@@ -1,4 +1,4 @@
-import { fanoutToSubscribers } from "../../../../storage/estuary/fanout";
+import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../../../../metrics";
 import { logError, logWarn } from "../../../../log";
 import { bufferToBase64 } from "../../../../util/base64";
@@ -13,10 +13,7 @@ import type {
   PublishResult,
   FanoutQueueMessage,
 } from "../types";
-import {
-  getSubscriberIds,
-  persistFanoutSeq,
-} from "../../../../storage/estuary/subscribers";
+import type { StreamSubscribersStorage } from "../../../../storage";
 import type { StreamDO } from "../../streams";
 
 export interface PublishContext {
@@ -25,11 +22,11 @@ export interface PublishContext {
     FANOUT_QUEUE_THRESHOLD?: string;
     MAX_INLINE_FANOUT?: string;
   };
-  sql: SqlStorage;
+  storage: StreamSubscribersStorage;
   nextFanoutSeq: number;
   shouldAttemptInlineFanout: () => boolean;
   updateCircuitBreaker: (successes: number, failures: number) => void;
-  removeStaleSubscribers: (estuaryIds: string[]) => void;
+  removeStaleSubscribers: (estuaryIds: string[]) => Promise<void>;
 }
 
 export interface PublishOptions {
@@ -77,7 +74,7 @@ export async function publishToStream(
   // NOT the hex-encoded source offset.
   const fanoutSeq = ctx.nextFanoutSeq;
   const newFanoutSeq = ctx.nextFanoutSeq + 1;
-  persistFanoutSeq(ctx.sql, newFanoutSeq);
+  await ctx.storage.persistFanoutSeq(nextSeq);
 
   const fanoutProducerHeaders = {
     producerId: `fanout:${streamId}`,
@@ -86,14 +83,14 @@ export async function publishToStream(
   };
 
   // 2. Get subscribers (local DO SQLite query)
-  const subscribers = getSubscriberIds(ctx.sql);
+  const subscriberIds = await ctx.storage.getSubscriberIds();
 
   // 3. Fan out to all subscriber estuary streams
   let successCount = 0;
   let failureCount = 0;
   let fanoutMode: "inline" | "queued" | "circuit-open" | "skipped" = "inline";
 
-  if (subscribers.length > 0) {
+  if (subscriberIds.length > 0) {
     const thresholdParsed = ctx.env.FANOUT_QUEUE_THRESHOLD
       ? parseInt(ctx.env.FANOUT_QUEUE_THRESHOLD, 10)
       : undefined;
@@ -112,26 +109,30 @@ export async function publishToStream(
         ? maxInlineParsed
         : MAX_INLINE_FANOUT;
 
-    if (ctx.env.FANOUT_QUEUE && subscribers.length > threshold) {
+    if (ctx.env.FANOUT_QUEUE && subscriberIds.length > threshold) {
       // Queued fanout — enqueue and return immediately
       try {
         await enqueueFanout(
           ctx.env.FANOUT_QUEUE,
           projectId,
           streamId,
-          subscribers,
+          subscriberIds,
           fanoutPayload,
           params.contentType,
           fanoutProducerHeaders
         );
         fanoutMode = "queued";
-        metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
+        metrics.fanoutQueued(
+          streamId,
+          subscriberIds.length,
+          Date.now() - start
+        );
       } catch (err) {
         logError(
           {
             projectId,
             streamId,
-            subscribers: subscribers.length,
+            subscribers: subscriberIds.length,
             component: "fanout-queue",
           },
           "queue enqueue failed, falling back to inline fanout",
@@ -139,13 +140,13 @@ export async function publishToStream(
         );
         if (!ctx.shouldAttemptInlineFanout()) {
           fanoutMode = "circuit-open";
-        } else if (subscribers.length > maxInline) {
+        } else if (subscriberIds.length > maxInline) {
           fanoutMode = "skipped";
         } else {
           const fanoutResult = await fanoutToSubscribers(
             ctx.env,
             projectId,
-            subscribers,
+            subscriberIds,
             fanoutPayload,
             params.contentType,
             fanoutProducerHeaders

@@ -21,22 +21,22 @@ import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
  * stream_meta: One row per stream containing all stream metadata
  */
 export const streamMeta = sqliteTable("stream_meta", {
-  streamId: text("stream_id").primaryKey(),
-  contentType: text("content_type").notNull(),
+  stream_id: text("stream_id").primaryKey(),
+  content_type: text("content_type").notNull(),
   closed: integer("closed", { mode: "boolean" }).notNull().default(false),
-  tailOffset: integer("tail_offset").notNull().default(0),
-  readSeq: integer("read_seq").notNull().default(0),
-  segmentStart: integer("segment_start").notNull().default(0),
-  segmentMessages: integer("segment_messages").notNull().default(0),
-  segmentBytes: integer("segment_bytes").notNull().default(0),
-  lastStreamSeq: text("last_stream_seq"),
-  ttlSeconds: integer("ttl_seconds"),
-  expiresAt: integer("expires_at"),
-  createdAt: integer("created_at").notNull(),
-  closedAt: integer("closed_at"),
-  closedByProducerId: text("closed_by_producer_id"),
-  closedByEpoch: integer("closed_by_epoch"),
-  closedBySeq: integer("closed_by_seq"),
+  tail_offset: integer("tail_offset").notNull().default(0),
+  read_seq: integer("read_seq").notNull().default(0),
+  segment_start: integer("segment_start").notNull().default(0),
+  segment_messages: integer("segment_messages").notNull().default(0),
+  segment_bytes: integer("segment_bytes").notNull().default(0),
+  last_stream_seq: text("last_stream_seq"),
+  ttl_seconds: integer("ttl_seconds"),
+  expires_at: integer("expires_at"),
+  created_at: integer("created_at").notNull(),
+  closed_at: integer("closed_at"),
+  closed_by_producer_id: text("closed_by_producer_id"),
+  closed_by_epoch: integer("closed_by_epoch"),
+  closed_by_seq: integer("closed_by_seq"),
   public: integer("public", { mode: "boolean" }).notNull().default(false),
 });
 
@@ -44,11 +44,11 @@ export const streamMeta = sqliteTable("stream_meta", {
  * producers: Tracks producer state for idempotent writes
  */
 export const producers = sqliteTable("producers", {
-  producerId: text("producer_id").primaryKey(),
+  producer_id: text("producer_id").primaryKey(),
   epoch: integer("epoch").notNull(),
-  lastSeq: integer("last_seq").notNull(),
-  lastOffset: integer("last_offset").notNull(),
-  lastUpdated: integer("last_updated"),
+  last_seq: integer("last_seq").notNull(),
+  last_offset: integer("last_offset").notNull(),
+  last_updated: integer("last_updated"),
 });
 
 /**
@@ -57,18 +57,18 @@ export const producers = sqliteTable("producers", {
 export const ops = sqliteTable(
   "ops",
   {
-    startOffset: integer("start_offset").primaryKey(),
-    endOffset: integer("end_offset").notNull(),
-    sizeBytes: integer("size_bytes").notNull(),
-    streamSeq: text("stream_seq"),
-    producerId: text("producer_id"),
-    producerEpoch: integer("producer_epoch"),
-    producerSeq: integer("producer_seq"),
+    start_offset: integer("start_offset").primaryKey(),
+    end_offset: integer("end_offset").notNull(),
+    size_bytes: integer("size_bytes").notNull(),
+    stream_seq: text("stream_seq"),
+    producer_id: text("producer_id"),
+    producer_epoch: integer("producer_epoch"),
+    producer_seq: integer("producer_seq"),
     body: blob("body", { mode: "buffer" }).notNull(),
-    createdAt: integer("created_at").notNull(),
+    created_at: integer("created_at").notNull(),
   },
   (table) => ({
-    startOffsetIdx: index("ops_start_offset").on(table.startOffset),
+    startOffsetIdx: index("ops_start_offset").on(table.start_offset),
   })
 );
 
@@ -78,18 +78,18 @@ export const ops = sqliteTable(
 export const segments = sqliteTable(
   "segments",
   {
-    readSeq: integer("read_seq").primaryKey(),
-    r2Key: text("r2_key").notNull(),
-    startOffset: integer("start_offset").notNull(),
-    endOffset: integer("end_offset").notNull(),
-    contentType: text("content_type").notNull(),
-    createdAt: integer("created_at").notNull(),
-    expiresAt: integer("expires_at"),
-    sizeBytes: integer("size_bytes").notNull(),
-    messageCount: integer("message_count").notNull(),
+    read_seq: integer("read_seq").primaryKey(),
+    r2_key: text("r2_key").notNull(),
+    start_offset: integer("start_offset").notNull(),
+    end_offset: integer("end_offset").notNull(),
+    content_type: text("content_type").notNull(),
+    created_at: integer("created_at").notNull(),
+    expires_at: integer("expires_at"),
+    size_bytes: integer("size_bytes").notNull(),
+    message_count: integer("message_count").notNull(),
   },
   (table) => ({
-    startOffsetIdx: index("segments_start_offset").on(table.startOffset),
+    startOffsetIdx: index("segments_start_offset").on(table.start_offset),
   })
 );
 

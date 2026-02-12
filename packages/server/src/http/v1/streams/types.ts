@@ -1,8 +1,7 @@
-import type { StreamMeta, StreamStorage } from "../../../storage/types";
+import type { StreamMeta, StreamStorage } from "../../../storage";
 import type { ProducerInput } from "./shared/producer";
 import type { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
-import type { ReadResult } from "../../../storage/stream/types";
 
 // ============================================================================
 // Stream Environment & Context (from router)
@@ -50,7 +49,7 @@ export type StreamContext = {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number
-  ) => Promise<ReadResult>;
+  ) => Promise<{ messages: Uint8Array[]; tailOffset: number; closed: boolean }>;
   rotateSegment: (
     streamId: string,
     options?: { force?: boolean; retainOps?: boolean }

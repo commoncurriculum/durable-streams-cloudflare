@@ -6,20 +6,20 @@
  */
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { subscriptions, estuaryInfo } from "./schema";
 import type { EstuaryStorage } from "./types";
-
-type SqlStorage = DurableObjectStorage["sql"];
 
 /**
  * EstuaryDO storage implementation using Drizzle ORM
  */
 export class EstuaryDoStorage implements EstuaryStorage {
   private db: ReturnType<typeof drizzle>;
+  private sql: DurableObjectStorage["sql"];
 
-  constructor(private sql: SqlStorage) {
-    this.db = drizzle(sql);
+  constructor(storage: DurableObjectStorage) {
+    this.db = drizzle(storage);
+    this.sql = storage.sql;
   }
 
   /**
@@ -48,14 +48,20 @@ export class EstuaryDoStorage implements EstuaryStorage {
   // ============================================================================
 
   async setEstuaryInfo(project: string, estuaryId: string): Promise<void> {
-    // Use INSERT ... ON CONFLICT via raw SQL since Drizzle's onConflictDoUpdate
-    // requires explicit conflict target, which is verbose for CHECK constraint
-    this.sql.exec(
-      `INSERT INTO estuary_info (id, project, estuary_id) VALUES (1, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET project = excluded.project, estuary_id = excluded.estuary_id`,
-      project,
-      estuaryId
-    );
+    await this.db
+      .insert(estuaryInfo)
+      .values({
+        id: 1,
+        project,
+        estuary_id: estuaryId,
+      })
+      .onConflictDoUpdate({
+        target: estuaryInfo.id,
+        set: {
+          project: sql`excluded.project`,
+          estuary_id: sql`excluded.estuary_id`,
+        },
+      });
   }
 
   async getEstuaryInfo(): Promise<{
@@ -72,7 +78,7 @@ export class EstuaryDoStorage implements EstuaryStorage {
 
     return {
       project: result[0].project,
-      estuary_id: result[0].estuaryId,
+      estuary_id: result[0].estuary_id,
     };
   }
 
@@ -81,28 +87,26 @@ export class EstuaryDoStorage implements EstuaryStorage {
   // ============================================================================
 
   async addSubscription(streamId: string, timestamp: number): Promise<void> {
-    // Use INSERT ... ON CONFLICT DO NOTHING via raw SQL
-    // Drizzle's onConflictDoNothing() doesn't support conditional logic easily
-    this.sql.exec(
-      `INSERT INTO subscriptions (stream_id, subscribed_at)
-       VALUES (?, ?)
-       ON CONFLICT(stream_id) DO NOTHING`,
-      streamId,
-      timestamp
-    );
+    await this.db
+      .insert(subscriptions)
+      .values({
+        stream_id: streamId,
+        subscribed_at: timestamp,
+      })
+      .onConflictDoNothing();
   }
 
   async removeSubscription(streamId: string): Promise<void> {
     await this.db
       .delete(subscriptions)
-      .where(eq(subscriptions.streamId, streamId));
+      .where(eq(subscriptions.stream_id, streamId));
   }
 
   async getSubscriptions(): Promise<string[]> {
     const result = await this.db
-      .select({ streamId: subscriptions.streamId })
+      .select({ streamId: subscriptions.stream_id })
       .from(subscriptions)
-      .orderBy(subscriptions.subscribedAt);
+      .orderBy(subscriptions.subscribed_at);
 
     return result.map((row) => row.streamId);
   }

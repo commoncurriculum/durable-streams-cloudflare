@@ -13,8 +13,8 @@ import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
  * subscriptions: Tracks source streams this estuary subscribes to
  */
 export const subscriptions = sqliteTable("subscriptions", {
-  streamId: text("stream_id").primaryKey(),
-  subscribedAt: integer("subscribed_at").notNull(),
+  stream_id: text("stream_id").primaryKey(),
+  subscribed_at: integer("subscribed_at").notNull(),
 });
 
 /**
@@ -26,7 +26,7 @@ export const estuaryInfo = sqliteTable("estuary_info", {
     .primaryKey()
     .$default(() => 1),
   project: text("project").notNull(),
-  estuaryId: text("estuary_id").notNull(),
+  estuary_id: text("estuary_id").notNull(),
 });
 
 // ArkType schemas for validation

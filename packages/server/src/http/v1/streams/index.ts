@@ -3,7 +3,13 @@ import { DurableObject } from "cloudflare:workers";
 import { logError } from "../../../log";
 import { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
-import { DoSqliteStorage } from "../../../storage/queries";
+import { StreamDoStorage } from "../../../storage";
+import type {
+  StreamMeta,
+  ProducerState,
+  SegmentRecord,
+  OpsStats,
+} from "../../../storage";
 import { parseStreamPathFromUrl } from "../../shared/stream-path";
 
 import type { StreamContext, StreamEnv } from "./types";
@@ -25,12 +31,6 @@ import {
 import { deleteStreamEntry } from "../../../storage/registry";
 import { rotateSegment as rotateSegmentImpl } from "./shared/rotate";
 import { logWarn } from "../../../log";
-import type {
-  StreamMeta,
-  ProducerState,
-  SegmentRecord,
-  OpsStats,
-} from "../../../storage/types";
 import { appendStream } from "./append";
 
 type DoAppEnv = {
@@ -53,7 +53,7 @@ export type StreamIntrospection = {
 };
 
 export class StreamDO extends DurableObject<StreamEnv> {
-  private storage: DoSqliteStorage;
+  private storage: StreamDoStorage;
   private longPoll = new LongPollQueue();
   private sseState: SseState = { clients: new Map(), nextId: 0 };
   private readPath: ReadPath;
@@ -62,7 +62,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   constructor(ctx: DurableObjectState, env: StreamEnv) {
     super(ctx, env);
-    this.storage = new DoSqliteStorage(ctx.storage.sql);
+    this.storage = new StreamDoStorage(ctx.storage);
     this.readPath = new ReadPath(env, this.storage);
     this.app = this.createApp();
     ctx.blockConcurrencyWhile(async () => {

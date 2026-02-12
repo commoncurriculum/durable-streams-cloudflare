@@ -2,16 +2,16 @@ import { errorResponse } from "../../../shared/errors";
 import { isJsonContentType } from "../../../shared/headers";
 import { emptyJsonArray } from "../shared/json";
 
-import { readFromOffset } from "../../../../storage/stream/read";
-import { readFromMessages } from "../../../../storage/stream/read-messages";
+import { readFromOffset } from "../../../../storage";
+import { readFromMessages } from "../../../../storage";
 import {
   emptyResult,
   errorResult,
   gapResult,
   type ReadResult,
-} from "../../../../storage/stream/types";
+} from "../../../../storage";
 import { readSegmentMessages } from "../../../../storage/segments";
-import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage/types";
+import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage";
 import type { StreamEnv } from "../types";
 
 const COALESCE_CACHE_MS = 100;

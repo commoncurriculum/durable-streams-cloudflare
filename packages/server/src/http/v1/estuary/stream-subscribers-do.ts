@@ -21,14 +21,7 @@ import type {
   GetSubscribersResult,
   FanoutQueueMessage,
 } from "./types";
-import {
-  initSubscriberSchema,
-  addSubscriber as addSubscriberStorage,
-  removeSubscriber as removeSubscriberStorage,
-  removeSubscribers as removeSubscribersStorage,
-  getSubscribersWithTimestamps,
-  loadFanoutSeq,
-} from "../../../storage/estuary/subscribers";
+import { StreamSubscribersDoStorage } from "../../../storage";
 import { publishToStream } from "./publish";
 import type { PublishContext } from "./publish";
 
@@ -41,7 +34,7 @@ export interface StreamSubscribersDOEnv extends BaseEnv {
 type CircuitState = "closed" | "open" | "half-open";
 
 export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
-  private sql: SqlStorage;
+  private storage: StreamSubscribersDoStorage;
   private nextFanoutSeq: number;
 
   // Circuit breaker for inline fanout protection
@@ -51,11 +44,11 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
 
   constructor(ctx: DurableObjectState, env: StreamSubscribersDOEnv) {
     super(ctx, env);
-    this.sql = ctx.storage.sql;
+    this.storage = new StreamSubscribersDoStorage(ctx.storage);
     this.nextFanoutSeq = 0;
     ctx.blockConcurrencyWhile(async () => {
-      initSubscriberSchema(this.sql);
-      this.nextFanoutSeq = loadFanoutSeq(this.sql);
+      this.storage.initSchema();
+      this.nextFanoutSeq = await this.storage.loadFanoutSeq();
     });
   }
 
@@ -64,19 +57,19 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
   // ============================================================================
 
   async addSubscriber(estuaryId: string): Promise<void> {
-    addSubscriberStorage(this.sql, estuaryId, Date.now());
+    await this.storage.addSubscriber(estuaryId, Date.now());
   }
 
   async removeSubscriber(estuaryId: string): Promise<void> {
-    removeSubscriberStorage(this.sql, estuaryId);
+    await this.storage.removeSubscriber(estuaryId);
   }
 
   async removeSubscribers(estuaryIds: string[]): Promise<void> {
-    removeSubscribersStorage(this.sql, estuaryIds);
+    await this.storage.removeSubscribers(estuaryIds);
   }
 
   async getSubscribers(streamId: string): Promise<GetSubscribersResult> {
-    const subscribers = getSubscribersWithTimestamps(this.sql);
+    const subscribers = await this.storage.getSubscribersWithTimestamps();
     return {
       streamId,
       subscribers: subscribers.map((s) => ({
@@ -99,13 +92,13 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
     // Build context for THE ONE publish function
     const ctx: PublishContext = {
       env: this.env,
-      sql: this.sql,
+      storage: this.storage,
       nextFanoutSeq: this.nextFanoutSeq,
       shouldAttemptInlineFanout: () => this.shouldAttemptInlineFanout(),
       updateCircuitBreaker: (successes, failures) =>
         this.updateCircuitBreaker(successes, failures),
-      removeStaleSubscribers: (estuaryIds) =>
-        removeSubscribersStorage(this.sql, estuaryIds),
+      removeStaleSubscribers: async (estuaryIds) =>
+        await this.storage.removeSubscribers(estuaryIds),
     };
 
     // Call THE ONE publish function

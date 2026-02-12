@@ -72,3 +72,8 @@ export {
   encodeSegmentMessages,
   readSegmentMessages,
 } from "./segments";
+
+// Read operations (stream-do)
+export { readFromOffset, readFromMessages } from "./stream-do";
+export { emptyResult, errorResult, gapResult, dataResult } from "./stream-do";
+export type { ReadResult } from "./stream-do";

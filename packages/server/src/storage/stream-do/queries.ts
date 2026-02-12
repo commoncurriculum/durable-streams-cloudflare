@@ -20,16 +20,16 @@ import type {
   StorageStatement,
 } from "./types";
 
-type SqlStorage = DurableObjectStorage["sql"];
-
 /**
  * StreamDO storage implementation using Drizzle ORM
  */
 export class StreamDoStorage implements StreamStorage {
   private db: ReturnType<typeof drizzle>;
+  private sql: DurableObjectStorage["sql"];
 
-  constructor(private sql: SqlStorage) {
-    this.db = drizzle(sql);
+  constructor(storage: DurableObjectStorage) {
+    this.db = drizzle(storage);
+    this.sql = storage.sql;
   }
 
   /**
@@ -115,22 +115,22 @@ export class StreamDoStorage implements StreamStorage {
 
   async insertStream(input: CreateStreamInput): Promise<void> {
     await this.db.insert(streamMeta).values({
-      streamId: input.streamId,
-      contentType: input.contentType,
+      stream_id: input.streamId,
+      content_type: input.contentType,
       closed: input.closed,
-      tailOffset: 0,
-      readSeq: 0,
-      segmentStart: 0,
-      segmentMessages: 0,
-      segmentBytes: 0,
-      lastStreamSeq: null,
-      ttlSeconds: input.ttlSeconds,
-      expiresAt: input.expiresAt,
-      createdAt: input.createdAt,
-      closedAt: null,
-      closedByProducerId: null,
-      closedByEpoch: null,
-      closedBySeq: null,
+      tail_offset: 0,
+      read_seq: 0,
+      segment_start: 0,
+      segment_messages: 0,
+      segment_bytes: 0,
+      last_stream_seq: null,
+      ttl_seconds: input.ttlSeconds,
+      expires_at: input.expiresAt,
+      created_at: input.createdAt,
+      closed_at: null,
+      closed_by_producer_id: null,
+      closed_by_epoch: null,
+      closed_by_seq: null,
       public: input.isPublic,
     });
   }
@@ -143,20 +143,20 @@ export class StreamDoStorage implements StreamStorage {
     if (closedBy) {
       await this.db.update(streamMeta).set({
         closed: true,
-        closedAt,
-        closedByProducerId: closedBy.id,
-        closedByEpoch: closedBy.epoch,
-        closedBySeq: closedBy.seq,
+        closed_at: closedAt,
+        closed_by_producer_id: closedBy.id,
+        closed_by_epoch: closedBy.epoch,
+        closed_by_seq: closedBy.seq,
       });
       return;
     }
 
     await this.db.update(streamMeta).set({
       closed: true,
-      closedAt,
-      closedByProducerId: null,
-      closedByEpoch: null,
-      closedBySeq: null,
+      closed_at: closedAt,
+      closed_by_producer_id: null,
+      closed_by_epoch: null,
+      closed_by_seq: null,
     });
   }
 
@@ -172,6 +172,7 @@ export class StreamDoStorage implements StreamStorage {
     updateFields: string[],
     updateValues: unknown[]
   ): StorageStatement {
+    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
     return {
       sql: `UPDATE stream_meta SET ${updateFields.join(", ")}`,
       args: updateValues,
@@ -189,7 +190,7 @@ export class StreamDoStorage implements StreamStorage {
     const result = await this.db
       .select()
       .from(producers)
-      .where(eq(producers.producerId, producerId))
+      .where(eq(producers.producer_id, producerId))
       .limit(1);
     return result[0] ?? null;
   }
@@ -200,6 +201,7 @@ export class StreamDoStorage implements StreamStorage {
     lastOffset: number,
     lastUpdated: number
   ): StorageStatement {
+    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
     return {
       sql: `
         INSERT INTO producers (producer_id, epoch, last_seq, last_offset, last_updated)
@@ -232,7 +234,9 @@ export class StreamDoStorage implements StreamStorage {
   }
 
   async deleteProducer(_streamId: string, producerId: string): Promise<void> {
-    await this.db.delete(producers).where(eq(producers.producerId, producerId));
+    await this.db
+      .delete(producers)
+      .where(eq(producers.producer_id, producerId));
   }
 
   async updateProducerLastUpdated(
@@ -240,19 +244,18 @@ export class StreamDoStorage implements StreamStorage {
     producerId: string,
     lastUpdated: number
   ): Promise<boolean> {
-    const result = this.sql.exec(
-      "UPDATE producers SET last_updated = ? WHERE producer_id = ?",
-      lastUpdated,
-      producerId
-    );
-    return result.rowsWritten > 0;
+    const result = await this.db
+      .update(producers)
+      .set({ last_updated: lastUpdated })
+      .where(eq(producers.producer_id, producerId));
+    return result.rowsAffected > 0;
   }
 
   async listProducers(_streamId: string): Promise<ProducerState[]> {
     return await this.db
       .select()
       .from(producers)
-      .orderBy(desc(producers.lastUpdated));
+      .orderBy(desc(producers.last_updated));
   }
 
   // ============================================================================
@@ -271,6 +274,7 @@ export class StreamDoStorage implements StreamStorage {
     body: ArrayBuffer;
     createdAt: number;
   }): StorageStatement {
+    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
     return {
       sql: `
         INSERT INTO ops (
@@ -387,13 +391,14 @@ export class StreamDoStorage implements StreamStorage {
   }
 
   async deleteOpsThrough(_streamId: string, endOffset: number): Promise<void> {
-    await this.db.delete(ops).where(lte(ops.endOffset, endOffset));
+    await this.db.delete(ops).where(lte(ops.end_offset, endOffset));
   }
 
   deleteOpsThroughStatement(
     _streamId: string,
     endOffset: number
   ): StorageStatement {
+    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
     return { sql: "DELETE FROM ops WHERE end_offset <= ?", args: [endOffset] };
   }
 
@@ -404,10 +409,10 @@ export class StreamDoStorage implements StreamStorage {
     const result = await this.db
       .select({
         messageCount: sql<number>`COUNT(*)`,
-        sizeBytes: sql<number>`COALESCE(SUM(${ops.sizeBytes}), 0)`,
+        sizeBytes: sql<number>`COALESCE(SUM(${ops.size_bytes}), 0)`,
       })
       .from(ops)
-      .where(gte(ops.startOffset, startOffset));
+      .where(gte(ops.start_offset, startOffset));
 
     return {
       messageCount: result[0]?.messageCount ?? 0,
@@ -421,15 +426,15 @@ export class StreamDoStorage implements StreamStorage {
 
   async insertSegment(input: SegmentInput): Promise<void> {
     await this.db.insert(segments).values({
-      readSeq: input.readSeq,
-      r2Key: input.r2Key,
-      startOffset: input.startOffset,
-      endOffset: input.endOffset,
-      contentType: input.contentType,
-      createdAt: input.createdAt,
-      expiresAt: input.expiresAt,
-      sizeBytes: input.sizeBytes,
-      messageCount: input.messageCount,
+      read_seq: input.readSeq,
+      r2_key: input.r2Key,
+      start_offset: input.startOffset,
+      end_offset: input.endOffset,
+      content_type: input.contentType,
+      created_at: input.createdAt,
+      expires_at: input.expiresAt,
+      size_bytes: input.sizeBytes,
+      message_count: input.messageCount,
     });
   }
 
@@ -437,7 +442,7 @@ export class StreamDoStorage implements StreamStorage {
     const result = await this.db
       .select()
       .from(segments)
-      .orderBy(desc(segments.endOffset), desc(segments.createdAt))
+      .orderBy(desc(segments.end_offset), desc(segments.created_at))
       .limit(1);
     return result[0] ?? null;
   }
@@ -449,8 +454,8 @@ export class StreamDoStorage implements StreamStorage {
     const result = await this.db
       .select()
       .from(segments)
-      .where(eq(segments.readSeq, readSeq))
-      .orderBy(desc(segments.createdAt))
+      .where(eq(segments.read_seq, readSeq))
+      .orderBy(desc(segments.created_at))
       .limit(1);
     return result[0] ?? null;
   }
@@ -464,11 +469,11 @@ export class StreamDoStorage implements StreamStorage {
       .from(segments)
       .where(
         and(
-          lte(segments.startOffset, offset),
-          sql`${segments.endOffset} > ${offset}`
+          lte(segments.start_offset, offset),
+          sql`${segments.end_offset} > ${offset}`
         )
       )
-      .orderBy(desc(segments.endOffset))
+      .orderBy(desc(segments.end_offset))
       .limit(1);
     return result[0] ?? null;
   }
@@ -480,8 +485,8 @@ export class StreamDoStorage implements StreamStorage {
     const result = await this.db
       .select()
       .from(segments)
-      .where(eq(segments.startOffset, offset))
-      .orderBy(desc(segments.createdAt))
+      .where(eq(segments.start_offset, offset))
+      .orderBy(desc(segments.created_at))
       .limit(1);
     return result[0] ?? null;
   }
@@ -490,6 +495,6 @@ export class StreamDoStorage implements StreamStorage {
     return await this.db
       .select()
       .from(segments)
-      .orderBy(asc(segments.endOffset), asc(segments.createdAt));
+      .orderBy(asc(segments.end_offset), asc(segments.created_at));
   }
 }

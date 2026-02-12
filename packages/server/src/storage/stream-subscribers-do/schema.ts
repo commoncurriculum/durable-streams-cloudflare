@@ -13,8 +13,8 @@ import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
  * subscribers: Tracks estuaries subscribed to this source stream
  */
 export const subscribers = sqliteTable("subscribers", {
-  estuaryId: text("estuary_id").primaryKey(),
-  subscribedAt: integer("subscribed_at").notNull(),
+  estuary_id: text("estuary_id").primaryKey(),
+  subscribed_at: integer("subscribed_at").notNull(),
 });
 
 /**

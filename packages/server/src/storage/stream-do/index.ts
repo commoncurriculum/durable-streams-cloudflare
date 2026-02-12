@@ -39,3 +39,9 @@ export type {
   SegmentInput,
   StorageStatement,
 } from "./types";
+
+// Read operations
+export { readFromOffset } from "./read";
+export { readFromMessages } from "./read-messages";
+export { emptyResult, errorResult, gapResult, dataResult } from "./read-result";
+export type { ReadResult } from "./read-result";

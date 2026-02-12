@@ -6,23 +6,23 @@
  */
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { subscribers, fanoutState } from "./schema";
 import type {
   StreamSubscribersStorage,
   SubscriberWithTimestamp,
 } from "./types";
 
-type SqlStorage = DurableObjectStorage["sql"];
-
 /**
  * StreamSubscribersDO storage implementation using Drizzle ORM
  */
 export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   private db: ReturnType<typeof drizzle>;
+  private sql: DurableObjectStorage["sql"];
 
-  constructor(private sql: SqlStorage) {
-    this.db = drizzle(sql);
+  constructor(storage: DurableObjectStorage) {
+    this.db = drizzle(storage);
+    this.sql = storage.sql;
   }
 
   /**
@@ -49,33 +49,31 @@ export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   // ============================================================================
 
   async addSubscriber(estuaryId: string, timestamp: number): Promise<void> {
-    // Use INSERT ... ON CONFLICT DO NOTHING via raw SQL
-    // Drizzle's onConflictDoNothing() would work but raw SQL is clearer here
-    this.sql.exec(
-      `INSERT INTO subscribers (estuary_id, subscribed_at)
-       VALUES (?, ?)
-       ON CONFLICT(estuary_id) DO NOTHING`,
-      estuaryId,
-      timestamp
-    );
+    await this.db
+      .insert(subscribers)
+      .values({
+        estuary_id: estuaryId,
+        subscribed_at: timestamp,
+      })
+      .onConflictDoNothing();
   }
 
   async removeSubscriber(estuaryId: string): Promise<void> {
     await this.db
       .delete(subscribers)
-      .where(eq(subscribers.estuaryId, estuaryId));
+      .where(eq(subscribers.estuary_id, estuaryId));
   }
 
   async removeSubscribers(estuaryIds: string[]): Promise<void> {
     if (estuaryIds.length === 0) return;
     await this.db
       .delete(subscribers)
-      .where(inArray(subscribers.estuaryId, estuaryIds));
+      .where(inArray(subscribers.estuary_id, estuaryIds));
   }
 
   async getSubscriberIds(): Promise<string[]> {
     const result = await this.db
-      .select({ estuaryId: subscribers.estuaryId })
+      .select({ estuaryId: subscribers.estuary_id })
       .from(subscribers);
     return result.map((row) => row.estuaryId);
   }
@@ -83,8 +81,8 @@ export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   async getSubscribersWithTimestamps(): Promise<SubscriberWithTimestamp[]> {
     const result = await this.db
       .select({
-        estuary_id: subscribers.estuaryId,
-        subscribed_at: subscribers.subscribedAt,
+        estuary_id: subscribers.estuary_id,
+        subscribed_at: subscribers.subscribed_at,
       })
       .from(subscribers);
     return result;
@@ -104,11 +102,15 @@ export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   }
 
   async persistFanoutSeq(seq: number): Promise<void> {
-    // Use INSERT ... ON CONFLICT via raw SQL for upsert pattern
-    this.sql.exec(
-      `INSERT INTO fanout_state (key, value) VALUES ('next_seq', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      seq
-    );
+    await this.db
+      .insert(fanoutState)
+      .values({
+        key: "next_seq",
+        value: seq,
+      })
+      .onConflictDoUpdate({
+        target: fanoutState.key,
+        set: { value: sql`excluded.value` },
+      });
   }
 }

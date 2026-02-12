@@ -2,15 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../../../log";
 import type { StreamSubscribersDO } from "./stream-subscribers-do";
 import type { StreamDO } from "../streams";
-import {
-  initEstuarySchema,
-  setEstuaryInfo,
-  getEstuaryInfo,
-  addEstuarySubscription,
-  removeEstuarySubscription,
-  getEstuarySubscriptions,
-  clearEstuaryData,
-} from "../../../storage/estuary/estuary";
+import { EstuaryDoStorage } from "../../../storage";
 
 export interface EstuaryDOEnv {
   STREAMS: DurableObjectNamespace<StreamDO>;
@@ -26,13 +18,13 @@ export interface EstuaryDOEnv {
  * Handles TTL/expiry - when estuary expires, cleans up subscriptions in all SubscriptionDOs.
  */
 export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
-  private sql: SqlStorage;
+  private storage: EstuaryDoStorage;
 
   constructor(ctx: DurableObjectState, env: EstuaryDOEnv) {
     super(ctx, env);
-    this.sql = ctx.storage.sql;
+    this.storage = new EstuaryDoStorage(ctx.storage);
     ctx.blockConcurrencyWhile(async () => {
-      initEstuarySchema(this.sql);
+      this.storage.initSchema();
     });
   }
 
@@ -41,12 +33,12 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
     estuaryId: string,
     ttlSeconds: number
   ): Promise<void> {
-    setEstuaryInfo(this.sql, project, estuaryId);
+    await this.storage.setEstuaryInfo(project, estuaryId);
     await this.ctx.storage.setAlarm(Date.now() + ttlSeconds * 1000);
   }
 
   async alarm(): Promise<void> {
-    const info = getEstuaryInfo(this.sql);
+    const info = await this.storage.getEstuaryInfo();
     if (!info) return;
 
     const { project, estuary_id: estuaryId } = info;
@@ -102,19 +94,19 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
     }
 
     // Clean up local state
-    clearEstuaryData(this.sql);
+    await this.storage.clearData();
   }
 
   async addSubscription(streamId: string): Promise<void> {
-    addEstuarySubscription(this.sql, streamId, Date.now());
+    await this.storage.addSubscription(streamId, Date.now());
   }
 
   async removeSubscription(streamId: string): Promise<void> {
-    removeEstuarySubscription(this.sql, streamId);
+    await this.storage.removeSubscription(streamId);
   }
 
   async getSubscriptions(): Promise<string[]> {
-    return getEstuarySubscriptions(this.sql);
+    return await this.storage.getSubscriptions();
   }
 }
 
