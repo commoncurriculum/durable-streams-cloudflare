@@ -13,7 +13,8 @@ export type ParsedStreamPath = { projectId: string; streamId: string; path: stri
  */
 export function parseStreamPath(raw: string): ParsedStreamPath {
   const i = raw.indexOf("/");
-  if (i === -1) return { projectId: DEFAULT_PROJECT_ID, streamId: raw, path: `${DEFAULT_PROJECT_ID}/${raw}` };
+  if (i === -1)
+    return { projectId: DEFAULT_PROJECT_ID, streamId: raw, path: `${DEFAULT_PROJECT_ID}/${raw}` };
   const projectId = raw.slice(0, i);
   const streamId = raw.slice(i + 1);
   return { projectId, streamId, path: `${projectId}/${streamId}` };

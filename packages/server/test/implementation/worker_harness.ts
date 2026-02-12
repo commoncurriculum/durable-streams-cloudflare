@@ -65,7 +65,9 @@ export async function startWorker(options?: {
   // When configFile is specified, use that config file directly.
   const configArgs = options?.configFile
     ? ["--config", options.configFile]
-    : options?.useProductionAuth ? [] : ["--config", "wrangler.test.toml"];
+    : options?.useProductionAuth
+      ? []
+      : ["--config", "wrangler.test.toml"];
 
   const child = spawn(
     "pnpm",

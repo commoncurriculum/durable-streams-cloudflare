@@ -8,14 +8,9 @@ import type { BaseEnv } from "../../../src/http/worker";
 // JWT Test Helpers
 // ============================================================================
 
-async function createTestJwt(
-  claims: Record<string, unknown>,
-  secret: string
-): Promise<string> {
+async function createTestJwt(claims: Record<string, unknown>, secret: string): Promise<string> {
   const key = new TextEncoder().encode(secret);
-  return new SignJWT(claims)
-    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-    .sign(key);
+  return new SignJWT(claims).setProtectedHeader({ alg: "HS256", typ: "JWT" }).sign(key);
 }
 
 // ============================================================================
@@ -49,7 +44,7 @@ async function fetchConfig(
   worker: ReturnType<typeof createStreamWorker>,
   method: string,
   token?: string,
-  body?: unknown
+  body?: unknown,
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -61,7 +56,7 @@ async function fetchConfig(
       body: body ? JSON.stringify(body) : undefined,
     }) as unknown as Request<unknown, IncomingRequestCfProperties>,
     makeEnv(),
-    makeCtx()
+    makeCtx(),
   );
 }
 
@@ -80,7 +75,7 @@ describe("Config API - Auth", () => {
         signingSecrets: [SECRET],
         corsOrigins: ["https://example.com"],
         isPublic: false,
-      })
+      }),
     );
   });
 
@@ -108,10 +103,7 @@ describe("Config API - Auth", () => {
   });
 
   it("rejects with 403 when sub does not match projectId", async () => {
-    const token = await createTestJwt(
-      manageClaims({ sub: "other-project" }),
-      SECRET
-    );
+    const token = await createTestJwt(manageClaims({ sub: "other-project" }), SECRET);
     const response = await fetchConfig(worker, "GET", token);
     expect(response.status).toBe(403);
   });
@@ -119,7 +111,7 @@ describe("Config API - Auth", () => {
   it("rejects with 401 when token is expired", async () => {
     const token = await createTestJwt(
       manageClaims({ exp: Math.floor(Date.now() / 1000) - 60 }),
-      SECRET
+      SECRET,
     );
     const response = await fetchConfig(worker, "GET", token);
     expect(response.status).toBe(401);
@@ -144,7 +136,7 @@ describe("Config API - GET /v1/config/:projectId", () => {
         signingSecrets: [SECRET],
         corsOrigins: ["https://example.com"],
         isPublic: true,
-      })
+      }),
     );
   });
 
@@ -165,7 +157,7 @@ describe("Config API - GET /v1/config/:projectId", () => {
       PROJECT_ID,
       JSON.stringify({
         signingSecrets: [SECRET],
-      })
+      }),
     );
     const token = await createTestJwt(manageClaims(), SECRET);
     const response = await fetchConfig(worker, "GET", token);
@@ -188,7 +180,7 @@ describe("Config API - PUT /v1/config/:projectId", () => {
       PROJECT_ID,
       JSON.stringify({
         signingSecrets: [SECRET],
-      })
+      }),
     );
   });
 
@@ -205,10 +197,7 @@ describe("Config API - PUT /v1/config/:projectId", () => {
     expect(data).toEqual({ ok: true });
 
     // Verify KV was updated
-    const stored = (await env.REGISTRY.get(PROJECT_ID, "json")) as Record<
-      string,
-      unknown
-    >;
+    const stored = (await env.REGISTRY.get(PROJECT_ID, "json")) as Record<string, unknown>;
     expect(stored.signingSecrets).toEqual([SECRET, "new-secret"]);
     expect(stored.corsOrigins).toEqual(["https://new-origin.com"]);
     expect(stored.isPublic).toBe(true);
@@ -238,10 +227,7 @@ describe("Config API - PUT /v1/config/:projectId", () => {
     });
     expect(response.status).toBe(200);
 
-    const stored = (await env.REGISTRY.get(PROJECT_ID, "json")) as Record<
-      string,
-      unknown
-    >;
+    const stored = (await env.REGISTRY.get(PROJECT_ID, "json")) as Record<string, unknown>;
     expect(stored.signingSecrets).toEqual(["only-secret"]);
   });
 });
@@ -255,7 +241,7 @@ describe("Config API - routing", () => {
       PROJECT_ID,
       JSON.stringify({
         signingSecrets: [SECRET],
-      })
+      }),
     );
   });
 
@@ -266,22 +252,19 @@ describe("Config API - routing", () => {
         headers: { Authorization: `Bearer ${token}` },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,
       makeEnv(),
-      makeCtx()
+      makeCtx(),
     );
     expect(response.status).toBe(404);
   });
 
   it("rejects invalid project id characters", async () => {
-    const token = await createTestJwt(
-      manageClaims({ sub: "bad project!" }),
-      SECRET
-    );
+    const token = await createTestJwt(manageClaims({ sub: "bad project!" }), SECRET);
     const response = await worker.fetch!(
       new Request("http://localhost/v1/config/bad%20project!", {
         headers: { Authorization: `Bearer ${token}` },
       }) as unknown as Request<unknown, IncomingRequestCfProperties>,
       makeEnv(),
-      makeCtx()
+      makeCtx(),
     );
     expect(response.status).toBe(400);
   });

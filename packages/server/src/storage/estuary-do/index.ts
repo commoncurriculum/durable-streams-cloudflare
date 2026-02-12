@@ -13,10 +13,5 @@ export {
   estuaryInfoSelectSchema,
   estuaryInfoInsertSchema,
 } from "./schema";
-export type {
-  Subscription,
-  SubscriptionInsert,
-  EstuaryInfo,
-  EstuaryInfoInsert,
-} from "./schema";
+export type { Subscription, SubscriptionInsert, EstuaryInfo, EstuaryInfoInsert } from "./schema";
 export type { EstuaryStorage } from "./types";

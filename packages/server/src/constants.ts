@@ -9,7 +9,10 @@ import { regex } from "arkregex";
  * Pattern for valid estuary IDs.
  * Must be a UUID (8-4-4-4-12 hex format).
  */
-export const ESTUARY_ID_PATTERN = regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "i");
+export const ESTUARY_ID_PATTERN = regex(
+  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+  "i",
+);
 
 /**
  * Pattern for valid stream IDs.

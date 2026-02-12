@@ -19,10 +19,7 @@ export interface GetEstuaryOptions {
  *
  * Called by HTTP and potentially RPC.
  */
-export async function getEstuary(
-  env: BaseEnv,
-  opts: GetEstuaryOptions
-): Promise<GetEstuaryResult> {
+export async function getEstuary(env: BaseEnv, opts: GetEstuaryOptions): Promise<GetEstuaryResult> {
   const { projectId, estuaryId } = opts;
   const start = Date.now();
 
@@ -33,9 +30,7 @@ export async function getEstuary(
 
   // 2. Get stream metadata from StreamDO
   const doKey = `${projectId}/${estuaryId}`;
-  const streamStub = env.STREAMS.get(
-    env.STREAMS.idFromName(doKey)
-  ) as DurableObjectStub<StreamDO>;
+  const streamStub = env.STREAMS.get(env.STREAMS.idFromName(doKey)) as DurableObjectStub<StreamDO>;
   const meta = await streamStub.getStreamMeta(estuaryId);
 
   if (!meta) {
@@ -44,7 +39,7 @@ export async function getEstuary(
 
   // 3. Get subscriptions from EstuaryDO
   const estuaryStub = env.ESTUARY_DO.get(
-    env.ESTUARY_DO.idFromName(doKey)
+    env.ESTUARY_DO.idFromName(doKey),
   ) as DurableObjectStub<EstuaryDO>;
   const streamIds = await estuaryStub.getSubscriptions();
   const subscriptions = streamIds.map((streamId: string) => ({ streamId }));

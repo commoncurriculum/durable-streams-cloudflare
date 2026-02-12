@@ -8,11 +8,7 @@ import {
   MAX_INLINE_FANOUT,
 } from "../../../../constants";
 import type { BaseEnv } from "../../../router";
-import type {
-  PublishParams,
-  PublishResult,
-  FanoutQueueMessage,
-} from "../types";
+import type { PublishParams, PublishResult, FanoutQueueMessage } from "../types";
 import type { StreamSubscribersStorage } from "../../../../storage";
 import type { StreamDO } from "../../streams";
 
@@ -48,7 +44,7 @@ export interface PublishOptions {
  */
 export async function publishToStream(
   ctx: PublishContext,
-  opts: PublishOptions
+  opts: PublishOptions,
 ): Promise<{ result: PublishResult; newFanoutSeq: number }> {
   const { projectId, streamId, params } = opts;
   const start = Date.now();
@@ -61,12 +57,9 @@ export async function publishToStream(
   const fanoutPayload = params.payload.slice(0);
 
   const stub = ctx.env.STREAMS.get(
-    ctx.env.STREAMS.idFromName(sourceDoKey)
+    ctx.env.STREAMS.idFromName(sourceDoKey),
   ) as DurableObjectStub<StreamDO>;
-  const appendResult = await stub.appendStreamRpc(
-    sourceDoKey,
-    new Uint8Array(params.payload)
-  );
+  const appendResult = await stub.appendStreamRpc(sourceDoKey, new Uint8Array(params.payload));
 
   // Track fanout sequence for producer-based deduplication.
   // Each subscriber estuary stream gets writes from producer "fanout:<streamId>".
@@ -95,9 +88,7 @@ export async function publishToStream(
       ? parseInt(ctx.env.FANOUT_QUEUE_THRESHOLD, 10)
       : undefined;
     const threshold =
-      thresholdParsed !== undefined &&
-      Number.isFinite(thresholdParsed) &&
-      thresholdParsed > 0
+      thresholdParsed !== undefined && Number.isFinite(thresholdParsed) && thresholdParsed > 0
         ? thresholdParsed
         : FANOUT_QUEUE_THRESHOLD;
 
@@ -119,14 +110,10 @@ export async function publishToStream(
           subscriberIds,
           fanoutPayload,
           params.contentType,
-          fanoutProducerHeaders
+          fanoutProducerHeaders,
         );
         fanoutMode = "queued";
-        metrics.fanoutQueued(
-          streamId,
-          subscriberIds.length,
-          Date.now() - start
-        );
+        metrics.fanoutQueued(streamId, subscriberIds.length, Date.now() - start);
       } catch (err) {
         logError(
           {
@@ -136,7 +123,7 @@ export async function publishToStream(
             component: "fanout-queue",
           },
           "queue enqueue failed, falling back to inline fanout",
-          err
+          err,
         );
         if (!ctx.shouldAttemptInlineFanout()) {
           fanoutMode = "circuit-open";
@@ -149,14 +136,11 @@ export async function publishToStream(
             subscriberIds,
             fanoutPayload,
             params.contentType,
-            fanoutProducerHeaders
+            fanoutProducerHeaders,
           );
           successCount = fanoutResult.successes;
           failureCount = fanoutResult.failures;
-          ctx.updateCircuitBreaker(
-            fanoutResult.successes,
-            fanoutResult.failures
-          );
+          ctx.updateCircuitBreaker(fanoutResult.successes, fanoutResult.failures);
           ctx.removeStaleSubscribers(fanoutResult.staleEstuaryIds);
         }
       }
@@ -174,7 +158,7 @@ export async function publishToStream(
           maxInline,
           component: "fanout",
         },
-        "inline fanout skipped: too many subscribers and no queue configured"
+        "inline fanout skipped: too many subscribers and no queue configured",
       );
     } else {
       // Inline fanout
@@ -184,7 +168,7 @@ export async function publishToStream(
         subscriberIds,
         fanoutPayload,
         params.contentType,
-        fanoutProducerHeaders
+        fanoutProducerHeaders,
       );
       successCount = fanoutResult.successes;
       failureCount = fanoutResult.failures;
@@ -212,13 +196,13 @@ export async function publishToStream(
             latencyMs,
             component: "fanout",
           },
-          "inline fanout completed with failures"
+          "inline fanout completed with failures",
         );
       }
     } else if (fanoutMode === "circuit-open") {
       logWarn(
         { streamId, subscribers: subscriberIds.length, component: "fanout" },
-        "fanout skipped: circuit breaker open"
+        "fanout skipped: circuit breaker open",
       );
     }
   }
@@ -256,7 +240,7 @@ async function enqueueFanout(
     producerId: string;
     producerEpoch: string;
     producerSeq: string;
-  }
+  },
 ): Promise<void> {
   const payloadBase64 = bufferToBase64(payload);
 

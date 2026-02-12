@@ -67,11 +67,7 @@ export {
 export type { ProjectEntry, StreamEntry } from "./registry";
 
 // Segments (encoding/decoding utilities)
-export {
-  buildSegmentKey,
-  encodeSegmentMessages,
-  readSegmentMessages,
-} from "./segments";
+export { buildSegmentKey, encodeSegmentMessages, readSegmentMessages } from "./segments";
 
 // Read operations (stream-do)
 export { readFromOffset, readFromMessages } from "./stream-do";

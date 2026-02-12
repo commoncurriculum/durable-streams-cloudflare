@@ -44,7 +44,7 @@ export type CreateStreamResult = {
  */
 export async function createStream(
   ctx: StreamContext,
-  opts: CreateStreamOptions
+  opts: CreateStreamOptions,
 ): Promise<CreateStreamResult> {
   const streamId = opts.streamId;
   const contentTypeRaw = opts.contentType ?? null;
@@ -62,9 +62,7 @@ export async function createStream(
   const quotaBytes = (() => {
     const raw = ctx.env.DO_STORAGE_QUOTA_BYTES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0
-      ? parsed
-      : DO_STORAGE_QUOTA_BYTES_DEFAULT;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DO_STORAGE_QUOTA_BYTES_DEFAULT;
   })();
   const dbSize = ctx.state.storage.sql.databaseSize;
   if (dbSize >= quotaBytes * 0.9) {
@@ -79,10 +77,7 @@ export async function createStream(
 
   // 3. Parse and validate TTL/expiry headers
   if (ttlHeader && expiresHeader) {
-    throw new HttpError(
-      400,
-      "Stream-TTL and Stream-Expires-At are mutually exclusive"
-    );
+    throw new HttpError(400, "Stream-TTL and Stream-Expires-At are mutually exclusive");
   }
 
   const ttlSeconds = parseTtlSeconds(ttlHeader);
@@ -100,11 +95,7 @@ export async function createStream(
 
   // 4. Normalize body for empty JSON arrays
   let bodyBytes = payload;
-  if (
-    bodyBytes.length > 0 &&
-    contentTypeRaw != null &&
-    isJsonContentType(contentTypeRaw)
-  ) {
+  if (bodyBytes.length > 0 && contentTypeRaw != null && isJsonContentType(contentTypeRaw)) {
     const text = new TextDecoder().decode(bodyBytes);
     try {
       const value = JSON.parse(text);
@@ -126,10 +117,7 @@ export async function createStream(
     const contentType = contentTypeRaw ?? existing.content_type;
 
     // Content-type must match
-    if (
-      normalizeContentType(existing.content_type) !==
-      normalizeContentType(contentType)
-    ) {
+    if (normalizeContentType(existing.content_type) !== normalizeContentType(contentType)) {
       throw new HttpError(409, "content-type mismatch");
     }
 
@@ -179,16 +167,12 @@ export async function createStream(
 
   // 8. Evaluate producer if provided
   if (producer) {
-    const producerEval = await evaluateProducer(
-      ctx.storage,
-      streamId,
-      producer
-    );
+    const producerEval = await evaluateProducer(ctx.storage, streamId, producer);
     if (producerEval.kind === "error") {
       throw new HttpError(
         producerEval.response.status,
         "Producer evaluation failed",
-        producerEval.response
+        producerEval.response,
       );
     }
     // Note: We don't check for "duplicate" on PUT/create because the stream is brand new
@@ -197,25 +181,15 @@ export async function createStream(
   // 9. Append initial data if body is non-empty
   if (bodyBytes.length > 0) {
     const doneBuild = ctx.timing?.start("append.build");
-    const batch = await buildAppendBatch(
-      ctx.storage,
-      streamId,
-      contentType,
-      bodyBytes,
-      {
-        streamSeq,
-        producer,
-        closeStream,
-      }
-    );
+    const batch = await buildAppendBatch(ctx.storage, streamId, contentType, bodyBytes, {
+      streamSeq,
+      producer,
+      closeStream,
+    });
     doneBuild?.();
 
     if (batch.error) {
-      throw new HttpError(
-        batch.error.status,
-        "Batch build failed",
-        batch.error
-      );
+      throw new HttpError(batch.error.status, "Batch build failed", batch.error);
     }
 
     const doneBatch = ctx.timing?.start("append.batch");

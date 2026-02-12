@@ -28,11 +28,7 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
     });
   }
 
-  async setExpiry(
-    project: string,
-    estuaryId: string,
-    ttlSeconds: number
-  ): Promise<void> {
+  async setExpiry(project: string, estuaryId: string, ttlSeconds: number): Promise<void> {
     await this.storage.setEstuaryInfo(project, estuaryId);
     await this.ctx.storage.setAlarm(Date.now() + ttlSeconds * 1000);
   }
@@ -42,10 +38,7 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
     if (!info) return;
 
     const { project, estuary_id: estuaryId } = info;
-    logInfo(
-      { estuaryId, project, component: "estuary-alarm" },
-      "estuary expired, cleaning up"
-    );
+    logInfo({ estuaryId, project, component: "estuary-alarm" }, "estuary expired, cleaning up");
 
     // Remove this estuary from all SubscriptionDOs
     const streamIds = await this.getSubscriptions();
@@ -55,11 +48,9 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       const results = await Promise.allSettled(
         batch.map(async (streamId) => {
           const doKey = `${project}/${streamId}`;
-          const stub = this.env.SUBSCRIPTION_DO.get(
-            this.env.SUBSCRIPTION_DO.idFromName(doKey)
-          );
+          const stub = this.env.SUBSCRIPTION_DO.get(this.env.SUBSCRIPTION_DO.idFromName(doKey));
           await stub.removeSubscriber(estuaryId);
-        })
+        }),
       );
       for (let j = 0; j < results.length; j++) {
         if (results[j].status === "rejected") {
@@ -71,7 +62,7 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
               component: "estuary-alarm",
             },
             "failed to remove subscription",
-            (results[j] as PromiseRejectedResult).reason
+            (results[j] as PromiseRejectedResult).reason,
           );
         }
       }
@@ -89,7 +80,7 @@ export class EstuaryDO extends DurableObject<EstuaryDOEnv> {
       logError(
         { estuaryId, project, component: "estuary-alarm" },
         "failed to delete estuary stream",
-        err
+        err,
       );
     }
 

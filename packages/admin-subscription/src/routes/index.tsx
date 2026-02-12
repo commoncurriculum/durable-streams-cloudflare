@@ -9,14 +9,7 @@ import {
 } from "../lib/queries";
 import { formatRate, relTime, parseDoKey } from "../lib/formatters";
 import type { AnalyticsRow } from "../types";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export const Route = createFileRoute("/")({
   component: OverviewPage,
@@ -45,10 +38,7 @@ function OverviewPage() {
   const avgLatency = (fanoutRow.avg_latency_ms as number) ?? 0;
   const successes = (fanoutRow.successes as number) ?? 0;
   const failures = (fanoutRow.failures as number) ?? 0;
-  const successRate =
-    successes + failures > 0
-      ? (successes / (successes + failures)) * 100
-      : 0;
+  const successRate = successes + failures > 0 ? (successes / (successes + failures)) * 100 : 0;
 
   const chartData = buildChartData(timeseries.data ?? []);
   const statsLoading = !stats.isFetched && stats.isFetching;
@@ -65,22 +55,22 @@ function OverviewPage() {
         <StatCard
           label="Fanout Latency avg (ms)"
           value={
-            statsLoading
-              ? null
-              : typeof avgLatency === "number"
-                ? avgLatency.toFixed(1)
-                : "\u2014"
+            statsLoading ? null : typeof avgLatency === "number" ? avgLatency.toFixed(1) : "\u2014"
           }
           color="text-amber-400"
         />
         <StatCard
           label="Active Sessions (24h)"
-          value={(!sessions.isFetched && sessions.isFetching) ? null : String(sessions.data?.length ?? 0)}
+          value={
+            !sessions.isFetched && sessions.isFetching ? null : String(sessions.data?.length ?? 0)
+          }
           color="text-emerald-400"
         />
         <StatCard
           label="Active Streams (24h)"
-          value={(!streams.isFetched && streams.isFetching) ? null : String(streams.data?.length ?? 0)}
+          value={
+            !streams.isFetched && streams.isFetching ? null : String(streams.data?.length ?? 0)
+          }
           color="text-cyan-400"
         />
       </div>
@@ -111,10 +101,8 @@ function OverviewPage() {
 
       {/* Timeseries chart */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h3 className="mb-3 text-sm font-medium text-zinc-400">
-          Throughput (last hour)
-        </h3>
-        {(!timeseries.isFetched && timeseries.isFetching) ? (
+        <h3 className="mb-3 text-sm font-medium text-zinc-400">Throughput (last hour)</h3>
+        {!timeseries.isFetched && timeseries.isFetching ? (
           <div className="h-[180px] animate-pulse rounded bg-zinc-800" />
         ) : chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
@@ -167,7 +155,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           Hot Streams (last 5 min)
         </h3>
-        {(!hot.isFetched && hot.isFetching) ? (
+        {!hot.isFetched && hot.isFetching ? (
           <TableSkeleton rows={3} cols={3} />
         ) : (hot.data?.length ?? 0) === 0 ? (
           <EmptyRow message="No activity" />
@@ -212,7 +200,7 @@ function OverviewPage() {
         <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
           All Streams (24h)
         </h3>
-        {(!streams.isFetched && streams.isFetching) ? (
+        {!streams.isFetched && streams.isFetching ? (
           <TableSkeleton rows={5} cols={4} />
         ) : (streams.data?.length ?? 0) === 0 ? (
           <EmptyRow message="No streams" />
@@ -271,10 +259,7 @@ function OverviewPage() {
             </thead>
             <tbody>
               {errors.data!.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                >
+                <tr key={i} className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50">
                   <Td>{row.stream_id as string}</Td>
                   <Td>
                     <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-xs font-medium text-red-400">
@@ -295,20 +280,10 @@ function OverviewPage() {
 
 // --- Shared sub-components ---
 
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string | null;
-  color: string;
-}) {
+function StatCard({ label, value, color }: { label: string; value: string | null; color: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</div>
       {value === null ? (
         <div className="h-8 w-20 animate-pulse rounded bg-zinc-800" />
       ) : (
@@ -327,17 +302,11 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>
-  );
+  return <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>;
 }
 
 function EmptyRow({ message }: { message: string }) {
-  return (
-    <div className="px-4 py-6 text-center text-sm text-zinc-500">
-      {message}
-    </div>
-  );
+  return <div className="px-4 py-6 text-center text-sm text-zinc-500">{message}</div>;
 }
 
 function TableSkeleton({ rows, cols }: { rows: number; cols: number }) {
@@ -346,10 +315,7 @@ function TableSkeleton({ rows, cols }: { rows: number; cols: number }) {
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4">
           {Array.from({ length: cols }).map((_, j) => (
-            <div
-              key={j}
-              className="h-4 flex-1 animate-pulse rounded bg-zinc-800"
-            />
+            <div key={j} className="h-4 flex-1 animate-pulse rounded bg-zinc-800" />
           ))}
         </div>
       ))}

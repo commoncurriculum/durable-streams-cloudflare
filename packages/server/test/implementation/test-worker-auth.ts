@@ -18,10 +18,7 @@ const handler = createStreamWorker<BaseEnv>();
 
 const registeredProjects = new Set<string>();
 
-async function ensureProject(
-  kv: KVNamespace,
-  projectId: string
-): Promise<void> {
+async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
   if (registeredProjects.has(projectId)) return;
   await createProject(kv, projectId, TEST_SIGNING_SECRET, {
     corsOrigins: ["*"],
@@ -63,21 +60,17 @@ export default class TestCoreWorkerAuth extends WorkerEntrypoint<BaseEnv> {
     return handler.fetch!(
       request as unknown as Request<unknown, IncomingRequestCfProperties>,
       this.env,
-      this.ctx
+      this.ctx,
     );
   }
 
-  async #handleDebugAction(
-    action: string,
-    request: Request
-  ): Promise<Response> {
+  async #handleDebugAction(action: string, request: Request): Promise<Response> {
     const url = new URL(request.url);
     const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
     if (!pathMatch) return new Response("not found", { status: 404 });
     const raw = pathMatch[1];
     const i = raw.indexOf("/");
-    const doKey =
-      i === -1 ? `_default/${raw}` : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
+    const doKey = i === -1 ? `_default/${raw}` : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
 
     if (action === "rotate-reader-key") {
       const result = await this.rotateReaderKey(doKey);
@@ -91,14 +84,8 @@ export default class TestCoreWorkerAuth extends WorkerEntrypoint<BaseEnv> {
 
   async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
     const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;
-    const existing = (await this.env.REGISTRY.get(doKey, "json")) as Record<
-      string,
-      unknown
-    > | null;
-    await this.env.REGISTRY.put(
-      doKey,
-      JSON.stringify({ ...existing, readerKey })
-    );
+    const existing = (await this.env.REGISTRY.get(doKey, "json")) as Record<string, unknown> | null;
+    await this.env.REGISTRY.put(doKey, JSON.stringify({ ...existing, readerKey }));
     return { readerKey };
   }
 }

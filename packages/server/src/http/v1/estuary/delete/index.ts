@@ -23,7 +23,7 @@ export interface DeleteEstuaryOptions {
  */
 export async function deleteEstuary(
   env: BaseEnv,
-  opts: DeleteEstuaryOptions
+  opts: DeleteEstuaryOptions,
 ): Promise<DeleteEstuaryResult> {
   const { projectId, estuaryId } = opts;
   const start = Date.now();
@@ -35,9 +35,7 @@ export async function deleteEstuary(
 
   // 2. Delete the estuary stream via StreamDO
   const doKey = `${projectId}/${estuaryId}`;
-  const streamStub = env.STREAMS.get(
-    env.STREAMS.idFromName(doKey)
-  ) as DurableObjectStub<StreamDO>;
+  const streamStub = env.STREAMS.get(env.STREAMS.idFromName(doKey)) as DurableObjectStub<StreamDO>;
 
   const deleteRequest = new Request(`https://do/v1/stream/${doKey}`, {
     method: "DELETE",

@@ -49,7 +49,9 @@ describe("Message Latency", () => {
     console.log("POST latencies (ms):", latencies.map((l) => l.toFixed(1)).join(", "));
     const avgLatency = latencies.reduce((a, b) => a + b, 0) / latencies.length;
     const maxLatency = Math.max(...latencies);
-    console.log(`Average POST latency: ${avgLatency.toFixed(1)}ms, Max: ${maxLatency.toFixed(1)}ms`);
+    console.log(
+      `Average POST latency: ${avgLatency.toFixed(1)}ms, Max: ${maxLatency.toFixed(1)}ms`,
+    );
 
     // Each POST should complete within 200ms on localhost (CI machines may be slower)
     expect(avgLatency).toBeLessThan(200);
@@ -97,7 +99,7 @@ describe("Message Latency", () => {
           "Producer-Seq": "0",
         },
         body: `rapid-${i}\n`,
-      })
+      }),
     );
 
     const results = await Promise.all(promises);
@@ -107,7 +109,7 @@ describe("Message Latency", () => {
 
     console.log(
       `Rapid-fire: ${messageCount} POSTs in ${(end - start).toFixed(1)}ms, ` +
-        `${successCount} success`
+        `${successCount} success`,
     );
 
     // Cleanup

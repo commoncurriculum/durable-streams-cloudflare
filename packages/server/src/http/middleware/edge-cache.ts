@@ -1,9 +1,5 @@
 import { lookupEdgeCache, storeInEdgeCache, writeStreamCreationMetadata } from "./cache";
-import {
-  tryCoalesceInFlight,
-  resolveInFlightWaiters,
-  MAX_IN_FLIGHT,
-} from "./coalesce";
+import { tryCoalesceInFlight, resolveInFlightWaiters, MAX_IN_FLIGHT } from "./coalesce";
 import type { InFlightResult } from "./coalesce";
 import { bridgeSseViaWebSocket } from "./sse-bridge";
 
@@ -52,8 +48,7 @@ export function createEdgeCacheMiddleware(inFlight: Map<string, Promise<InFlight
     let cacheStatus: string | null = null;
 
     const clientCc = request.headers.get("Cache-Control") ?? "";
-    const skipCacheLookup =
-      clientCc.includes("no-cache") || clientCc.includes("no-store");
+    const skipCacheLookup = clientCc.includes("no-cache") || clientCc.includes("no-store");
 
     if (cacheable && skipCacheLookup) {
       cacheStatus = "BYPASS";
@@ -76,7 +71,12 @@ export function createEdgeCacheMiddleware(inFlight: Map<string, Promise<InFlight
     // Register as the in-flight winner so concurrent requests can coalesce
     let resolveCoalesce: ((r: InFlightResult) => void) | undefined;
     let rejectCoalesce: ((e: unknown) => void) | undefined;
-    if (cacheStatus === "MISS" && cacheUrl && !inFlight.has(cacheUrl) && inFlight.size < MAX_IN_FLIGHT) {
+    if (
+      cacheStatus === "MISS" &&
+      cacheUrl &&
+      !inFlight.has(cacheUrl) &&
+      inFlight.size < MAX_IN_FLIGHT
+    ) {
       inFlight.set(
         cacheUrl,
         new Promise<InFlightResult>((resolve, reject) => {
@@ -110,7 +110,14 @@ export function createEdgeCacheMiddleware(inFlight: Map<string, Promise<InFlight
     // On successful stream creation, write metadata to KV for edge lookups
     if (method === "PUT" && c.res.status === 201 && c.env.REGISTRY) {
       const doKey = c.get("streamPath");
-      writeStreamCreationMetadata(url, doKey, undefined, c.env.REGISTRY, (p: Promise<unknown>) => c.executionCtx.waitUntil(p), c.res);
+      writeStreamCreationMetadata(
+        url,
+        doKey,
+        undefined,
+        c.env.REGISTRY,
+        (p: Promise<unknown>) => c.executionCtx.waitUntil(p),
+        c.res,
+      );
     }
 
     // Store cacheable 200 responses in edge cache
@@ -130,7 +137,14 @@ export function createEdgeCacheMiddleware(inFlight: Map<string, Promise<InFlight
     // Resolve in-flight promise so coalesced waiters get the result.
     // Use rawResponse headers (pre-enrichment) so each waiter applies its own CORS.
     if (resolveCoalesce && cacheUrl) {
-      resolveInFlightWaiters(inFlight, cacheUrl, rawResponse, bodyBuffer, resolveCoalesce, storedInCache);
+      resolveInFlightWaiters(
+        inFlight,
+        cacheUrl,
+        rawResponse,
+        bodyBuffer,
+        resolveCoalesce,
+        storedInCache,
+      );
     }
 
     // X-Cache header on cacheable responses

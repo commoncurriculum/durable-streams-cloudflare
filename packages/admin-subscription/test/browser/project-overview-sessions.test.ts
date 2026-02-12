@@ -21,7 +21,10 @@ test("project overview shows session count after creating a session", async ({ p
   await expect(page.getByText("Project Overview")).toBeVisible({ timeout: 10_000 });
 
   // The Sessions card should display a real number >= 1, not the placeholder "—"
-  const sessionsCard = page.locator(".rounded-lg").filter({ hasText: /Sessions/i }).first();
+  const sessionsCard = page
+    .locator(".rounded-lg")
+    .filter({ hasText: /Sessions/i })
+    .first();
   await expect(sessionsCard).toBeVisible({ timeout: 5_000 });
 
   // The value in the card must be a digit (real data), not "—" (placeholder)

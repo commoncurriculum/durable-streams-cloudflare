@@ -43,7 +43,11 @@ export async function tryCoalesceInFlight(
       timing,
     );
   } catch (e) {
-    logWarn({ cacheUrl, component: "coalesce" }, "coalesced request failed, falling through to DO", e);
+    logWarn(
+      { cacheUrl, component: "coalesce" },
+      "coalesced request failed, falling through to DO",
+      e,
+    );
     return null;
   }
 }
@@ -70,7 +74,12 @@ export function resolveInFlightWaiters(
   for (const [k, v] of response.headers) {
     rawHeaders.push([k, v]);
   }
-  resolve({ body: bodyBuffer, status: response.status, statusText: response.statusText, headers: rawHeaders });
+  resolve({
+    body: bodyBuffer,
+    status: response.status,
+    statusText: response.statusText,
+    headers: rawHeaders,
+  });
   if (storedInCache) {
     // Linger so requests arriving just after resolution still find
     // the resolved promise (covers the gap before cache.put completes).

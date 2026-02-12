@@ -37,7 +37,10 @@ const CORS_EXPOSE_HEADERS = [
  */
 export function parseGlobalCorsOrigins(raw: string | undefined): string[] {
   if (!raw) return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -81,7 +84,11 @@ export function applyCorsHeaders(headers: Headers, origin: string | null): void 
 export async function corsMiddleware(c: any, next: () => Promise<void>): Promise<void | Response> {
   const projectConfig = c.get("projectConfig");
   const globalOrigins = parseGlobalCorsOrigins(c.env.CORS_ORIGINS);
-  let corsOrigin = resolveCorsOrigin(projectConfig?.corsOrigins, globalOrigins, c.req.header("Origin") ?? null);
+  let corsOrigin = resolveCorsOrigin(
+    projectConfig?.corsOrigins,
+    globalOrigins,
+    c.req.header("Origin") ?? null,
+  );
 
   // ?public=true implies wildcard CORS when no origins are configured
   if (!corsOrigin && new URL(c.req.url).searchParams.get("public") === "true") {

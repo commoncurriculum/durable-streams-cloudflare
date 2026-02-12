@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  validateContentLength,
-  validateBodySize,
-} from "../../../src/http/v1/streams/shared/body";
+import { validateContentLength, validateBodySize } from "../../../src/http/v1/streams/shared/body";
 
 describe("validateContentLength", () => {
   it("returns ok when no Content-Length header", () => {

@@ -18,7 +18,7 @@ import type { StreamContext } from "../types";
 export async function createStreamHttp(
   ctx: StreamContext,
   streamId: string,
-  request: Request
+  request: Request,
 ): Promise<Response> {
   return ctx.state.blockConcurrencyWhile(async () => {
     try {
@@ -29,13 +29,10 @@ export async function createStreamHttp(
       const contentLengthHeader = request.headers.get("Content-Length");
       if (contentLengthHeader !== null) {
         const declaredLength = Number.parseInt(contentLengthHeader, 10);
-        if (
-          Number.isNaN(declaredLength) ||
-          declaredLength !== bodyBytes.length
-        ) {
+        if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
           return errorResponse(
             400,
-            `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`
+            `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
           );
         }
       }
@@ -53,8 +50,7 @@ export async function createStreamHttp(
         payload: bodyBytes,
         streamSeq: request.headers.get(HEADER_STREAM_SEQ),
         producer: producerResult?.value ?? null,
-        closeStream:
-          request.headers.get(HEADER_STREAM_CLOSED)?.toLowerCase() === "true",
+        closeStream: request.headers.get(HEADER_STREAM_CLOSED)?.toLowerCase() === "true",
         isPublic: url.searchParams.get("public") === "true",
         ttlHeader: request.headers.get(HEADER_STREAM_TTL),
         expiresHeader: request.headers.get(HEADER_STREAM_EXPIRES_AT),

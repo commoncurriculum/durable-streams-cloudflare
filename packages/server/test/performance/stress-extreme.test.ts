@@ -56,7 +56,9 @@ describe("Extreme Stress", () => {
       if ((i + 1) % 1000 === 0) {
         const elapsed = (performance.now() - start) / 1000;
         const recentAvg = latencies.slice(-1000).reduce((a, b) => a + b, 0) / 1000;
-        console.log(`  ${i + 1}/${messageCount} at ${elapsed.toFixed(1)}s, recent avg: ${recentAvg.toFixed(1)}ms`);
+        console.log(
+          `  ${i + 1}/${messageCount} at ${elapsed.toFixed(1)}s, recent avg: ${recentAvg.toFixed(1)}ms`,
+        );
       }
     }
 
@@ -136,7 +138,9 @@ describe("Extreme Stress", () => {
         const recentAvg = latencies.slice(-1000).reduce((a, b) => a + b, 0) / 1000;
         const sorted = [...latencies].sort((a, b) => a - b);
         const p99 = sorted[Math.floor(sorted.length * 0.99)];
-        console.log(`  ${i + 1}/${totalMessages} at ${elapsed.toFixed(0)}s, recent avg: ${recentAvg.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, errors: ${errors.length}`);
+        console.log(
+          `  ${i + 1}/${totalMessages} at ${elapsed.toFixed(0)}s, recent avg: ${recentAvg.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, errors: ${errors.length}`,
+        );
       }
     }
 
@@ -204,7 +208,7 @@ describe("Extreme Stress", () => {
         status: res.status,
         ok: res.ok,
         time: performance.now() - start,
-      }))
+      })),
     );
 
     const results = await Promise.all(promises);
@@ -226,7 +230,7 @@ describe("Extreme Stress", () => {
           acc[r.status] = (acc[r.status] || 0) + 1;
           return acc;
         },
-        {} as Record<number, number>
+        {} as Record<number, number>,
       );
       console.log(`Failure statuses:`, statusCounts);
     }

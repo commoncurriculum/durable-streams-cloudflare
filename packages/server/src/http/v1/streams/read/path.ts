@@ -4,12 +4,7 @@ import { emptyJsonArray } from "../shared/json";
 
 import { readFromOffset } from "../../../../storage";
 import { readFromMessages } from "../../../../storage";
-import {
-  emptyResult,
-  errorResult,
-  gapResult,
-  type ReadResult,
-} from "../../../../storage";
+import { emptyResult, errorResult, gapResult, type ReadResult } from "../../../../storage";
 import { readSegmentMessages } from "../../../../storage/segments";
 import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage";
 import type { Timing } from "../../../shared/timing";
@@ -65,9 +60,8 @@ export class ReadPath {
       this.recentReads.delete(key);
     }
 
-    const existing = this.inFlightReads.size < MAX_IN_FLIGHT_READS
-      ? this.inFlightReads.get(key)
-      : undefined;
+    const existing =
+      this.inFlightReads.size < MAX_IN_FLIGHT_READS ? this.inFlightReads.get(key) : undefined;
     if (existing) return await existing;
 
     const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes).then(

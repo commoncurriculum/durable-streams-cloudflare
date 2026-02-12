@@ -10,10 +10,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { logInfo } from "../../../log";
-import {
-  CIRCUIT_BREAKER_FAILURE_THRESHOLD,
-  CIRCUIT_BREAKER_RECOVERY_MS,
-} from "../../../constants";
+import { CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_RECOVERY_MS } from "../../../constants";
 import type { BaseEnv } from "../../router";
 import type {
   PublishParams,
@@ -87,7 +84,7 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
   async publish(
     projectId: string,
     streamId: string,
-    params: PublishParams
+    params: PublishParams,
   ): Promise<PublishResult> {
     // Build context for THE ONE publish function
     const ctx: PublishContext = {
@@ -95,8 +92,7 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
       storage: this.storage,
       nextFanoutSeq: this.nextFanoutSeq,
       shouldAttemptInlineFanout: () => this.shouldAttemptInlineFanout(),
-      updateCircuitBreaker: (successes, failures) =>
-        this.updateCircuitBreaker(successes, failures),
+      updateCircuitBreaker: (successes, failures) => this.updateCircuitBreaker(successes, failures),
       removeStaleSubscribers: async (estuaryIds) =>
         await this.storage.removeSubscribers(estuaryIds),
     };
@@ -158,7 +154,7 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
           consecutiveFailures: this.consecutiveFailures,
           component: "circuit-breaker",
         },
-        "circuit breaker opened"
+        "circuit breaker opened",
       );
     }
   }

@@ -687,10 +687,7 @@ describe("readSegmentMessages — truncation", () => {
 
 describe("readSegmentMessages — zero-length messages", () => {
   it("handles zero-length messages in JSON mode", async () => {
-    const encoded = encodeSegmentMessages([
-      new Uint8Array(0),
-      bytes("after-empty"),
-    ]);
+    const encoded = encodeSegmentMessages([new Uint8Array(0), bytes("after-empty")]);
 
     const result = await readSegmentMessages({
       body: streamFrom(encoded),
@@ -710,10 +707,7 @@ describe("readSegmentMessages — zero-length messages", () => {
     // In binary mode, a zero-length message at cursor=0 with offset=0
     // has end=0 which equals offset, so end <= offset is true and it gets skipped.
     // Only the subsequent non-zero message is collected.
-    const encoded = encodeSegmentMessages([
-      new Uint8Array(0),
-      bytes("after-empty"),
-    ]);
+    const encoded = encodeSegmentMessages([new Uint8Array(0), bytes("after-empty")]);
 
     const result = await readSegmentMessages({
       body: streamFrom(encoded),
@@ -821,7 +815,7 @@ describe("readSegmentMessages — JSON vs binary collector differences", () => {
 describe("readSegmentMessages — raw binary payloads", () => {
   it("preserves binary data through encode-decode cycle", async () => {
     // Create messages with non-UTF8 binary data
-    const msg1 = new Uint8Array([0x00, 0xFF, 0xFE, 0x01]);
+    const msg1 = new Uint8Array([0x00, 0xff, 0xfe, 0x01]);
     const msg2 = new Uint8Array([0x80, 0x81, 0x82]);
     const encoded = encodeSegmentMessages([msg1, msg2]);
 

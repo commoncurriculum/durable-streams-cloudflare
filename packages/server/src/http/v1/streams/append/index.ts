@@ -1,8 +1,5 @@
 import { logWarn } from "../../../../log";
-import {
-  LONGPOLL_STAGGER_MS,
-  DO_STORAGE_QUOTA_BYTES_DEFAULT,
-} from "../../../shared/limits";
+import { LONGPOLL_STAGGER_MS, DO_STORAGE_QUOTA_BYTES_DEFAULT } from "../../../shared/limits";
 import { ZERO_OFFSET } from "../shared/offsets";
 import { validateBodySize } from "../shared/body";
 import {
@@ -48,7 +45,7 @@ export type ExecuteAppendResult = {
  */
 export async function appendStream(
   ctx: StreamContext,
-  opts: ExecuteAppendOptions
+  opts: ExecuteAppendOptions,
 ): Promise<ExecuteAppendResult> {
   const streamId = opts.streamId;
   const payload = opts.payload;
@@ -61,9 +58,7 @@ export async function appendStream(
   const quotaBytes = (() => {
     const raw = ctx.env.DO_STORAGE_QUOTA_BYTES;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0
-      ? parsed
-      : DO_STORAGE_QUOTA_BYTES_DEFAULT;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DO_STORAGE_QUOTA_BYTES_DEFAULT;
   })();
   const dbSize = ctx.state.storage.sql.databaseSize;
   if (dbSize >= quotaBytes * 0.9) {
@@ -87,8 +82,7 @@ export async function appendStream(
   // 3a. Validate content-type matches stream (if provided)
   if (
     requestContentType &&
-    normalizeContentType(meta.content_type) !==
-      normalizeContentType(requestContentType)
+    normalizeContentType(meta.content_type) !== normalizeContentType(requestContentType)
   ) {
     throw new HttpError(409, "content-type mismatch");
   }
@@ -111,15 +105,11 @@ export async function appendStream(
       throw new HttpError(
         producerEvalClose.response.status,
         "Producer evaluation failed",
-        producerEvalClose.response
+        producerEvalClose.response,
       );
     }
     if (producerEvalClose.kind === "duplicate") {
-      const dupOffset = await ctx.encodeOffset(
-        streamId,
-        meta,
-        producerEvalClose.state.last_offset
-      );
+      const dupOffset = await ctx.encodeOffset(streamId, meta, producerEvalClose.state.last_offset);
       const headers = baseHeaders({
         [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
         [HEADER_PRODUCER_EPOCH]: producerEvalClose.state.epoch.toString(),
@@ -137,18 +127,11 @@ export async function appendStream(
     await ctx.storage.closeStream(
       streamId,
       Date.now(),
-      producer
-        ? { id: producer.id, epoch: producer.epoch, seq: producer.seq }
-        : null
+      producer ? { id: producer.id, epoch: producer.epoch, seq: producer.seq } : null,
     );
 
     if (producer) {
-      await ctx.storage.upsertProducer(
-        streamId,
-        producer,
-        meta.tail_offset,
-        Date.now()
-      );
+      await ctx.storage.upsertProducer(streamId, producer, meta.tail_offset, Date.now());
     }
 
     // Notify waiters
@@ -200,15 +183,11 @@ export async function appendStream(
     throw new HttpError(
       producerEval.response.status,
       "Producer evaluation failed",
-      producerEval.response
+      producerEval.response,
     );
   }
   if (producerEval.kind === "duplicate") {
-    const dupOffset = await ctx.encodeOffset(
-      streamId,
-      meta,
-      producerEval.state.last_offset
-    );
+    const dupOffset = await ctx.encodeOffset(streamId, meta, producerEval.state.last_offset);
     const headers = baseHeaders({
       [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
       [HEADER_PRODUCER_EPOCH]: producerEval.state.epoch.toString(),
@@ -237,7 +216,7 @@ export async function appendStream(
       const resolved = await ctx.resolveOffset(
         streamId,
         meta,
-        offsetParam === "-1" ? ZERO_OFFSET : offsetParam
+        offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
       );
       if (resolved.error) continue;
 
@@ -246,33 +225,23 @@ export async function appendStream(
         streamId,
         meta,
         resolved.offset,
-        cursor
+        cursor,
       );
       if (preCacheResp) {
         await caches.default.put(waiterUrl, preCacheResp);
       }
     } catch (e) {
-      logWarn(
-        { streamId, waiterUrl, component: "pre-cache" },
-        "pre-cache build/store failed",
-        e
-      );
+      logWarn({ streamId, waiterUrl, component: "pre-cache" }, "pre-cache build/store failed", e);
     }
   }
 
   // 6. Build append batch
   const doneBuild = ctx.timing?.start("append.build");
-  const batch = await buildAppendBatch(
-    ctx.storage,
-    streamId,
-    meta.content_type,
-    payload,
-    {
-      streamSeq,
-      producer,
-      closeStream,
-    }
-  );
+  const batch = await buildAppendBatch(ctx.storage, streamId, meta.content_type, payload, {
+    streamSeq,
+    producer,
+    closeStream,
+  });
   doneBuild?.();
 
   if (batch.error) {
@@ -299,7 +268,7 @@ export async function appendStream(
     batch.ssePayload,
     batch.newTailOffset,
     closeStream,
-    writeTimestamp
+    writeTimestamp,
   );
 
   await broadcastWebSocket(
@@ -310,7 +279,7 @@ export async function appendStream(
     batch.ssePayload,
     batch.newTailOffset,
     closeStream,
-    writeTimestamp
+    writeTimestamp,
   );
 
   doneBroadcast?.();
@@ -336,11 +305,7 @@ export async function appendStream(
   }
 
   // 12. Build response headers
-  const nextOffsetHeader = await ctx.encodeOffset(
-    streamId,
-    meta,
-    batch.newTailOffset
-  );
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, batch.newTailOffset);
   const headers = baseHeaders({
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
   });

@@ -116,33 +116,23 @@ describe("normalizeContentType", () => {
   });
 
   it("strips charset parameter", () => {
-    expect(normalizeContentType("application/json; charset=utf-8")).toBe(
-      "application/json",
-    );
+    expect(normalizeContentType("application/json; charset=utf-8")).toBe("application/json");
   });
 
   it("strips charset parameter with mixed casing", () => {
-    expect(normalizeContentType("Text/Plain; Charset=UTF-8")).toBe(
-      "text/plain",
-    );
+    expect(normalizeContentType("Text/Plain; Charset=UTF-8")).toBe("text/plain");
   });
 
   it("strips multiple parameters", () => {
-    expect(
-      normalizeContentType("text/html; charset=utf-8; boundary=something"),
-    ).toBe("text/html");
+    expect(normalizeContentType("text/html; charset=utf-8; boundary=something")).toBe("text/html");
   });
 
   it("trims whitespace around the MIME type", () => {
-    expect(normalizeContentType("  application/json  ")).toBe(
-      "application/json",
-    );
+    expect(normalizeContentType("  application/json  ")).toBe("application/json");
   });
 
   it("trims whitespace with parameters", () => {
-    expect(normalizeContentType("  text/plain ; charset=utf-8  ")).toBe(
-      "text/plain",
-    );
+    expect(normalizeContentType("  text/plain ; charset=utf-8  ")).toBe("text/plain");
   });
 
   it("handles MIME type with no subtype gracefully", () => {
@@ -150,15 +140,13 @@ describe("normalizeContentType", () => {
   });
 
   it("handles application/octet-stream", () => {
-    expect(normalizeContentType("application/octet-stream")).toBe(
-      "application/octet-stream",
-    );
+    expect(normalizeContentType("application/octet-stream")).toBe("application/octet-stream");
   });
 
   it("handles multipart/form-data with boundary", () => {
-    expect(
-      normalizeContentType("multipart/form-data; boundary=----WebKit"),
-    ).toBe("multipart/form-data");
+    expect(normalizeContentType("multipart/form-data; boundary=----WebKit")).toBe(
+      "multipart/form-data",
+    );
   });
 
   it("handles content type with only semicolons and spaces", () => {

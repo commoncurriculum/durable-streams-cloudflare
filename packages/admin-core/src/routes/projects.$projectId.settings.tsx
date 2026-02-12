@@ -27,16 +27,14 @@ function ProjectSettings() {
   });
 
   const privacyMutation = useMutation({
-    mutationFn: (isPublic: boolean) =>
-      updateProjectPrivacy({ data: { projectId, isPublic } }),
+    mutationFn: (isPublic: boolean) => updateProjectPrivacy({ data: { projectId, isPublic } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
     },
   });
 
   const addOriginMutation = useMutation({
-    mutationFn: (origin: string) =>
-      addCorsOrigin({ data: { projectId, origin } }),
+    mutationFn: (origin: string) => addCorsOrigin({ data: { projectId, origin } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
       setNewOrigin("");
@@ -44,8 +42,7 @@ function ProjectSettings() {
   });
 
   const removeOriginMutation = useMutation({
-    mutationFn: (origin: string) =>
-      removeCorsOrigin({ data: { projectId, origin } }),
+    mutationFn: (origin: string) => removeCorsOrigin({ data: { projectId, origin } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
     },
@@ -59,8 +56,7 @@ function ProjectSettings() {
   });
 
   const revokeKeyMutation = useMutation({
-    mutationFn: (secret: string) =>
-      revokeSigningKey({ data: { projectId, secret } }),
+    mutationFn: (secret: string) => revokeSigningKey({ data: { projectId, secret } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projectConfig", projectId] });
     },
@@ -75,10 +71,7 @@ function ProjectSettings() {
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
         <h3 className="mb-4 text-sm font-medium text-zinc-400">Privacy</h3>
         <div className="flex items-center gap-4">
-          <Switch
-            isSelected={isPublic}
-            onChange={(selected) => privacyMutation.mutate(selected)}
-          >
+          <Switch isSelected={isPublic} onChange={(selected) => privacyMutation.mutate(selected)}>
             {isPublic ? "Public" : "Private"}
           </Switch>
         </div>
@@ -93,9 +86,7 @@ function ProjectSettings() {
                 key={origin}
                 className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2"
               >
-                <span className="font-mono text-sm text-zinc-300">
-                  {origin}
-                </span>
+                <span className="font-mono text-sm text-zinc-300">{origin}</span>
                 <button
                   type="button"
                   onClick={() => removeOriginMutation.mutate(origin)}
@@ -149,9 +140,7 @@ function ProjectSettings() {
                 key={i}
                 className="flex items-center justify-between rounded bg-zinc-800 px-3 py-2"
               >
-                <span className="font-mono text-sm text-zinc-500">
-                  {secret}
-                </span>
+                <span className="font-mono text-sm text-zinc-500">{secret}</span>
                 <button
                   type="button"
                   onClick={() => revokeKeyMutation.mutate(secret)}

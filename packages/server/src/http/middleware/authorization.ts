@@ -15,7 +15,10 @@ function wrapAuthorizationError(status: number, error: string, origin: string | 
   return resp;
 }
 
-async function getStreamMeta(kv: KVNamespace | undefined, doKey: string): Promise<StreamMeta | null> {
+async function getStreamMeta(
+  kv: KVNamespace | undefined,
+  doKey: string,
+): Promise<StreamMeta | null> {
   if (!kv) return null;
   const entry = await getStreamEntry(kv, doKey);
   if (!entry) return null;
@@ -38,7 +41,10 @@ async function getStreamMeta(kv: KVNamespace | undefined, doKey: string): Promis
  * - Sets `streamMeta` in context on success
  */
 // biome-ignore lint: Hono context typing is complex; middleware is wired through the app
-export async function authorizationMiddleware(c: any, next: () => Promise<void>): Promise<void | Response> {
+export async function authorizationMiddleware(
+  c: any,
+  next: () => Promise<void>,
+): Promise<void | Response> {
   // #region docs-extract-stream-id
   const projectId = c.get("projectId");
   const doKey = c.get("streamPath");

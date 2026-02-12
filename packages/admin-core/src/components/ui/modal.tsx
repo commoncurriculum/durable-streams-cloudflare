@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import type { DialogProps, DialogTriggerProps, ModalOverlayProps } from "react-aria-components"
+import type { DialogProps, DialogTriggerProps, ModalOverlayProps } from "react-aria-components";
 import {
   DialogTrigger as DialogTriggerPrimitive,
   ModalOverlay,
   Modal as ModalPrimitive,
-} from "react-aria-components"
-import { cx } from "@/lib/primitive"
+} from "react-aria-components";
+import { cx } from "@/lib/primitive";
 import {
   Dialog,
   DialogBody,
@@ -17,11 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./dialog"
+} from "./dialog";
 
 const Modal = (props: DialogTriggerProps) => {
-  return <DialogTriggerPrimitive {...props} />
-}
+  return <DialogTriggerPrimitive {...props} />;
+};
 
 const sizes = {
   "2xs": "sm:max-w-2xs",
@@ -35,14 +35,15 @@ const sizes = {
   "4xl": "sm:max-w-4xl",
   "5xl": "sm:max-w-5xl",
   fullscreen: "",
-}
+};
 
 interface ModalContentProps
-  extends Omit<ModalOverlayProps, "children">,
+  extends
+    Omit<ModalOverlayProps, "children">,
     Pick<DialogProps, "aria-label" | "aria-labelledby" | "role" | "children"> {
-  size?: keyof typeof sizes
-  closeButton?: boolean
-  overlay?: Pick<ModalOverlayProps, "className">
+  size?: keyof typeof sizes;
+  closeButton?: boolean;
+  overlay?: Pick<ModalOverlayProps, "className">;
 }
 
 const ModalContent = ({
@@ -55,7 +56,7 @@ const ModalContent = ({
   closeButton = true,
   ...props
 }: ModalContentProps) => {
-  const isDismissable = isDismissableInternal ?? role !== "alertdialog"
+  const isDismissable = isDismissableInternal ?? role !== "alertdialog";
   return (
     <ModalOverlay
       data-slot="modal-overlay"
@@ -97,16 +98,16 @@ const ModalContent = ({
         </Dialog>
       </ModalPrimitive>
     </ModalOverlay>
-  )
-}
+  );
+};
 
-const ModalTrigger = DialogTrigger
-const ModalHeader = DialogHeader
-const ModalTitle = DialogTitle
-const ModalDescription = DialogDescription
-const ModalFooter = DialogFooter
-const ModalBody = DialogBody
-const ModalClose = DialogClose
+const ModalTrigger = DialogTrigger;
+const ModalHeader = DialogHeader;
+const ModalTitle = DialogTitle;
+const ModalDescription = DialogDescription;
+const ModalFooter = DialogFooter;
+const ModalBody = DialogBody;
+const ModalClose = DialogClose;
 
 export {
   Modal,
@@ -118,4 +119,4 @@ export {
   ModalBody,
   ModalClose,
   ModalContent,
-}
+};

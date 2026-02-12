@@ -71,7 +71,9 @@ describe("Stress Latency", () => {
         const elapsed = (performance.now() - start) / 1000;
         const recentLatencies = latencies.slice(-messagesPerSecond);
         const avgRecent = recentLatencies.reduce((a, b) => a + b, 0) / recentLatencies.length;
-        console.log(`  ${i + 1}/${totalMessages} at ${elapsed.toFixed(1)}s, recent avg: ${avgRecent.toFixed(1)}ms`);
+        console.log(
+          `  ${i + 1}/${totalMessages} at ${elapsed.toFixed(1)}s, recent avg: ${avgRecent.toFixed(1)}ms`,
+        );
       }
     }
 
@@ -92,8 +94,12 @@ describe("Stress Latency", () => {
     console.log(`\nResults:`);
     console.log(`Total time: ${(totalTime / 1000).toFixed(1)}s (target: ${durationSeconds}s)`);
     console.log(`Errors: ${errors.length}`);
-    console.log(`Latency - Avg: ${avg.toFixed(1)}ms, P50: ${p50.toFixed(1)}ms, P95: ${p95.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, Max: ${max.toFixed(1)}ms`);
-    console.log(`First 100 avg: ${first100Avg.toFixed(1)}ms, Last 100 avg: ${last100Avg.toFixed(1)}ms`);
+    console.log(
+      `Latency - Avg: ${avg.toFixed(1)}ms, P50: ${p50.toFixed(1)}ms, P95: ${p95.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, Max: ${max.toFixed(1)}ms`,
+    );
+    console.log(
+      `First 100 avg: ${first100Avg.toFixed(1)}ms, Last 100 avg: ${last100Avg.toFixed(1)}ms`,
+    );
 
     const stalls = latencies.filter((l) => l > 1000);
     if (stalls.length > 0) {
@@ -142,12 +148,16 @@ describe("Stress Latency", () => {
 
     console.log(`\n=== 100 Sequential Messages ===`);
     console.log(`Total time: ${totalTime.toFixed(0)}ms`);
-    console.log(`Avg: ${avg.toFixed(1)}ms, P50: ${p50.toFixed(1)}ms, P95: ${p95.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, Max: ${max.toFixed(1)}ms`);
+    console.log(
+      `Avg: ${avg.toFixed(1)}ms, P50: ${p50.toFixed(1)}ms, P95: ${p95.toFixed(1)}ms, P99: ${p99.toFixed(1)}ms, Max: ${max.toFixed(1)}ms`,
+    );
 
     // Check for stalls (> 500ms)
     const stalls = latencies.filter((l) => l > 500);
     if (stalls.length > 0) {
-      console.log(`STALLS: ${stalls.length} messages took > 500ms: ${stalls.map((s) => s.toFixed(0)).join(", ")}`);
+      console.log(
+        `STALLS: ${stalls.length} messages took > 500ms: ${stalls.map((s) => s.toFixed(0)).join(", ")}`,
+      );
     }
 
     // Check for slow messages (> 100ms)
@@ -229,7 +239,7 @@ describe("Stress Latency", () => {
         status: res.status,
         ok: res.ok,
         time: performance.now() - start,
-      }))
+      })),
     );
 
     const results = await Promise.all(promises);
@@ -248,7 +258,7 @@ describe("Stress Latency", () => {
           acc[r.status] = (acc[r.status] || 0) + 1;
           return acc;
         },
-        {} as Record<number, number>
+        {} as Record<number, number>,
       );
       console.log(`Failure statuses:`, statusCounts);
     }
@@ -339,7 +349,9 @@ describe("Stress Latency", () => {
       const last = sorted[sorted.length - 1];
       const spread = last - first;
 
-      console.log(`First message at: ${first.toFixed(0)}ms, Last at: ${last.toFixed(0)}ms, Spread: ${spread.toFixed(0)}ms`);
+      console.log(
+        `First message at: ${first.toFixed(0)}ms, Last at: ${last.toFixed(0)}ms, Spread: ${spread.toFixed(0)}ms`,
+      );
 
       // All 100 messages should arrive within 2 seconds
       expect(spread).toBeLessThan(2000);

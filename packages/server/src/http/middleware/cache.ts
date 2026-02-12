@@ -1,7 +1,4 @@
-import {
-  HEADER_STREAM_READER_KEY,
-  HEADER_STREAM_UP_TO_DATE,
-} from "../shared/headers";
+import { HEADER_STREAM_READER_KEY, HEADER_STREAM_UP_TO_DATE } from "../shared/headers";
 import { Timing, attachTiming } from "../shared/timing";
 import { applyCorsHeaders } from "./cors";
 import { putStreamMetadata } from "../../storage/registry";
@@ -102,15 +99,15 @@ export function writeStreamCreationMetadata(
   // Generate a reader key for non-public streams. The reader key adds an
   // unguessable component to the CDN cache key so unauthorized clients
   // can't match cached entries.
-  const readerKey = !isPublic
-    ? `rk_${crypto.randomUUID().replace(/-/g, "")}`
-    : undefined;
+  const readerKey = !isPublic ? `rk_${crypto.randomUUID().replace(/-/g, "")}` : undefined;
   if (readerKey) {
     wrapped.headers.set(HEADER_STREAM_READER_KEY, readerKey);
   }
-  waitUntil(putStreamMetadata(kv, doKey, {
-    public: isPublic,
-    content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
-    readerKey,
-  }));
+  waitUntil(
+    putStreamMetadata(kv, doKey, {
+      public: isPublic,
+      content_type: wrapped.headers.get("Content-Type") || "application/octet-stream",
+      readerKey,
+    }),
+  );
 }

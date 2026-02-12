@@ -11,18 +11,18 @@ export const Route = createFileRoute("/api/projects/$projectId/token")({
           const { projectId } = params;
           const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
           if (!core) {
-            return new Response(
-              JSON.stringify({ error: "CORE service not configured" }),
-              { status: 500, headers: { "Content-Type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: "CORE service not configured" }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           const config = await core.getProjectConfig(projectId);
           if (!config) {
-            return new Response(
-              JSON.stringify({ error: `Project "${projectId}" not found` }),
-              { status: 404, headers: { "Content-Type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: `Project "${projectId}" not found` }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           const primarySecret = config.signingSecrets[0];

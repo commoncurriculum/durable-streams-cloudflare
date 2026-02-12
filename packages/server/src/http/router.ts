@@ -6,15 +6,8 @@ import type { StreamDO } from "./v1/streams";
 import type { InFlightResult } from "./middleware/coalesce";
 import type { StreamMeta } from "./middleware/cache";
 
-import type {
-  ProjectConfig,
-  ProjectJwtClaims,
-} from "./middleware/authentication";
-import type {
-  StreamSubscribersDO,
-  EstuaryDO,
-  FanoutQueueMessage,
-} from "./v1/estuary";
+import type { ProjectConfig, ProjectJwtClaims } from "./middleware/authentication";
+import type { StreamSubscribersDO, EstuaryDO, FanoutQueueMessage } from "./v1/estuary";
 
 // Middleware
 import { pathParsingMiddleware } from "./middleware/path-parsing";
@@ -28,22 +21,11 @@ import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
 import { MAX_APPEND_BYTES } from "./shared/limits";
 
 // Route handlers
-import {
-  projectIdParamSchema,
-  configBodySchema,
-  getConfig,
-  putConfig,
-} from "./v1/config";
+import { projectIdParamSchema, configBodySchema, getConfig, putConfig } from "./v1/config";
 
 // Estuary endpoints
-import {
-  subscribeHttp,
-  subscribeBodySchema,
-} from "./v1/estuary/subscribe/http";
-import {
-  unsubscribeHttp,
-  unsubscribeBodySchema,
-} from "./v1/estuary/unsubscribe/http";
+import { subscribeHttp, subscribeBodySchema } from "./v1/estuary/subscribe/http";
+import { unsubscribeHttp, unsubscribeBodySchema } from "./v1/estuary/unsubscribe/http";
 import { getEstuaryHttp } from "./v1/estuary/get/http";
 import { touchEstuaryHttp } from "./v1/estuary/touch/http";
 import { deleteEstuaryHttp } from "./v1/estuary/delete/http";
@@ -88,9 +70,7 @@ export { PROJECT_ID_PATTERN } from "./shared/stream-path";
 // Factory
 // ============================================================================
 
-export function createStreamWorker<
-  E extends BaseEnv = BaseEnv
->(): ExportedHandler<E> {
+export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandler<E> {
   type AppEnv = {
     Bindings: E;
     Variables: {
@@ -136,29 +116,21 @@ export function createStreamWorker<
   });
 
   // Config routes
-  app.get(
-    "/v1/config/:projectId",
-    arktypeValidator("param", projectIdParamSchema),
-    getConfig
-  );
+  app.get("/v1/config/:projectId", arktypeValidator("param", projectIdParamSchema), getConfig);
   app.put(
     "/v1/config/:projectId",
     arktypeValidator("param", projectIdParamSchema),
     arktypeValidator("json", configBodySchema),
-    putConfig
+    putConfig,
   );
 
   // Estuary subscribe/unsubscribe routes
-  app.post(
-    "/v1/estuary/subscribe/*",
-    arktypeValidator("json", subscribeBodySchema),
-    subscribeHttp
-  );
+  app.post("/v1/estuary/subscribe/*", arktypeValidator("json", subscribeBodySchema), subscribeHttp);
 
   app.delete(
     "/v1/estuary/subscribe/*",
     arktypeValidator("json", unsubscribeBodySchema),
-    unsubscribeHttp
+    unsubscribeHttp,
   );
 
   // Estuary management routes
@@ -187,11 +159,7 @@ export function createStreamWorker<
 
   // biome-ignore lint: Hono context typing is complex
   app.onError((err: Error, c: any) => {
-    logError(
-      { streamPath: c.get("streamPath"), method: c.req.method },
-      "unhandled error",
-      err
-    );
+    logError({ streamPath: c.get("streamPath"), method: c.req.method }, "unhandled error", err);
     return errorResponse(500, err.message ?? "internal error");
   });
 
@@ -199,11 +167,7 @@ export function createStreamWorker<
     fetch: app.fetch,
 
     // Queue handler for async fanout
-    queue: async (
-      batch: MessageBatch,
-      env: E,
-      _ctx: ExecutionContext
-    ): Promise<void> => {
+    queue: async (batch: MessageBatch, env: E, _ctx: ExecutionContext): Promise<void> => {
       await handleFanoutQueue(batch as MessageBatch<FanoutQueueMessage>, env);
     },
   };

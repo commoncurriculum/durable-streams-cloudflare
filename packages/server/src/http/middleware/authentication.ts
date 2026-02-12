@@ -63,7 +63,7 @@ export async function verifyProjectJwt(
   signingSecret: string,
 ): Promise<ProjectJwtClaims | null> {
   try {
-    const payload = await verify(token, signingSecret, 'HS256');
+    const payload = await verify(token, signingSecret, "HS256");
 
     const claims = jwtClaimsSchema(payload);
     if (claims instanceof type.errors) return null;

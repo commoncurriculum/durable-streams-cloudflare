@@ -35,10 +35,7 @@ export class Timing {
   }
 }
 
-export function appendServerTiming(
-  headers: Headers,
-  timing: Timing | null
-): void {
+export function appendServerTiming(headers: Headers, timing: Timing | null): void {
   if (!timing || timing.isEmpty()) return;
   const value = timing.toHeaderValue();
   if (!value) return;
@@ -50,10 +47,7 @@ export function appendServerTiming(
   headers.set("Server-Timing", value);
 }
 
-export function attachTiming(
-  response: Response,
-  timing: Timing | null
-): Response {
+export function attachTiming(response: Response, timing: Timing | null): Response {
   if (!timing || timing.isEmpty()) return response;
   const headers = new Headers(response.headers);
   appendServerTiming(headers, timing);

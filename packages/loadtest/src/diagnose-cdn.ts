@@ -126,10 +126,14 @@ function printResults(label: string, results: RequestResult[]) {
 
   console.log(`\n  Summary:`);
   console.log(
-    `    cf-cache-status: ${Object.entries(cfCounts).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+    `    cf-cache-status: ${Object.entries(cfCounts)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ")}`,
   );
   console.log(
-    `    x-cache:         ${Object.entries(xCacheCounts).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+    `    x-cache:         ${Object.entries(xCacheCounts)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ")}`,
   );
 
   const uniqueOffsets = new Set(results.map((r) => r.streamNextOffset).filter(Boolean));
@@ -199,7 +203,9 @@ async function main() {
   // Prime the cache
   const primeUrl = `${streamUrl}?offset=-1`;
   const primeRes = await fetch(primeUrl, { headers: readHeaders });
-  console.log(`  Prime: ${primeRes.status} cf:${primeRes.headers.get("cf-cache-status")} x:${primeRes.headers.get("x-cache")}`);
+  console.log(
+    `  Prime: ${primeRes.status} cf:${primeRes.headers.get("cf-cache-status")} x:${primeRes.headers.get("x-cache")}`,
+  );
   await primeRes.arrayBuffer();
   // Give cache time to propagate
   await sleep(200);

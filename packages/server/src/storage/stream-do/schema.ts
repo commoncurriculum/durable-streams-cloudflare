@@ -8,13 +8,7 @@
  * - segments: Metadata for cold segments stored in R2
  */
 
-import {
-  sqliteTable,
-  text,
-  integer,
-  index,
-  blob,
-} from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, blob } from "drizzle-orm/sqlite-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
 
 /**
@@ -69,7 +63,7 @@ export const ops = sqliteTable(
   },
   (table) => ({
     startOffsetIdx: index("ops_start_offset").on(table.start_offset),
-  })
+  }),
 );
 
 /**
@@ -90,7 +84,7 @@ export const segments = sqliteTable(
   },
   (table) => ({
     startOffsetIdx: index("segments_start_offset").on(table.start_offset),
-  })
+  }),
 );
 
 // ArkType schemas for validation

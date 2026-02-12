@@ -63,8 +63,17 @@ export default {
       return new Response("Invalid JSON body", { status: 400 });
     }
 
-    if (!config.coreUrl || !config.projectId || !config.streamId || !config.mode || !config.durationSec) {
-      return new Response("Missing required fields: coreUrl, projectId, streamId, mode, durationSec", { status: 400 });
+    if (
+      !config.coreUrl ||
+      !config.projectId ||
+      !config.streamId ||
+      !config.mode ||
+      !config.durationSec
+    ) {
+      return new Response(
+        "Missing required fields: coreUrl, projectId, streamId, mode, durationSec",
+        { status: 400 },
+      );
     }
 
     try {
@@ -119,13 +128,16 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
   const trackingFetch: typeof globalThis.fetch = async (input, init) => {
     // Extract offset from the request URL for drift tracking (H2)
     try {
-      const reqUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const reqUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       const parsedUrl = new URL(reqUrl);
       const offset = parsedUrl.searchParams.get("offset");
       if (offset) {
         offsetPolls[offset] = (offsetPolls[offset] ?? 0) + 1;
       }
-    } catch { /* URL parse failed — skip offset tracking */ }
+    } catch {
+      /* URL parse failed — skip offset tracking */
+    }
 
     const res = await globalThis.fetch(input, init);
     const cacheStatus = res.headers.get("cf-cache-status") ?? "(none)";
@@ -142,13 +154,16 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
 
     // Track per-offset cache status (only for offsets we're actively polling)
     try {
-      const reqUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const reqUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       const offset = new URL(reqUrl).searchParams.get("offset");
       if (offset && offset !== "now") {
         if (!offsetCacheStatus[offset]) offsetCacheStatus[offset] = {};
         offsetCacheStatus[offset][cacheStatus] = (offsetCacheStatus[offset][cacheStatus] ?? 0) + 1;
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
 
     return res;
   };
@@ -197,9 +212,10 @@ async function runReader(config: RunConfig, env: Env): Promise<WorkerSummary> {
       }
 
       // Find the most common cf-cache-status value seen by trackingFetch
-      const lastCache = Object.keys(cacheHeaders).sort(
-        (a, b) => (cacheHeaders[b] ?? 0) - (cacheHeaders[a] ?? 0),
-      )[0] ?? "(none)";
+      const lastCache =
+        Object.keys(cacheHeaders).sort(
+          (a, b) => (cacheHeaders[b] ?? 0) - (cacheHeaders[a] ?? 0),
+        )[0] ?? "(none)";
 
       // Write per-batch data point to Analytics Engine
       env.METRICS?.writeDataPoint({

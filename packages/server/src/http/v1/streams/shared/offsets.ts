@@ -24,7 +24,8 @@ const offsetToken = type("string").pipe((s, ctx) => {
   if (!match) return ctx.error("invalid offset format");
   const readSeq = Number(match[1]);
   const byteOffset = Number(match[2]);
-  if (!Number.isSafeInteger(readSeq) || !Number.isSafeInteger(byteOffset)) return ctx.error("offset out of safe integer range");
+  if (!Number.isSafeInteger(readSeq) || !Number.isSafeInteger(byteOffset))
+    return ctx.error("offset out of safe integer range");
   if (readSeq < 0 || byteOffset < 0) return ctx.error("offset must be non-negative");
   return { readSeq, byteOffset };
 });

@@ -26,11 +26,7 @@ const log = new LogLayer({
 /**
  * Log an error with context and optional error object
  */
-export function logError(
-  context: Record<string, unknown>,
-  message: string,
-  error?: unknown
-): void {
+export function logError(context: Record<string, unknown>, message: string, error?: unknown): void {
   const logger = log.withContext(context);
   if (error) {
     logger.withError(error).error(message);
@@ -42,11 +38,7 @@ export function logError(
 /**
  * Log a warning with context and optional error object
  */
-export function logWarn(
-  context: Record<string, unknown>,
-  message: string,
-  error?: unknown
-): void {
+export function logWarn(context: Record<string, unknown>, message: string, error?: unknown): void {
   const logger = log.withContext(context);
   if (error) {
     logger.withError(error).warn(message);
@@ -58,10 +50,7 @@ export function logWarn(
 /**
  * Log an info message with context
  */
-export function logInfo(
-  context: Record<string, unknown>,
-  message: string
-): void {
+export function logInfo(context: Record<string, unknown>, message: string): void {
   log.withContext(context).info(message);
 }
 

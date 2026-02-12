@@ -3,7 +3,14 @@ import { useState, useCallback } from "react";
 import { useProjectsWithConfig } from "../lib/queries";
 import { createProject } from "../lib/analytics";
 import { useQueryClient } from "@tanstack/react-query";
-import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableColumn,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export const Route = createFileRoute("/projects/")({
   component: ProjectsIndexPage,
@@ -86,9 +93,7 @@ function ProjectsIndexPage() {
         </Table>
       )}
 
-      {showModal && (
-        <CreateProjectModal onClose={() => setShowModal(false)} />
-      )}
+      {showModal && <CreateProjectModal onClose={() => setShowModal(false)} />}
     </div>
   );
 }
@@ -128,7 +133,9 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-xl">
         <h2 className="text-lg font-semibold text-zinc-100">Create Project</h2>
@@ -183,9 +190,7 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
             </div>
 
             {error && (
-              <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                {error}
-              </div>
+              <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</div>
             )}
 
             <div className="flex justify-end gap-3 pt-2">

@@ -88,7 +88,7 @@ export class StreamDoStorage implements StreamStorage {
   async closeStream(
     _streamId: string,
     closedAt: number,
-    closedBy?: { id: string; epoch: number; seq: number } | null
+    closedBy?: { id: string; epoch: number; seq: number } | null,
   ): Promise<void> {
     if (closedBy) {
       await this.db.update(streamMeta).set({
@@ -120,7 +120,7 @@ export class StreamDoStorage implements StreamStorage {
   updateStreamStatement(
     _streamId: string,
     updateFields: string[],
-    updateValues: unknown[]
+    updateValues: unknown[],
   ): StorageStatement {
     // StorageStatement for batch() - raw SQL preserved for dynamic field updates
     return {
@@ -133,10 +133,7 @@ export class StreamDoStorage implements StreamStorage {
   // Producer Operations
   // ============================================================================
 
-  async getProducer(
-    _streamId: string,
-    producerId: string
-  ): Promise<ProducerState | null> {
+  async getProducer(_streamId: string, producerId: string): Promise<ProducerState | null> {
     const result = await this.db
       .select()
       .from(producers)
@@ -149,7 +146,7 @@ export class StreamDoStorage implements StreamStorage {
     _streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
-    lastUpdated: number
+    lastUpdated: number,
   ): StorageStatement {
     // StorageStatement for batch() - could use Drizzle but raw SQL works
     return {
@@ -162,13 +159,7 @@ export class StreamDoStorage implements StreamStorage {
           last_offset = excluded.last_offset,
           last_updated = excluded.last_updated
       `,
-      args: [
-        producer.id,
-        producer.epoch,
-        producer.seq,
-        lastOffset,
-        lastUpdated,
-      ],
+      args: [producer.id, producer.epoch, producer.seq, lastOffset, lastUpdated],
     };
   }
 
@@ -176,38 +167,31 @@ export class StreamDoStorage implements StreamStorage {
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
-    lastUpdated: number
+    lastUpdated: number,
   ): Promise<void> {
-    await this.batch([
-      this.producerUpsertStatement(streamId, producer, lastOffset, lastUpdated),
-    ]);
+    await this.batch([this.producerUpsertStatement(streamId, producer, lastOffset, lastUpdated)]);
   }
 
   async deleteProducer(_streamId: string, producerId: string): Promise<void> {
-    await this.db
-      .delete(producers)
-      .where(eq(producers.producer_id, producerId));
+    await this.db.delete(producers).where(eq(producers.producer_id, producerId));
   }
 
   async updateProducerLastUpdated(
     _streamId: string,
     producerId: string,
-    lastUpdated: number
+    lastUpdated: number,
   ): Promise<boolean> {
     this.sql.exec(
       "UPDATE producers SET last_updated = ? WHERE producer_id = ?",
       lastUpdated,
-      producerId
+      producerId,
     );
     const changes = this.sql.exec("SELECT changes() as c").one();
     return (changes.c as number) > 0;
   }
 
   async listProducers(_streamId: string): Promise<ProducerState[]> {
-    return await this.db
-      .select()
-      .from(producers)
-      .orderBy(desc(producers.last_updated));
+    return await this.db.select().from(producers).orderBy(desc(producers.last_updated));
   }
 
   // ============================================================================
@@ -256,16 +240,13 @@ export class StreamDoStorage implements StreamStorage {
     };
   }
 
-  async selectOverlap(
-    _streamId: string,
-    offset: number
-  ): Promise<ReadChunk | null> {
+  async selectOverlap(_streamId: string, offset: number): Promise<ReadChunk | null> {
     // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
     // calls Node.js Buffer (unavailable in Workers runtime).
     const cursor = this.sql.exec(
       "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset < ? AND end_offset > ? ORDER BY start_offset DESC LIMIT 1",
       offset,
-      offset
+      offset,
     );
     const rows = [...cursor];
     if (rows.length === 0) return null;
@@ -277,7 +258,7 @@ export class StreamDoStorage implements StreamStorage {
     // calls Node.js Buffer (unavailable in Workers runtime).
     const cursor = this.sql.exec(
       "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? ORDER BY start_offset ASC LIMIT 200",
-      offset
+      offset,
     );
     return [...cursor] as unknown as ReadChunk[];
   }
@@ -285,14 +266,14 @@ export class StreamDoStorage implements StreamStorage {
   async selectOpsRange(
     _streamId: string,
     startOffset: number,
-    endOffset: number
+    endOffset: number,
   ): Promise<ReadChunk[]> {
     // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
     // calls Node.js Buffer (unavailable in Workers runtime).
     const cursor = this.sql.exec(
       "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? AND end_offset <= ? ORDER BY start_offset ASC",
       startOffset,
-      endOffset
+      endOffset,
     );
     return [...cursor] as unknown as ReadChunk[];
   }
@@ -301,7 +282,7 @@ export class StreamDoStorage implements StreamStorage {
     // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
     // calls Node.js Buffer (unavailable in Workers runtime).
     const cursor = this.sql.exec(
-      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops ORDER BY start_offset ASC"
+      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops ORDER BY start_offset ASC",
     );
     return [...cursor] as unknown as ReadChunk[];
   }
@@ -310,18 +291,12 @@ export class StreamDoStorage implements StreamStorage {
     await this.db.delete(ops).where(lte(ops.end_offset, endOffset));
   }
 
-  deleteOpsThroughStatement(
-    _streamId: string,
-    endOffset: number
-  ): StorageStatement {
+  deleteOpsThroughStatement(_streamId: string, endOffset: number): StorageStatement {
     // StorageStatement for batch()
     return { sql: "DELETE FROM ops WHERE end_offset <= ?", args: [endOffset] };
   }
 
-  async getOpsStatsFrom(
-    _streamId: string,
-    startOffset: number
-  ): Promise<OpsStats> {
+  async getOpsStatsFrom(_streamId: string, startOffset: number): Promise<OpsStats> {
     const result = await this.db
       .select({
         messageCount: sql<number>`COUNT(*)`,
@@ -363,10 +338,7 @@ export class StreamDoStorage implements StreamStorage {
     return result[0] ?? null;
   }
 
-  async getSegmentByReadSeq(
-    _streamId: string,
-    readSeq: number
-  ): Promise<SegmentRecord | null> {
+  async getSegmentByReadSeq(_streamId: string, readSeq: number): Promise<SegmentRecord | null> {
     const result = await this.db
       .select()
       .from(segments)
@@ -376,28 +348,17 @@ export class StreamDoStorage implements StreamStorage {
     return result[0] ?? null;
   }
 
-  async getSegmentCoveringOffset(
-    _streamId: string,
-    offset: number
-  ): Promise<SegmentRecord | null> {
+  async getSegmentCoveringOffset(_streamId: string, offset: number): Promise<SegmentRecord | null> {
     const result = await this.db
       .select()
       .from(segments)
-      .where(
-        and(
-          lte(segments.start_offset, offset),
-          sql`${segments.end_offset} > ${offset}`
-        )
-      )
+      .where(and(lte(segments.start_offset, offset), sql`${segments.end_offset} > ${offset}`))
       .orderBy(desc(segments.end_offset))
       .limit(1);
     return result[0] ?? null;
   }
 
-  async getSegmentStartingAt(
-    _streamId: string,
-    offset: number
-  ): Promise<SegmentRecord | null> {
+  async getSegmentStartingAt(_streamId: string, offset: number): Promise<SegmentRecord | null> {
     const result = await this.db
       .select()
       .from(segments)

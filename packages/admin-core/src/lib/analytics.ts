@@ -11,17 +11,11 @@ export function parseDoKey(doKey: string): { projectId: string; streamId: string
 }
 
 async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
-  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
-    | string
-    | undefined;
-  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
-    | string
-    | undefined;
+  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
 
   if (!accountId || !apiToken) {
-    throw new Error(
-      "CF_ACCOUNT_ID and CF_API_TOKEN are required for analytics queries",
-    );
+    throw new Error("CF_ACCOUNT_ID and CF_API_TOKEN are required for analytics queries");
   }
 
   const response = await fetch(
@@ -38,9 +32,7 @@ async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `Analytics Engine query failed (${response.status}): ${text}`,
-    );
+    throw new Error(`Analytics Engine query failed (${response.status}): ${text}`);
   }
 
   const body = (await response.json()) as { data?: AnalyticsRow[] };
@@ -48,7 +40,10 @@ async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
 }
 
 function getDatasetName(): string {
-  return ((env as Record<string, unknown>).ANALYTICS_DATASET as string | undefined) ?? "durable_streams_metrics";
+  return (
+    ((env as Record<string, unknown>).ANALYTICS_DATASET as string | undefined) ??
+    "durable_streams_metrics"
+  );
 }
 
 const QUERIES = {
@@ -90,23 +85,17 @@ export const getStats = createServerFn({ method: "GET" }).handler(async () => {
   return queryAnalytics(QUERIES.systemStats());
 });
 
-export const getStreams = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.streamList());
-  },
-);
+export const getStreams = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.streamList());
+});
 
-export const getHotStreams = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.hotStreams(20));
-  },
-);
+export const getHotStreams = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.hotStreams(20));
+});
 
-export const getTimeseries = createServerFn({ method: "GET" }).handler(
-  async () => {
-    return queryAnalytics(QUERIES.timeseries(60));
-  },
-);
+export const getTimeseries = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.timeseries(60));
+});
 
 export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
@@ -119,12 +108,8 @@ export const inspectStream = createServerFn({ method: "GET" })
 
 export const sendTestAction = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: {
-      streamId: string;
-      action: "create" | "append";
-      contentType?: string;
-      body: string;
-    }) => data,
+    (data: { streamId: string; action: "create" | "append"; contentType?: string; body: string }) =>
+      data,
   )
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService;
@@ -162,12 +147,15 @@ export const createProject = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const projectId = data.projectId.trim();
     if (!projectId) throw new Error("Project ID is required");
-    if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
-    const secret = data.signingSecret?.trim() || JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
-    
+    if (!/^[a-zA-Z0-9_-]+$/.test(projectId))
+      throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
+    const secret =
+      data.signingSecret?.trim() ||
+      JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
+
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     await core.registerProject(projectId, secret);
     return { ok: true, signingSecret: secret };
   });
@@ -264,10 +252,10 @@ export const getProjectConfig = createServerFn({ method: "GET" })
   .handler(async ({ data: projectId }): Promise<ProjectConfig> => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     const config = await core.getProjectConfig(projectId);
     if (!config) throw new Error("Project not found");
-    
+
     return {
       signingSecrets: config.signingSecrets,
       corsOrigins: config.corsOrigins ?? [],
@@ -280,7 +268,7 @@ export const updateProjectPrivacy = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     await core.updatePrivacy(data.projectId, data.isPublic);
     return { ok: true };
   });
@@ -290,7 +278,7 @@ export const addCorsOrigin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     await core.addCorsOrigin(data.projectId, data.origin);
     return { ok: true };
   });
@@ -300,7 +288,7 @@ export const removeCorsOrigin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     await core.removeCorsOrigin(data.projectId, data.origin);
     return { ok: true };
   });
@@ -310,8 +298,10 @@ export const generateSigningKey = createServerFn({ method: "POST" })
   .handler(async ({ data: projectId }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
-    const newSecret = JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
+
+    const newSecret = JSON.stringify(
+      await exportJWK(await generateSecret("HS256", { extractable: true })),
+    );
     const result = await core.addSigningKey(projectId, newSecret);
     return { keyCount: result.keyCount, secret: newSecret };
   });
@@ -321,7 +311,7 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const core = (env as Record<string, unknown>).CORE as CoreService | undefined;
     if (!core) throw new Error("CORE service binding is not configured");
-    
+
     const result = await core.removeSigningKey(data.projectId, data.secret);
     return { keyCount: result.keyCount };
   });
@@ -332,55 +322,45 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
 
 let cachedCoreUrl: string | undefined;
 
-export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(
-  async () => {
-    if (cachedCoreUrl) return cachedCoreUrl;
+export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(async () => {
+  if (cachedCoreUrl) return cachedCoreUrl;
 
-    const coreUrl = (env as Record<string, unknown>).CORE_URL as
-      | string
-      | undefined;
-    if (coreUrl) {
-      cachedCoreUrl = coreUrl;
-      return cachedCoreUrl;
-    }
-
-    // Fallback: resolve via Cloudflare API
-    const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as
-      | string
-      | undefined;
-    const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as
-      | string
-      | undefined;
-
-    if (!accountId || !apiToken) {
-      throw new Error(
-        "CORE_URL is not set. Add CORE_URL to your wrangler.toml [vars] (e.g. CORE_URL = \"https://durable-streams.your-subdomain.workers.dev\") or set CF_ACCOUNT_ID + CF_API_TOKEN for auto-resolution.",
-      );
-    }
-
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
-      { headers: { Authorization: `Bearer ${apiToken}` } },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to resolve workers subdomain (${response.status})`,
-      );
-    }
-
-    const body = (await response.json()) as {
-      result?: { subdomain?: string };
-    };
-    const subdomain = body.result?.subdomain;
-    if (!subdomain) {
-      throw new Error("Could not resolve workers subdomain");
-    }
-
-    cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+  const coreUrl = (env as Record<string, unknown>).CORE_URL as string | undefined;
+  if (coreUrl) {
+    cachedCoreUrl = coreUrl;
     return cachedCoreUrl;
-  },
-);
+  }
+
+  // Fallback: resolve via Cloudflare API
+  const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
+  const apiToken = (env as Record<string, unknown>).CF_API_TOKEN as string | undefined;
+
+  if (!accountId || !apiToken) {
+    throw new Error(
+      'CORE_URL is not set. Add CORE_URL to your wrangler.toml [vars] (e.g. CORE_URL = "https://durable-streams.your-subdomain.workers.dev") or set CF_ACCOUNT_ID + CF_API_TOKEN for auto-resolution.',
+    );
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
+    { headers: { Authorization: `Bearer ${apiToken}` } },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to resolve workers subdomain (${response.status})`);
+  }
+
+  const body = (await response.json()) as {
+    result?: { subdomain?: string };
+  };
+  const subdomain = body.result?.subdomain;
+  if (!subdomain) {
+    throw new Error("Could not resolve workers subdomain");
+  }
+
+  cachedCoreUrl = `https://durable-streams.${subdomain}.workers.dev`;
+  return cachedCoreUrl;
+});
 
 // ---------------------------------------------------------------------------
 // JWT minting for browser → core auth
@@ -396,7 +376,7 @@ export const mintStreamToken = createServerFn({ method: "GET" })
     if (!config) {
       throw new Error(`Project "${projectId}" not found`);
     }
-    
+
     const primarySecret = config.signingSecrets[0];
     if (!primarySecret) {
       throw new Error(`No signing secret found for project "${projectId}"`);

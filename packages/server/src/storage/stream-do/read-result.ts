@@ -28,7 +28,7 @@ export function emptyResult(
     upToDate?: boolean;
     closedAtTail?: boolean;
     emptyBody?: ArrayBuffer;
-  } = {}
+  } = {},
 ): ReadResult {
   return {
     body: opts.emptyBody ?? new ArrayBuffer(0),
@@ -44,11 +44,7 @@ export function emptyResult(
 /**
  * Build an error read result.
  */
-export function errorResult(
-  offset: number,
-  error: Response,
-  source?: "hot" | "r2"
-): ReadResult {
+export function errorResult(offset: number, error: Response, source?: "hot" | "r2"): ReadResult {
   return {
     body: new ArrayBuffer(0),
     nextOffset: offset,
@@ -67,7 +63,7 @@ export function errorResult(
 export function gapResult(
   offset: number,
   closedAtTail: boolean,
-  source?: "hot" | "r2"
+  source?: "hot" | "r2",
 ): ReadResult {
   return {
     body: new ArrayBuffer(0),

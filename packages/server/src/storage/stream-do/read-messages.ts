@@ -2,12 +2,7 @@ import { isJsonContentType } from "../../http/shared/headers";
 import { errorResponse } from "../../http/shared/errors";
 import { buildJsonArray, emptyJsonArray } from "../../http/v1/streams/shared/json";
 import { concatBuffers } from "../../http/v1/streams/shared/encoding";
-import {
-  emptyResult,
-  errorResult,
-  dataResult,
-  type ReadResult,
-} from "./read-result";
+import { emptyResult, errorResult, dataResult, type ReadResult } from "./read-result";
 
 export function readFromMessages(params: {
   messages: Uint8Array[];
@@ -18,8 +13,15 @@ export function readFromMessages(params: {
   closed: boolean;
   segmentStart?: number;
 }): ReadResult {
-  const { messages, contentType, offset, maxChunkBytes, tailOffset, closed, segmentStart = 0 } =
-    params;
+  const {
+    messages,
+    contentType,
+    offset,
+    maxChunkBytes,
+    tailOffset,
+    closed,
+    segmentStart = 0,
+  } = params;
 
   const isJson = isJsonContentType(contentType);
 

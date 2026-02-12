@@ -13,7 +13,7 @@ import type { FanoutQueueMessage } from "../http/v1/estuary/types";
  */
 export async function handleFanoutQueue(
   batch: MessageBatch<FanoutQueueMessage>,
-  env: BaseEnv
+  env: BaseEnv,
 ): Promise<void> {
   const metrics = createMetrics(env.METRICS);
 
@@ -36,15 +36,13 @@ export async function handleFanoutQueue(
         estuaryIds,
         payload,
         contentType,
-        producerHeaders
+        producerHeaders,
       );
 
       // Remove stale subscribers via DO RPC (project-scoped key)
       if (result.staleEstuaryIds.length > 0) {
         const doKey = `${projectId}/${streamId}`;
-        const stub = env.SUBSCRIPTION_DO.get(
-          env.SUBSCRIPTION_DO.idFromName(doKey)
-        );
+        const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
         await stub.removeSubscribers(result.staleEstuaryIds);
       }
 
@@ -74,7 +72,7 @@ export async function handleFanoutQueue(
           component: "fanout-queue",
         },
         "fanout queue message failed",
-        err
+        err,
       );
       message.retry();
     }

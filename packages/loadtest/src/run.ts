@@ -43,9 +43,15 @@ import { parseArgs } from "node:util";
 import { DurableStream } from "@durable-streams/client";
 import { signJwt } from "./jwt";
 import {
-  createOpMetrics, recordSuccess, recordError, summarize,
-  createCacheStats, recordCacheHeader,
-  createDeliveryStats, recordDelivery, summarizeDelivery,
+  createOpMetrics,
+  recordSuccess,
+  recordError,
+  summarize,
+  createCacheStats,
+  recordCacheHeader,
+  createDeliveryStats,
+  recordDelivery,
+  summarizeDelivery,
 } from "./metrics";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,7 +124,9 @@ async function waitForReady(url: string, timeoutMs = 30_000): Promise<void> {
     try {
       const response = await fetch(url);
       if (response) return;
-    } catch { /* not ready */ }
+    } catch {
+      /* not ready */
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`worker did not start within ${timeoutMs}ms`);
@@ -136,12 +144,18 @@ async function startCoreWorker(): Promise<WorkerHandle> {
   const child = spawn(
     "pnpm",
     [
-      "exec", "wrangler", "dev",
+      "exec",
+      "wrangler",
+      "dev",
       "--local",
-      "--port", String(port),
-      "--config", "wrangler.test.toml",
-      "--persist-to", persistDir,
-      "--log-level", "warn",
+      "--port",
+      String(port),
+      "--config",
+      "wrangler.test.toml",
+      "--persist-to",
+      persistDir,
+      "--log-level",
+      "warn",
       "--show-interactive-dev-session=false",
     ],
     {
@@ -262,7 +276,8 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
   console.log(`DISTRIBUTED LOAD TEST: ${totalClients} workers → ${workerUrl}`);
   console.log(`  ${sseClients} SSE + ${longPollClients} long-poll across ${streamCount} streams`);
   console.log(`  reads:  ${coreUrl}`);
-  if (writeUrl && writeUrl !== coreUrl) console.log(`  writes: ${writerBaseUrl} (direct, bypasses CDN proxy)`);
+  if (writeUrl && writeUrl !== coreUrl)
+    console.log(`  writes: ${writerBaseUrl} (direct, bypasses CDN proxy)`);
   console.log(`  write every ${writeIntervalMs}ms, ${durationSec}s duration, msg ~${msgSize}B`);
   console.log(`  ramp-up: ${rampUpSec}s`);
   console.log(`${"═".repeat(70)}`);
@@ -283,8 +298,8 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
 
     process.stdout.write(
       `\r  [${elapsed}s / ${elapsed + remaining}s] ` +
-      `workers: ${completed}/${totalClients} done (${failed} failed) | ` +
-      `writes: ${writeMetrics.count} (${writeRps}/s, ${writeMetrics.errors} err)`,
+        `workers: ${completed}/${totalClients} done (${failed} failed) | ` +
+        `writes: ${writeMetrics.count} (${writeRps}/s, ${writeMetrics.errors} err)`,
     );
   }, 2000);
 
@@ -373,9 +388,7 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
   }
 
   // Aggregate latency (weighted average, take max of maxes)
-  const allLatencies = summaries
-    .filter((s) => s.eventsReceived > 0)
-    .map((s) => s.deliveryLatency);
+  const allLatencies = summaries.filter((s) => s.eventsReceived > 0).map((s) => s.deliveryLatency);
 
   let aggAvg = 0;
   let aggMax = 0;
@@ -384,7 +397,8 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
   let aggP99 = 0;
   if (allLatencies.length > 0) {
     const totalWithEvents = summaries.reduce(
-      (sum, s) => sum + (s.eventsReceived > 0 ? s.eventsReceived : 0), 0,
+      (sum, s) => sum + (s.eventsReceived > 0 ? s.eventsReceived : 0),
+      0,
     );
     for (const s of summaries) {
       if (s.eventsReceived === 0) continue;
@@ -404,7 +418,9 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
 
   console.log(`\n  CONFIG`);
   console.log(`    mode:           distributed (${workerUrl})`);
-  console.log(`    clients:        ${totalClients} (${sseClients} SSE + ${longPollClients} long-poll)`);
+  console.log(
+    `    clients:        ${totalClients} (${sseClients} SSE + ${longPollClients} long-poll)`,
+  );
   console.log(`    streams:        ${streamCount}`);
   console.log(`    clients/stream: ${Math.round(totalClients / streamCount)}`);
   console.log(`    write interval: ${writeIntervalMs}ms`);
@@ -418,7 +434,9 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
   console.log(`\n  WRITES (from orchestrator)`);
   console.log(`    count:  ${ws.count} (${ws.errors} errors)`);
   console.log(`    rps:    ${elapsedSec > 0 ? Math.round(ws.count / elapsedSec) : 0}`);
-  console.log(`    avg:    ${ws.avgMs}ms  p50: ${ws.p50Ms}ms  p90: ${ws.p90Ms}ms  p99: ${ws.p99Ms}ms  max: ${ws.maxMs}ms`);
+  console.log(
+    `    avg:    ${ws.avgMs}ms  p50: ${ws.p50Ms}ms  p90: ${ws.p90Ms}ms  p99: ${ws.p99Ms}ms  max: ${ws.maxMs}ms`,
+  );
 
   console.log(`\n  READERS (aggregated from ${summaries.length} workers)`);
   console.log(`    total events: ${totalEvents}`);
@@ -437,7 +455,9 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
 
   if (allLatencies.length > 0) {
     console.log(`\n  EVENT DELIVERY LATENCY (weighted across workers)`);
-    console.log(`    avg: ${Math.round(aggAvg)}ms  p50: ${Math.round(aggP50)}ms  p90: ${Math.round(aggP90)}ms  p99: ${Math.round(aggP99)}ms  max: ${aggMax}ms`);
+    console.log(
+      `    avg: ${Math.round(aggAvg)}ms  p50: ${Math.round(aggP50)}ms  p90: ${Math.round(aggP90)}ms  p99: ${Math.round(aggP99)}ms  max: ${aggMax}ms`,
+    );
   }
 
   console.log(`\n  CF-CACHE-STATUS (not production-representative — see note above)`);
@@ -467,7 +487,9 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
     const maxOffsets = Math.max(...offsetsPerWorker);
     const minOffsets = Math.min(...offsetsPerWorker);
     console.log(`\n  OFFSET DRIFT (H2 diagnostic)`);
-    console.log(`    unique offsets per worker: avg ${avgOffsets.toFixed(1)}, min ${minOffsets}, max ${maxOffsets}`);
+    console.log(
+      `    unique offsets per worker: avg ${avgOffsets.toFixed(1)}, min ${minOffsets}, max ${maxOffsets}`,
+    );
     console.log(`    (Higher values mean followers processed more write cycles.`);
     console.log(`     If workers on the same stream have very different counts,`);
     console.log(`     they are drifting apart in offset — fragmenting cache keys.)`);
@@ -520,7 +542,9 @@ async function runDistributed(coreUrl: string, writeUrl?: string) {
       const maxMiss = sorted[sorted.length - 1];
       console.log(`\n  MISSes PER OFFSET (across all ${summaries.length} workers)`);
       console.log(`    offsets with MISSes: ${missesPerOffset.length}/${offsetEntries.length}`);
-      console.log(`    MISSes per offset: avg ${avgMiss.toFixed(1)}, p50 ${p50}, p90 ${p90}, max ${maxMiss}`);
+      console.log(
+        `    MISSes per offset: avg ${avgMiss.toFixed(1)}, p50 ${p50}, p90 ${p90}, max ${maxMiss}`,
+      );
       console.log(`    (With perfect CDN coalescing, each offset should have exactly 1 MISS.`);
       console.log(`     Higher values indicate multi-PoP fragmentation or coalescing failure.)`);
     }
@@ -683,8 +707,12 @@ async function runLocal(coreUrl: string) {
 
   // ── Progress reporting ──────────────────────────────────────────────
   console.log(`\n${"═".repeat(70)}`);
-  console.log(`LOAD TEST: ${totalClients} clients (${sseClients} SSE + ${longPollClients} long-poll)`);
-  console.log(`           ${streamCount} streams, write every ${writeIntervalMs}ms, ${durationSec}s duration`);
+  console.log(
+    `LOAD TEST: ${totalClients} clients (${sseClients} SSE + ${longPollClients} long-poll)`,
+  );
+  console.log(
+    `           ${streamCount} streams, write every ${writeIntervalMs}ms, ${durationSec}s duration`,
+  );
   console.log(`           msg size ~${msgSize}B, ramp-up ${rampUpSec}s`);
   console.log(`${"═".repeat(70)}\n`);
 
@@ -696,11 +724,11 @@ async function runLocal(coreUrl: string) {
 
     process.stdout.write(
       `\r  [${elapsed}s / ${elapsed + remaining}s] ` +
-      `conns: ${activeConnections} | ` +
-      `writes: ${writeMetrics.count} (${writeRps}/s, ${writeMetrics.errors} err) | ` +
-      `events rx: ${eventsReceived} (${evtRate}/s) | ` +
-      `sse batches: ${sseMetrics.count} | ` +
-      `lp batches: ${longPollMetrics.count}`,
+        `conns: ${activeConnections} | ` +
+        `writes: ${writeMetrics.count} (${writeRps}/s, ${writeMetrics.errors} err) | ` +
+        `events rx: ${eventsReceived} (${evtRate}/s) | ` +
+        `sse batches: ${sseMetrics.count} | ` +
+        `lp batches: ${longPollMetrics.count}`,
     );
   }, 2000);
 
@@ -721,7 +749,9 @@ async function runLocal(coreUrl: string) {
   console.log("═".repeat(70));
 
   console.log(`\n  CONFIG`);
-  console.log(`    clients:        ${totalClients} (${sseClients} SSE + ${longPollClients} long-poll)`);
+  console.log(
+    `    clients:        ${totalClients} (${sseClients} SSE + ${longPollClients} long-poll)`,
+  );
   console.log(`    streams:        ${streamCount}`);
   console.log(`    clients/stream: ${Math.round(totalClients / streamCount)}`);
   console.log(`    write interval: ${writeIntervalMs}ms`);
@@ -731,7 +761,9 @@ async function runLocal(coreUrl: string) {
   console.log(`\n  WRITES`);
   console.log(`    count:  ${ws.count} (${ws.errors} errors)`);
   console.log(`    rps:    ${elapsedSec > 0 ? Math.round(ws.count / elapsedSec) : 0}`);
-  console.log(`    avg:    ${ws.avgMs}ms  p50: ${ws.p50Ms}ms  p90: ${ws.p90Ms}ms  p99: ${ws.p99Ms}ms  max: ${ws.maxMs}ms`);
+  console.log(
+    `    avg:    ${ws.avgMs}ms  p50: ${ws.p50Ms}ms  p90: ${ws.p90Ms}ms  p99: ${ws.p99Ms}ms  max: ${ws.maxMs}ms`,
+  );
 
   if (sseClients > 0) {
     const ss = summarize(sseMetrics);
@@ -749,7 +781,9 @@ async function runLocal(coreUrl: string) {
   console.log(`    total events received: ${eventsReceived}`);
   if (deliveryStats.count > 0) {
     const ds = summarizeDelivery(deliveryStats);
-    console.log(`    latency: avg ${ds.avgMs}ms  p50: ${ds.p50Ms}ms  p90: ${ds.p90Ms}ms  p99: ${ds.p99Ms}ms  max: ${ds.maxMs}ms`);
+    console.log(
+      `    latency: avg ${ds.avgMs}ms  p50: ${ds.p50Ms}ms  p90: ${ds.p90Ms}ms  p99: ${ds.p99Ms}ms  max: ${ds.maxMs}ms`,
+    );
   }
 
   console.log(`\n  CF-CACHE-STATUS`);

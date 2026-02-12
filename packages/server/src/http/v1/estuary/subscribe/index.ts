@@ -2,10 +2,7 @@ import type { BaseEnv } from "../../../router";
 import type { StreamDO } from "../../streams";
 import type { StreamSubscribersDO, EstuaryDO } from "../index";
 import type { SubscribeResult } from "../types";
-import {
-  isValidEstuaryId,
-  DEFAULT_ESTUARY_TTL_SECONDS,
-} from "../../../../constants";
+import { isValidEstuaryId, DEFAULT_ESTUARY_TTL_SECONDS } from "../../../../constants";
 import { createMetrics } from "../../../../metrics";
 import { putStreamMetadata } from "../../../../storage/registry";
 import { logError } from "../../../../log";
@@ -31,7 +28,7 @@ export interface SubscribeOptions {
  */
 export async function subscribeToStream(
   env: BaseEnv,
-  opts: SubscribeOptions
+  opts: SubscribeOptions,
 ): Promise<SubscribeResult> {
   const { projectId, streamId, estuaryId } = opts;
   const start = Date.now();
@@ -43,9 +40,7 @@ export async function subscribeToStream(
   }
 
   // 2. Parse TTL
-  const parsed = env.ESTUARY_TTL_SECONDS
-    ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10)
-    : undefined;
+  const parsed = env.ESTUARY_TTL_SECONDS ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10) : undefined;
   const ttlSeconds =
     parsed !== undefined && Number.isFinite(parsed) && parsed > 0
       ? parsed
@@ -55,7 +50,7 @@ export async function subscribeToStream(
   // 3. Check source stream exists and get content type
   const sourceDoKey = `${projectId}/${streamId}`;
   const sourceStub = env.STREAMS.get(
-    env.STREAMS.idFromName(sourceDoKey)
+    env.STREAMS.idFromName(sourceDoKey),
   ) as DurableObjectStub<StreamDO>;
   const sourceMeta = await sourceStub.getStreamMeta(streamId);
   if (!sourceMeta) {
@@ -66,7 +61,7 @@ export async function subscribeToStream(
   // 4. Create/touch estuary stream with same content type
   const estuaryDoKey = `${projectId}/${estuaryId}`;
   const estuaryStreamStub = env.STREAMS.get(
-    env.STREAMS.idFromName(estuaryDoKey)
+    env.STREAMS.idFromName(estuaryDoKey),
   ) as DurableObjectStub<StreamDO>;
 
   const putRequest = new Request(`https://do/v1/stream/${estuaryDoKey}`, {
@@ -74,10 +69,7 @@ export async function subscribeToStream(
     headers: { "Content-Type": contentType },
     body: JSON.stringify({ expiresAt }),
   });
-  const putResponse = await estuaryStreamStub.routeStreamRequest(
-    estuaryDoKey,
-    putRequest
-  );
+  const putResponse = await estuaryStreamStub.routeStreamRequest(estuaryDoKey, putRequest);
 
   const isNewEstuary = putResponse.status === 201;
 
@@ -94,14 +86,14 @@ export async function subscribeToStream(
     const estuaryMeta = await estuaryStreamStub.getStreamMeta(estuaryId);
     if (estuaryMeta && estuaryMeta.content_type !== contentType) {
       throw new Error(
-        `Content type mismatch: estuary stream is ${estuaryMeta.content_type} but source stream ${streamId} is ${contentType}. An estuary can only subscribe to streams of the same content type.`
+        `Content type mismatch: estuary stream is ${estuaryMeta.content_type} but source stream ${streamId} is ${contentType}. An estuary can only subscribe to streams of the same content type.`,
       );
     }
   }
 
   // 7. Add subscription to StreamSubscribersDO
   const subStub = env.SUBSCRIPTION_DO.get(
-    env.SUBSCRIPTION_DO.idFromName(sourceDoKey)
+    env.SUBSCRIPTION_DO.idFromName(sourceDoKey),
   ) as DurableObjectStub<StreamSubscribersDO>;
   try {
     await subStub.addSubscriber(estuaryId);
@@ -109,16 +101,15 @@ export async function subscribeToStream(
     // Rollback estuary if we just created it
     if (isNewEstuary) {
       try {
-        const deleteRequest = new Request(
-          `https://do/v1/stream/${estuaryDoKey}`,
-          { method: "DELETE" }
-        );
+        const deleteRequest = new Request(`https://do/v1/stream/${estuaryDoKey}`, {
+          method: "DELETE",
+        });
         await estuaryStreamStub.routeStreamRequest(estuaryDoKey, deleteRequest);
       } catch (rollbackErr) {
         logError(
           { projectId, streamId, estuaryId, component: "subscribe-rollback" },
           "failed to rollback estuary stream",
-          rollbackErr
+          rollbackErr,
         );
       }
     }
@@ -127,7 +118,7 @@ export async function subscribeToStream(
 
   // 8. Track subscription on EstuaryDO and set expiry
   const estuaryDOStub = env.ESTUARY_DO.get(
-    env.ESTUARY_DO.idFromName(estuaryDoKey)
+    env.ESTUARY_DO.idFromName(estuaryDoKey),
   ) as DurableObjectStub<EstuaryDO>;
   await estuaryDOStub.addSubscription(streamId);
   await estuaryDOStub.setExpiry(projectId, estuaryId, ttlSeconds);

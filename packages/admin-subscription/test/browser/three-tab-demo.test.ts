@@ -25,9 +25,7 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
 }) => {
   // ── Tab 1: open session detail page ──
   const tab1 = await browser.newPage();
-  await tab1.goto(
-    `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
-  );
+  await tab1.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
 
   // Wait for SSE to connect
   await expect(tab1.getByText("connected", { exact: true })).toBeVisible({
@@ -83,14 +81,10 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
   const logArea = tab1.locator('[class*="bg-zinc-800"]');
 
   // Wait for the message from Tab 2 (publisher A)
-  await expect(
-    logArea.filter({ hasText: "tab2" }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(logArea.filter({ hasText: "tab2" }).first()).toBeVisible({ timeout: 15_000 });
 
   // Wait for the message from Tab 3 (publisher B)
-  await expect(
-    logArea.filter({ hasText: "tab3" }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(logArea.filter({ hasText: "tab3" }).first()).toBeVisible({ timeout: 15_000 });
 
   // Verify both data badges are present (not just control events)
   const dataEntries = logArea.filter({ hasText: "data" });
@@ -107,13 +101,9 @@ test("Tab 1 subscribes to two streams, Tabs 2+3 publish, Tab 1 sees both events"
   await tab3.close();
 });
 
-test("Tab 1 SSE stays connected while other tabs publish", async ({
-  browser,
-}) => {
+test("Tab 1 SSE stays connected while other tabs publish", async ({ browser }) => {
   const tab1 = await browser.newPage();
-  await tab1.goto(
-    `${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`,
-  );
+  await tab1.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/sessions/${sessionId}`);
 
   // SSE should be connected (session was subscribed in previous test)
   await expect(tab1.getByText("connected", { exact: true })).toBeVisible({

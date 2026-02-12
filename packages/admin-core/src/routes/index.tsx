@@ -3,14 +3,7 @@ import { useStats, useStreams, useHotStreams, useTimeseries } from "../lib/queri
 import { formatRate, formatBytes, relTime } from "../lib/formatters";
 import { parseDoKey } from "../lib/analytics";
 import type { AnalyticsRow } from "../types";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export const Route = createFileRoute("/")({
   component: OverviewPage,
@@ -68,9 +61,7 @@ function OverviewPage() {
 
       {/* Timeseries chart */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h3 className="mb-3 text-sm font-medium text-zinc-400">
-          Throughput (last hour)
-        </h3>
+        <h3 className="mb-3 text-sm font-medium text-zinc-400">Throughput (last hour)</h3>
         {timeseriesLoading ? (
           <div className="h-[180px] animate-pulse rounded bg-zinc-800" />
         ) : chartData.length > 0 ? (
@@ -216,20 +207,10 @@ function OverviewPage() {
 
 // --- Shared sub-components ---
 
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string | null;
-  color: string;
-}) {
+function StatCard({ label, value, color }: { label: string; value: string | null; color: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</div>
       {value === null ? (
         <div className="h-8 w-20 animate-pulse rounded bg-zinc-800" />
       ) : (
@@ -248,26 +229,15 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>
-  );
+  return <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>;
 }
 
-function EmptyRow({
-  colSpan,
-  message,
-}: {
-  colSpan: number;
-  message: string;
-}) {
+function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
     <table className="w-full">
       <tbody>
         <tr>
-          <td
-            colSpan={colSpan}
-            className="px-4 py-6 text-center text-sm text-zinc-500"
-          >
+          <td colSpan={colSpan} className="px-4 py-6 text-center text-sm text-zinc-500">
             {message}
           </td>
         </tr>
@@ -282,10 +252,7 @@ function TableSkeleton({ rows, cols }: { rows: number; cols: number }) {
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4">
           {Array.from({ length: cols }).map((_, j) => (
-            <div
-              key={j}
-              className="h-4 flex-1 animate-pulse rounded bg-zinc-800"
-            />
+            <div key={j} className="h-4 flex-1 animate-pulse rounded bg-zinc-800" />
           ))}
         </div>
       ))}

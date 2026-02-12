@@ -34,7 +34,9 @@ export const Route = createFileRoute("/api/projects")({
             await core.registerProject(projectId, secret, { corsOrigins: ["*"] });
           } catch (err) {
             return new Response(
-              JSON.stringify({ error: err instanceof Error ? err.message : "Failed to create project" }),
+              JSON.stringify({
+                error: err instanceof Error ? err.message : "Failed to create project",
+              }),
               {
                 status: 500,
                 headers: { "Content-Type": "application/json" },
@@ -42,13 +44,10 @@ export const Route = createFileRoute("/api/projects")({
             );
           }
 
-          return new Response(
-            JSON.stringify({ ok: true, signingSecret: secret }),
-            {
-              status: 201,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
+          return new Response(JSON.stringify({ ok: true, signingSecret: secret }), {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          });
         },
       }),
   },

@@ -59,11 +59,7 @@ export class EstuaryDoStorage implements EstuaryStorage {
     project: string;
     estuary_id: string;
   } | null> {
-    const result = await this.db
-      .select()
-      .from(estuaryInfo)
-      .where(eq(estuaryInfo.id, 1))
-      .limit(1);
+    const result = await this.db.select().from(estuaryInfo).where(eq(estuaryInfo.id, 1)).limit(1);
 
     if (result.length === 0) return null;
 
@@ -88,9 +84,7 @@ export class EstuaryDoStorage implements EstuaryStorage {
   }
 
   async removeSubscription(streamId: string): Promise<void> {
-    await this.db
-      .delete(subscriptions)
-      .where(eq(subscriptions.stream_id, streamId));
+    await this.db.delete(subscriptions).where(eq(subscriptions.stream_id, streamId));
   }
 
   async getSubscriptions(): Promise<string[]> {

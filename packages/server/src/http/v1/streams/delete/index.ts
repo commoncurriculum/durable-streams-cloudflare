@@ -3,10 +3,7 @@ import { errorResponse } from "../../../shared/errors";
 import { logWarn } from "../../../../log";
 import { deleteStreamEntry } from "../../../../storage/registry";
 import type { StreamContext } from "../types";
-import {
-  closeAllSseClients,
-  closeAllWebSockets,
-} from "../realtime/handlers";
+import { closeAllSseClients, closeAllWebSockets } from "../realtime/handlers";
 
 // #region docs-handle-delete
 export async function handleDelete(ctx: StreamContext, streamId: string): Promise<Response> {
@@ -27,32 +24,44 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     if (ctx.env.R2 && segments.length > 0) {
       const r2 = ctx.env.R2;
       ctx.state.waitUntil(
-        Promise.allSettled(segments.map(async (segment) => {
-          try {
-            await r2.delete(segment.r2_key);
-          } catch (e) {
-            logWarn({ streamId, r2Key: segment.r2_key, component: "r2-cleanup" }, "R2 segment deletion failed", e);
-          }
-        })),
+        Promise.allSettled(
+          segments.map(async (segment) => {
+            try {
+              await r2.delete(segment.r2_key);
+            } catch (e) {
+              logWarn(
+                { streamId, r2Key: segment.r2_key, component: "r2-cleanup" },
+                "R2 segment deletion failed",
+                e,
+              );
+            }
+          }),
+        ),
       );
     }
 
     // FIX-014: KV metadata cleanup with retry (max 3 attempts, backoff)
     if (ctx.env.REGISTRY) {
-      ctx.state.waitUntil((async () => {
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            await deleteStreamEntry(ctx.env.REGISTRY!, streamId);
-            return;
-          } catch (e) {
-            if (attempt === 3) {
-              logWarn({ streamId, attempt, component: "kv-cleanup" }, "KV delete failed after retries on stream deletion", e);
-            } else {
-              await new Promise(r => setTimeout(r, attempt * 100));
+      ctx.state.waitUntil(
+        (async () => {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await deleteStreamEntry(ctx.env.REGISTRY!, streamId);
+              return;
+            } catch (e) {
+              if (attempt === 3) {
+                logWarn(
+                  { streamId, attempt, component: "kv-cleanup" },
+                  "KV delete failed after retries on stream deletion",
+                  e,
+                );
+              } else {
+                await new Promise((r) => setTimeout(r, attempt * 100));
+              }
             }
           }
-        }
-      })());
+        })(),
+      );
     }
 
     // Record metrics for stream deletion

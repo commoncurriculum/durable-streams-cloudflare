@@ -1,8 +1,5 @@
 import type { BaseEnv } from "../../../router";
-import {
-  FANOUT_BATCH_SIZE,
-  FANOUT_RPC_TIMEOUT_MS,
-} from "../../../../constants";
+import { FANOUT_BATCH_SIZE, FANOUT_RPC_TIMEOUT_MS } from "../../../../constants";
 import { logWarn } from "../../../../log";
 
 export interface FanoutResult {
@@ -43,7 +40,7 @@ export async function fanoutToSubscribers(
     producerEpoch: string;
     producerSeq: string;
   },
-  rpcTimeoutMs: number = FANOUT_RPC_TIMEOUT_MS
+  rpcTimeoutMs: number = FANOUT_RPC_TIMEOUT_MS,
 ): Promise<FanoutResult> {
   let successes = 0;
   let failures = 0;
@@ -73,11 +70,8 @@ export async function fanoutToSubscribers(
           body: payload.slice(0),
         });
 
-        return withTimeout(
-          stub.routeStreamRequest(doKey, request),
-          rpcTimeoutMs
-        );
-      })
+        return withTimeout(stub.routeStreamRequest(doKey, request), rpcTimeoutMs);
+      }),
     );
     results.push(...batchResults);
   }
@@ -100,17 +94,13 @@ export async function fanoutToSubscribers(
             component: "fanout",
             status: response.status,
           },
-          "fanout RPC failed"
+          "fanout RPC failed",
         );
         failures++;
       }
     } else {
       const error = result.reason;
-      logWarn(
-        { estuaryId: estuaryIds[i], component: "fanout" },
-        "fanout RPC rejected",
-        error
-      );
+      logWarn({ estuaryId: estuaryIds[i], component: "fanout" }, "fanout RPC rejected", error);
       failures++;
     }
   }

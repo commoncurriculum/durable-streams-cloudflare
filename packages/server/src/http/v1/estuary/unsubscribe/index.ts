@@ -23,7 +23,7 @@ export interface UnsubscribeOptions {
  */
 export async function unsubscribeFromStream(
   env: BaseEnv,
-  opts: UnsubscribeOptions
+  opts: UnsubscribeOptions,
 ): Promise<UnsubscribeResult> {
   const { projectId, streamId, estuaryId } = opts;
   const start = Date.now();
@@ -37,14 +37,14 @@ export async function unsubscribeFromStream(
   // 2. Remove subscription from StreamSubscribersDO
   const sourceDoKey = `${projectId}/${streamId}`;
   const subStub = env.SUBSCRIPTION_DO.get(
-    env.SUBSCRIPTION_DO.idFromName(sourceDoKey)
+    env.SUBSCRIPTION_DO.idFromName(sourceDoKey),
   ) as DurableObjectStub<StreamSubscribersDO>;
   await subStub.removeSubscriber(estuaryId);
 
   // 3. Remove subscription tracking from EstuaryDO
   const estuaryDoKey = `${projectId}/${estuaryId}`;
   const estuaryDOStub = env.ESTUARY_DO.get(
-    env.ESTUARY_DO.idFromName(estuaryDoKey)
+    env.ESTUARY_DO.idFromName(estuaryDoKey),
   ) as DurableObjectStub<EstuaryDO>;
   await estuaryDOStub.removeSubscription(streamId);
 

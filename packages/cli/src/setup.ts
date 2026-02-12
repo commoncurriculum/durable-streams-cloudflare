@@ -20,12 +20,16 @@ function run(cmd: string, opts?: { input?: string }): string {
       input: opts?.input,
     }).trim();
   } catch (e: unknown) {
-    const msg = e instanceof Error ? (e as Error & { stderr?: string }).stderr ?? e.message : String(e);
+    const msg =
+      e instanceof Error ? ((e as Error & { stderr?: string }).stderr ?? e.message) : String(e);
     throw new Error(`Command failed: ${cmd}\n${msg}`);
   }
 }
 
-function runMayFail(cmd: string, opts?: { input?: string }): { ok: boolean; stdout: string; stderr: string } {
+function runMayFail(
+  cmd: string,
+  opts?: { input?: string },
+): { ok: boolean; stdout: string; stderr: string } {
   const result = spawnSync(cmd, {
     encoding: "utf-8",
     stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
@@ -119,9 +123,7 @@ function subscriptionWorkerTs(): string {
   return `export { default, SubscriptionDO, SessionDO } from "@durable-streams-cloudflare/subscription";\n`;
 }
 
-function subscriptionWranglerToml(opts: {
-  kvNamespaceId: string;
-}): string {
+function subscriptionWranglerToml(opts: { kvNamespaceId: string }): string {
   return `name = "${WORKER_SUBSCRIPTION}"
 main = "src/worker.ts"
 compatibility_date = "2025-02-02"
@@ -244,14 +246,21 @@ function rootPackageJson(opts: { components: string[] }): string {
     build: "pnpm -r --if-present run build",
     deploy: "pnpm -r run deploy",
   };
-  if (opts.components.includes("core")) scripts["deploy:streams"] = "pnpm --filter streams run deploy";
-  if (opts.components.includes("subscription")) scripts["deploy:subscriptions"] = "pnpm --filter subscriptions run deploy";
-  if (opts.components.includes("admin-core")) scripts["deploy:admin-core"] = "pnpm --filter admin-core run deploy";
-  if (opts.components.includes("admin-subscription")) scripts["deploy:admin-subscription"] = "pnpm --filter admin-subscription run deploy";
+  if (opts.components.includes("core"))
+    scripts["deploy:streams"] = "pnpm --filter streams run deploy";
+  if (opts.components.includes("subscription"))
+    scripts["deploy:subscriptions"] = "pnpm --filter subscriptions run deploy";
+  if (opts.components.includes("admin-core"))
+    scripts["deploy:admin-core"] = "pnpm --filter admin-core run deploy";
+  if (opts.components.includes("admin-subscription"))
+    scripts["deploy:admin-subscription"] = "pnpm --filter admin-subscription run deploy";
 
   const deps: Record<string, string> = {};
-  if (opts.components.includes("core")) deps["@durable-streams-cloudflare/core"] = `github:${GITHUB_REPO}#path:packages/core`;
-  if (opts.components.includes("subscription")) deps["@durable-streams-cloudflare/subscription"] = `github:${GITHUB_REPO}#path:packages/subscription`;
+  if (opts.components.includes("core"))
+    deps["@durable-streams-cloudflare/core"] = `github:${GITHUB_REPO}#path:packages/core`;
+  if (opts.components.includes("subscription"))
+    deps["@durable-streams-cloudflare/subscription"] =
+      `github:${GITHUB_REPO}#path:packages/subscription`;
 
   const pkg: Record<string, unknown> = {
     private: true,
@@ -276,10 +285,7 @@ onlyBuiltDependencies:
 `;
 }
 
-function workerPackageJson(opts: {
-  name: string;
-  dependency: string;
-}): string {
+function workerPackageJson(opts: { name: string; dependency: string }): string {
   const pkgName = opts.dependency.split("/").pop()!;
   const pkg: Record<string, unknown> = {
     private: true,
@@ -313,7 +319,9 @@ function adminPackageJson(opts: { name: string }): string {
 
 function putSecret(name: string, value: string, configPath: string, wrangler: string) {
   // wrangler secret put reads from stdin
-  const result = runMayFail(`${wrangler} secret put ${name} --config ${configPath}`, { input: value });
+  const result = runMayFail(`${wrangler} secret put ${name} --config ${configPath}`, {
+    input: value,
+  });
   if (!result.ok) {
     p.log.warning(`  Failed to set ${name}: ${result.stderr}`);
   }
@@ -349,8 +357,8 @@ export async function setup() {
     preflightSpinner.stop("wrangler not found");
     p.log.error(
       "wrangler is required but was not found.\n" +
-      "Install it with: npm install -g wrangler\n" +
-      "Then run this setup again."
+        "Install it with: npm install -g wrangler\n" +
+        "Then run this setup again.",
     );
     process.exit(1);
   }
@@ -360,10 +368,7 @@ export async function setup() {
   const whoami = runMayFail(`${wranglerCmd} whoami`);
   if (!whoami.ok) {
     preflightSpinner.stop("Not logged in to Cloudflare");
-    p.log.error(
-      "You must be logged in to Cloudflare.\n" +
-      `Run: ${wranglerCmd} login`
-    );
+    p.log.error("You must be logged in to Cloudflare.\n" + `Run: ${wranglerCmd} login`);
     process.exit(1);
   }
 
@@ -397,7 +402,7 @@ export async function setup() {
     const dirName = await p.text({
       message: "Directory name:",
       placeholder: "my-streams-project",
-      validate: (v) => v.length === 0 ? "Directory name is required" : undefined,
+      validate: (v) => (v.length === 0 ? "Directory name is required" : undefined),
     });
     if (p.isCancel(dirName)) cancelled();
     projectDir = join(process.cwd(), dirName);
@@ -427,15 +432,15 @@ export async function setup() {
   if (includeAdminCore || includeAdminSubscription) {
     p.log.info(
       "An API token is needed for Analytics Engine access.\n" +
-      "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
-      "  2. Click \"Create Token\"\n" +
-      '  3. Use the "Read analytics and logs" template\n' +
-      "  4. Click \"Continue to summary\" > \"Create Token\"\n" +
-      "  5. Copy the token"
+        "  1. Go to https://dash.cloudflare.com/profile/api-tokens\n" +
+        '  2. Click "Create Token"\n' +
+        '  3. Use the "Read analytics and logs" template\n' +
+        '  4. Click "Continue to summary" > "Create Token"\n' +
+        "  5. Copy the token",
     );
     const input = await p.text({
       message: "Paste your API token:",
-      validate: (v) => v.length === 0 ? "API token is required" : undefined,
+      validate: (v) => (v.length === 0 ? "API token is required" : undefined),
     });
     if (p.isCancel(input)) cancelled();
     cfApiToken = input;
@@ -446,7 +451,7 @@ export async function setup() {
     const input = await p.text({
       message: "Cloudflare Account ID:",
       placeholder: "Couldn't auto-detect — find it in the CF dashboard",
-      validate: (v) => v.length === 0 ? "Account ID is required" : undefined,
+      validate: (v) => (v.length === 0 ? "Account ID is required" : undefined),
     });
     if (p.isCancel(input)) cancelled();
     accountId = input;
@@ -457,18 +462,20 @@ export async function setup() {
   if (includeCore) workerNames.push(`  ${WORKER_CORE.padEnd(38)} (core)`);
   if (includeSubscription) workerNames.push(`  ${WORKER_SUBSCRIPTION.padEnd(38)} (subscription)`);
   if (includeAdminCore) workerNames.push(`  ${WORKER_ADMIN_CORE.padEnd(38)} (admin)`);
-  if (includeAdminSubscription) workerNames.push(`  ${WORKER_ADMIN_SUBSCRIPTION.padEnd(38)} (admin)`);
+  if (includeAdminSubscription)
+    workerNames.push(`  ${WORKER_ADMIN_SUBSCRIPTION.padEnd(38)} (admin)`);
 
   p.note(
     `Directory: ${projectDir}\n\n` +
-    "Workers to deploy:\n" +
-    workerNames.join("\n") + "\n\n" +
-    "This will:\n" +
-    "  - Create an R2 bucket and KV namespace on Cloudflare\n" +
-    "  - Set up a pnpm workspace with workers/ packages\n" +
-    "  - Install dependencies\n" +
-    "  - Deploy all workers above",
-    "Ready to go"
+      "Workers to deploy:\n" +
+      workerNames.join("\n") +
+      "\n\n" +
+      "This will:\n" +
+      "  - Create an R2 bucket and KV namespace on Cloudflare\n" +
+      "  - Set up a pnpm workspace with workers/ packages\n" +
+      "  - Install dependencies\n" +
+      "  - Deploy all workers above",
+    "Ready to go",
   );
   const confirmed = await p.confirm({
     message: "Proceed?",
@@ -531,7 +538,7 @@ export async function setup() {
     const input = await p.text({
       message: `${KV_BINDING} KV namespace ID:`,
       placeholder: "Paste from CF dashboard or `wrangler kv namespace list`",
-      validate: (v) => v.length === 0 ? "Namespace ID is required" : undefined,
+      validate: (v) => (v.length === 0 ? "Namespace ID is required" : undefined),
     });
     if (p.isCancel(input)) cancelled();
     kvNamespaceId = input;
@@ -562,17 +569,35 @@ export async function setup() {
   // Core
   if (includeCore) {
     filesToWrite.push(
-      { path: join(workersDir, "streams", "package.json"), content: workerPackageJson({ name: "streams", dependency: "@durable-streams-cloudflare/core" }) },
+      {
+        path: join(workersDir, "streams", "package.json"),
+        content: workerPackageJson({
+          name: "streams",
+          dependency: "@durable-streams-cloudflare/core",
+        }),
+      },
       { path: join(workersDir, "streams", "src", "worker.ts"), content: coreWorkerTs() },
-      { path: join(workersDir, "streams", "wrangler.toml"), content: coreWranglerToml({ kvNamespaceId }) },
+      {
+        path: join(workersDir, "streams", "wrangler.toml"),
+        content: coreWranglerToml({ kvNamespaceId }),
+      },
     );
   }
 
   // Subscription
   if (includeSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "subscriptions", "package.json"), content: workerPackageJson({ name: "subscriptions", dependency: "@durable-streams-cloudflare/subscription" }) },
-      { path: join(workersDir, "subscriptions", "src", "worker.ts"), content: subscriptionWorkerTs() },
+      {
+        path: join(workersDir, "subscriptions", "package.json"),
+        content: workerPackageJson({
+          name: "subscriptions",
+          dependency: "@durable-streams-cloudflare/subscription",
+        }),
+      },
+      {
+        path: join(workersDir, "subscriptions", "src", "worker.ts"),
+        content: subscriptionWorkerTs(),
+      },
       {
         path: join(workersDir, "subscriptions", "wrangler.toml"),
         content: subscriptionWranglerToml({ kvNamespaceId }),
@@ -583,16 +608,28 @@ export async function setup() {
   // Admin core — wrangler.toml + package.json (built from upstream during deploy)
   if (includeAdminCore) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-core", "package.json"), content: adminPackageJson({ name: "admin-core" }) },
-      { path: join(workersDir, "admin-core", "wrangler.toml"), content: adminCoreWranglerToml({ kvNamespaceId }) },
+      {
+        path: join(workersDir, "admin-core", "package.json"),
+        content: adminPackageJson({ name: "admin-core" }),
+      },
+      {
+        path: join(workersDir, "admin-core", "wrangler.toml"),
+        content: adminCoreWranglerToml({ kvNamespaceId }),
+      },
     );
   }
 
   // Admin subscription — wrangler.toml + package.json (built from upstream during deploy)
   if (includeAdminSubscription) {
     filesToWrite.push(
-      { path: join(workersDir, "admin-subscription", "package.json"), content: adminPackageJson({ name: "admin-subscription" }) },
-      { path: join(workersDir, "admin-subscription", "wrangler.toml"), content: adminSubscriptionWranglerToml({ kvNamespaceId }) },
+      {
+        path: join(workersDir, "admin-subscription", "package.json"),
+        content: adminPackageJson({ name: "admin-subscription" }),
+      },
+      {
+        path: join(workersDir, "admin-subscription", "wrangler.toml"),
+        content: adminSubscriptionWranglerToml({ kvNamespaceId }),
+      },
     );
   }
 
@@ -654,7 +691,8 @@ export async function setup() {
       process.exit(1);
     }
 
-    const coreUrl = parseDeployedUrl(coreDeploy.stdout) ?? parseDeployedUrl(coreDeploy.stderr) ?? "";
+    const coreUrl =
+      parseDeployedUrl(coreDeploy.stdout) ?? parseDeployedUrl(coreDeploy.stderr) ?? "";
     if (coreUrl) {
       deployedUrls.core = coreUrl;
       coreSpinner.stop(`Core deployed: ${coreUrl}`);
@@ -703,7 +741,8 @@ export async function setup() {
       process.exit(1);
     }
 
-    const adminUrl = parseDeployedUrl(adminDeploy.stdout) ?? parseDeployedUrl(adminDeploy.stderr) ?? "";
+    const adminUrl =
+      parseDeployedUrl(adminDeploy.stdout) ?? parseDeployedUrl(adminDeploy.stderr) ?? "";
     if (adminUrl) {
       deployedUrls.adminCore = adminUrl;
       adminSpinner.stop(`Admin-core deployed: ${adminUrl}`);
@@ -759,7 +798,8 @@ export async function setup() {
         placeholder: "my-app",
         validate: (v) => {
           if (v.length === 0) return "Project name is required";
-          if (!/^[a-zA-Z0-9_-]+$/.test(v)) return "Only alphanumeric, hyphens, and underscores allowed";
+          if (!/^[a-zA-Z0-9_-]+$/.test(v))
+            return "Only alphanumeric, hyphens, and underscores allowed";
           return undefined;
         },
       });
@@ -784,12 +824,12 @@ export async function setup() {
         kvSpinner2.stop("Project created");
         p.note(
           `Project:        ${projectName}\n` +
-          `Signing Secret: ${signingSecret}\n\n` +
-          "Save this signing secret — it won't be shown again!\n\n" +
-          "Mint a JWT with these claims:\n" +
-          `  { "sub": "${projectName}", "scope": "write", "exp": <unix-timestamp> }\n\n` +
-          "Sign with HMAC-SHA256 using the signing secret above.",
-          `Project: ${projectName}`
+            `Signing Secret: ${signingSecret}\n\n` +
+            "Save this signing secret — it won't be shown again!\n\n" +
+            "Mint a JWT with these claims:\n" +
+            `  { "sub": "${projectName}", "scope": "write", "exp": <unix-timestamp> }\n\n` +
+            "Sign with HMAC-SHA256 using the signing secret above.",
+          `Project: ${projectName}`,
         );
       }
     }
@@ -809,19 +849,19 @@ export async function setup() {
 
     p.note(
       "Your admin dashboards have no built-in auth.\n" +
-      "Set up Cloudflare Zero Trust to protect them:\n\n" +
-      "  1. Go to https://one.dash.cloudflare.com\n" +
-      "  2. Access > Applications > Add an application\n" +
-      "  3. Choose \"Self-hosted\"\n" +
-      "  4. Application domain: " + adminDomains[0] + "\n" +
-      "  5. Add a policy (e.g., allow your email domain)\n" +
-      (adminDomains.length > 1
-        ? `  6. Repeat for: ${adminDomains[1]}\n`
-        : "") +
-      "\n" +
-      "Docs: https://developers.cloudflare.com/cloudflare-one/\n" +
-      "      applications/configure-apps/self-hosted-apps/",
-      "Protect admin dashboards"
+        "Set up Cloudflare Zero Trust to protect them:\n\n" +
+        "  1. Go to https://one.dash.cloudflare.com\n" +
+        "  2. Access > Applications > Add an application\n" +
+        '  3. Choose "Self-hosted"\n' +
+        "  4. Application domain: " +
+        adminDomains[0] +
+        "\n" +
+        "  5. Add a policy (e.g., allow your email domain)\n" +
+        (adminDomains.length > 1 ? `  6. Repeat for: ${adminDomains[1]}\n` : "") +
+        "\n" +
+        "Docs: https://developers.cloudflare.com/cloudflare-one/\n" +
+        "      applications/configure-apps/self-hosted-apps/",
+      "Protect admin dashboards",
     );
 
     const ztDone = await p.confirm({
@@ -855,7 +895,11 @@ export async function setup() {
     // Create .gitignore
     const gitignorePath = join(projectDir, ".gitignore");
     if (!existsSync(gitignorePath)) {
-      writeFile(gitignorePath, "node_modules/\ndist/\n.wrangler/\n.npmrc\nworkers/admin-*/src\n.DS_Store\n.claude/settings.local.json\n", true);
+      writeFile(
+        gitignorePath,
+        "node_modules/\ndist/\n.wrangler/\n.npmrc\nworkers/admin-*/src\n.DS_Store\n.claude/settings.local.json\n",
+        true,
+      );
       p.log.info("  Created .gitignore");
     }
 
@@ -899,7 +943,7 @@ export async function setup() {
           message: "GitHub repo name:",
           placeholder: defaultName,
           defaultValue: defaultName,
-          validate: (v) => v.length === 0 ? "Repo name is required" : undefined,
+          validate: (v) => (v.length === 0 ? "Repo name is required" : undefined),
         });
         if (p.isCancel(repoName)) cancelled();
 
@@ -936,7 +980,7 @@ export async function setup() {
     } else {
       p.log.info(
         "Install the GitHub CLI (gh) to create a repo from here,\n" +
-        "or push manually: git remote add origin <url> && git push -u origin main"
+          "or push manually: git remote add origin <url> && git push -u origin main",
       );
     }
   }
@@ -953,14 +997,17 @@ export async function setup() {
 
     p.note(
       "Connect your repo to Cloudflare for automatic deploys on push:\n\n" +
-      deployedWorkerNames.map((name, i) =>
-        `  ${i === 0 ? "For" : "Repeat for"} "${name}":\n` +
-        "    1. Go to https://dash.cloudflare.com > Workers & Pages\n" +
-        `    2. Select "${name}"\n` +
-        "    3. Settings > Builds > Connect to Git\n" +
-        "    4. Select your repo and configure"
-      ).join("\n\n"),
-      "Automatic deploys"
+        deployedWorkerNames
+          .map(
+            (name, i) =>
+              `  ${i === 0 ? "For" : "Repeat for"} "${name}":\n` +
+              "    1. Go to https://dash.cloudflare.com > Workers & Pages\n" +
+              `    2. Select "${name}"\n` +
+              "    3. Settings > Builds > Connect to Git\n" +
+              "    4. Select your repo and configure",
+          )
+          .join("\n\n"),
+      "Automatic deploys",
     );
 
     const cfDone = await p.confirm({
@@ -979,7 +1026,8 @@ export async function setup() {
   if (deployedUrls.core) summaryLines.push(`  Core:         ${deployedUrls.core}`);
   if (deployedUrls.subscription) summaryLines.push(`  Subscription: ${deployedUrls.subscription}`);
   if (deployedUrls.adminCore) summaryLines.push(`  Admin (core): ${deployedUrls.adminCore}`);
-  if (deployedUrls.adminSubscription) summaryLines.push(`  Admin (sub):  ${deployedUrls.adminSubscription}`);
+  if (deployedUrls.adminSubscription)
+    summaryLines.push(`  Admin (sub):  ${deployedUrls.adminSubscription}`);
   if (Object.keys(deployedUrls).length === 0) {
     summaryLines.push("  (check your Cloudflare dashboard for URLs)");
   }

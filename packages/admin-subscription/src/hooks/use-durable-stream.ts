@@ -26,12 +26,9 @@ export function useDurableStream(options: {
 
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const addEvent = useCallback(
-    (type: StreamEvent["type"], content: string) => {
-      setEvents((prev) => [...prev, { type, content, timestamp: new Date() }]);
-    },
-    [],
-  );
+  const addEvent = useCallback((type: StreamEvent["type"], content: string) => {
+    setEvents((prev) => [...prev, { type, content, timestamp: new Date() }]);
+  }, []);
 
   const clearEvents = useCallback(() => {
     setEvents([]);
@@ -85,10 +82,7 @@ export function useDurableStream(options: {
               display = `[${chunk.data.byteLength} bytes]`;
             }
           }
-          setEvents((prev) => [
-            ...prev,
-            { type: "data", content: display, timestamp: new Date() },
-          ]);
+          setEvents((prev) => [...prev, { type: "data", content: display, timestamp: new Date() }]);
 
           if (chunk.streamClosed) {
             setEvents((prev) => [

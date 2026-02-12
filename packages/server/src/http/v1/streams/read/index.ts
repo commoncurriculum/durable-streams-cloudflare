@@ -35,7 +35,7 @@ export type ReadStreamResult = {
  */
 export async function readStream(
   ctx: StreamContext,
-  opts: ReadStreamOptions
+  opts: ReadStreamOptions,
 ): Promise<ReadStreamResult> {
   const streamId = opts.streamId;
   const mode = opts.mode;
@@ -72,11 +72,7 @@ export async function readStream(
 
   // 3. "now" mode - return empty response at tail
   if (mode === "now") {
-    const nextOffsetHeader = await ctx.encodeOffset(
-      streamId,
-      meta,
-      meta.tail_offset
-    );
+    const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, meta.tail_offset);
     const headers = baseHeaders({
       "Content-Type": meta.content_type,
       [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
@@ -86,9 +82,7 @@ export async function readStream(
     applyExpiryHeaders(headers, meta);
     headers.set("Cache-Control", "no-store");
 
-    const body = isJsonContentType(meta.content_type)
-      ? emptyJsonArray()
-      : new ArrayBuffer(0);
+    const body = isJsonContentType(meta.content_type) ? emptyJsonArray() : new ArrayBuffer(0);
 
     return {
       status: 200,
@@ -101,33 +95,20 @@ export async function readStream(
   const resolved = await ctx.resolveOffset(
     streamId,
     meta,
-    offsetParam === "-1" || !offsetParam ? ZERO_OFFSET : offsetParam
+    offsetParam === "-1" || !offsetParam ? ZERO_OFFSET : offsetParam,
   );
   if (resolved.error) {
-    throw new HttpError(
-      resolved.error.status,
-      "invalid offset",
-      resolved.error
-    );
+    throw new HttpError(resolved.error.status, "invalid offset", resolved.error);
   }
 
   const { offset } = resolved;
-  const read = await ctx.readFromOffset(
-    streamId,
-    meta,
-    offset,
-    MAX_CHUNK_BYTES
-  );
+  const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (read.error) {
     throw new HttpError(read.error.status, "read error", read.error);
   }
 
   // 5. Build response headers
-  const nextOffsetHeader = await ctx.encodeOffset(
-    streamId,
-    meta,
-    read.nextOffset
-  );
+  const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
   const headers = baseHeaders({
     "Content-Type": meta.content_type,
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,

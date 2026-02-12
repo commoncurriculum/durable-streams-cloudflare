@@ -15,10 +15,7 @@ function getJWKS(certsUrl: string) {
   return jwksCache.get(certsUrl)!;
 }
 
-async function verifyAccessJwt(
-  jwt: string,
-  certsUrl: string,
-): Promise<boolean> {
+async function verifyAccessJwt(jwt: string, certsUrl: string): Promise<boolean> {
   try {
     const JWKS = getJWKS(certsUrl);
     await jwtVerify(jwt, JWKS, {
@@ -36,8 +33,7 @@ async function verifyAccessJwt(
 
 export default {
   async fetch(request: Request) {
-    const teamDomain = (env as Record<string, unknown>)
-      .CF_ACCESS_TEAM_DOMAIN as string | undefined;
+    const teamDomain = (env as Record<string, unknown>).CF_ACCESS_TEAM_DOMAIN as string | undefined;
 
     if (teamDomain) {
       const jwt = request.headers.get("cf-access-jwt-assertion");

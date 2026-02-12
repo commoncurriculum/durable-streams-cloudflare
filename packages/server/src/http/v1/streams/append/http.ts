@@ -20,10 +20,7 @@ function parseContentType(request: Request): string | null {
  * Extract raw data from a POST request.
  * This is a simple data extraction with no validation logic.
  */
-async function extractPostInput(
-  streamId: string,
-  request: Request
-): Promise<RawPostInput> {
+async function extractPostInput(streamId: string, request: Request): Promise<RawPostInput> {
   const bodyBytes = new Uint8Array(await request.arrayBuffer());
 
   return {
@@ -72,7 +69,7 @@ function parsePostInput(raw: RawPostInput): Result<ParsedPostInput> {
 export async function appendStreamHttp(
   ctx: StreamContext,
   streamId: string,
-  request: Request
+  request: Request,
 ): Promise<Response> {
   // 1. Parse HTTP request OUTSIDE blockConcurrencyWhile (no state mutation here)
   const raw = await extractPostInput(streamId, request);
@@ -88,7 +85,7 @@ export async function appendStreamHttp(
     if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
       return errorResponse(
         400,
-        `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`
+        `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
       );
     }
   }

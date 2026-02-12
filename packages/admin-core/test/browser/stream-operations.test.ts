@@ -11,7 +11,10 @@ const STREAM_ID = "test-stream";
  */
 async function waitForStreamConsole(page: Page, maxAttempts = 5) {
   for (let i = 0; i < maxAttempts; i++) {
-    const visible = await page.getByText("Live Event Log").isVisible().catch(() => false);
+    const visible = await page
+      .getByText("Live Event Log")
+      .isVisible()
+      .catch(() => false);
     if (visible) return;
     await page.waitForTimeout(1000);
     await page.reload();
@@ -67,7 +70,9 @@ test("Open Project navigates to project detail page", async ({ page }) => {
   await page.click('button:has-text("Open Project")');
 
   await page.waitForURL(new RegExp(`/projects/${PROJECT_ID}/?$`));
-  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("header nav").getByRole("link", { name: "Overview" })).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 // ── Open Stream via input + button ──
@@ -134,9 +139,7 @@ test("SSE badge shows connected on stream detail page", async ({ page }) => {
 
 // ── Send Message panel ──
 
-test("Send Message panel sends a message and shows APPEND control event", async ({
-  page,
-}) => {
+test("Send Message panel sends a message and shows APPEND control event", async ({ page }) => {
   await page.goto(`${ADMIN_URL}/projects/${PROJECT_ID}/streams/${STREAM_ID}`);
 
   // Wait for SSE to connect before sending — ensures the page is fully loaded
@@ -147,7 +150,10 @@ test("Send Message panel sends a message and shows APPEND control event", async 
 
   // The APPEND control event or an error should appear in the event log
   await expect(
-    page.locator('[class*="bg-zinc-800"]').filter({ hasText: /APPEND|error/ }).first(),
+    page
+      .locator('[class*="bg-zinc-800"]')
+      .filter({ hasText: /APPEND|error/ })
+      .first(),
   ).toBeVisible({ timeout: 15_000 });
 });
 
@@ -160,9 +166,7 @@ test("Clear button clears the event log", async ({ page }) => {
   await expect(page.getByText("SSE: connected").first()).toBeVisible({ timeout: 15_000 });
 
   // Initial SSE control event appears once connected
-  await expect(
-    page.locator('[class*="bg-zinc-800"]').first(),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[class*="bg-zinc-800"]').first()).toBeVisible({ timeout: 10_000 });
 
   await page.click('button:has-text("Clear")');
 
@@ -211,6 +215,9 @@ test("Fetch Earlier Messages loads historical messages", async ({ page }) => {
   await page.click('button:has-text("Fetch Earlier Messages")');
 
   await expect(
-    page.locator('[class*="bg-zinc-800"]').filter({ hasText: /Loaded|No earlier/ }).first(),
+    page
+      .locator('[class*="bg-zinc-800"]')
+      .filter({ hasText: /Loaded|No earlier/ })
+      .first(),
   ).toBeVisible({ timeout: 10_000 });
 });

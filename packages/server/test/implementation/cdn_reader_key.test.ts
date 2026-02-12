@@ -235,7 +235,7 @@ describe("CDN reader key", () => {
       headers: { "X-Debug-Action": "rotate-reader-key" },
     });
     expect(rotate.status).toBe(200);
-    const body = await rotate.json() as { readerKey: string };
+    const body = (await rotate.json()) as { readerKey: string };
     expect(body.readerKey).toBeTruthy();
     expect(body.readerKey).not.toBe(originalRk);
     expect(body.readerKey).toMatch(/^rk_[a-f0-9]{32}$/);

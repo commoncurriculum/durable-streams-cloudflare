@@ -10,10 +10,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../../drizzle/migrations";
 import { subscribers, fanoutState } from "./schema";
-import type {
-  StreamSubscribersStorage,
-  SubscriberWithTimestamp,
-} from "./types";
+import type { StreamSubscribersStorage, SubscriberWithTimestamp } from "./types";
 
 /**
  * StreamSubscribersDO storage implementation using Drizzle ORM
@@ -50,22 +47,16 @@ export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   }
 
   async removeSubscriber(estuaryId: string): Promise<void> {
-    await this.db
-      .delete(subscribers)
-      .where(eq(subscribers.estuary_id, estuaryId));
+    await this.db.delete(subscribers).where(eq(subscribers.estuary_id, estuaryId));
   }
 
   async removeSubscribers(estuaryIds: string[]): Promise<void> {
     if (estuaryIds.length === 0) return;
-    await this.db
-      .delete(subscribers)
-      .where(inArray(subscribers.estuary_id, estuaryIds));
+    await this.db.delete(subscribers).where(inArray(subscribers.estuary_id, estuaryIds));
   }
 
   async getSubscriberIds(): Promise<string[]> {
-    const result = await this.db
-      .select({ estuaryId: subscribers.estuary_id })
-      .from(subscribers);
+    const result = await this.db.select({ estuaryId: subscribers.estuary_id }).from(subscribers);
     return result.map((row) => row.estuaryId);
   }
 

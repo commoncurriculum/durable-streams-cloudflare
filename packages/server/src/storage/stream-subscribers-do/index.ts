@@ -13,13 +13,5 @@ export {
   fanoutStateSelectSchema,
   fanoutStateInsertSchema,
 } from "./schema";
-export type {
-  Subscriber,
-  SubscriberInsert,
-  FanoutState,
-  FanoutStateInsert,
-} from "./schema";
-export type {
-  StreamSubscribersStorage,
-  SubscriberWithTimestamp,
-} from "./types";
+export type { Subscriber, SubscriberInsert, FanoutState, FanoutStateInsert } from "./schema";
+export type { StreamSubscribersStorage, SubscriberWithTimestamp } from "./types";

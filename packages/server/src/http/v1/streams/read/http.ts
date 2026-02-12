@@ -1,11 +1,7 @@
 import { errorResponse, errorToResponse } from "../../../shared/errors";
 import { readStream } from "./index";
 import type { StreamContext } from "../types";
-import {
-  handleLongPoll,
-  handleSse,
-  handleWsUpgrade,
-} from "../realtime/handlers";
+import { handleLongPoll, handleSse, handleWsUpgrade } from "../realtime/handlers";
 
 /**
  * HTTP handler for GET /streams/{streamId}
@@ -16,7 +12,7 @@ export async function readStreamHttp(
   ctx: StreamContext,
   streamId: string,
   request: Request,
-  url: URL
+  url: URL,
 ): Promise<Response> {
   try {
     // 1. Check for live modes (HTTP-specific realtime features)
@@ -89,10 +85,7 @@ export async function readStreamHttp(
  *
  * Parses the HTTP request and calls readStream (THE ONE function).
  */
-export async function headStreamHttp(
-  ctx: StreamContext,
-  streamId: string
-): Promise<Response> {
+export async function headStreamHttp(ctx: StreamContext, streamId: string): Promise<Response> {
   try {
     // Call THE ONE function in head mode
     const result = await readStream(ctx, {

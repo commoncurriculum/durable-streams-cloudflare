@@ -1,5 +1,5 @@
-import { ChevronDownIcon } from "@heroicons/react/20/solid"
-import { createContext, use } from "react"
+import { ChevronDownIcon } from "@heroicons/react/20/solid";
+import { createContext, use } from "react";
 import type {
   CellProps,
   ColumnProps,
@@ -8,7 +8,7 @@ import type {
   RowProps,
   TableBodyProps,
   TableProps as TablePrimitiveProps,
-} from "react-aria-components"
+} from "react-aria-components";
 import {
   Button,
   Cell,
@@ -22,26 +22,26 @@ import {
   TableHeader as TableHeaderPrimitive,
   Table as TablePrimitive,
   useTableOptions,
-} from "react-aria-components"
-import { twJoin, twMerge } from "tailwind-merge"
-import { Text } from "@/components/ui/text"
-import { cx } from "@/lib/primitive"
-import { Checkbox } from "./checkbox"
+} from "react-aria-components";
+import { twJoin, twMerge } from "tailwind-merge";
+import { Text } from "@/components/ui/text";
+import { cx } from "@/lib/primitive";
+import { Checkbox } from "./checkbox";
 
 interface TableProps extends Omit<TablePrimitiveProps, "className"> {
-  allowResize?: boolean
-  className?: string
-  bleed?: boolean
-  grid?: boolean
-  striped?: boolean
-  ref?: React.Ref<HTMLTableElement>
+  allowResize?: boolean;
+  className?: string;
+  bleed?: boolean;
+  grid?: boolean;
+  striped?: boolean;
+  ref?: React.Ref<HTMLTableElement>;
 }
 
 const TableContext = createContext<TableProps>({
   allowResize: false,
-})
+});
 
-const useTableContext = () => use(TableContext)
+const useTableContext = () => use(TableContext);
 
 const Root = (props: TableProps) => {
   return (
@@ -49,8 +49,8 @@ const Root = (props: TableProps) => {
       className="w-full min-w-full caption-bottom text-sm/6 outline-hidden [--table-selected-bg:var(--color-secondary)]/50"
       {...props}
     />
-  )
-}
+  );
+};
 
 const Table = ({
   allowResize,
@@ -84,8 +84,8 @@ const Table = ({
         </div>
       </div>
     </TableContext.Provider>
-  )
-}
+  );
+};
 
 const ColumnResizer = ({ className, ...props }: ColumnResizerProps) => (
   <ColumnResizerPrimitive
@@ -97,7 +97,7 @@ const ColumnResizer = ({ className, ...props }: ColumnResizerProps) => (
   >
     <div className="h-full w-px bg-border py-(--gutter-y)" />
   </ColumnResizerPrimitive>
-)
+);
 
 const TableBody = <T extends object>({ renderEmptyState, ...props }: TableBodyProps<T>) => (
   <TableBodyPrimitive
@@ -115,14 +115,14 @@ const TableBody = <T extends object>({ renderEmptyState, ...props }: TableBodyPr
     )}
     {...props}
   />
-)
+);
 
 interface TableColumnProps extends ColumnProps {
-  isResizable?: boolean
+  isResizable?: boolean;
 }
 
 const TableColumn = ({ isResizable = false, className, ...props }: TableColumnProps) => {
-  const { bleed, grid } = useTableContext()
+  const { bleed, grid } = useTableContext();
   return (
     <Column
       data-slot="table-column"
@@ -159,11 +159,11 @@ const TableColumn = ({ isResizable = false, className, ...props }: TableColumnPr
         </div>
       )}
     </Column>
-  )
-}
+  );
+};
 
 interface TableHeaderProps<T extends object> extends HeaderProps<T> {
-  ref?: React.Ref<HTMLTableSectionElement>
+  ref?: React.Ref<HTMLTableSectionElement>;
 }
 
 const TableHeader = <T extends object>({
@@ -173,8 +173,8 @@ const TableHeader = <T extends object>({
   className,
   ...props
 }: TableHeaderProps<T>) => {
-  const { bleed } = useTableContext()
-  const { selectionBehavior, selectionMode, allowsDragging } = useTableOptions()
+  const { bleed } = useTableContext();
+  const { selectionBehavior, selectionMode, allowsDragging } = useTableOptions();
   return (
     <TableHeaderPrimitive
       data-slot="table-header"
@@ -204,11 +204,11 @@ const TableHeader = <T extends object>({
       )}
       <Collection items={columns}>{children}</Collection>
     </TableHeaderPrimitive>
-  )
-}
+  );
+};
 
 interface TableRowProps<T extends object> extends RowProps<T> {
-  ref?: React.Ref<HTMLTableRowElement>
+  ref?: React.Ref<HTMLTableRowElement>;
 }
 
 const TableRow = <T extends object>({
@@ -219,8 +219,8 @@ const TableRow = <T extends object>({
   ref,
   ...props
 }: TableRowProps<T>) => {
-  const { selectionBehavior, allowsDragging } = useTableOptions()
-  const { striped } = useTableContext()
+  const { selectionBehavior, allowsDragging } = useTableOptions();
+  const { striped } = useTableContext();
   return (
     <Row
       ref={ref}
@@ -294,14 +294,14 @@ const TableRow = <T extends object>({
       )}
       <Collection items={columns}>{children}</Collection>
     </Row>
-  )
-}
+  );
+};
 
 interface TableCellProps extends CellProps {
-  ref?: React.Ref<HTMLTableCellElement>
+  ref?: React.Ref<HTMLTableCellElement>;
 }
 const TableCell = ({ className, ref, ...props }: TableCellProps) => {
-  const { allowResize, bleed, grid, striped } = useTableContext()
+  const { allowResize, bleed, grid, striped } = useTableContext();
   return (
     <Cell
       ref={ref}
@@ -318,8 +318,8 @@ const TableCell = ({ className, ref, ...props }: TableCellProps) => {
         className,
       )}
     />
-  )
-}
+  );
+};
 
-export type { TableProps, TableColumnProps, TableRowProps }
-export { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow }
+export type { TableProps, TableColumnProps, TableRowProps };
+export { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow };

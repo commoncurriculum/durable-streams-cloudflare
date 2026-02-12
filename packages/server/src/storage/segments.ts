@@ -10,10 +10,7 @@ export function encodeStreamPathBase64Url(path: string): string {
     const chunk = bytes.subarray(i, i + chunkSize);
     binary += String.fromCharCode(...chunk);
   }
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 export function buildSegmentKey(streamId: string, readSeq: number): string {
@@ -57,17 +54,12 @@ class SegmentReader {
   }
 
   /** Read the next length-prefixed message, or null if stream ended */
-  async nextMessage(): Promise<
-    { message: Uint8Array } | { truncated: true } | null
-  > {
+  async nextMessage(): Promise<{ message: Uint8Array } | { truncated: true } | null> {
     if (!(await this.ensureBytes(LENGTH_PREFIX_BYTES))) {
       return this.buffer.byteLength === 0 ? null : { truncated: true };
     }
 
-    const length = new DataView(
-      this.buffer.buffer,
-      this.buffer.byteOffset
-    ).getUint32(0);
+    const length = new DataView(this.buffer.buffer, this.buffer.byteOffset).getUint32(0);
     if (length > MAX_SEGMENT_MESSAGE_BYTES) {
       return { truncated: true };
     }
@@ -76,10 +68,7 @@ class SegmentReader {
       return { truncated: true };
     }
 
-    const message = this.buffer.slice(
-      LENGTH_PREFIX_BYTES,
-      LENGTH_PREFIX_BYTES + length
-    );
+    const message = this.buffer.slice(LENGTH_PREFIX_BYTES, LENGTH_PREFIX_BYTES + length);
     this.buffer = this.buffer.slice(LENGTH_PREFIX_BYTES + length);
     return { message };
   }
@@ -126,7 +115,7 @@ class JsonMessageCollector implements MessageCollector {
   constructor(
     offset: number,
     private segmentStart: number,
-    private maxChunkBytes: number
+    private maxChunkBytes: number,
   ) {
     this.targetIndex = offset - segmentStart;
     this.outputStart = segmentStart;
@@ -159,7 +148,7 @@ class BinaryMessageCollector implements MessageCollector {
   constructor(
     private offset: number,
     segmentStart: number,
-    private maxChunkBytes: number
+    private maxChunkBytes: number,
   ) {
     this.cursor = segmentStart;
     this.outputStart = segmentStart;

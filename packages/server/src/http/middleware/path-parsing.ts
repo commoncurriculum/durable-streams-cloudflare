@@ -17,7 +17,7 @@ export async function pathParsingMiddleware(c: any, next: () => Promise<void>): 
 
   // Parse route segments for config and estuary routes
   const segments = url.pathname.split("/").filter(Boolean);
-  
+
   // Config routes: /v1/config/:projectId
   if (segments[0] === "v1" && segments[1] === "config" && segments.length === 3) {
     projectId = segments[2];

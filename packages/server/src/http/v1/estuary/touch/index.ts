@@ -2,10 +2,7 @@ import type { BaseEnv } from "../../../router";
 import type { StreamDO } from "../../streams";
 import type { EstuaryDO } from "../index";
 import type { TouchEstuaryResult } from "../types";
-import {
-  isValidEstuaryId,
-  DEFAULT_ESTUARY_TTL_SECONDS,
-} from "../../../../constants";
+import { isValidEstuaryId, DEFAULT_ESTUARY_TTL_SECONDS } from "../../../../constants";
 import { createMetrics } from "../../../../metrics";
 import { putStreamMetadata } from "../../../../storage/registry";
 
@@ -26,7 +23,7 @@ export interface TouchEstuaryOptions {
  */
 export async function touchEstuary(
   env: BaseEnv,
-  opts: TouchEstuaryOptions
+  opts: TouchEstuaryOptions,
 ): Promise<TouchEstuaryResult> {
   const { projectId, estuaryId } = opts;
   const start = Date.now();
@@ -37,9 +34,7 @@ export async function touchEstuary(
   }
 
   // 2. Parse TTL from environment
-  const parsed = env.ESTUARY_TTL_SECONDS
-    ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10)
-    : undefined;
+  const parsed = env.ESTUARY_TTL_SECONDS ? Number.parseInt(env.ESTUARY_TTL_SECONDS, 10) : undefined;
   const ttlSeconds =
     parsed !== undefined && Number.isFinite(parsed) && parsed > 0
       ? parsed
@@ -49,9 +44,7 @@ export async function touchEstuary(
 
   // 3. Create/touch estuary stream via StreamDO
   const doKey = `${projectId}/${estuaryId}`;
-  const streamStub = env.STREAMS.get(
-    env.STREAMS.idFromName(doKey)
-  ) as DurableObjectStub<StreamDO>;
+  const streamStub = env.STREAMS.get(env.STREAMS.idFromName(doKey)) as DurableObjectStub<StreamDO>;
 
   const putRequest = new Request(`https://do/v1/stream/${doKey}`, {
     method: "PUT",
@@ -70,7 +63,7 @@ export async function touchEstuary(
 
   // 5. Reset expiry alarm on EstuaryDO
   const estuaryStub = env.ESTUARY_DO.get(
-    env.ESTUARY_DO.idFromName(doKey)
+    env.ESTUARY_DO.idFromName(doKey),
   ) as DurableObjectStub<EstuaryDO>;
   await estuaryStub.setExpiry(projectId, estuaryId, ttlSeconds);
 

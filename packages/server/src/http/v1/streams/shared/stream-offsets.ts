@@ -14,22 +14,12 @@ export function encodeCurrentOffset(meta: StreamMeta): string {
 export async function encodeTailOffset(
   storage: StreamStorage,
   streamId: string,
-  meta: StreamMeta
+  meta: StreamMeta,
 ): Promise<string> {
-  if (
-    meta.closed === 1 &&
-    meta.segment_start >= meta.tail_offset &&
-    meta.read_seq > 0
-  ) {
-    const previous = await storage.getSegmentByReadSeq(
-      streamId,
-      meta.read_seq - 1
-    );
+  if (meta.closed === 1 && meta.segment_start >= meta.tail_offset && meta.read_seq > 0) {
+    const previous = await storage.getSegmentByReadSeq(streamId, meta.read_seq - 1);
     if (previous) {
-      return encodeOffset(
-        meta.tail_offset - previous.start_offset,
-        previous.read_seq
-      );
+      return encodeOffset(meta.tail_offset - previous.start_offset, previous.read_seq);
     }
   }
   return encodeCurrentOffset(meta);
@@ -39,7 +29,7 @@ export async function encodeStreamOffset(
   storage: StreamStorage,
   streamId: string,
   meta: StreamMeta,
-  offset: number
+  offset: number,
 ): Promise<string> {
   if (offset >= meta.segment_start) {
     return encodeOffset(offset - meta.segment_start, meta.read_seq);
@@ -66,7 +56,7 @@ export async function resolveOffsetParam(
   storage: StreamStorage,
   streamId: string,
   meta: StreamMeta,
-  offsetParam: string | null
+  offsetParam: string | null,
 ): Promise<ResolveOffsetResult> {
   if (offsetParam === null) {
     return errorOffset("offset is required");
@@ -87,23 +77,14 @@ export async function resolveOffsetParam(
     return resolveCurrentSegmentOffset(byteOffset, meta);
   }
 
-  return resolveHistoricalSegmentOffset(
-    storage,
-    streamId,
-    readSeq,
-    byteOffset,
-    meta
-  );
+  return resolveHistoricalSegmentOffset(storage, streamId, readSeq, byteOffset, meta);
 }
 
 // ============================================================================
 // Helper functions
 // ============================================================================
 
-function resolveCurrentSegmentOffset(
-  byteOffset: number,
-  meta: StreamMeta
-): ResolveOffsetResult {
+function resolveCurrentSegmentOffset(byteOffset: number, meta: StreamMeta): ResolveOffsetResult {
   const offset = meta.segment_start + byteOffset;
 
   if (offset > meta.tail_offset) {
@@ -118,7 +99,7 @@ async function resolveHistoricalSegmentOffset(
   streamId: string,
   readSeq: number,
   byteOffset: number,
-  meta: StreamMeta
+  meta: StreamMeta,
 ): Promise<ResolveOffsetResult> {
   const segment = await storage.getSegmentByReadSeq(streamId, readSeq);
 

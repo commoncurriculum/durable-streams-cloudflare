@@ -59,9 +59,8 @@ describe("recent sessions tracking", () => {
   });
 
   it("limits to a maximum number of recent sessions", async () => {
-    const { addRecentSession, getRecentSessions, MAX_RECENT_SESSIONS } = await import(
-      "../src/lib/recent-sessions"
-    );
+    const { addRecentSession, getRecentSessions, MAX_RECENT_SESSIONS } =
+      await import("../src/lib/recent-sessions");
     for (let i = 0; i < MAX_RECENT_SESSIONS + 5; i++) {
       addRecentSession("project-1", `session-${i}`);
     }

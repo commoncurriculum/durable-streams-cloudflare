@@ -13,7 +13,7 @@ test("can create a project via the Create Project modal", async ({ page }) => {
   await page.waitForSelector("text=Create Project");
 
   // Fill project ID and click the Create button inside the modal
-  const modal = page.locator('.fixed.inset-0');
+  const modal = page.locator(".fixed.inset-0");
   const projectInput = modal.locator('input[placeholder="my-project"]');
   await projectInput.fill(PROJECT_ID);
   await modal.locator('button:has-text("Create"):not([disabled])').click();

@@ -38,23 +38,19 @@ export type StreamContext = {
   resolveOffset: (
     streamId: string,
     meta: StreamMeta,
-    offsetParam: string | null
+    offsetParam: string | null,
   ) => Promise<ResolveOffsetResult>;
-  encodeOffset: (
-    streamId: string,
-    meta: StreamMeta,
-    offset: number
-  ) => Promise<string>;
+  encodeOffset: (streamId: string, meta: StreamMeta, offset: number) => Promise<string>;
   encodeTailOffset: (streamId: string, meta: StreamMeta) => Promise<string>;
   readFromOffset: (
     streamId: string,
     meta: StreamMeta,
     offset: number,
-    maxChunkBytes: number
+    maxChunkBytes: number,
   ) => Promise<ReadResult>;
   rotateSegment: (
     streamId: string,
-    options?: { force?: boolean; retainOps?: boolean }
+    options?: { force?: boolean; retainOps?: boolean },
   ) => Promise<void>;
   getWebSockets: (tag?: string) => WebSocket[];
 };
@@ -67,9 +63,7 @@ export type StreamContext = {
  * Discriminated union for operation results.
  * Used for validation and execution functions that may return an error response.
  */
-export type Result<T> =
-  | { kind: "ok"; value: T }
-  | { kind: "error"; response: Response };
+export type Result<T> = { kind: "ok"; value: T } | { kind: "error"; response: Response };
 
 // ============================================================================
 // PUT Operation Types
@@ -185,13 +179,7 @@ export type PostExecutionResult = {
 // Discriminated Union Variants
 // ============================================================================
 
-export type IdempotentPutInput = Extract<
-  ValidatedPutInput,
-  { kind: "idempotent" }
->;
+export type IdempotentPutInput = Extract<ValidatedPutInput, { kind: "idempotent" }>;
 export type CreatePutInput = Extract<ValidatedPutInput, { kind: "create" }>;
-export type CloseOnlyPostInput = Extract<
-  ValidatedPostInput,
-  { kind: "close_only" }
->;
+export type CloseOnlyPostInput = Extract<ValidatedPostInput, { kind: "close_only" }>;
 export type AppendPostInput = Extract<ValidatedPostInput, { kind: "append" }>;

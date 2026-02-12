@@ -47,8 +47,9 @@ function NavBar() {
   const matches = useMatches();
   const currentPath = matches[matches.length - 1]?.pathname ?? "/";
   const projectId = (
-    matches.find((m) => (m.params as Record<string, string>)?.projectId)
-      ?.params as Record<string, string> | undefined
+    matches.find((m) => (m.params as Record<string, string>)?.projectId)?.params as
+      | Record<string, string>
+      | undefined
   )?.projectId;
 
   const tabs = projectId
@@ -67,17 +68,13 @@ function NavBar() {
     <header className="flex items-center border-b border-zinc-800 px-6">
       <Link to="/" className="flex items-center gap-3 py-3 pr-5">
         <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="text-sm font-semibold tracking-tight">
-          Subscription Admin
-        </span>
+        <span className="text-sm font-semibold tracking-tight">Subscription Admin</span>
       </Link>
       <div className="mx-1 h-5 border-l border-zinc-700" />
       <nav className="flex">
         {tabs.map(({ to, label, ...rest }) => {
           const end = "end" in rest && rest.end;
-          const resolved = projectId
-            ? to.replace("$projectId", projectId)
-            : to;
+          const resolved = projectId ? to.replace("$projectId", projectId) : to;
           const isActive = end
             ? currentPath === resolved || currentPath === resolved + "/"
             : currentPath.startsWith(resolved);

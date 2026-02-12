@@ -17,7 +17,11 @@ export function parseJsonMessages(bodyBytes: Uint8Array): JsonParseResult {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    return { messages: [], emptyArray: false, error: err instanceof Error ? err.message : "invalid JSON" };
+    return {
+      messages: [],
+      emptyArray: false,
+      error: err instanceof Error ? err.message : "invalid JSON",
+    };
   }
 
   const values = Array.isArray(parsed) ? parsed : [parsed];

@@ -36,12 +36,7 @@ export class Metrics {
   }
 
   // Subscription events
-  subscribe(
-    streamId: string,
-    estuaryId: string,
-    isNewEstuary: boolean,
-    latencyMs: number
-  ) {
+  subscribe(streamId: string, estuaryId: string, isNewEstuary: boolean, latencyMs: number) {
     this.ae?.writeDataPoint({
       blobs: [streamId, estuaryId, "subscribe", ""],
       doubles: [1, latencyMs, isNewEstuary ? 1 : 0, 0],
@@ -60,12 +55,7 @@ export class Metrics {
 
   // #region synced-to-docs:metrics-estuary-cleanup
   // Estuary lifecycle events
-  estuaryCreate(
-    estuaryId: string,
-    project: string,
-    ttlSeconds: number,
-    latencyMs: number
-  ) {
+  estuaryCreate(estuaryId: string, project: string, ttlSeconds: number, latencyMs: number) {
     this.ae?.writeDataPoint({
       blobs: [project, estuaryId, "estuary_create", ""],
       doubles: [1, latencyMs, ttlSeconds, 0],

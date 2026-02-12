@@ -16,7 +16,7 @@ export default class ServerWorker extends WorkerEntrypoint<BaseEnv> {
     return handler.fetch!(
       request as unknown as Request<unknown, IncomingRequestCfProperties>,
       this.env,
-      this.ctx
+      this.ctx,
     );
   }
 
@@ -26,13 +26,7 @@ export default class ServerWorker extends WorkerEntrypoint<BaseEnv> {
   }
 }
 
-export {
-  ServerWorker,
-  StreamDO,
-  StreamSubscribersDO,
-  EstuaryDO,
-  createStreamWorker,
-};
+export { ServerWorker, StreamDO, StreamSubscribersDO, EstuaryDO, createStreamWorker };
 export type { StreamIntrospection } from "./v1/streams";
 export type { BaseEnv } from "./router";
 export type { ProjectEntry, StreamEntry } from "../storage/registry";

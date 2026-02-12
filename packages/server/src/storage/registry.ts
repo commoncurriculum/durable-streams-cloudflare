@@ -246,20 +246,17 @@ export async function listProjectStreams(
  * Read a stream entry from KV by doKey (projectId/streamId).
  * Returns null if the key doesn't exist or isn't valid.
  */
-export async function getStreamEntry(
-  kv: KVNamespace,
-  doKey: string,
-): Promise<StreamEntry | null> {
+export async function getStreamEntry(kv: KVNamespace, doKey: string): Promise<StreamEntry | null> {
   const raw = await kv.get(doKey, "json");
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
-  
+
   // Validate with schema
   const validated = streamEntrySchema(record);
   if (validated instanceof type.errors) {
     return null;
   }
-  
+
   return validated as StreamEntry;
 }
 
@@ -325,9 +322,6 @@ export async function rotateStreamReaderKey(
  * Delete stream metadata from REGISTRY.
  * Used when a stream is deleted or expires.
  */
-export async function deleteStreamEntry(
-  kv: KVNamespace,
-  doKey: string,
-): Promise<void> {
+export async function deleteStreamEntry(kv: KVNamespace, doKey: string): Promise<void> {
   await kv.delete(doKey);
 }
