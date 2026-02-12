@@ -18,7 +18,7 @@ import type {
   GetSubscribersResult,
   FanoutQueueMessage,
 } from "./types";
-import { StreamSubscribersDoStorage } from "../../../storage";
+import { StreamSubscribersDoStorage } from "../../../storage/stream-subscribers-do";
 import { publishToStream } from "./publish";
 import type { PublishContext } from "./publish";
 

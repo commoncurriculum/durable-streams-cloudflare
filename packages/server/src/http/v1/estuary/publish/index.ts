@@ -9,7 +9,7 @@ import {
 } from "../../../../constants";
 import type { BaseEnv } from "../../../router";
 import type { PublishParams, PublishResult, FanoutQueueMessage } from "../types";
-import type { StreamSubscribersStorage } from "../../../../storage";
+import type { StreamSubscribersStorage } from "../../../../storage/stream-subscribers-do";
 import type { StreamDO } from "../../streams";
 
 export interface PublishContext {

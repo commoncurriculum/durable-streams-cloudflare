@@ -1,4 +1,4 @@
-import type { StreamMeta, StreamStorage, ReadResult } from "../../../storage";
+import type { StreamMeta, StreamStorage, ReadResult } from "../../../storage/stream-do";
 import type { Timing } from "../../shared/timing";
 import type { ProducerInput } from "./shared/producer";
 import type { LongPollQueue } from "./realtime/handlers";

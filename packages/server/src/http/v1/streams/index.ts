@@ -3,8 +3,8 @@ import { DurableObject } from "cloudflare:workers";
 import { logError } from "../../../log";
 import { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
-import { StreamDoStorage } from "../../../storage";
-import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../../../storage";
+import { StreamDoStorage } from "../../../storage/stream-do";
+import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../../../storage/stream-do";
 import { parseStreamPathFromUrl } from "../../shared/stream-path";
 
 import type { StreamContext, StreamEnv } from "./types";

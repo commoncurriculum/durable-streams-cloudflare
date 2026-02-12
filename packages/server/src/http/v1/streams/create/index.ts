@@ -17,7 +17,7 @@ import { validateBodySize } from "../shared/body";
 import { buildAppendBatch } from "../../../../storage/stream-do/append-batch";
 import { evaluateProducer } from "../shared/producer";
 import type { StreamContext } from "../types";
-import type { StreamMeta } from "../../../../storage";
+import type { StreamMeta } from "../../../../storage/stream-do";
 
 export type CreateStreamOptions = {
   streamId: string;
