@@ -10,7 +10,7 @@ import {
 } from "../../../shared/headers";
 import { errorResponse } from "../../../shared/errors";
 import { isInteger } from "./validation";
-import type { ProducerState, StreamStorage } from "../../../../storage/types";
+import type { ProducerState, StreamStorage } from "../../../../storage";
 
 // #region docs-producer-types
 export type ProducerInput = {
@@ -32,7 +32,7 @@ const PRODUCER_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCER_ID_PATTERN = /^[a-zA-Z0-9_\-:.]{1,256}$/;
 
 export function parseProducerHeaders(
-  request: Request,
+  request: Request
 ): { value?: ProducerInput; error?: Response } | null {
   const id = request.headers.get(HEADER_PRODUCER_ID);
   const epochStr = request.headers.get(HEADER_PRODUCER_EPOCH);
@@ -42,22 +42,39 @@ export function parseProducerHeaders(
   if (!any) return null;
 
   if (!id || !epochStr || !seqStr) {
-    return { error: errorResponse(400, "Producer headers must be provided together") };
+    return {
+      error: errorResponse(400, "Producer headers must be provided together"),
+    };
   }
 
   if (!PRODUCER_ID_PATTERN.test(id)) {
-    return { error: errorResponse(400, "Producer-Id must match /^[a-zA-Z0-9_\\-:.]{1,256}$/") };
+    return {
+      error: errorResponse(
+        400,
+        "Producer-Id must match /^[a-zA-Z0-9_\\-:.]{1,256}$/"
+      ),
+    };
   }
 
   if (!isInteger(epochStr) || !isInteger(seqStr)) {
-    return { error: errorResponse(400, "Producer-Epoch and Producer-Seq must be integers") };
+    return {
+      error: errorResponse(
+        400,
+        "Producer-Epoch and Producer-Seq must be integers"
+      ),
+    };
   }
 
   const epoch = parseInt(epochStr, 10);
   const seq = parseInt(seqStr, 10);
 
   if (epoch > Number.MAX_SAFE_INTEGER || seq > Number.MAX_SAFE_INTEGER) {
-    return { error: errorResponse(400, "Producer-Epoch and Producer-Seq must be <= 2^53-1") };
+    return {
+      error: errorResponse(
+        400,
+        "Producer-Epoch and Producer-Seq must be <= 2^53-1"
+      ),
+    };
   }
 
   return { value: { id, epoch, seq } };
@@ -67,7 +84,7 @@ export function parseProducerHeaders(
 export async function evaluateProducer(
   storage: StreamStorage,
   streamId: string,
-  producer: ProducerInput,
+  producer: ProducerInput
 ): Promise<ProducerEval> {
   let existing = await storage.getProducer(streamId, producer.id);
   if (existing?.last_updated) {
@@ -79,7 +96,10 @@ export async function evaluateProducer(
   }
   if (!existing) {
     if (producer.seq !== 0) {
-      return { kind: "error", response: errorResponse(400, "Producer-Seq must start at 0") };
+      return {
+        kind: "error",
+        response: errorResponse(400, "Producer-Seq must start at 0"),
+      };
     }
     return { kind: "ok", state: null };
   }
@@ -94,7 +114,10 @@ export async function evaluateProducer(
     if (producer.seq !== 0) {
       return {
         kind: "error",
-        response: errorResponse(400, "Producer-Seq must start at 0 for new epoch"),
+        response: errorResponse(
+          400,
+          "Producer-Seq must start at 0 for new epoch"
+        ),
       };
     }
     return { kind: "ok", state: existing };
@@ -106,7 +129,10 @@ export async function evaluateProducer(
 
   if (producer.seq !== existing.last_seq + 1) {
     const res = errorResponse(409, "producer sequence gap");
-    res.headers.set(HEADER_PRODUCER_EXPECTED_SEQ, (existing.last_seq + 1).toString());
+    res.headers.set(
+      HEADER_PRODUCER_EXPECTED_SEQ,
+      (existing.last_seq + 1).toString()
+    );
     res.headers.set(HEADER_PRODUCER_RECEIVED_SEQ, producer.seq.toString());
     return { kind: "error", response: res };
   }
@@ -118,7 +144,7 @@ export async function evaluateProducer(
 export function producerDuplicateResponse(
   state: ProducerState,
   nextOffsetHeader: string,
-  streamClosed: boolean,
+  streamClosed: boolean
 ): Response {
   const headers = baseHeaders({
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,

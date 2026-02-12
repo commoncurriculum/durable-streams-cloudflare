@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFromOffset } from "../../../src/storage/stream/read";
+import { readFromOffset } from "../../../src/storage/stream-do/read";
 import {
   baseMeta,
   withStorage,

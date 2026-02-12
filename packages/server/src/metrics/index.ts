@@ -13,7 +13,13 @@ export class Metrics {
 
   // #region synced-to-docs:metrics-fanout-subscription
   // Fanout events
-  fanout(p: { streamId: string; subscribers: number; success: number; failures: number; latencyMs: number }) {
+  fanout(p: {
+    streamId: string;
+    subscribers: number;
+    success: number;
+    failures: number;
+    latencyMs: number;
+  }) {
     this.ae?.writeDataPoint({
       blobs: [p.streamId, "", "fanout", ""],
       doubles: [p.subscribers, p.success, p.failures, p.latencyMs],
@@ -30,7 +36,12 @@ export class Metrics {
   }
 
   // Subscription events
-  subscribe(streamId: string, estuaryId: string, isNewEstuary: boolean, latencyMs: number) {
+  subscribe(
+    streamId: string,
+    estuaryId: string,
+    isNewEstuary: boolean,
+    latencyMs: number
+  ) {
     this.ae?.writeDataPoint({
       blobs: [streamId, estuaryId, "subscribe", ""],
       doubles: [1, latencyMs, isNewEstuary ? 1 : 0, 0],
@@ -49,7 +60,12 @@ export class Metrics {
 
   // #region synced-to-docs:metrics-estuary-cleanup
   // Estuary lifecycle events
-  estuaryCreate(estuaryId: string, project: string, ttlSeconds: number, latencyMs: number) {
+  estuaryCreate(
+    estuaryId: string,
+    project: string,
+    ttlSeconds: number,
+    latencyMs: number
+  ) {
     this.ae?.writeDataPoint({
       blobs: [project, estuaryId, "estuary_create", ""],
       doubles: [1, latencyMs, ttlSeconds, 0],
@@ -60,6 +76,14 @@ export class Metrics {
   estuaryTouch(estuaryId: string, latencyMs: number) {
     this.ae?.writeDataPoint({
       blobs: ["", estuaryId, "estuary_touch", ""],
+      doubles: [1, latencyMs, 0, 0],
+      indexes: ["estuary"],
+    });
+  }
+
+  estuaryGet(estuaryId: string, latencyMs: number) {
+    this.ae?.writeDataPoint({
+      blobs: ["", estuaryId, "estuary_get", ""],
       doubles: [1, latencyMs, 0, 0],
       indexes: ["estuary"],
     });
@@ -83,10 +107,22 @@ export class Metrics {
   // #endregion synced-to-docs:metrics-estuary-cleanup
 
   // Cleanup events
-  cleanupBatch(p: { expiredEstuaries: number; streamsDeleted: number; subscriptionsRemoved: number; subscriptionsFailed: number; latencyMs: number }) {
+  cleanupBatch(p: {
+    expiredEstuaries: number;
+    streamsDeleted: number;
+    subscriptionsRemoved: number;
+    subscriptionsFailed: number;
+    latencyMs: number;
+  }) {
     this.ae?.writeDataPoint({
       blobs: ["", "", "cleanup_batch", ""],
-      doubles: [p.expiredEstuaries, p.streamsDeleted, p.subscriptionsRemoved, p.subscriptionsFailed, p.latencyMs],
+      doubles: [
+        p.expiredEstuaries,
+        p.streamsDeleted,
+        p.subscriptionsRemoved,
+        p.subscriptionsFailed,
+        p.latencyMs,
+      ],
       indexes: ["cleanup"],
     });
   }
@@ -116,7 +152,6 @@ export class Metrics {
       indexes: ["publish_error"],
     });
   }
-
 }
 
 // Factory function to create a metrics instance

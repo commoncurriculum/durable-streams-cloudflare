@@ -23,7 +23,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
 export const streamMeta = sqliteTable("stream_meta", {
   stream_id: text("stream_id").primaryKey(),
   content_type: text("content_type").notNull(),
-  closed: integer("closed", { mode: "boolean" }).notNull().default(false),
+  closed: integer("closed").notNull().default(0),
   tail_offset: integer("tail_offset").notNull().default(0),
   read_seq: integer("read_seq").notNull().default(0),
   segment_start: integer("segment_start").notNull().default(0),
@@ -37,7 +37,7 @@ export const streamMeta = sqliteTable("stream_meta", {
   closed_by_producer_id: text("closed_by_producer_id"),
   closed_by_epoch: integer("closed_by_epoch"),
   closed_by_seq: integer("closed_by_seq"),
-  public: integer("public", { mode: "boolean" }).notNull().default(false),
+  public: integer("public").notNull().default(0),
 });
 
 /**

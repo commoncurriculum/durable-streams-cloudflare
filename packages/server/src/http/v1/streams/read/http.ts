@@ -1,4 +1,4 @@
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, errorToResponse } from "../../../shared/errors";
 import { readStream } from "./index";
 import type { StreamContext } from "../types";
 import {
@@ -80,11 +80,7 @@ export async function readStreamHttp(
       headers: result.headers,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal error";
-    if (message === "Stream not found") {
-      return errorResponse(404, message);
-    }
-    return errorResponse(500, message);
+    return errorToResponse(error);
   }
 }
 
@@ -109,10 +105,6 @@ export async function headStreamHttp(
       headers: result.headers,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal error";
-    if (message === "Stream not found") {
-      return errorResponse(404, message);
-    }
-    return errorResponse(500, message);
+    return errorToResponse(error);
   }
 }

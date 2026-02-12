@@ -19,6 +19,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.29.8
         version: 2.29.8(@types/node@25.2.1)
+      oxfmt:
+        specifier: ^0.28.0
+        version: 0.28.0
 
   packages/admin-core:
     dependencies:

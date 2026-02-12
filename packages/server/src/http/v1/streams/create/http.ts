@@ -1,4 +1,4 @@
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, errorToResponse } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_EXPIRES_AT,
@@ -66,26 +66,7 @@ export async function createStreamHttp(
         headers: result.headers,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Internal error";
-
-      // Map specific errors to appropriate HTTP status codes
-      if (message === "content-type mismatch") {
-        return errorResponse(409, message);
-      }
-      if (message === "stream closed status mismatch") {
-        return errorResponse(409, message);
-      }
-      if (message === "stream TTL/expiry mismatch") {
-        return errorResponse(409, message);
-      }
-      if (message === "Storage quota exceeded") {
-        return errorResponse(507, message);
-      }
-      if (message === "Body size too large") {
-        return errorResponse(413, message);
-      }
-
-      return errorResponse(500, message);
+      return errorToResponse(error);
     }
   });
 }

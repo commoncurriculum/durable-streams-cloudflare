@@ -23,7 +23,7 @@ import {
 } from "../../../shared/limits";
 import { ZERO_OFFSET } from "../shared/offsets";
 import { applyExpiryHeaders } from "../../../shared/expiry";
-import type { StreamMeta } from "../../../../storage/types";
+import type { StreamMeta } from "../../../../storage";
 import type { StreamContext } from "../types";
 
 // ============================================================================
@@ -90,7 +90,11 @@ export const MAX_LONG_POLL_WAITERS = 10_000;
 export class LongPollQueue {
   private waiters: Waiter[] = [];
 
-  async waitForData(offset: number, url: string, timeoutMs: number): Promise<boolean> {
+  async waitForData(
+    offset: number,
+    url: string,
+    timeoutMs: number
+  ): Promise<boolean> {
     if (this.waiters.length >= MAX_LONG_POLL_WAITERS) {
       // Reject new waiters when at capacity — caller sees "timed out" (re-fetches)
       return true;
@@ -183,7 +187,10 @@ const textEncoder = new TextEncoder();
 // ============================================================================
 
 // #region docs-sse-data-event
-export function buildSseDataEvent(payload: ArrayBuffer, useBase64: boolean): string {
+export function buildSseDataEvent(
+  payload: ArrayBuffer,
+  useBase64: boolean
+): string {
   let output = "event: data\n";
 
   if (useBase64) {
@@ -280,9 +287,14 @@ export async function buildPreCacheResponse(
   streamId: string,
   meta: StreamMeta,
   offset: number,
-  cursor: string | null,
+  cursor: string | null
 ): Promise<Response | null> {
-  const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
+  const read = await ctx.readFromOffset(
+    streamId,
+    meta,
+    offset,
+    MAX_CHUNK_BYTES
+  );
   if (read.error || !read.hasData) return null;
 
   const headers = buildLongPollHeaders({
@@ -294,7 +306,10 @@ export async function buildPreCacheResponse(
     writeTimestamp: read.writeTimestamp,
   });
   headers.set("Cache-Control", `public, max-age=${LONG_POLL_CACHE_SECONDS}`);
-  headers.set("ETag", buildEtag(streamId, offset, read.nextOffset, read.closedAtTail));
+  headers.set(
+    "ETag",
+    buildEtag(streamId, offset, read.nextOffset, read.closedAtTail)
+  );
   return new Response(read.body, { status: 200, headers });
 }
 
@@ -307,7 +322,7 @@ export async function handleLongPoll(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
-  url: URL,
+  url: URL
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
@@ -320,7 +335,7 @@ export async function handleLongPoll(
     const resolved = await ctx.resolveOffset(
       streamId,
       meta,
-      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam
     );
     if (resolved.error) return resolved.error;
     offset = resolved.offset;
@@ -340,27 +355,48 @@ export async function handleLongPoll(
   // #endregion docs-long-poll-setup
 
   // #region docs-long-poll-immediate
-  const initialRead = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
+  const initialRead = await ctx.readFromOffset(
+    streamId,
+    meta,
+    offset,
+    MAX_CHUNK_BYTES
+  );
   if (initialRead.error) return initialRead.error;
 
   if (initialRead.hasData) {
     const headers = buildLongPollHeaders({
       meta,
-      nextOffsetHeader: await ctx.encodeOffset(streamId, meta, initialRead.nextOffset),
+      nextOffsetHeader: await ctx.encodeOffset(
+        streamId,
+        meta,
+        initialRead.nextOffset
+      ),
       upToDate: initialRead.upToDate,
       closedAtTail: initialRead.closedAtTail,
       cursor: generateResponseCursor(url.searchParams.get("cursor")),
       writeTimestamp: initialRead.writeTimestamp,
     });
     headers.set("Cache-Control", cacheControl);
-    headers.set("ETag", buildEtag(streamId, offset, initialRead.nextOffset, initialRead.closedAtTail));
+    headers.set(
+      "ETag",
+      buildEtag(
+        streamId,
+        offset,
+        initialRead.nextOffset,
+        initialRead.closedAtTail
+      )
+    );
     return new Response(initialRead.body, { status: 200, headers });
   }
   // #endregion docs-long-poll-immediate
 
   // #region docs-long-poll-wait
   const doneWait = ctx.timing?.start("longpoll.wait");
-  const timedOut = await ctx.longPoll.waitForData(offset, url.toString(), LONG_POLL_TIMEOUT_MS);
+  const timedOut = await ctx.longPoll.waitForData(
+    offset,
+    url.toString(),
+    LONG_POLL_TIMEOUT_MS
+  );
   doneWait?.();
   const current = await ctx.getStream(streamId);
   if (!current) return errorResponse(404, "stream not found");
@@ -377,12 +413,21 @@ export async function handleLongPoll(
     return new Response(null, { status: 204, headers });
   }
 
-  const read = await ctx.readFromOffset(streamId, current, offset, MAX_CHUNK_BYTES);
+  const read = await ctx.readFromOffset(
+    streamId,
+    current,
+    offset,
+    MAX_CHUNK_BYTES
+  );
   if (read.error) return read.error;
 
   const headers = buildLongPollHeaders({
     meta: current,
-    nextOffsetHeader: await ctx.encodeOffset(streamId, current, read.nextOffset),
+    nextOffsetHeader: await ctx.encodeOffset(
+      streamId,
+      current,
+      read.nextOffset
+    ),
     upToDate: read.upToDate,
     closedAtTail: read.closedAtTail,
     cursor: generateResponseCursor(url.searchParams.get("cursor")),
@@ -395,7 +440,10 @@ export async function handleLongPoll(
   }
 
   headers.set("Cache-Control", cacheControl);
-  headers.set("ETag", buildEtag(streamId, offset, read.nextOffset, read.closedAtTail));
+  headers.set(
+    "ETag",
+    buildEtag(streamId, offset, read.nextOffset, read.closedAtTail)
+  );
   return new Response(read.body, { status: 200, headers });
 }
 // #endregion docs-long-poll-wait
@@ -409,7 +457,7 @@ export async function handleSse(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
-  url: URL,
+  url: URL
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
   if (!offsetParam) return errorResponse(400, "offset is required");
@@ -418,7 +466,9 @@ export async function handleSse(
   const maxSseClients = (() => {
     const raw = ctx.env.MAX_SSE_CLIENTS;
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : MAX_SSE_CLIENTS_DEFAULT;
+    return Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : MAX_SSE_CLIENTS_DEFAULT;
   })();
   if (ctx.sseState.clients.size >= maxSseClients) {
     return errorResponse(503, "too many SSE connections");
@@ -431,7 +481,7 @@ export async function handleSse(
     const resolved = await ctx.resolveOffset(
       streamId,
       meta,
-      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam
     );
     if (resolved.error) return resolved.error;
     offset = resolved.offset;
@@ -485,7 +535,7 @@ export async function handleSse(
     (async () => {
       await Promise.resolve();
       await runSseSession(ctx, streamId, meta, client);
-    })(),
+    })()
   );
 
   return new Response(readable, { status: 200, headers });
@@ -505,7 +555,7 @@ export async function broadcastSse(
   payload: ArrayBuffer | null,
   nextOffset: number,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   if (!payload) return;
 
@@ -518,16 +568,27 @@ export async function broadcastSse(
     const results = await Promise.allSettled(
       batch.map(async (client) => {
         if (client.closed) return;
-        await writeSseData(client, payload, nextOffsetHeader, true, streamClosed, writeTimestamp);
+        await writeSseData(
+          client,
+          payload,
+          nextOffsetHeader,
+          true,
+          streamClosed,
+          writeTimestamp
+        );
         client.offset = nextOffset;
         if (streamClosed) {
           await closeSseClient(ctx, client);
         }
-      }),
+      })
     );
     for (let j = 0; j < results.length; j++) {
       if (results[j].status === "rejected") {
-        logWarn({ streamId, clientId: batch[j].id, component: "sse-broadcast" }, "SSE broadcast write failed", (results[j] as PromiseRejectedResult).reason);
+        logWarn(
+          { streamId, clientId: batch[j].id, component: "sse-broadcast" },
+          "SSE broadcast write failed",
+          (results[j] as PromiseRejectedResult).reason
+        );
         await closeSseClient(ctx, batch[j]);
       }
     }
@@ -541,7 +602,7 @@ export async function broadcastSseControl(
   meta: StreamMeta,
   nextOffset: number,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, nextOffset);
   const entries = Array.from(ctx.sseState.clients.values());
@@ -551,16 +612,26 @@ export async function broadcastSseControl(
     const results = await Promise.allSettled(
       batch.map(async (client) => {
         if (client.closed) return;
-        await writeSseControl(client, nextOffsetHeader, true, streamClosed, writeTimestamp);
+        await writeSseControl(
+          client,
+          nextOffsetHeader,
+          true,
+          streamClosed,
+          writeTimestamp
+        );
         client.offset = nextOffset;
         if (streamClosed) {
           await closeSseClient(ctx, client);
         }
-      }),
+      })
     );
     for (let j = 0; j < results.length; j++) {
       if (results[j].status === "rejected") {
-        logWarn({ streamId, clientId: batch[j].id, component: "sse-broadcast" }, "SSE control broadcast write failed", (results[j] as PromiseRejectedResult).reason);
+        logWarn(
+          { streamId, clientId: batch[j].id, component: "sse-broadcast" },
+          "SSE control broadcast write failed",
+          (results[j] as PromiseRejectedResult).reason
+        );
         await closeSseClient(ctx, batch[j]);
       }
     }
@@ -582,29 +653,65 @@ async function runSseSession(
   ctx: StreamContext,
   streamId: string,
   meta: StreamMeta,
-  client: SseClient,
+  client: SseClient
 ): Promise<void> {
   try {
     let currentOffset = client.offset;
-    let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+    let read = await ctx.readFromOffset(
+      streamId,
+      meta,
+      currentOffset,
+      MAX_CHUNK_BYTES
+    );
     if (read.error) {
-      logWarn({ streamId, clientId: client.id, offset: currentOffset, component: "sse" }, "SSE session initial read error");
+      logWarn(
+        {
+          streamId,
+          clientId: client.id,
+          offset: currentOffset,
+          component: "sse",
+        },
+        "SSE session initial read error"
+      );
       await closeSseClient(ctx, client);
       return;
     }
 
     if (read.hasData) {
-      const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-      await writeSseData(client, read.body, nextOffsetHeader, read.upToDate, read.closedAtTail, read.writeTimestamp);
+      const nextOffsetHeader = await ctx.encodeOffset(
+        streamId,
+        meta,
+        read.nextOffset
+      );
+      await writeSseData(
+        client,
+        read.body,
+        nextOffsetHeader,
+        read.upToDate,
+        read.closedAtTail,
+        read.writeTimestamp
+      );
       currentOffset = read.nextOffset;
       client.offset = currentOffset;
 
       while (!read.upToDate && !read.closedAtTail) {
-        read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+        read = await ctx.readFromOffset(
+          streamId,
+          meta,
+          currentOffset,
+          MAX_CHUNK_BYTES
+        );
         if (read.error) break;
         if (!read.hasData) break;
         const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-        await writeSseData(client, read.body, header, read.upToDate, read.closedAtTail, read.writeTimestamp);
+        await writeSseData(
+          client,
+          read.body,
+          header,
+          read.upToDate,
+          read.closedAtTail,
+          read.writeTimestamp
+        );
         currentOffset = read.nextOffset;
         client.offset = currentOffset;
       }
@@ -614,7 +721,7 @@ async function runSseSession(
         client,
         header,
         true,
-        meta.closed === 1 && currentOffset >= meta.tail_offset,
+        meta.closed === 1 && currentOffset >= meta.tail_offset
       );
     }
 
@@ -622,12 +729,19 @@ async function runSseSession(
       await closeSseClient(ctx, client);
     }
   } catch (e) {
-    logError({ streamId, clientId: client.id, component: "sse" }, "SSE session error", e);
+    logError(
+      { streamId, clientId: client.id, component: "sse" },
+      "SSE session error",
+      e
+    );
     await closeSseClient(ctx, client);
   }
 }
 
-async function closeSseClient(ctx: StreamContext, client: SseClient): Promise<void> {
+async function closeSseClient(
+  ctx: StreamContext,
+  client: SseClient
+): Promise<void> {
   if (client.closed) return;
   client.closed = true;
   if (client.closeTimer) clearTimeout(client.closeTimer);
@@ -644,7 +758,7 @@ async function writeSseData(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   const dataEvent = buildSseDataEvent(payload, client.useBase64);
   const control = buildSseControlEvent({
@@ -663,7 +777,7 @@ async function writeSseControl(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   const control = buildSseControlEvent({
     nextOffset: nextOffsetHeader,
@@ -680,7 +794,10 @@ async function writeSseControl(
 // WebSocket Internal Bridge — Message Builders
 // ============================================================================
 
-export function buildWsDataMessage(payload: ArrayBuffer, useBase64: boolean): WsDataMessage {
+export function buildWsDataMessage(
+  payload: ArrayBuffer,
+  useBase64: boolean
+): WsDataMessage {
   if (useBase64) {
     return {
       type: "data",
@@ -731,7 +848,7 @@ export async function handleWsUpgrade(
   streamId: string,
   meta: StreamMeta,
   url: URL,
-  request: Request,
+  request: Request
 ): Promise<Response> {
   const upgradeHeader = request.headers.get("Upgrade");
   if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
@@ -748,7 +865,7 @@ export async function handleWsUpgrade(
     const resolved = await ctx.resolveOffset(
       streamId,
       meta,
-      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
+      offsetParam === "-1" ? ZERO_OFFSET : offsetParam
     );
     if (resolved.error) return resolved.error;
     offset = resolved.offset;
@@ -777,7 +894,7 @@ export async function handleWsUpgrade(
     (async () => {
       await Promise.resolve();
       await sendWsCatchUp(ctx, streamId, meta, server, attachment);
-    })(),
+    })()
   );
 
   const headers = new Headers();
@@ -796,32 +913,61 @@ async function sendWsCatchUp(
   streamId: string,
   meta: StreamMeta,
   ws: WebSocket,
-  attachment: WsAttachment,
+  attachment: WsAttachment
 ): Promise<void> {
   try {
     let currentOffset = attachment.offset;
-    let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+    let read = await ctx.readFromOffset(
+      streamId,
+      meta,
+      currentOffset,
+      MAX_CHUNK_BYTES
+    );
     if (read.error) return;
 
     if (read.hasData) {
       sendWsData(ws, attachment, read.body);
-      const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-      sendWsControl(ws, attachment, nextOffsetHeader, read.upToDate, read.closedAtTail, read.writeTimestamp);
+      const nextOffsetHeader = await ctx.encodeOffset(
+        streamId,
+        meta,
+        read.nextOffset
+      );
+      sendWsControl(
+        ws,
+        attachment,
+        nextOffsetHeader,
+        read.upToDate,
+        read.closedAtTail,
+        read.writeTimestamp
+      );
       currentOffset = read.nextOffset;
       attachment.offset = currentOffset;
 
       while (!read.upToDate && !read.closedAtTail) {
-        read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
+        read = await ctx.readFromOffset(
+          streamId,
+          meta,
+          currentOffset,
+          MAX_CHUNK_BYTES
+        );
         if (read.error || !read.hasData) break;
         sendWsData(ws, attachment, read.body);
         const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-        sendWsControl(ws, attachment, header, read.upToDate, read.closedAtTail, read.writeTimestamp);
+        sendWsControl(
+          ws,
+          attachment,
+          header,
+          read.upToDate,
+          read.closedAtTail,
+          read.writeTimestamp
+        );
         currentOffset = read.nextOffset;
         attachment.offset = currentOffset;
       }
     } else {
       const header = await ctx.encodeOffset(streamId, meta, currentOffset);
-      const closedAtTail = meta.closed === 1 && currentOffset >= meta.tail_offset;
+      const closedAtTail =
+        meta.closed === 1 && currentOffset >= meta.tail_offset;
       sendWsControl(ws, attachment, header, true, closedAtTail);
     }
 
@@ -832,11 +978,19 @@ async function sendWsCatchUp(
     }
   } catch (e) {
     logError({ streamId, component: "ws-catchup" }, "WS catch-up error", e);
-    try { ws.close(1011, "catch-up error"); } catch { /* already closed */ }
+    try {
+      ws.close(1011, "catch-up error");
+    } catch {
+      /* already closed */
+    }
   }
 }
 
-function sendWsData(ws: WebSocket, attachment: WsAttachment, payload: ArrayBuffer): void {
+function sendWsData(
+  ws: WebSocket,
+  attachment: WsAttachment,
+  payload: ArrayBuffer
+): void {
   const msg = buildWsDataMessage(payload, attachment.useBase64);
   ws.send(JSON.stringify(msg));
 }
@@ -847,7 +1001,7 @@ function sendWsControl(
   nextOffsetHeader: string,
   upToDate: boolean,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): void {
   const { message, nextCursor } = buildWsControlMessage({
     nextOffset: nextOffsetHeader,
@@ -872,7 +1026,7 @@ export async function broadcastWebSocket(
   payload: ArrayBuffer | null,
   nextOffset: number,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   const sockets = ctx.getWebSockets(streamId);
   if (sockets.length === 0) return;
@@ -901,8 +1055,16 @@ export async function broadcastWebSocket(
         ws.close(1000, "stream closed");
       }
     } catch (e) {
-      logWarn({ streamId, component: "ws-broadcast" }, "WS broadcast data error", e);
-      try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
+      logWarn(
+        { streamId, component: "ws-broadcast" },
+        "WS broadcast data error",
+        e
+      );
+      try {
+        ws.close(1011, "broadcast error");
+      } catch {
+        /* already closed */
+      }
     }
   }
 }
@@ -913,7 +1075,7 @@ export async function broadcastWebSocketControl(
   meta: StreamMeta,
   nextOffset: number,
   streamClosed: boolean,
-  writeTimestamp: number = 0,
+  writeTimestamp: number = 0
 ): Promise<void> {
   const sockets = ctx.getWebSockets(streamId);
   if (sockets.length === 0) return;
@@ -939,8 +1101,16 @@ export async function broadcastWebSocketControl(
         ws.close(1000, "stream closed");
       }
     } catch (e) {
-      logWarn({ streamId, component: "ws-broadcast" }, "WS broadcast control error", e);
-      try { ws.close(1011, "broadcast error"); } catch { /* already closed */ }
+      logWarn(
+        { streamId, component: "ws-broadcast" },
+        "WS broadcast control error",
+        e
+      );
+      try {
+        ws.close(1011, "broadcast error");
+      } catch {
+        /* already closed */
+      }
     }
   }
 }
@@ -948,6 +1118,10 @@ export async function broadcastWebSocketControl(
 export function closeAllWebSockets(ctx: StreamContext): void {
   const sockets = ctx.getWebSockets();
   for (const ws of sockets) {
-    try { ws.close(1000, "stream deleted"); } catch { /* already closed */ }
+    try {
+      ws.close(1000, "stream deleted");
+    } catch {
+      /* already closed */
+    }
   }
 }

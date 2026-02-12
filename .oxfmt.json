@@ -1,0 +1,6 @@
+{
+  "$schema": "https://oxc.rs/schema/oxfmt.json",
+  "indentWidth": 2,
+  "lineWidth": 100,
+  "trailingComma": "all"
+}

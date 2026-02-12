@@ -1,4 +1,5 @@
-import type { StreamMeta, StreamStorage } from "../../../storage";
+import type { StreamMeta, StreamStorage, ReadResult } from "../../../storage";
+import type { Timing } from "../../shared/timing";
 import type { ProducerInput } from "./shared/producer";
 import type { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
@@ -29,6 +30,7 @@ export type StreamContext = {
   state: DurableObjectState;
   env: StreamEnv;
   storage: StreamStorage;
+  timing?: Timing;
 
   longPoll: LongPollQueue;
   sseState: SseState;
@@ -49,7 +51,7 @@ export type StreamContext = {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number
-  ) => Promise<{ messages: Uint8Array[]; tailOffset: number; closed: boolean }>;
+  ) => Promise<ReadResult>;
   rotateSegment: (
     streamId: string,
     options?: { force?: boolean; retainOps?: boolean }

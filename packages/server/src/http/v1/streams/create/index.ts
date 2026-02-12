@@ -12,11 +12,12 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   baseHeaders,
 } from "../../../shared/headers";
+import { HttpError } from "../../../shared/errors";
 import { validateBodySize } from "../shared/body";
-import { buildAppendBatch } from "../../../../storage/stream/append-batch";
+import { buildAppendBatch } from "../../../../storage/append-batch";
 import { evaluateProducer } from "../shared/producer";
 import type { StreamContext } from "../types";
-import type { StreamMeta } from "../../../../storage/types";
+import type { StreamMeta } from "../../../../storage";
 
 export type CreateStreamOptions = {
   streamId: string;
@@ -67,28 +68,31 @@ export async function createStream(
   })();
   const dbSize = ctx.state.storage.sql.databaseSize;
   if (dbSize >= quotaBytes * 0.9) {
-    throw new Error("Storage quota exceeded");
+    throw new HttpError(507, "Storage quota exceeded");
   }
 
   // 2. Validate payload size (protects DO from oversized writes)
   const bodySizeResult = validateBodySize(payload.length);
   if (bodySizeResult.kind === "error") {
-    throw new Error("Body size too large");
+    throw new HttpError(413, "Body size too large");
   }
 
   // 3. Parse and validate TTL/expiry headers
   if (ttlHeader && expiresHeader) {
-    throw new Error("Stream-TTL and Stream-Expires-At are mutually exclusive");
+    throw new HttpError(
+      400,
+      "Stream-TTL and Stream-Expires-At are mutually exclusive"
+    );
   }
 
   const ttlSeconds = parseTtlSeconds(ttlHeader);
   if (ttlSeconds.error) {
-    throw new Error(ttlSeconds.error);
+    throw new HttpError(400, ttlSeconds.error);
   }
 
   const expiresAt = parseExpiresAt(expiresHeader);
   if (expiresAt.error) {
-    throw new Error(expiresAt.error);
+    throw new HttpError(400, expiresAt.error);
   }
 
   const effectiveExpiresAt =
@@ -126,17 +130,17 @@ export async function createStream(
       normalizeContentType(existing.content_type) !==
       normalizeContentType(contentType)
     ) {
-      throw new Error("content-type mismatch");
+      throw new HttpError(409, "content-type mismatch");
     }
 
     // Closed status must match
     if (closeStream !== (existing.closed === 1)) {
-      throw new Error("stream closed status mismatch");
+      throw new HttpError(409, "stream closed status mismatch");
     }
 
     // TTL/expiry must match
     if (!ttlMatches(existing, ttlSeconds.value, effectiveExpiresAt)) {
-      throw new Error("stream TTL/expiry mismatch");
+      throw new HttpError(409, "stream TTL/expiry mismatch");
     }
 
     // Return 200 with existing stream headers
@@ -181,7 +185,11 @@ export async function createStream(
       producer
     );
     if (producerEval.kind === "error") {
-      throw new Error("Producer evaluation failed");
+      throw new HttpError(
+        producerEval.response.status,
+        "Producer evaluation failed",
+        producerEval.response
+      );
     }
     // Note: We don't check for "duplicate" on PUT/create because the stream is brand new
   }
@@ -203,7 +211,11 @@ export async function createStream(
     doneBuild?.();
 
     if (batch.error) {
-      throw new Error("Batch build failed");
+      throw new HttpError(
+        batch.error.status,
+        "Batch build failed",
+        batch.error
+      );
     }
 
     const doneBatch = ctx.timing?.start("append.batch");

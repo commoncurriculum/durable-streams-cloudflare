@@ -1,6 +1,9 @@
 import { env, runInDurableObject } from "cloudflare:test";
-import { DoSqliteStorage } from "../../src/storage/queries";
-import type { StreamMeta, ProducerState } from "../../src/storage/types";
+import { StreamDoStorage } from "../../src/storage/stream-do/queries";
+import type {
+  StreamMeta,
+  ProducerState,
+} from "../../src/storage/stream-do/types";
 
 export const STREAM_ID = "test-stream";
 
@@ -27,7 +30,9 @@ export function baseMeta(overrides: Partial<StreamMeta> = {}): StreamMeta {
   };
 }
 
-export function baseProducerState(overrides: Partial<ProducerState> = {}): ProducerState {
+export function baseProducerState(
+  overrides: Partial<ProducerState> = {}
+): ProducerState {
   return {
     producer_id: "p1",
     epoch: 1,
@@ -40,13 +45,15 @@ export function baseProducerState(overrides: Partial<ProducerState> = {}): Produ
 
 export async function withStorage(
   prefix: string,
-  fn: (storage: DoSqliteStorage) => Promise<void>,
+  fn: (storage: StreamDoStorage) => Promise<void>
 ): Promise<void> {
   const id = env.STREAMS.idFromName(`${prefix}-${crypto.randomUUID()}`);
   const stub = env.STREAMS.get(id);
   await runInDurableObject(stub, async (instance) => {
-    const sql = (instance as unknown as { ctx: DurableObjectState }).ctx.storage.sql;
-    const storage = new DoSqliteStorage(sql);
+    const doStorage = (instance as unknown as { ctx: DurableObjectState }).ctx
+      .storage;
+    const storage = new StreamDoStorage(doStorage);
+    storage.initSchema();
     await fn(storage);
   });
 }
@@ -56,9 +63,9 @@ export async function withStorage(
  * Pass `updateFields` to set tail_offset, read_seq, segment_start, etc.
  */
 export async function seedStream(
-  storage: DoSqliteStorage,
+  storage: StreamDoStorage,
   meta: StreamMeta,
-  updateFields?: { fields: string[]; values: unknown[] },
+  updateFields?: { fields: string[]; values: unknown[] }
 ): Promise<void> {
   await storage.insertStream({
     streamId: meta.stream_id,
@@ -71,13 +78,20 @@ export async function seedStream(
   });
   if (updateFields) {
     await storage.batch([
-      storage.updateStreamStatement(meta.stream_id, updateFields.fields, updateFields.values),
+      storage.updateStreamStatement(
+        meta.stream_id,
+        updateFields.fields,
+        updateFields.values
+      ),
     ]);
   }
 }
 
 /** Shorthand: seedStream with tail_offset, read_seq, segment_start, segment_messages, segment_bytes. */
-export async function seedStreamFull(storage: DoSqliteStorage, meta: StreamMeta): Promise<void> {
+export async function seedStreamFull(
+  storage: StreamDoStorage,
+  meta: StreamMeta
+): Promise<void> {
   await seedStream(storage, meta, {
     fields: [
       "tail_offset = ?",
@@ -86,12 +100,21 @@ export async function seedStreamFull(storage: DoSqliteStorage, meta: StreamMeta)
       "segment_messages = ?",
       "segment_bytes = ?",
     ],
-    values: [meta.tail_offset, meta.read_seq, meta.segment_start, meta.segment_messages, meta.segment_bytes],
+    values: [
+      meta.tail_offset,
+      meta.read_seq,
+      meta.segment_start,
+      meta.segment_messages,
+      meta.segment_bytes,
+    ],
   });
 }
 
 /** Shorthand: seedStream with tail_offset, read_seq, segment_start. */
-export async function seedStreamOffsets(storage: DoSqliteStorage, meta: StreamMeta): Promise<void> {
+export async function seedStreamOffsets(
+  storage: StreamDoStorage,
+  meta: StreamMeta
+): Promise<void> {
   await seedStream(storage, meta, {
     fields: ["tail_offset = ?", "read_seq = ?", "segment_start = ?"],
     values: [meta.tail_offset, meta.read_seq, meta.segment_start],
@@ -99,12 +122,15 @@ export async function seedStreamOffsets(storage: DoSqliteStorage, meta: StreamMe
 }
 
 export async function insertOp(
-  storage: DoSqliteStorage,
+  storage: StreamDoStorage,
   startOffset: number,
   data: string | ArrayBuffer,
-  createdAt?: number,
+  createdAt?: number
 ): Promise<void> {
-  const body = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+  const body =
+    typeof data === "string"
+      ? new TextEncoder().encode(data)
+      : new Uint8Array(data);
   const endOffset = startOffset + body.byteLength;
   await storage.batch([
     storage.insertOpStatement({
@@ -123,9 +149,9 @@ export async function insertOp(
 }
 
 export async function insertJsonOp(
-  storage: DoSqliteStorage,
+  storage: StreamDoStorage,
   offset: number,
-  value: unknown,
+  value: unknown
 ): Promise<void> {
   const body = new TextEncoder().encode(JSON.stringify(value));
   await storage.batch([
@@ -145,8 +171,8 @@ export async function insertJsonOp(
 }
 
 export async function insertSegment(
-  storage: DoSqliteStorage,
-  opts: { startOffset: number; endOffset: number; readSeq: number },
+  storage: StreamDoStorage,
+  opts: { startOffset: number; endOffset: number; readSeq: number }
 ): Promise<void> {
   await storage.insertSegment({
     streamId: STREAM_ID,
@@ -162,12 +188,15 @@ export async function insertSegment(
   });
 }
 
-export async function seedProducer(storage: DoSqliteStorage, state: ProducerState): Promise<void> {
+export async function seedProducer(
+  storage: StreamDoStorage,
+  state: ProducerState
+): Promise<void> {
   await storage.upsertProducer(
     STREAM_ID,
     { id: state.producer_id, epoch: state.epoch, seq: state.last_seq },
     state.last_offset,
-    state.last_updated ?? Date.now(),
+    state.last_updated ?? Date.now()
   );
 }
 

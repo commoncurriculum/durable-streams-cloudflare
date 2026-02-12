@@ -67,7 +67,7 @@ export class StreamDoStorage implements StreamStorage {
     await this.db.insert(streamMeta).values({
       stream_id: input.streamId,
       content_type: input.contentType,
-      closed: input.closed,
+      closed: input.closed ? 1 : 0,
       tail_offset: 0,
       read_seq: 0,
       segment_start: 0,
@@ -81,7 +81,7 @@ export class StreamDoStorage implements StreamStorage {
       closed_by_producer_id: null,
       closed_by_epoch: null,
       closed_by_seq: null,
-      public: input.isPublic,
+      public: input.isPublic ? 1 : 0,
     });
   }
 
@@ -92,7 +92,7 @@ export class StreamDoStorage implements StreamStorage {
   ): Promise<void> {
     if (closedBy) {
       await this.db.update(streamMeta).set({
-        closed: true,
+        closed: 1,
         closed_at: closedAt,
         closed_by_producer_id: closedBy.id,
         closed_by_epoch: closedBy.epoch,
@@ -102,7 +102,7 @@ export class StreamDoStorage implements StreamStorage {
     }
 
     await this.db.update(streamMeta).set({
-      closed: true,
+      closed: 1,
       closed_at: closedAt,
       closed_by_producer_id: null,
       closed_by_epoch: null,
@@ -194,11 +194,13 @@ export class StreamDoStorage implements StreamStorage {
     producerId: string,
     lastUpdated: number
   ): Promise<boolean> {
-    const result = await this.db
-      .update(producers)
-      .set({ last_updated: lastUpdated })
-      .where(eq(producers.producer_id, producerId));
-    return result.rowsAffected > 0;
+    this.sql.exec(
+      "UPDATE producers SET last_updated = ? WHERE producer_id = ?",
+      lastUpdated,
+      producerId
+    );
+    const changes = this.sql.exec("SELECT changes() as c").one();
+    return (changes.c as number) > 0;
   }
 
   async listProducers(_streamId: string): Promise<ProducerState[]> {
@@ -258,40 +260,26 @@ export class StreamDoStorage implements StreamStorage {
     _streamId: string,
     offset: number
   ): Promise<ReadChunk | null> {
-    const result = await this.db
-      .select({
-        start_offset: ops.start_offset,
-        end_offset: ops.end_offset,
-        size_bytes: ops.size_bytes,
-        body: ops.body,
-        created_at: ops.created_at,
-      })
-      .from(ops)
-      .where(
-        and(
-          sql`${ops.start_offset} < ${offset}`,
-          sql`${ops.end_offset} > ${offset}`
-        )
-      )
-      .orderBy(desc(ops.start_offset))
-      .limit(1);
-    return result[0] ? (result[0] as ReadChunk) : null;
+    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
+    // calls Node.js Buffer (unavailable in Workers runtime).
+    const cursor = this.sql.exec(
+      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset < ? AND end_offset > ? ORDER BY start_offset DESC LIMIT 1",
+      offset,
+      offset
+    );
+    const rows = [...cursor];
+    if (rows.length === 0) return null;
+    return rows[0] as unknown as ReadChunk;
   }
 
   async selectOpsFrom(_streamId: string, offset: number): Promise<ReadChunk[]> {
-    const result = await this.db
-      .select({
-        start_offset: ops.start_offset,
-        end_offset: ops.end_offset,
-        size_bytes: ops.size_bytes,
-        body: ops.body,
-        created_at: ops.created_at,
-      })
-      .from(ops)
-      .where(gte(ops.start_offset, offset))
-      .orderBy(asc(ops.start_offset))
-      .limit(200);
-    return result as ReadChunk[];
+    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
+    // calls Node.js Buffer (unavailable in Workers runtime).
+    const cursor = this.sql.exec(
+      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? ORDER BY start_offset ASC LIMIT 200",
+      offset
+    );
+    return [...cursor] as unknown as ReadChunk[];
   }
 
   async selectOpsRange(
@@ -299,34 +287,23 @@ export class StreamDoStorage implements StreamStorage {
     startOffset: number,
     endOffset: number
   ): Promise<ReadChunk[]> {
-    const result = await this.db
-      .select({
-        start_offset: ops.start_offset,
-        end_offset: ops.end_offset,
-        size_bytes: ops.size_bytes,
-        body: ops.body,
-        created_at: ops.created_at,
-      })
-      .from(ops)
-      .where(
-        and(gte(ops.start_offset, startOffset), lte(ops.end_offset, endOffset))
-      )
-      .orderBy(asc(ops.start_offset));
-    return result as ReadChunk[];
+    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
+    // calls Node.js Buffer (unavailable in Workers runtime).
+    const cursor = this.sql.exec(
+      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? AND end_offset <= ? ORDER BY start_offset ASC",
+      startOffset,
+      endOffset
+    );
+    return [...cursor] as unknown as ReadChunk[];
   }
 
   async selectAllOps(_streamId: string): Promise<ReadChunk[]> {
-    const result = await this.db
-      .select({
-        start_offset: ops.start_offset,
-        end_offset: ops.end_offset,
-        size_bytes: ops.size_bytes,
-        body: ops.body,
-        created_at: ops.created_at,
-      })
-      .from(ops)
-      .orderBy(asc(ops.start_offset));
-    return result as ReadChunk[];
+    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
+    // calls Node.js Buffer (unavailable in Workers runtime).
+    const cursor = this.sql.exec(
+      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops ORDER BY start_offset ASC"
+    );
+    return [...cursor] as unknown as ReadChunk[];
   }
 
   async deleteOpsThrough(_streamId: string, endOffset: number): Promise<void> {

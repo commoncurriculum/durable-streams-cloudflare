@@ -8,7 +8,7 @@ import {
 import { errorResponse } from "../../../shared/errors";
 import { encodeCurrentOffset } from "./stream-offsets";
 import type { Result } from "../types";
-import type { StreamMeta, StreamStorage } from "../../../../storage/types";
+import type { StreamMeta, StreamStorage } from "../../../../storage";
 import type { ProducerInput } from "./producer";
 
 export type CloseOnlyResult = {
@@ -16,7 +16,10 @@ export type CloseOnlyResult = {
   error?: Response;
 };
 
-export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string): Response {
+export function buildClosedConflict(
+  meta: StreamMeta,
+  nextOffsetHeader: string
+): Response {
   const headers = baseHeaders({
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_STREAM_CLOSED]: "true",
@@ -29,9 +32,15 @@ export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string):
  *  for optimistic concurrency control on close operations. If the provided
  *  Stream-Seq is <= the stream's last value, the request is rejected as a
  *  stale regression (409). */
-export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): Result<null> {
+export function validateStreamSeq(
+  meta: StreamMeta,
+  streamSeq: string | null
+): Result<null> {
   if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
-    return { kind: "error", response: errorResponse(409, "Stream-Seq regression") };
+    return {
+      kind: "error",
+      response: errorResponse(409, "Stream-Seq regression"),
+    };
   }
   return { kind: "ok", value: null };
 }
@@ -39,7 +48,7 @@ export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): R
 export async function closeStreamOnly(
   storage: StreamStorage,
   meta: StreamMeta,
-  producer?: ProducerInput,
+  producer?: ProducerInput
 ): Promise<CloseOnlyResult> {
   const nextOffsetHeader = encodeCurrentOffset(meta);
 
@@ -69,7 +78,12 @@ export async function closeStreamOnly(
   }
 
   if (producer) {
-    await storage.upsertProducer(meta.stream_id, producer, meta.tail_offset, Date.now());
+    await storage.upsertProducer(
+      meta.stream_id,
+      producer,
+      meta.tail_offset,
+      Date.now()
+    );
   }
 
   const headers = baseHeaders({

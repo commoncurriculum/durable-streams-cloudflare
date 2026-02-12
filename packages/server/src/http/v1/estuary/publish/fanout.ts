@@ -74,7 +74,7 @@ export async function fanoutToSubscribers(
         });
 
         return withTimeout(
-          stub.routeStreamRequest(doKey, false, request),
+          stub.routeStreamRequest(doKey, request),
           rpcTimeoutMs
         );
       })

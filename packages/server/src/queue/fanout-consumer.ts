@@ -1,4 +1,4 @@
-import { fanoutToSubscribers } from "../storage/estuary/fanout";
+import { fanoutToSubscribers } from "../http/v1/estuary/publish/fanout";
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { base64ToBuffer } from "../util/base64";

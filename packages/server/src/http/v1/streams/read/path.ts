@@ -12,6 +12,7 @@ import {
 } from "../../../../storage";
 import { readSegmentMessages } from "../../../../storage/segments";
 import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage";
+import type { Timing } from "../../../shared/timing";
 import type { StreamEnv } from "../types";
 
 const COALESCE_CACHE_MS = 100;
@@ -106,6 +107,7 @@ export class ReadPath {
   ): Promise<ReadResult> {
     this.readStats.internalReads += 1;
 
+    const timing: Timing | null = null;
     const tier = await this.resolveStorageTier(streamId, meta, offset, timing);
 
     switch (tier.tier) {

@@ -1,4 +1,4 @@
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, errorToResponse } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_SEQ,
@@ -62,49 +62,55 @@ function parsePostInput(raw: RawPostInput): Result<ParsedPostInput> {
 /**
  * HTTP handler for POST /streams/{streamId}
  *
- * Parses the HTTP request and calls appendStream (THE ONE function).
+ * Parses the HTTP request, then calls appendStream inside blockConcurrencyWhile
+ * with a try/catch INSIDE the callback so the callback never rejects.
+ *
+ * This is critical: if blockConcurrencyWhile's callback rejects, workerd marks
+ * the DO's input gate as broken, poisoning the entire DO instance.
+ * See test/unit/stream/block-concurrency-error.test.ts for proof.
  */
 export async function appendStreamHttp(
   ctx: StreamContext,
   streamId: string,
   request: Request
 ): Promise<Response> {
-  try {
-    // 1. Parse HTTP request
-    const raw = await extractPostInput(streamId, request);
-    const parsed = parsePostInput(raw);
-    if (parsed.kind === "error") return parsed.response;
+  // 1. Parse HTTP request OUTSIDE blockConcurrencyWhile (no state mutation here)
+  const raw = await extractPostInput(streamId, request);
+  const parsed = parsePostInput(raw);
+  if (parsed.kind === "error") return parsed.response;
 
-    const { bodyBytes, producer, closeStream } = parsed.value;
+  const { bodyBytes, producer, closeStream } = parsed.value;
 
-    // 2. Validate Content-Length header matches actual body (HTTP protocol requirement)
-    const contentLengthHeader = request.headers.get("Content-Length");
-    if (contentLengthHeader !== null) {
-      const declaredLength = Number.parseInt(contentLengthHeader, 10);
-      if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
-        return errorResponse(
-          400,
-          `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`
-        );
-      }
+  // 2. Validate Content-Length header matches actual body (HTTP protocol requirement)
+  const contentLengthHeader = request.headers.get("Content-Length");
+  if (contentLengthHeader !== null) {
+    const declaredLength = Number.parseInt(contentLengthHeader, 10);
+    if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
+      return errorResponse(
+        400,
+        `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`
+      );
     }
-
-    // 3. Call THE ONE function
-    const result = await appendStream(ctx, {
-      streamId,
-      payload: bodyBytes,
-      producer: producer ?? undefined,
-      closeStream,
-    });
-
-    return new Response(null, {
-      status: result.status,
-      headers: result.headers,
-    });
-  } catch (error) {
-    return errorResponse(
-      500,
-      error instanceof Error ? error.message : "Internal error"
-    );
   }
+
+  // 3. Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
+  return ctx.state.blockConcurrencyWhile(async () => {
+    try {
+      const result = await appendStream(ctx, {
+        streamId,
+        payload: bodyBytes,
+        contentType: parsed.value.contentType,
+        streamSeq: parsed.value.streamSeq,
+        producer: producer ?? undefined,
+        closeStream,
+      });
+
+      return new Response(null, {
+        status: result.status,
+        headers: result.headers,
+      });
+    } catch (error) {
+      return errorToResponse(error);
+    }
+  });
 }

@@ -1,6 +1,9 @@
 import { toUint8Array } from "./encoding";
-import { buildSegmentKey, encodeSegmentMessages } from "../../../../storage/segments";
-import type { StreamStorage } from "../../../../storage/types";
+import {
+  buildSegmentKey,
+  encodeSegmentMessages,
+} from "../../../../storage/segments";
+import type { StreamStorage } from "../../../../storage";
 import type { StreamEnv } from "../types";
 
 export type SegmentRotationResult = {
@@ -44,7 +47,9 @@ export async function rotateSegment(params: {
   if (!meta) return { rotated: false };
 
   const shouldRotate =
-    force || meta.segment_messages >= segmentMaxMessages || meta.segment_bytes >= segmentMaxBytes;
+    force ||
+    meta.segment_messages >= segmentMaxMessages ||
+    meta.segment_bytes >= segmentMaxBytes;
   if (!shouldRotate) return { rotated: false };
   // #endregion docs-rotate-check
 
@@ -72,7 +77,10 @@ export async function rotateSegment(params: {
   const now = Date.now();
   const messages = ops.map((chunk) => toUint8Array(chunk.body));
   const body = encodeSegmentMessages(messages);
-  const sizeBytes = messages.reduce((sum, message) => sum + message.byteLength, 0);
+  const sizeBytes = messages.reduce(
+    (sum, message) => sum + message.byteLength,
+    0
+  );
   const messageCount = messages.length;
 
   const key = buildSegmentKey(streamId, meta.read_seq);
@@ -99,12 +107,24 @@ export async function rotateSegment(params: {
   const batchStatements = [
     storage.updateStreamStatement(
       streamId,
-      ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
-      [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
+      [
+        "read_seq = ?",
+        "segment_start = ?",
+        "segment_messages = ?",
+        "segment_bytes = ?",
+      ],
+      [
+        meta.read_seq + 1,
+        segmentEnd,
+        remainingStats.messageCount,
+        remainingStats.sizeBytes,
+      ]
     ),
   ];
   if (deleteOps) {
-    batchStatements.push(storage.deleteOpsThroughStatement(streamId, segmentEnd));
+    batchStatements.push(
+      storage.deleteOpsThroughStatement(streamId, segmentEnd)
+    );
   }
   await storage.batch(batchStatements);
 

@@ -108,8 +108,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
       });
 
       await next();
-
-      await next();
     });
 
     // Routes
@@ -161,7 +159,7 @@ export class StreamDO extends DurableObject<StreamEnv> {
     if (!parsed) {
       return new Response("not found", { status: 404 });
     }
-    return this.routeStreamRequest(parsed.path, false, request);
+    return this.routeStreamRequest(parsed.path, request);
   }
 
   // Private helper methods
@@ -289,18 +287,25 @@ export class StreamDO extends DurableObject<StreamEnv> {
       encodeTailOffset: (sid, meta) =>
         encodeTailOffset(this.storage, sid, meta),
       readFromOffset: (sid, meta, offset, maxChunkBytes) =>
-        this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes, null),
+        this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes),
       rotateSegment: (sid, options) => this.rotateSegment(sid, options),
       getWebSockets: (tag) => this.ctx.getWebSockets(tag),
     };
 
-    // Call THE ONE function
-    const result = await appendStream(ctx, {
-      streamId,
-      payload,
+    // Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
+    // so the callback never rejects (which would break the DO's input gate).
+    // Trampoline: catch inside BCW, re-throw outside.
+    const outcome = await this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        const r = await appendStream(ctx, { streamId, payload });
+        return { ok: true as const, tailOffset: r.newTailOffset };
+      } catch (error) {
+        return { ok: false as const, error };
+      }
     });
 
-    return { tailOffset: result.newTailOffset };
+    if (!outcome.ok) throw outcome.error;
+    return { tailOffset: outcome.tailOffset };
   }
 
   // Hibernation API handlers
