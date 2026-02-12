@@ -8,5 +8,7 @@ openapi.yaml
 *.tsbuildinfo
 coverage/
 coverage-integration/
+coverage-combined/
 .nyc_output/
+.nyc_output_merged/
 dist/

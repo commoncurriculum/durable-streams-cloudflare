@@ -31,6 +31,7 @@
     "test:coverage": "pnpm exec vitest run --config vitest.unit.config.ts --coverage",
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
     "test:implementation-coverage": "pnpm exec vitest run --config vitest.integration-coverage.config.ts && pnpm exec nyc report --temp-dir .nyc_output --report-dir coverage-integration --reporter=text --reporter=html --reporter=json-summary --cwd=. --include=src/** --exclude=src/**/*.d.ts --exclude=src/**/types.ts --exclude=src/**/schema.ts",
+    "test:coverage-all": "pnpm run test:coverage && pnpm run test:implementation-coverage && node scripts/merge-coverage.mjs",
     "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
     "typecheck": "pnpm exec tsc -p tsconfig.src.json --noEmit && pnpm exec tsc -p tsconfig.unit.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
