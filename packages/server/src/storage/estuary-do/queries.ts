@@ -7,6 +7,8 @@
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { eq, sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import migrations from "../../../drizzle/migrations";
 import { subscriptions, estuaryInfo } from "./schema";
 import type { EstuaryStorage } from "./types";
 
@@ -23,24 +25,13 @@ export class EstuaryDoStorage implements EstuaryStorage {
   }
 
   /**
-   * Initialize database schema
+   * Initialize database schema using Drizzle migrations
    * Must be called during DO construction within blockConcurrencyWhile
    */
   initSchema(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS subscriptions (
-        stream_id TEXT PRIMARY KEY,
-        subscribed_at INTEGER NOT NULL
-      );
-    `);
+    migrate(this.db, migrations);
+    // Clean up legacy table if it exists
     this.sql.exec("DROP TABLE IF EXISTS session_info");
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS estuary_info (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        project TEXT NOT NULL,
-        estuary_id TEXT NOT NULL
-      );
-    `);
   }
 
   // ============================================================================

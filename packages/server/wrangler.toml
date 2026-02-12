@@ -57,5 +57,11 @@ queue = "subscription-fanout"
 # CORS_ORIGINS = "https://admin.example.com,https://dashboard.example.com"
 ESTUARY_TTL_SECONDS = "86400"
 
+# Rules for importing migration SQL files as text
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
 [observability]
 enabled = true

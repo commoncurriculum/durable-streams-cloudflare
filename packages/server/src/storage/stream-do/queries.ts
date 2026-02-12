@@ -7,6 +7,8 @@
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { eq, gte, lte, and, sql, desc, asc } from "drizzle-orm";
+import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import migrations from "../../../drizzle/migrations";
 import { streamMeta, producers, ops, segments } from "./schema";
 import type {
   StreamStorage,
@@ -33,65 +35,11 @@ export class StreamDoStorage implements StreamStorage {
   }
 
   /**
-   * Initialize database schema
+   * Initialize database schema using Drizzle migrations
    * Must be called during DO construction within blockConcurrencyWhile
    */
   initSchema(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS stream_meta (
-        stream_id TEXT PRIMARY KEY,
-        content_type TEXT NOT NULL,
-        closed INTEGER NOT NULL DEFAULT 0,
-        tail_offset INTEGER NOT NULL DEFAULT 0,
-        read_seq INTEGER NOT NULL DEFAULT 0,
-        segment_start INTEGER NOT NULL DEFAULT 0,
-        segment_messages INTEGER NOT NULL DEFAULT 0,
-        segment_bytes INTEGER NOT NULL DEFAULT 0,
-        last_stream_seq TEXT,
-        ttl_seconds INTEGER,
-        expires_at INTEGER,
-        created_at INTEGER NOT NULL,
-        closed_at INTEGER,
-        closed_by_producer_id TEXT,
-        closed_by_epoch INTEGER,
-        closed_by_seq INTEGER,
-        public INTEGER NOT NULL DEFAULT 0
-      );
-
-      CREATE TABLE IF NOT EXISTS producers (
-        producer_id TEXT PRIMARY KEY,
-        epoch INTEGER NOT NULL,
-        last_seq INTEGER NOT NULL,
-        last_offset INTEGER NOT NULL,
-        last_updated INTEGER
-      );
-
-      CREATE TABLE IF NOT EXISTS ops (
-        start_offset INTEGER PRIMARY KEY,
-        end_offset INTEGER NOT NULL,
-        size_bytes INTEGER NOT NULL,
-        stream_seq TEXT,
-        producer_id TEXT,
-        producer_epoch INTEGER,
-        producer_seq INTEGER,
-        body BLOB NOT NULL,
-        created_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS ops_start_offset ON ops(start_offset);
-
-      CREATE TABLE IF NOT EXISTS segments (
-        read_seq INTEGER PRIMARY KEY,
-        r2_key TEXT NOT NULL,
-        start_offset INTEGER NOT NULL,
-        end_offset INTEGER NOT NULL,
-        content_type TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        expires_at INTEGER,
-        size_bytes INTEGER NOT NULL,
-        message_count INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS segments_start_offset ON segments(start_offset);
-    `);
+    migrate(this.db, migrations);
   }
 
   // ============================================================================
@@ -99,6 +47,8 @@ export class StreamDoStorage implements StreamStorage {
   // ============================================================================
 
   async batch(statements: StorageStatement[]): Promise<void> {
+    // Execute raw SQL statements synchronously
+    // Durable Objects SQLite doesn't have async batch API
     for (const statement of statements) {
       this.sql.exec(statement.sql, ...statement.args);
     }
@@ -172,7 +122,7 @@ export class StreamDoStorage implements StreamStorage {
     updateFields: string[],
     updateValues: unknown[]
   ): StorageStatement {
-    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
+    // StorageStatement for batch() - raw SQL preserved for dynamic field updates
     return {
       sql: `UPDATE stream_meta SET ${updateFields.join(", ")}`,
       args: updateValues,
@@ -201,7 +151,7 @@ export class StreamDoStorage implements StreamStorage {
     lastOffset: number,
     lastUpdated: number
   ): StorageStatement {
-    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
+    // StorageStatement for batch() - could use Drizzle but raw SQL works
     return {
       sql: `
         INSERT INTO producers (producer_id, epoch, last_seq, last_offset, last_updated)
@@ -274,7 +224,7 @@ export class StreamDoStorage implements StreamStorage {
     body: ArrayBuffer;
     createdAt: number;
   }): StorageStatement {
-    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
+    // StorageStatement for batch() - raw SQL preserved for performance
     return {
       sql: `
         INSERT INTO ops (
@@ -387,7 +337,7 @@ export class StreamDoStorage implements StreamStorage {
     _streamId: string,
     endOffset: number
   ): StorageStatement {
-    // Keep raw SQL for batch compatibility - StorageStatement is used in batch()
+    // StorageStatement for batch()
     return { sql: "DELETE FROM ops WHERE end_offset <= ?", args: [endOffset] };
   }
 

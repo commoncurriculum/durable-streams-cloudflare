@@ -7,6 +7,8 @@
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { eq, inArray, sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import migrations from "../../../drizzle/migrations";
 import { subscribers, fanoutState } from "./schema";
 import type {
   StreamSubscribersStorage,
@@ -26,22 +28,11 @@ export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   }
 
   /**
-   * Initialize database schema
+   * Initialize database schema using Drizzle migrations
    * Must be called during DO construction within blockConcurrencyWhile
    */
   initSchema(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS subscribers (
-        estuary_id TEXT PRIMARY KEY,
-        subscribed_at INTEGER NOT NULL
-      );
-    `);
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS fanout_state (
-        key TEXT PRIMARY KEY,
-        value INTEGER NOT NULL
-      );
-    `);
+    migrate(this.db, migrations);
   }
 
   // ============================================================================
