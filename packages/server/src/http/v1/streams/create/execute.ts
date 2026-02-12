@@ -4,7 +4,7 @@ import {
   baseHeaders,
 } from "../../../shared/headers";
 import { applyExpiryHeaders } from "../../../shared/expiry";
-import { buildAppendBatch } from "../append/batch";
+import { buildAppendBatch } from "../../../../storage/append-batch";
 import { evaluateProducer } from "../shared/producer";
 import type { StreamContext } from "../types";
 import type { StreamMeta } from "../../../../storage/types";
@@ -16,7 +16,10 @@ import type {
   CreatePutInput,
 } from "../types";
 
-export function buildPutHeaders(meta: StreamMeta, nextOffsetHeader: string): Headers {
+export function buildPutHeaders(
+  meta: StreamMeta,
+  nextOffsetHeader: string
+): Headers {
   const headers = baseHeaders({
     "Content-Type": meta.content_type,
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
@@ -32,10 +35,13 @@ export function buildPutHeaders(meta: StreamMeta, nextOffsetHeader: string): Hea
  */
 export async function executeIdempotentPut(
   ctx: StreamContext,
-  input: IdempotentPutInput,
+  input: IdempotentPutInput
 ): Promise<Result<PutExecutionResult>> {
   const { existing, streamId } = input;
-  const headers = buildPutHeaders(existing, await ctx.encodeTailOffset(streamId, existing));
+  const headers = buildPutHeaders(
+    existing,
+    await ctx.encodeTailOffset(streamId, existing)
+  );
 
   return {
     kind: "ok",
@@ -54,7 +60,7 @@ export async function executeIdempotentPut(
  */
 export async function executeNewStream(
   ctx: StreamContext,
-  input: CreatePutInput,
+  input: CreatePutInput
 ): Promise<Result<PutExecutionResult>> {
   const {
     streamId,
@@ -91,7 +97,11 @@ export async function executeNewStream(
   // cannot occur. The "error" case handles invalid producer state.
   // Contrast with POST where duplicate detection prevents re-appending the same message.
   if (producer) {
-    const producerEval = await evaluateProducer(ctx.storage, streamId, producer);
+    const producerEval = await evaluateProducer(
+      ctx.storage,
+      streamId,
+      producer
+    );
     if (producerEval.kind === "error") {
       return { kind: "error", response: producerEval.response };
     }
@@ -100,11 +110,17 @@ export async function executeNewStream(
   // Append initial data if body is non-empty
   if (bodyBytes.length > 0) {
     const doneBuild = ctx.timing?.start("append.build");
-    const append = await buildAppendBatch(ctx.storage, streamId, contentType, bodyBytes, {
-      streamSeq,
-      producer,
-      closeStream: requestedClosed,
-    });
+    const append = await buildAppendBatch(
+      ctx.storage,
+      streamId,
+      contentType,
+      bodyBytes,
+      {
+        streamSeq,
+        producer,
+        closeStream: requestedClosed,
+      }
+    );
     doneBuild?.();
 
     if (append.error) {
@@ -140,7 +156,10 @@ export async function executeNewStream(
     public: isPublic ? 1 : 0,
   };
 
-  const headers = buildPutHeaders(createdMeta, await ctx.encodeTailOffset(streamId, createdMeta));
+  const headers = buildPutHeaders(
+    createdMeta,
+    await ctx.encodeTailOffset(streamId, createdMeta)
+  );
   headers.set("Location", requestUrl);
 
   return {
@@ -159,7 +178,7 @@ export async function executeNewStream(
  */
 export async function executePut(
   ctx: StreamContext,
-  input: ValidatedPutInput,
+  input: ValidatedPutInput
 ): Promise<Result<PutExecutionResult>> {
   if (input.kind === "idempotent") {
     return executeIdempotentPut(ctx, input);

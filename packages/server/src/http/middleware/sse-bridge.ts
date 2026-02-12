@@ -2,7 +2,7 @@ import { HEADER_SSE_DATA_ENCODING } from "../shared/headers";
 import { Timing, attachTiming } from "../shared/timing";
 import { logWarn } from "../../log";
 import { applyCorsHeaders } from "./cors";
-import type { StreamDO } from "../durable-object";
+import type { StreamDO } from "../v1/streams";
 import { buildSseDataEvent } from "../v1/streams/realtime/handlers";
 import type { WsDataMessage, WsControlMessage } from "../v1/streams/realtime/handlers";
 

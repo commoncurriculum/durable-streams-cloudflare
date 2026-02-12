@@ -1,6 +1,6 @@
 import { type } from "arktype";
 import { getProjectEntry, putProjectEntry } from "../../../storage/registry";
-import { PROJECT_ID_PATTERN } from "../..";
+import { PROJECT_ID_PATTERN } from "../../router";
 import { errorResponse } from "../../shared/errors";
 
 // ============================================================================

@@ -19,8 +19,13 @@ import {
   CIRCUIT_BREAKER_FAILURE_THRESHOLD,
   CIRCUIT_BREAKER_RECOVERY_MS,
 } from "../constants";
-import type { BaseEnv } from "../http";
-import type { PublishParams, PublishResult, GetSubscribersResult, FanoutQueueMessage } from "./types";
+import type { BaseEnv } from "../http/router";
+import type {
+  PublishParams,
+  PublishResult,
+  GetSubscribersResult,
+  FanoutQueueMessage,
+} from "./types";
 
 export interface SubscriptionDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
@@ -72,7 +77,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   }
 
   private loadFanoutSeq(): number {
-    const cursor = this.sql.exec("SELECT value FROM fanout_state WHERE key = 'next_seq'");
+    const cursor = this.sql.exec(
+      "SELECT value FROM fanout_state WHERE key = 'next_seq'"
+    );
     for (const row of cursor) {
       return row.value as number;
     }
@@ -83,7 +90,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     this.sql.exec(
       `INSERT INTO fanout_state (key, value) VALUES ('next_seq', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      seq,
+      seq
     );
   }
   // #endregion synced-to-docs:do-overview
@@ -95,7 +102,7 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
        VALUES (?, ?)
        ON CONFLICT(estuary_id) DO NOTHING`,
       estuaryId,
-      Date.now(),
+      Date.now()
     );
   }
   // #endregion synced-to-docs:add-subscriber
@@ -107,7 +114,10 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   async removeSubscribers(estuaryIds: string[]): Promise<void> {
     if (estuaryIds.length === 0) return;
     const placeholders = estuaryIds.map(() => "?").join(", ");
-    this.sql.exec(`DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`, ...estuaryIds);
+    this.sql.exec(
+      `DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`,
+      ...estuaryIds
+    );
   }
 
   // #region synced-to-docs:get-subscribers
@@ -125,7 +135,11 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   // #endregion synced-to-docs:get-subscribers
 
   // #region synced-to-docs:publish-to-source
-  async publish(projectId: string, streamId: string, params: PublishParams): Promise<PublishResult> {
+  async publish(
+    projectId: string,
+    streamId: string,
+    params: PublishParams
+  ): Promise<PublishResult> {
     const start = Date.now();
     const metrics = createMetrics(this.env.METRICS);
 
@@ -134,9 +148,12 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     // Clone payload — ArrayBuffers are transferred across RPC boundaries,
     // so the source write would detach the buffer before fanout can use it.
     const fanoutPayload = params.payload.slice(0);
-    
+
     const stub = this.env.STREAMS.get(this.env.STREAMS.idFromName(sourceDoKey));
-    const result = await stub.appendToStream(sourceDoKey, new Uint8Array(params.payload));
+    const result = await stub.appendStreamRpc(
+      sourceDoKey,
+      new Uint8Array(params.payload)
+    );
 
     // #endregion synced-to-docs:publish-to-source
 
@@ -165,31 +182,64 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       const thresholdParsed = this.env.FANOUT_QUEUE_THRESHOLD
         ? parseInt(this.env.FANOUT_QUEUE_THRESHOLD, 10)
         : undefined;
-      const threshold = thresholdParsed !== undefined && Number.isFinite(thresholdParsed) && thresholdParsed > 0
-        ? thresholdParsed
-        : FANOUT_QUEUE_THRESHOLD;
+      const threshold =
+        thresholdParsed !== undefined &&
+        Number.isFinite(thresholdParsed) &&
+        thresholdParsed > 0
+          ? thresholdParsed
+          : FANOUT_QUEUE_THRESHOLD;
 
       const maxInlineParsed = this.env.MAX_INLINE_FANOUT
         ? parseInt(this.env.MAX_INLINE_FANOUT, 10)
         : undefined;
-      const maxInline = maxInlineParsed && Number.isFinite(maxInlineParsed) && maxInlineParsed > 0
-        ? maxInlineParsed
-        : MAX_INLINE_FANOUT;
+      const maxInline =
+        maxInlineParsed &&
+        Number.isFinite(maxInlineParsed) &&
+        maxInlineParsed > 0
+          ? maxInlineParsed
+          : MAX_INLINE_FANOUT;
 
       if (this.env.FANOUT_QUEUE && subscribers.length > threshold) {
         // Queued fanout — enqueue and return immediately
         try {
-          await this.enqueueFanout(projectId, streamId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
+          await this.enqueueFanout(
+            projectId,
+            streamId,
+            subscribers,
+            fanoutPayload,
+            params.contentType,
+            fanoutProducerHeaders
+          );
           fanoutMode = "queued";
-          metrics.fanoutQueued(streamId, subscribers.length, Date.now() - start);
+          metrics.fanoutQueued(
+            streamId,
+            subscribers.length,
+            Date.now() - start
+          );
         } catch (err) {
-          logError({ projectId, streamId, subscribers: subscribers.length, component: "fanout-queue" }, "queue enqueue failed, falling back to inline fanout", err);
+          logError(
+            {
+              projectId,
+              streamId,
+              subscribers: subscribers.length,
+              component: "fanout-queue",
+            },
+            "queue enqueue failed, falling back to inline fanout",
+            err
+          );
           if (!this.shouldAttemptInlineFanout()) {
             fanoutMode = "circuit-open";
           } else if (subscribers.length > maxInline) {
             fanoutMode = "skipped";
           } else {
-            const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
+            const result = await fanoutToSubscribers(
+              this.env,
+              projectId,
+              subscribers,
+              fanoutPayload,
+              params.contentType,
+              fanoutProducerHeaders
+            );
             successCount = result.successes;
             failureCount = result.failures;
             this.updateCircuitBreaker(result.successes, result.failures);
@@ -203,10 +253,25 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       } else if (subscribers.length > maxInline) {
         // Too many subscribers for inline fanout without a queue
         fanoutMode = "skipped";
-        logWarn({ streamId, subscribers: subscribers.length, maxInline, component: "fanout" }, "inline fanout skipped: too many subscribers and no queue configured");
+        logWarn(
+          {
+            streamId,
+            subscribers: subscribers.length,
+            maxInline,
+            component: "fanout",
+          },
+          "inline fanout skipped: too many subscribers and no queue configured"
+        );
       } else {
         // Inline fanout
-        const result = await fanoutToSubscribers(this.env, projectId, subscribers, fanoutPayload, params.contentType, fanoutProducerHeaders);
+        const result = await fanoutToSubscribers(
+          this.env,
+          projectId,
+          subscribers,
+          fanoutPayload,
+          params.contentType,
+          fanoutProducerHeaders
+        );
         successCount = result.successes;
         failureCount = result.failures;
         this.updateCircuitBreaker(result.successes, result.failures);
@@ -220,12 +285,31 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
       // Record fanout metrics (only for inline — queued records its own)
       if (fanoutMode === "inline") {
         const latencyMs = Date.now() - start;
-        metrics.fanout({ streamId, subscribers: subscribers.length, success: successCount, failures: failureCount, latencyMs });
+        metrics.fanout({
+          streamId,
+          subscribers: subscribers.length,
+          success: successCount,
+          failures: failureCount,
+          latencyMs,
+        });
         if (failureCount > 0) {
-          logWarn({ streamId, subscribers: subscribers.length, successes: successCount, failures: failureCount, latencyMs, component: "fanout" }, "inline fanout completed with failures");
+          logWarn(
+            {
+              streamId,
+              subscribers: subscribers.length,
+              successes: successCount,
+              failures: failureCount,
+              latencyMs,
+              component: "fanout",
+            },
+            "inline fanout completed with failures"
+          );
         }
       } else if (fanoutMode === "circuit-open") {
-        logWarn({ streamId, subscribers: subscribers.length, component: "fanout" }, "fanout skipped: circuit breaker open");
+        logWarn(
+          { streamId, subscribers: subscribers.length, component: "fanout" },
+          "fanout skipped: circuit breaker open"
+        );
       }
     }
 
@@ -289,7 +373,13 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
 
     if (this.consecutiveFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
       this.circuitState = "open";
-      logInfo({ consecutiveFailures: this.consecutiveFailures, component: "circuit-breaker" }, "circuit breaker opened");
+      logInfo(
+        {
+          consecutiveFailures: this.consecutiveFailures,
+          component: "circuit-breaker",
+        },
+        "circuit breaker opened"
+      );
     }
   }
 
@@ -299,7 +389,11 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
     estuaryIds: string[],
     payload: ArrayBuffer,
     contentType: string,
-    producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
+    producerHeaders?: {
+      producerId: string;
+      producerEpoch: string;
+      producerSeq: string;
+    }
   ): Promise<void> {
     const queue = this.env.FANOUT_QUEUE!;
     const payloadBase64 = bufferToBase64(payload);
@@ -329,7 +423,10 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   private removeStaleSubscribers(estuaryIds: string[]): void {
     if (estuaryIds.length === 0) return;
     const placeholders = estuaryIds.map(() => "?").join(", ");
-    this.sql.exec(`DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`, ...estuaryIds);
+    this.sql.exec(
+      `DELETE FROM subscribers WHERE estuary_id IN (${placeholders})`,
+      ...estuaryIds
+    );
   }
 
   private getSubscriberEstuaryIds(): string[] {
@@ -342,7 +439,9 @@ export class SubscriptionDO extends DurableObject<SubscriptionDOEnv> {
   }
 
   private getSubscribersWithTimestamps(): Subscriber[] {
-    const cursor = this.sql.exec("SELECT estuary_id, subscribed_at FROM subscribers");
+    const cursor = this.sql.exec(
+      "SELECT estuary_id, subscribed_at FROM subscribers"
+    );
     const results: Subscriber[] = [];
     for (const row of cursor) {
       results.push({

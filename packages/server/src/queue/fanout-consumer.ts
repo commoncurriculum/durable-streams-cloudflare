@@ -2,7 +2,7 @@ import { fanoutToSubscribers } from "../subscriptions/fanout";
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { base64ToBuffer } from "../util/base64";
-import type { BaseEnv } from "../http";
+import type { BaseEnv } from "../http/router";
 import type { FanoutQueueMessage } from "../subscriptions/types";
 
 /**

@@ -1,4 +1,0 @@
-{
-  "extends": ["recommended"],
-  "lintUnusedVariables": true
-}

@@ -1,5 +1,8 @@
 import { type } from "arktype";
-import { isValidEstuaryId, DEFAULT_ESTUARY_TTL_SECONDS } from "../../../constants";
+import {
+  isValidEstuaryId,
+  DEFAULT_ESTUARY_TTL_SECONDS,
+} from "../../../constants";
 import { logError } from "../../../log";
 import { createMetrics } from "../../../metrics";
 import { putStreamMetadata } from "../../../storage/registry";
@@ -32,18 +35,19 @@ export async function subscribe(c: any): Promise<Response> {
   const projectId = c.get("projectId");
   const streamId = c.get("streamId");
   const { estuaryId } = c.req.valid("json");
-  
+
   const start = Date.now();
   const metrics = createMetrics(c.env.METRICS);
-  
+
   try {
     // Parse TTL
     const parsed = c.env.ESTUARY_TTL_SECONDS
       ? Number.parseInt(c.env.ESTUARY_TTL_SECONDS, 10)
       : undefined;
-    const ttlSeconds = parsed !== undefined && Number.isFinite(parsed) && parsed > 0
-      ? parsed
-      : DEFAULT_ESTUARY_TTL_SECONDS;
+    const ttlSeconds =
+      parsed !== undefined && Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : DEFAULT_ESTUARY_TTL_SECONDS;
     const expiresAt = Date.now() + ttlSeconds * 1000;
 
     // 1. Check source stream exists and get content type
@@ -57,18 +61,24 @@ export async function subscribe(c: any): Promise<Response> {
 
     // 2. Create/touch estuary stream with same content type
     const estuaryDoKey = `${projectId}/${estuaryId}`;
-    const estuaryStub = c.env.STREAMS.get(c.env.STREAMS.idFromName(estuaryDoKey));
-    
+    const estuaryStub = c.env.STREAMS.get(
+      c.env.STREAMS.idFromName(estuaryDoKey)
+    );
+
     // Call handlePut directly via the stub's fetch (HTTP interface)
     const putRequest = new Request(`https://do/v1/stream/${estuaryDoKey}`, {
       method: "PUT",
       headers: { "Content-Type": contentType },
       body: JSON.stringify({ expiresAt }),
     });
-    const putResponse = await estuaryStub.routeStreamRequest(estuaryDoKey, false, putRequest);
-    
+    const putResponse = await estuaryStub.routeStreamRequest(
+      estuaryDoKey,
+      false,
+      putRequest
+    );
+
     const isNewEstuary = putResponse.status === 201;
-    
+
     // Write stream metadata to REGISTRY on creation
     if (isNewEstuary && c.env.REGISTRY) {
       await putStreamMetadata(c.env.REGISTRY, estuaryDoKey, {
@@ -81,31 +91,49 @@ export async function subscribe(c: any): Promise<Response> {
     if (!isNewEstuary) {
       const estuaryMeta = await estuaryStub.getStream(estuaryId);
       if (estuaryMeta && estuaryMeta.content_type !== contentType) {
-        return c.json({
-          error: `Content type mismatch: estuary stream is ${estuaryMeta.content_type} but source stream ${streamId} is ${contentType}. An estuary can only subscribe to streams of the same content type.`,
-        }, 409);
+        return c.json(
+          {
+            error: `Content type mismatch: estuary stream is ${estuaryMeta.content_type} but source stream ${streamId} is ${contentType}. An estuary can only subscribe to streams of the same content type.`,
+          },
+          409
+        );
       }
     }
 
     // 3. Add subscription to SubscriptionDO
-    const subStub = c.env.SUBSCRIPTION_DO.get(c.env.SUBSCRIPTION_DO.idFromName(sourceDoKey));
+    const subStub = c.env.SUBSCRIPTION_DO.get(
+      c.env.SUBSCRIPTION_DO.idFromName(sourceDoKey)
+    );
     try {
       await subStub.addSubscriber(estuaryId);
     } catch (err) {
       // Rollback estuary if we just created it
       if (isNewEstuary) {
         try {
-          const deleteRequest = new Request(`https://do/v1/stream/${estuaryDoKey}`, { method: "DELETE" });
-          await estuaryStub.routeStreamRequest(estuaryDoKey, false, deleteRequest);
+          const deleteRequest = new Request(
+            `https://do/v1/stream/${estuaryDoKey}`,
+            { method: "DELETE" }
+          );
+          await estuaryStub.routeStreamRequest(
+            estuaryDoKey,
+            false,
+            deleteRequest
+          );
         } catch (rollbackErr) {
-          logError({ projectId, streamId, estuaryId, component: "subscribe-rollback" }, "failed to rollback estuary stream", rollbackErr);
+          logError(
+            { projectId, streamId, estuaryId, component: "subscribe-rollback" },
+            "failed to rollback estuary stream",
+            rollbackErr
+          );
         }
       }
       throw err;
     }
 
     // 4. Track subscription on EstuaryDO and set expiry
-    const estuaryDOStub = c.env.ESTUARY_DO.get(c.env.ESTUARY_DO.idFromName(`${projectId}/${estuaryId}`));
+    const estuaryDOStub = c.env.ESTUARY_DO.get(
+      c.env.ESTUARY_DO.idFromName(`${projectId}/${estuaryId}`)
+    );
     await estuaryDOStub.addSubscription(streamId);
     await estuaryDOStub.setExpiry(projectId, estuaryId, ttlSeconds);
 
@@ -124,8 +152,15 @@ export async function subscribe(c: any): Promise<Response> {
       isNewEstuary,
     });
   } catch (err) {
-    logError({ projectId, streamId, estuaryId, component: "subscribe" }, "subscribe failed", err);
-    return c.json({ error: err instanceof Error ? err.message : "Failed to subscribe" }, 500);
+    logError(
+      { projectId, streamId, estuaryId, component: "subscribe" },
+      "subscribe failed",
+      err
+    );
+    return c.json(
+      { error: err instanceof Error ? err.message : "Failed to subscribe" },
+      500
+    );
   }
 }
 
@@ -134,25 +169,41 @@ export async function unsubscribe(c: any): Promise<Response> {
   const projectId = c.get("projectId");
   const streamId = c.get("streamId");
   const { estuaryId } = c.req.valid("json");
-  
+
   const metrics = createMetrics(c.env.METRICS);
-  
+  const start = Date.now();
+
   try {
     // 1. Remove subscription from SubscriptionDO
     const sourceDoKey = `${projectId}/${streamId}`;
-    const subStub = c.env.SUBSCRIPTION_DO.get(c.env.SUBSCRIPTION_DO.idFromName(sourceDoKey));
+    const subStub = c.env.SUBSCRIPTION_DO.get(
+      c.env.SUBSCRIPTION_DO.idFromName(sourceDoKey)
+    );
     await subStub.removeSubscriber(estuaryId);
 
     // 2. Remove subscription tracking from EstuaryDO
-    const estuaryDOStub = c.env.ESTUARY_DO.get(c.env.ESTUARY_DO.idFromName(`${projectId}/${estuaryId}`));
+    const estuaryDOStub = c.env.ESTUARY_DO.get(
+      c.env.ESTUARY_DO.idFromName(`${projectId}/${estuaryId}`)
+    );
     await estuaryDOStub.removeSubscription(streamId);
 
     // 3. Metrics
-    metrics.unsubscribe(streamId, estuaryId);
+    const latencyMs = Date.now() - start;
+    metrics.unsubscribe(streamId, estuaryId, latencyMs);
 
     return c.json({ success: true });
   } catch (err) {
-    logError({ projectId, streamId, estuaryId, component: "unsubscribe" }, "unsubscribe failed", err);
-    return c.json({ error: err instanceof Error ? err.message : "Failed to remove subscription" }, 500);
+    logError(
+      { projectId, streamId, estuaryId, component: "unsubscribe" },
+      "unsubscribe failed",
+      err
+    );
+    return c.json(
+      {
+        error:
+          err instanceof Error ? err.message : "Failed to remove subscription",
+      },
+      500
+    );
   }
 }

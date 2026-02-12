@@ -14,15 +14,11 @@ This project handles that wiring: the hibernation bridge, the cache headers, the
 
 The CLI setup wizard deploys up to **four Workers** and an **nginx reverse proxy** (all optional — pick what you need):
 
-| Component                                                            | Package                                                                          | What                                                                                                                                             |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Streams Worker** — Durable Streams server on CF Workers            | [`@durable-streams-cloudflare/core`](packages/core/)                             | One DO per stream, SQLite hot log, R2 cold segments, CDN caching, long-poll + SSE, DO hibernation.                                               |
-| **Subscription Worker** — combines N source streams into 1 stream    | [`@durable-streams-cloudflare/subscription`](packages/subscription/)             | Pub/sub fan-out, session lifecycle, TTL cleanup, Analytics Engine metrics. Requires the streams worker.                                          |
-| **Nginx Proxy** — enables CDN caching for 99% hit rate at $0/request | [`packages/proxy`](packages/proxy/)                                              | Reverse proxy that puts Cloudflare CDN in front of the streams worker. Without it, every read executes a Worker; with it, cached reads are free. |
-| **Admin (Streams)** — dashboard for stream inspection                | [`@durable-streams-cloudflare/admin-core`](packages/admin-core/)                 | Browse streams, view metadata, read contents, manage projects.                                                                                   |
-| **Admin (Subscription)** — dashboard for subscription metrics        | [`@durable-streams-cloudflare/admin-subscription`](packages/admin-subscription/) | Monitor fan-out, sessions, publish rates, cleanup.                                                                                               |
+| Component                                                   | Package                                                  | What                                                                                                                |
+| ----------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Server Worker** — Durable Streams + Pub/Sub on CF Workers | [`@durable-streams-cloudflare/server`](packages/server/) | One DO per stream, SQLite hot log, R2 cold segments, pub/sub fan-out, CDN caching, long-poll + SSE, DO hibernation. |
 
-The streams worker works standalone. Subscription depends on it. The proxy and admin dashboards are optional.
+All functionality is in a single worker package.
 
 ## Quick Start
 
@@ -87,13 +83,13 @@ curl -N -H "Authorization: Bearer $JWT" \
   "$URL/v1/stream/my-project/my-stream?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
-See the [streams worker README](packages/core/README.md) for the full API, auth options, and configuration.
+See the [server README](packages/server/README.md) for the full API, auth options, and configuration.
 
 ---
 
 ## Part 2: Pub/Sub on Durable Streams
 
-A second Worker that adds session-based pub/sub fan-out on top of the streams worker.
+Built into the same server worker — session-based pub/sub fan-out on top of Durable Streams.
 
 ### Why Pub/Sub
 
@@ -108,35 +104,32 @@ The subscription layer solves this: each client gets a **session stream**. Subsc
 
 ### Try It
 
-Assumes the streams worker is already deployed.
-
 ```bash
-CORE=https://durable-streams.<your-subdomain>.workers.dev
-SUB=https://durable-streams-subscriptions.<your-subdomain>.workers.dev
+URL=https://durable-streams.<your-subdomain>.workers.dev
 
-# First, create a source stream on the streams worker
+# First, create a source stream
 curl -X PUT -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  $CORE/v1/stream/my-project/chat-room-1
+  $URL/v1/stream/my-project/chat-room-1
 
 # Subscribe a session to that stream
 curl -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  -d '{"streamId":"chat-room-1","sessionId":"user-alice"}' \
-  $SUB/v1/my-project/subscribe
+  -d '{"estuaryId":"user-alice"}' \
+  $URL/v1/estuary/subscribe/my-project/chat-room-1
 
 # Publish a message — fans out to all subscribers
 curl -X POST -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
   -d '{"text":"hello world"}' \
-  $SUB/v1/my-project/publish/chat-room-1
+  $URL/v1/stream/my-project/chat-room-1
 
-# Read the session stream via SSE (from the streams worker)
+# Read the session stream via SSE
 curl -N -H "Authorization: Bearer $JWT" \
-  "$CORE/v1/stream/my-project/session:user-alice?offset=0000000000000000_0000000000000000&live=sse"
+  "$URL/v1/stream/my-project/user-alice?offset=0000000000000000_0000000000000000&live=sse"
 ```
 
-See the [subscription README](packages/subscription/README.md) for the full API, session lifecycle, and configuration.
+See the [server README](packages/server/README.md) for the full API, session lifecycle, and configuration.
 
 ---
 
@@ -148,11 +141,11 @@ An nginx reverse proxy that puts Cloudflare's CDN in front of the streams worker
 
 Cloudflare's CDN serves cached responses **without executing the Worker at all** — a CDN HIT costs $0 in Worker requests, $0 in DO requests, $0 in bandwidth. This is the single biggest cost lever in the system: it's the difference between $11,700/month and $18/month at 10K readers.
 
-The problem: Cloudflare's CDN can't proxy directly to a `*.workers.dev` domain. You need an origin server for the CDN to point at. The nginx proxy is that origin — a minimal pass-through that forwards requests to the streams worker so the CDN can cache responses on the way back.
+The problem: Cloudflare's CDN can't proxy directly to a `*.workers.dev` domain. You need an origin server for the CDN to point at. The nginx proxy is that origin — a minimal pass-through that forwards requests to the server worker so the CDN can cache responses on the way back.
 
 ```
 CDN HIT:   Client → Cloudflare CDN → cached response ($0)
-CDN MISS:  Client → Cloudflare CDN → nginx → Streams Worker → DO
+CDN MISS:  Client → Cloudflare CDN → nginx → Server Worker → DO
 ```
 
 The proxy itself is intentionally dumb: no caching, no auth, no buffering. It passes through all Durable Streams headers and keeps connections open for long-poll and SSE. It runs on a $6/month VPS (DigitalOcean) or a free Oracle Cloud VM.
@@ -170,57 +163,43 @@ Then point a Cloudflare-proxied DNS record at the VPS. See the [proxy README](pa
 
 ---
 
-## Part 4: Admin Dashboards
+## Part 4: Admin Dashboard
 
-Two optional TanStack Start apps deployed as Cloudflare Workers — one for streams, one for subscriptions. They connect to their respective workers via service bindings (no auth tokens needed) and read metrics from Analytics Engine.
-
-### Streams Admin
+Optional TanStack Start app deployed as a Cloudflare Worker. Connects to the server worker via service bindings (no auth tokens needed) and reads metrics from Analytics Engine.
 
 - **Overview** — stream activity stats, throughput timeseries, hot streams, full stream list
 - **Inspect** — drill into a stream to see metadata, ops count, R2 segments, producer state, real-time client counts (WebSocket/SSE/long-poll)
-- **Test** — create streams and append messages from the browser, with a live SSE event log
+- **Subscription metrics** — publishes/min, fanout latency, active sessions/streams, success rates
+- **Test** — create streams, append messages, subscribe/unsubscribe, publish from the browser with live SSE event logs
 
-See the [streams admin README](packages/admin-core/README.md) for setup and configuration.
-
-### Subscription Admin
-
-- **Overview** — real-time metrics (publishes/min, fanout latency, active sessions/streams, success rates), throughput chart, hot streams, publish errors
-- **Inspect** — drill into a session (subscriptions, TTL) or stream (subscribers)
-- **Test** — subscribe, unsubscribe, publish, touch, and delete sessions from the browser, with a live SSE event log
-
-See the [subscription admin README](packages/admin-subscription/README.md) for setup and configuration.
-
-Both dashboards use [Cloudflare Zero Trust](https://developers.cloudflare.com/cloudflare-one/applications/) for authentication — without it, they're publicly accessible.
+The dashboard uses [Cloudflare Zero Trust](https://developers.cloudflare.com/cloudflare-one/applications/) for authentication — without it, it's publicly accessible.
 
 ---
 
 ## Architecture
 
 ```
-Writes (Streams Worker)
-  Client ── POST /v1/:project/stream/:id ──> Edge Worker (auth, CORS)
+Writes
+  Client ── POST /v1/stream/:project/:id ──> Edge Worker (auth, CORS)
                                                └──> StreamDO ──> SQLite
                                                      ├── broadcast to live readers
                                                      └── R2 rotation (when full)
 
-SSE Reads (Streams Worker)
+SSE Reads
   Client <── SSE ──── Edge Worker <── WebSocket (Hibernation API) ──── StreamDO
                       (idle = $0)                                       (sleeps between
                                                                          writes)
 
-Pub/Sub Fan-Out (Subscription Worker)
-  Publisher ── POST /v1/:project/publish/:streamId ──> Subscription Worker
-                                                        ├─> Streams: write to source stream
-                                                        ├─> SubscriptionDO: get subscribers
-                                                        └─> Fan-out: write to each session stream
+Pub/Sub Fan-Out (built into same worker)
+  Publisher ── POST /v1/stream/:project/:id ──> Edge Worker
+                                                  └──> StreamDO ──> SQLite
+                                                       └──> SubscriptionDO: get subscribers
+                                                            └──> Fan-out to session streams (via RPC)
 ```
 
 ## Manual Setup
 
-If you prefer to set things up by hand instead of using the CLI, see the individual package READMEs:
-
-- [Streams worker README](packages/core/README.md) — worker setup, wrangler.toml, auth configuration
-- [Subscription README](packages/subscription/README.md) — worker setup, service bindings, cron cleanup
+If you prefer to set things up by hand instead of using the CLI, see the [server README](packages/server/README.md) for worker setup, wrangler.toml, and auth configuration.
 
 ## Releasing
 
@@ -238,7 +217,7 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for versio
 
 3. **Merge the version PR.** The workflow publishes to npm automatically.
 
-All three public packages (`core`, `subscription`, `cli`) stay on the same version number via the `fixed` config in `.changeset/config.json`.
+All public packages (`server`, `cli`) stay on the same version number via the `fixed` config in `.changeset/config.json`.
 
 ## Credits
 

@@ -1,10 +1,10 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { createStreamWorker } from "./index";
-import { StreamDO } from "./durable-object";
+import { createStreamWorker } from "./router";
+import { StreamDO } from "./v1/streams";
 import { SubscriptionDO } from "../subscriptions/do";
 import { EstuaryDO } from "../estuary/do";
-import type { StreamIntrospection } from "./durable-object";
-import type { BaseEnv } from "./index";
+import type { StreamIntrospection } from "./v1/streams";
+import type { BaseEnv } from "./router";
 
 // Created at module scope so the in-flight coalescing Map is shared across
 // all requests in the isolate (WorkerEntrypoint creates a new instance per
@@ -24,7 +24,7 @@ export default class ServerWorker extends WorkerEntrypoint<BaseEnv> {
 }
 
 export { ServerWorker, StreamDO, SubscriptionDO, EstuaryDO, createStreamWorker };
-export type { StreamIntrospection } from "./durable-object";
-export type { BaseEnv } from "./index";
+export type { StreamIntrospection } from "./v1/streams";
+export type { BaseEnv } from "./router";
 export type { ProjectEntry, StreamEntry } from "../storage/registry";
 

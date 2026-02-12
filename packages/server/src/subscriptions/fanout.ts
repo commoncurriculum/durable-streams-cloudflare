@@ -1,4 +1,4 @@
-import type { BaseEnv } from "../http";
+import type { BaseEnv } from "../http/router";
 import { FANOUT_BATCH_SIZE, FANOUT_RPC_TIMEOUT_MS } from "../constants";
 import { logWarn } from "../log";
 import type { FanoutResult } from "./types";
