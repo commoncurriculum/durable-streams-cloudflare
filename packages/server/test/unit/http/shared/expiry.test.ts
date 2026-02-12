@@ -8,7 +8,7 @@ import {
   cacheControlFor,
   isExpired,
   type ExpiryMeta,
-} from "../../../src/http/shared/expiry";
+} from "../../../../src/http/shared/expiry";
 
 // ============================================================================
 // parseTtlSeconds

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { createStreamWorker } from "../../../src/http/worker";
-import type { BaseEnv } from "../../../src/http/worker";
+import { createStreamWorker } from "../../../../src/http/worker";
+import type { BaseEnv } from "../../../../src/http/worker";
 
 const PROJECT_ID = "_default";
 const SECRET = "test-secret";

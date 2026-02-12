@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { SignJWT } from "jose";
-import { createStreamWorker } from "../../../src/http/worker";
-import type { BaseEnv } from "../../../src/http/worker";
+import { createStreamWorker } from "../../../../../src/http/worker";
+import type { BaseEnv } from "../../../../../src/http/worker";
 
 // ============================================================================
 // JWT Test Helpers

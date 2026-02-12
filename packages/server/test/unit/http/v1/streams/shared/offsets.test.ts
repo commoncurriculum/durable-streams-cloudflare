@@ -4,9 +4,17 @@ import {
   encodeTailOffset,
   encodeStreamOffset,
   resolveOffsetParam,
-} from "../../../src/http/v1/streams/shared/stream-offsets";
-import { encodeOffset, decodeOffsetParts } from "../../../src/http/v1/streams/shared/offsets";
-import { baseMeta, withStorage, seedStreamOffsets as seedStream, insertSegment } from "../helpers";
+} from "../../../../../../src/http/v1/streams/shared/stream-offsets";
+import {
+  encodeOffset,
+  decodeOffsetParts,
+} from "../../../../../../src/http/v1/streams/shared/offsets";
+import {
+  baseMeta,
+  withStorage,
+  seedStreamOffsets as seedStream,
+  insertSegment,
+} from "../../../../helpers";
 
 // ============================================================================
 // encodeCurrentOffset

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFromOffset } from "../../../src/storage/stream-do/read";
-import { baseMeta, withStorage, seedStreamOffsets as seedStream, insertOp } from "../helpers";
+import { readFromOffset } from "../../../../src/storage/stream-do/read";
+import { baseMeta, withStorage, seedStreamOffsets as seedStream, insertOp } from "../../helpers";
 
 describe("readFromOffset writeTimestamp tracking", () => {
   it("single chunk read returns its created_at as writeTimestamp", async () => {

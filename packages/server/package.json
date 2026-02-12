@@ -28,6 +28,7 @@
     "conformance": "pnpm exec vitest run --config vitest.conformance.config.ts",
     "test": "pnpm run test:implementation",
     "test:unit": "pnpm exec vitest run --config vitest.unit.config.ts",
+    "test:coverage": "pnpm exec vitest run --config vitest.unit.config.ts --coverage",
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
     "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
@@ -35,7 +36,6 @@
     "openapi": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {
-
     "@hono/standard-validator": "^0.2.2",
     "arkregex": "^0.0.5",
     "arktype": "^2.1.29",
@@ -54,6 +54,7 @@
     "@durable-streams/client": "^0.2.1",
     "@durable-streams/server-conformance-tests": "^0.2.1",
     "@types/node": "^25.2.3",
+    "@vitest/coverage-istanbul": "^4.0.18",
     "jose": "^5.9.6",
     "madge": "^8.0.0",
     "tsx": "^4.19.0",
