@@ -17,7 +17,7 @@ export async function readFromOffset(
     start_offset: number;
     end_offset: number;
     size_bytes: number;
-    body: ArrayBuffer | Uint8Array | string | number[];
+    body: ArrayBuffer | Uint8Array;
     created_at: number;
   }> = [];
 
