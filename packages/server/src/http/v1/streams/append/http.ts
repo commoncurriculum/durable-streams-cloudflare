@@ -1,4 +1,4 @@
-import { errorResponse, errorToResponse, HttpError } from "../../../shared/errors";
+import { errorToResponse, HttpError } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_SEQ,
@@ -86,19 +86,7 @@ export async function appendStreamHttp(
 
     const { bodyBytes, producer, closeStream } = parsed.value;
 
-    // 2. Validate Content-Length header matches actual body (HTTP protocol requirement)
-    const contentLengthHeader = request.headers.get("Content-Length");
-    if (contentLengthHeader !== null) {
-      const declaredLength = Number.parseInt(contentLengthHeader, 10);
-      if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
-        return errorResponse(
-          400,
-          `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
-        );
-      }
-    }
-
-    // 3. Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
+    // 2. Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
     return ctx.state.blockConcurrencyWhile(async () => {
       try {
         const result = await appendStream(ctx, {
