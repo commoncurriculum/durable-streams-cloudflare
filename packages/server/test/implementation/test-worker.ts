@@ -89,6 +89,23 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   }
 
   async #handleDebugAction(action: string, request: Request): Promise<Response> {
+    // Coverage collection is global — not scoped to a stream path
+    if (action === "coverage") {
+      const coverage = (globalThis as Record<string, unknown>).__coverage__;
+      if (!coverage) {
+        return new Response(
+          JSON.stringify({ error: "no coverage data (worker not instrumented)" }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      return new Response(JSON.stringify(coverage), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const url = new URL(request.url);
     const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
     if (!pathMatch) return new Response("not found", { status: 404 });

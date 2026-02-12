@@ -7,3 +7,6 @@ openapi.json
 openapi.yaml
 *.tsbuildinfo
 coverage/
+coverage-integration/
+.nyc_output/
+dist/
