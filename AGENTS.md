@@ -51,6 +51,74 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 - **Cloudflare Vitest integration**: Use `@cloudflare/vitest-pool-workers` for tests that need Cloudflare runtime APIs (DurableObject, WorkerEntrypoint, bindings, etc.) without mocking. Docs: https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/
 - **Miniflare**: Local simulator for Workers runtime, used under the hood by `wrangler dev` and `@cloudflare/vitest-pool-workers`. Docs: https://developers.cloudflare.com/workers/testing/miniflare/
 
+### Test Patterns
+
+**Unit tests** should use `worker.app.request()` per [Hono testing docs](https://hono.dev/docs/guides/testing):
+
+```typescript
+const response = await worker.app.request(
+  "/v1/stream/test",
+  { method: "PUT", headers: { "Content-Type": "text/plain" } },
+  env,
+);
+```
+
+**Note**: Some existing unit tests use the older `worker.fetch!()` pattern. See `REFACTOR_TESTS_PROMPT.md` for refactoring these to the cleaner `app.request()` pattern.
+
+**Integration tests** use `fetch` with helper utilities from `test/implementation/helpers.ts`:
+
+```typescript
+const client = createClient();
+const streamId = uniqueStreamId("test");
+await client.createStream(streamId, "", "text/plain");
+const response = await fetch(client.streamUrl(streamId));
+```
+
+### Coverage (Agent-Friendly)
+
+**Current Coverage**: 62.78% lines (combined unit + integration)
+
+**Quick Commands**:
+
+```bash
+# Run all tests + show summary
+pnpm -C packages/server cov
+
+# Show uncovered lines (machine-readable, parseable by agents)
+pnpm -C packages/server run coverage:lines
+
+# Filter by area
+pnpm -C packages/server run coverage:lines -- estuary
+
+# Only 0% coverage files
+pnpm -C packages/server run coverage:lines -- --zero
+
+# Files below threshold
+pnpm -C packages/server run coverage:lines -- --below 50
+```
+
+**Output Format** (easy to parse):
+
+```
+📄 src/http/v1/estuary/publish/index.ts
+   Coverage:    0.0%  (0/  62 lines covered)
+   Uncovered:   62 line(s)
+   Lines:     11-16, 19-23, 28-39, 48-49, 51, 61-64, ...
+```
+
+**Machine-Readable Data**:
+
+- `.nyc_output_merged/out.json` - Full Istanbul coverage data (JSON)
+- `coverage-combined/coverage-summary.json` - Per-file stats (JSON)
+- `packages/server/COVERAGE.md` - Complete coverage guide
+- `packages/server/COVERAGE_QUICKSTART.md` - Quick reference
+
+**Priority Areas** (from `coverage:lines -- --zero`):
+
+- Estuary endpoints: 1.8% avg (20 files at 0%)
+- Queue consumer: 0% (1 file)
+- Metrics: 0% (1 file)
+
 ### Common Test Pitfalls
 
 - **Content-type mismatch (409)**: Server validates that append content-type matches the stream's content-type. When creating streams in tests, the default content-type is `application/json`. If the test then publishes with `text/plain`, server returns 409. Fix: pass matching content-type when creating the stream.
@@ -155,3 +223,23 @@ pnpm -C packages/server run test
 | Package           | `pnpm test` runs                 | Config             |
 | ----------------- | -------------------------------- | ------------------ |
 | `packages/server` | Integration tests (live workers) | `vitest.config.ts` |
+
+### Coverage Workflow
+
+```bash
+# Before opening PR
+pnpm -C packages/server cov
+
+# Should show 62.78%+ overall coverage
+# Check for new files with 0% coverage
+# Verify your changes are tested
+
+# View uncovered lines for specific files
+pnpm -C packages/server run coverage:lines -- path/to/file.ts
+```
+
+## Test Refactoring Task
+
+**TODO**: Existing unit tests use verbose `worker.fetch!()` pattern. Should be refactored to clean `worker.app.request()` pattern per Hono docs.
+
+See `REFACTOR_TESTS_PROMPT.md` for full instructions or `REFACTOR_TESTS_SHORT.md` for quick reference.

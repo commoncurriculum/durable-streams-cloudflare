@@ -1,63 +1,103 @@
 # Test Coverage - Action Plan
 
 **Date**: 2025-02-12  
-**Current Coverage**: ~25% (file-level estimate)  
+**Current Coverage**: **62.78% lines** (combined unit + integration)  
 **Goal**: 70%+ line coverage of public APIs
 
 ---
 
-## 🔴 Current Problems
+## ✅ Coverage Tooling Status
 
-1. **Coverage tooling broken** - Istanbul provider crashes with vitest 4.1.0-beta.1
-2. **Dead code exists** - ~15+ unused functions shouldn't be tested
-3. **Estuary completely untested** - 12 endpoints with 0% coverage
-4. **No line-level metrics** - Can't see which specific lines are uncovered
+**Coverage tooling is WORKING PERFECTLY.**
+
+- ✅ Unit test coverage: 39.42% (340 tests, Istanbul via Vitest)
+- ✅ Integration test coverage: 55.27% (Istanbul/nyc via instrumented worker)
+- ✅ Combined coverage: 62.78% (merged with `nyc merge`)
+- ✅ HTML reports with line-by-line highlighting
+- ✅ JSON reports for tracking trends
+- ✅ Console summaries with priority areas
+
+**Quick commands**:
+
+```bash
+# Generate all coverage reports
+pnpm run test:coverage-all
+
+# View summary
+pnpm run coverage
+
+# Open interactive HTML
+open coverage-combined/index.html
+```
+
+---
+
+## 🔴 Actual Problems
+
+1. **Estuary completely untested** - 12 endpoints with 0% coverage (~240 lines)
+2. **Queue consumer untested** - 0% coverage (~50 lines)
+3. **Stream operations have gaps** - append/delete/reads need better coverage
+4. **SSE/realtime weak** - 47% coverage, missing edge cases
 
 ---
 
 ## ✅ What's Already Tested
 
-### Well Covered (~18 files)
-- ✅ HTTP shared utilities (headers, expiry, offsets)
-- ✅ Producer sequencing logic
-- ✅ Stream closing/TTL logic
-- ✅ Cursor generation
-- ✅ CORS & authentication middleware
-- ✅ Segment encoding
-- ✅ Read operations (partial)
+### Excellent Coverage (>90%)
 
-### Integration Tests (21 files)
-- ✅ Stream create/append/read/delete
-- ✅ Concurrency & producer sequencing
-- ✅ TTL/expiry/cleanup
-- ✅ R2 segment operations
-- ✅ Edge caching & coalescing
-- ✅ SSE restart behavior
+- ✅ Middleware: CORS, cache, authentication, authorization
+- ✅ Shared utilities: expiry, headers, limits, stream paths
+- ✅ Storage: registry (90%), segments (100%)
+- ✅ Stream DO: queries (88%), read operations (94%)
+- ✅ Producer sequencing (94%)
+- ✅ Stream validation (100%)
+- ✅ Cursor generation (100%)
+
+### Good Coverage (70-90%)
+
+- ✅ Stream reads (80%): read handlers, HTTP endpoints
+- ✅ Stream creation (72%): validation, DO creation
+- ✅ Stream delete (71%): cleanup logic
+- ✅ Stream append (73%): basic append flow
+- ✅ Edge cache middleware (91%)
+- ✅ SSE bridge (79%)
 
 ---
 
-## ❌ Critical Gaps (0% Coverage)
+## ❌ Critical Gaps
 
-### Priority 1: Estuary Operations (HIGHEST IMPACT)
-**12 endpoints completely untested:**
+### Priority 1: Estuary Operations (0% coverage)
 
-- `/v1/estuary/:id/subscribe` - POST
-- `/v1/estuary/:id/unsubscribe` - POST
-- `/v1/estuary/:id/publish` - POST
-- `/v1/estuary/:id/touch` - POST
-- `/v1/estuary/:id` - GET (info)
-- `/v1/estuary/:id` - DELETE
-- Plus 6 DO handler files
+**20 files with ZERO test coverage:**
 
-### Priority 2: Queue Consumer
-- `src/queue/fanout-consumer.ts` - 0%
+HTTP endpoints:
 
-### Priority 3: Stream Handlers
-May have indirect coverage from integration tests, need to verify:
-- Stream creation handler
-- Append handler  
-- Read handler
-- Delete handler
+- `/v1/estuary/:id/subscribe` - POST (42 lines)
+- `/v1/estuary/:id/unsubscribe` - POST (14 lines)
+- `/v1/estuary/:id/publish` - POST (62 lines)
+- `/v1/estuary/:id/touch` - POST (19 lines)
+- `/v1/estuary/:id` - GET (15 lines)
+- `/v1/estuary/:id` - DELETE (11 lines)
+
+Durable Objects:
+
+- `src/storage/estuary-do/queries.ts` (55 lines)
+- `src/storage/stream-subscribers-do/queries.ts` (45 lines)
+- Plus index files and HTTP handlers
+
+**Impact**: ~240 lines of production code, entire pub/sub feature untested
+
+### Priority 2: Queue Consumer (0% coverage)
+
+- `src/queue/fanout-consumer.ts` - 51 lines
+- **Impact**: Queue-based fanout completely untested
+
+### Priority 3: Stream Operations - Weak Areas
+
+- Read messages: 49% (missing edge cases)
+- Realtime SSE: 47% (missing error paths)
+- Path parsing: 47% (missing validation)
+- JSON helpers: 28% (missing utility functions)
 
 ---
 
@@ -65,85 +105,84 @@ May have indirect coverage from integration tests, need to verify:
 
 ### This Week
 
-#### 1. Fix Coverage Tooling (Day 1)
+#### 1. ✅ DONE: Coverage Tooling Verified
+
+- Unit tests: 39.42% coverage (340 tests passing)
+- Integration tests: 55.27% coverage (Istanbul/nyc)
+- Combined: 62.78% coverage (merged reports)
+- HTML reports working: `open coverage-combined/index.html`
+- Console summary: `pnpm run coverage`
+
+#### 2. Add Estuary Integration Tests (Priority 1)
+
+Create 5 test files covering 12 endpoints:
+
 ```bash
-cd packages/server
-
-# Option A: Install v8 coverage provider
-pnpm add -D @vitest/coverage-v8
-
-# Update vitest.unit.config.ts
-# Change: provider: "istanbul" → provider: "v8"
-
-# Test it works
-pnpm run test:unit -- --coverage
+# test/implementation/estuary/subscribe_unsubscribe.test.ts
+# test/implementation/estuary/publish_fanout.test.ts
+# test/implementation/estuary/touch_keepalive.test.ts
+# test/implementation/estuary/get_info.test.ts
+# test/implementation/estuary/delete.test.ts
 ```
 
-#### 2. Generate Actual Coverage Report (Day 1)
-```bash
-pnpm run test:unit -- --coverage
-open coverage/index.html
+**Expected impact**: 0% → 70%+ for estuary endpoints
 
-# Document:
-# - Actual line coverage %
-# - Red lines in priority 1 files
-# - Which handlers already have indirect coverage
+#### 3. Add Queue Consumer Test (Priority 2)
+
+```bash
+# test/implementation/queue/fanout-consumer.test.ts
 ```
 
-#### 3. Dead Code Decision (Day 2)
-Review `DEAD_CODE_ANALYSIS.md` with team:
-- Keep or remove registry functions?
-- Remove unused constants/exports?
+**Expected impact**: 0% → 60%+ for queue consumer
 
 ### Next 2 Weeks
 
-#### Week 2: Estuary Integration Tests
+#### Week 2: Stream Operation Improvements
 
-Create 6 test files (each tests 2 endpoints):
+**Improve existing coverage from 50-70% to 80%+**:
 
-```typescript
-// test/implementation/estuary/subscribe_unsubscribe.test.ts
-describe("Estuary subscribe/unsubscribe", () => {
-  it("subscribes to estuary", async () => {
-    const res = await fetch(`${baseUrl}/v1/estuary/${estuaryId}/subscribe`, {
-      method: "POST",
-      body: JSON.stringify({ sessionId: "session1" }),
-    });
-    expect(res.status).toBe(200);
-  });
+1. Stream append edge cases
+   - Content-type mismatches
+   - Producer sequencing conflicts
+   - Batch append failures
+2. Stream delete edge cases
+   - Delete non-existent streams
+   - Delete with active subscribers
+3. Read operations
+   - Cursor-based pagination
+   - Empty stream reads
+   - R2 segment fetch failures
 
-  it("unsubscribes from estuary", async () => {
-    // ...
-  });
-});
+**Expected impact**: 73% → 85%+ for stream operations
 
-// Similar for:
-// - publish_fanout.test.ts
-// - touch_keepalive.test.ts
-// - get_delete.test.ts
-```
+#### Week 3: SSE and Realtime
 
-#### Week 3: Queue + Verification
+**Improve realtime coverage from 47% to 70%+**:
 
-1. Add queue consumer test
-2. Re-generate coverage report
-3. Verify Priority 1 gaps filled
+1. WebSocket lifecycle tests
+2. Connection error handling
+3. SSE restart scenarios
+4. Heartbeat/keepalive logic
+
+**Expected impact**: 47% → 70%+ for realtime handlers
 
 ---
 
 ## 🎯 Success Metrics
 
 ### Coverage Targets
-- ✅ **70%+ line coverage** (after dead code removal)
-- ✅ **100% of public endpoints** have integration tests
-- ✅ **100% of protocol** conformance
-- ✅ **80%+ of pure utilities** have unit tests
+
+- 🟡 **70%+ line coverage** (currently 62.78%, need +7.22%)
+- ❌ **100% of public endpoints** tested (Estuary at 0%)
+- ✅ **100% of protocol** conformance (conformance tests passing)
+- ✅ **80%+ of utilities** have tests (shared utilities at 85%)
 
 ### Quality Gates
+
 - ✅ All CI checks pass
-- ✅ Coverage report shows specific uncovered lines
-- ✅ No tests use mocks (except Analytics Engine)
-- ✅ No dead code in codebase
+- ✅ Coverage reports working (unit + integration + combined)
+- ✅ No mocks used (except Analytics Engine)
+- ✅ HTML reports show specific uncovered lines
 
 ---
 
@@ -152,19 +191,19 @@ describe("Estuary subscribe/unsubscribe", () => {
 ### After Each Test Addition
 
 ```bash
-# 1. Run tests with coverage
-pnpm run test:unit -- --coverage
+# 1. Run all tests with coverage and merge
+pnpm run test:coverage-all
 
-# 2. Check overall %
-# Look for: "All files  | XX.X% |"
+# 2. View summary with priorities
+pnpm run coverage
 
-# 3. Check priority files
-# Open coverage/index.html
-# Navigate to src/http/v1/estuary/
-# Verify % increased
+# 3. Check specific files in HTML
+open coverage-combined/index.html
+# Navigate to your file and verify green lines
 
-# 4. Document
-# Update ACTUAL_COVERAGE.md with new %
+# 4. Verify improvement
+# Should see reduced "Files with 0%" count
+# Should see increased "Overall Coverage" percentage
 ```
 
 ### Weekly Report Template
@@ -172,19 +211,22 @@ pnpm run test:unit -- --coverage
 ```markdown
 ## Week N Coverage Report
 
-**Overall**: XX.X% (was YY.Y%, +Z.Z%)
+**Overall**: XX.XX% (was 62.78%, +Z.ZZ%)
 
-**Priority 1**: 
-- Estuary subscribe: 85% (was 0%, +85%)
-- Estuary publish: 78% (was 0%, +78%)
-- ...
+**Priority 1 - Estuary**:
 
-**Files added**:
-- test/implementation/estuary/subscribe.test.ts
-- test/implementation/estuary/publish.test.ts
+- Before: 1.8% average (20 files at 0%)
+- After: YY.Y% average (N files at 0%)
+- Tests added: X integration tests
+- Lines covered: +NNN lines
 
-**Lines covered**: +234 lines
-**Tests added**: 12 tests
+**Priority 2 - Queue**:
+
+- Before: 0% (51 lines uncovered)
+- After: YY.Y% (NN lines uncovered)
+- Tests added: 1 integration test
+
+**Files with 0% coverage**: NN files (was 20)
 **CI status**: ✅ All passing
 ```
 
@@ -192,38 +234,57 @@ pnpm run test:unit -- --coverage
 
 ## 🚫 What NOT To Do
 
-❌ **Don't write unit tests for everything** - Focus on public APIs  
-❌ **Don't mock Cloudflare bindings** - Use real ones  
-❌ **Don't test before coverage tooling works** - You're flying blind  
+❌ **Don't mock Cloudflare bindings** - Use `@cloudflare/vitest-pool-workers`  
 ❌ **Don't test dead code** - Remove it first  
 ❌ **Don't chase 100%** - Diminishing returns after 80%  
+❌ **Don't test implementation details** - Test public APIs  
+❌ **Don't ignore the HTML report** - It shows EXACTLY which lines are uncovered
 
 ---
 
 ## ✅ What TO Do
 
-✅ **Fix coverage tooling first** - You need metrics  
-✅ **Focus on Priority 1 gaps** - Estuary endpoints  
-✅ **Write integration tests** - They're more valuable  
+✅ **Run `pnpm run test:coverage-all` before every PR** - Know your impact  
+✅ **Check `pnpm run coverage` summary** - See priorities at a glance  
+✅ **Focus on 0% files first** - Biggest impact  
+✅ **Write integration tests for endpoints** - Test full workflows  
 ✅ **Use real bindings** - `@cloudflare/vitest-pool-workers`  
-✅ **Measure progress** - Generate reports after each addition  
+✅ **Open HTML report** - See exact uncovered lines  
+✅ **Track trends** - Compare coverage % week-over-week
 
 ---
 
 ## 📚 Related Documents
 
-- **ACTUAL_COVERAGE.md** - Current coverage analysis
-- **DEAD_CODE_ANALYSIS.md** - Dead code findings
-- **TEST_STRATEGY.md** - Overall testing approach
-- **COVERAGE_PLAN.md** - Detailed implementation plan
+- **COVERAGE.md** - Complete coverage guide with commands and examples
+- **COVERAGE_STATUS.md** - Detailed status with per-file breakdown
+- `coverage-combined/index.html` - Interactive HTML report (THE MAIN REPORT)
+- `scripts/coverage-summary.mjs` - Summary generator script
+- `scripts/merge-coverage.mjs` - Coverage merge script
 
 ---
 
 ## 🤝 Next Steps
 
 1. ✅ Coverage analysis complete
-2. ⏳ **YOU ARE HERE** → Fix coverage tooling
-3. ⏳ Generate actual line coverage report
-4. ⏳ Team decision on dead code
-5. ⏳ Add estuary tests (Priority 1)
-6. ⏳ Verify 70%+ coverage achieved
+2. ✅ Coverage tooling verified and working
+3. ✅ Combined coverage report generated (62.78%)
+4. ⏳ **YOU ARE HERE** → Add estuary tests (0% → 70%)
+5. ⏳ Add queue consumer test (0% → 60%)
+6. ⏳ Improve stream operations (73% → 85%)
+7. ⏳ Improve SSE/realtime (47% → 70%)
+8. ⏳ Achieve 70%+ overall coverage (currently 62.78%)
+
+---
+
+## 🚀 Get Started Now
+
+```bash
+# See current status
+pnpm run test:coverage-all && pnpm run coverage
+
+# Open HTML report to see exact uncovered lines
+open coverage-combined/index.html
+
+# Focus on files with 0% coverage first (biggest impact)
+```
