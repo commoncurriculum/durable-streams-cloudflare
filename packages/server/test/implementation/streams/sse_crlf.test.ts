@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
+import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
 
 describe("SSE CRLF handling", () => {
   it("splits CRLF payloads into data lines", async () => {

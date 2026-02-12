@@ -1,9 +1,9 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { StreamDO } from "../../src/http/worker";
-import { createStreamWorker } from "../../src/http/worker";
-import type { BaseEnv } from "../../src/http/worker";
-import { createProject } from "../../src/storage/registry";
-import { parseStreamPathFromUrl } from "../../src/http/shared/stream-path";
+import { StreamDO } from "../../../src/http/worker";
+import { createStreamWorker } from "../../../src/http/worker";
+import type { BaseEnv } from "../../../src/http/worker";
+import { createProject } from "../../../src/storage/registry";
+import { parseStreamPathFromUrl } from "../../../src/http/shared/stream-path";
 
 // ============================================================================
 // Auth rejection test worker

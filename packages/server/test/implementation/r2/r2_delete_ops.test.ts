@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startWorker, type WorkerHandle } from "./worker_harness";
-import { uniqueStreamId } from "./helpers";
+import { startWorker, type WorkerHandle } from "../worker_harness";
+import { uniqueStreamId } from "../helpers";
 
 async function seedAndRotate(baseUrl: string, streamId: string): Promise<void> {
   const url = `${baseUrl}/v1/stream/${streamId}`;

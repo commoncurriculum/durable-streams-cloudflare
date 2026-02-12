@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startWorker, type WorkerHandle } from "./worker_harness";
-import { delay, uniqueStreamId } from "./helpers";
+import { startWorker, type WorkerHandle } from "../worker_harness";
+import { delay, uniqueStreamId } from "../helpers";
 
 describe("offset=now cache headers", () => {
   let handle: WorkerHandle;
