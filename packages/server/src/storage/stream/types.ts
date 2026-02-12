@@ -2,9 +2,9 @@
  * Builder utilities for constructing ReadResult objects.
  *
  * These helpers reduce boilerplate and ensure consistency across:
- * - path.ts
- * - from_offset.ts
- * - from_messages.ts
+ * - read.ts
+ * - read-messages.ts
+ * - http/v1/streams/read/path.ts
  */
 
 export type ReadResult = {

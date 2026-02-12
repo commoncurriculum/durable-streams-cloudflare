@@ -1,9 +1,9 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { SignJWT } from "jose";
 import { type } from "arktype";
-import { StreamDO } from "../../src/http/durable-object";
-import { createStreamWorker } from "../../src/http";
-import type { BaseEnv } from "../../src/http";
+import { StreamDO } from "../../src/http/worker";
+import { createStreamWorker } from "../../src/http/worker";
+import type { BaseEnv } from "../../src/http/worker";
 import { createProject } from "../../src/storage/registry";
 import { parseStreamPathFromUrl } from "../../src/http/shared/stream-path";
 
@@ -23,7 +23,10 @@ const handler = createStreamWorker<BaseEnv>();
 // "test-project", implementation tests use "_default" (implicit).
 const registeredProjects = new Set<string>();
 
-async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
+async function ensureProject(
+  kv: KVNamespace,
+  projectId: string
+): Promise<void> {
   if (registeredProjects.has(projectId)) return;
   await createProject(kv, projectId, TEST_SIGNING_SECRET, {
     corsOrigins: ["*"],
@@ -84,19 +87,21 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     return handler.fetch!(
       request as unknown as Request<unknown, IncomingRequestCfProperties>,
       this.env,
-      this.ctx,
+      this.ctx
     );
   }
 
-  async #handleDebugAction(action: string, request: Request): Promise<Response> {
+  async #handleDebugAction(
+    action: string,
+    request: Request
+  ): Promise<Response> {
     const url = new URL(request.url);
     const pathMatch = /^\/v1\/stream\/(.+)$/.exec(url.pathname);
     if (!pathMatch) return new Response("not found", { status: 404 });
     const raw = pathMatch[1];
     const i = raw.indexOf("/");
-    const doKey = i === -1
-      ? `_default/${raw}`
-      : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
+    const doKey =
+      i === -1 ? `_default/${raw}` : `${raw.slice(0, i)}/${raw.slice(i + 1)}`;
 
     const streamId = doKey.split("/").slice(1).join("/");
     const stub = this.env.STREAMS.getByName(doKey);
@@ -117,12 +122,25 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
       });
     }
     if (action === "producer-age") {
-      const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
-      if (!payload || typeof payload.producerId !== "string" || typeof payload.lastUpdated !== "number") {
+      const payload = (await request.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      if (
+        !payload ||
+        typeof payload.producerId !== "string" ||
+        typeof payload.lastUpdated !== "number"
+      ) {
         return new Response("invalid payload", { status: 400 });
       }
-      const ok = await stub.testSetProducerAge(streamId, payload.producerId, payload.lastUpdated);
-      return ok ? new Response(null, { status: 204 }) : new Response("not found", { status: 404 });
+      const ok = await stub.testSetProducerAge(
+        streamId,
+        payload.producerId,
+        payload.lastUpdated
+      );
+      return ok
+        ? new Response(null, { status: 204 })
+        : new Response("not found", { status: 404 });
     }
     if (action === "rotate-reader-key") {
       const result = await this.rotateReaderKey(doKey);
@@ -133,7 +151,9 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     }
     if (action === "truncate-latest") {
       const ok = await stub.testTruncateLatestSegment(streamId);
-      return ok ? new Response(null, { status: 204 }) : new Response("failed", { status: 400 });
+      return ok
+        ? new Response(null, { status: 204 })
+        : new Response("failed", { status: 400 });
     }
     return new Response("unknown action", { status: 400 });
   }
@@ -145,8 +165,14 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
 
   async rotateReaderKey(doKey: string): Promise<{ readerKey: string }> {
     const readerKey = `rk_${crypto.randomUUID().replace(/-/g, "")}`;
-    const existing = await this.env.REGISTRY.get(doKey, "json") as Record<string, unknown> | null;
-    await this.env.REGISTRY.put(doKey, JSON.stringify({ ...existing, readerKey }));
+    const existing = (await this.env.REGISTRY.get(doKey, "json")) as Record<
+      string,
+      unknown
+    > | null;
+    await this.env.REGISTRY.put(
+      doKey,
+      JSON.stringify({ ...existing, readerKey })
+    );
     return { readerKey };
   }
 
@@ -155,19 +181,32 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     return stub.routeStreamRequest(doKey, false, request);
   }
 
-  async headStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null; contentType: string | null }> {
+  async headStream(
+    doKey: string
+  ): Promise<{
+    ok: boolean;
+    status: number;
+    body: string | null;
+    contentType: string | null;
+  }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
-      doKey, false,
-      new Request("https://internal/v1/stream", { method: "HEAD" }),
+      doKey,
+      false,
+      new Request("https://internal/v1/stream", { method: "HEAD" })
     );
     const body = response.ok ? null : await response.text();
-    return { ok: response.ok, status: response.status, body, contentType: response.headers.get("Content-Type") };
+    return {
+      ok: response.ok,
+      status: response.status,
+      body,
+      contentType: response.headers.get("Content-Type"),
+    };
   }
 
   async putStream(
     doKey: string,
-    options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string },
+    options: { expiresAt?: number; body?: ArrayBuffer; contentType?: string }
   ): Promise<{ ok: boolean; status: number; body: string | null }> {
     const validated = putStreamOptions(options);
     if (validated instanceof type.errors) {
@@ -182,22 +221,26 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     }
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
-      doKey, false,
+      doKey,
+      false,
       new Request("https://internal/v1/stream", {
         method: "PUT",
         headers,
         body: options.body,
-      }),
+      })
     );
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
   }
 
-  async deleteStream(doKey: string): Promise<{ ok: boolean; status: number; body: string | null }> {
+  async deleteStream(
+    doKey: string
+  ): Promise<{ ok: boolean; status: number; body: string | null }> {
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
-      doKey, false,
-      new Request("https://internal/v1/stream", { method: "DELETE" }),
+      doKey,
+      false,
+      new Request("https://internal/v1/stream", { method: "DELETE" })
     );
     const body = response.ok ? null : await response.text();
     return { ok: response.ok, status: response.status, body };
@@ -207,8 +250,19 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     doKey: string,
     payload: ArrayBuffer,
     contentType: string,
-    producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
-  ): Promise<{ ok: boolean; status: number; nextOffset: string | null; upToDate: string | null; streamClosed: string | null; body: string | null }> {
+    producerHeaders?: {
+      producerId: string;
+      producerEpoch: string;
+      producerSeq: string;
+    }
+  ): Promise<{
+    ok: boolean;
+    status: number;
+    nextOffset: string | null;
+    upToDate: string | null;
+    streamClosed: string | null;
+    body: string | null;
+  }> {
     const headers: Record<string, string> = { "Content-Type": contentType };
     if (producerHeaders) {
       headers["Producer-Id"] = producerHeaders.producerId;
@@ -217,8 +271,13 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
     }
     const stub = this.env.STREAMS.getByName(doKey);
     const response = await stub.routeStreamRequest(
-      doKey, false,
-      new Request("https://internal/v1/stream", { method: "POST", headers, body: payload }),
+      doKey,
+      false,
+      new Request("https://internal/v1/stream", {
+        method: "POST",
+        headers,
+        body: payload,
+      })
     );
     const body = response.ok ? null : await response.text();
     return {

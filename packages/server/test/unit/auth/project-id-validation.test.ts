@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROJECT_ID_PATTERN } from "../../../src/http";
+import { PROJECT_ID_PATTERN } from "../../../src/http/router";
 
 describe("project ID validation", () => {
   it("accepts valid project IDs", () => {

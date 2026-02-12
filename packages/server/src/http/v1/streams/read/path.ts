@@ -2,14 +2,14 @@ import { errorResponse } from "../../../shared/errors";
 import { isJsonContentType } from "../../../shared/headers";
 import { emptyJsonArray } from "../shared/json";
 import type { Timing } from "../../../shared/timing";
-import { readFromOffset } from "./from_offset";
-import { readFromMessages } from "./from_messages";
+import { readFromOffset } from "../../../../storage/stream/read";
+import { readFromMessages } from "../../../../storage/stream/read-messages";
 import {
   emptyResult,
   errorResult,
   gapResult,
   type ReadResult,
-} from "./result";
+} from "../../../../storage/stream/types";
 import { readSegmentMessages } from "../../../../storage/segments";
 import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage/types";
 import type { StreamEnv } from "../types";

@@ -2,7 +2,7 @@ import type { StreamMeta, StreamStorage } from "../../../storage/types";
 import type { ProducerInput } from "./shared/producer";
 import type { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
-import type { ReadResult } from "./read/result";
+import type { ReadResult } from "../../../storage/stream/types";
 import type { Timing } from "../../shared/timing";
 
 // ============================================================================

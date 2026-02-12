@@ -13,9 +13,9 @@ import {
   encodeTailOffset,
   resolveOffsetParam,
 } from "./shared/stream-offsets";
-import { handlePut } from "./create";
+import { createStreamHttp } from "./create/http";
 import { handleDelete } from "./delete";
-import { handleGet, handleHead } from "./read";
+import { readStreamHttp, headStreamHttp } from "./read/http";
 import { errorResponse } from "../../shared/errors";
 import { isExpired } from "../../shared/expiry";
 import {
@@ -125,25 +125,27 @@ export class StreamDO extends DurableObject<StreamEnv> {
     });
 
     // Routes
-    app.put("*", (c) =>
-      handlePut(c.var.streamContext, c.env.streamId, c.req.raw)
-    );
+    app.put("*", async (c) => {
+      return createStreamHttp(c.var.streamContext, c.env.streamId, c.req.raw);
+    });
     app.post("*", async (c) => {
       const { appendStreamHttp } = await import("./append/http");
       return appendStreamHttp(c.var.streamContext, c.env.streamId, c.req.raw);
     });
-    app.get("*", (c) => {
+    app.get("*", async (c) => {
       if (c.req.method === "HEAD") {
-        return handleHead(c.var.streamContext, c.env.streamId);
+        return headStreamHttp(c.var.streamContext, c.env.streamId);
       }
-      return handleGet(
+      return readStreamHttp(
         c.var.streamContext,
         c.env.streamId,
         c.req.raw,
         new URL(c.req.url)
       );
     });
-    app.delete("*", (c) => handleDelete(c.var.streamContext, c.env.streamId));
+    app.delete("*", async (c) => {
+      return handleDelete(c.var.streamContext, c.env.streamId);
+    });
 
     app.onError((err, c) => {
       logError(

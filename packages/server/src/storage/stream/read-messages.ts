@@ -1,13 +1,13 @@
-import { isJsonContentType } from "../../../shared/headers";
-import { errorResponse } from "../../../shared/errors";
-import { buildJsonArray, emptyJsonArray } from "../shared/json";
-import { concatBuffers } from "../shared/encoding";
+import { isJsonContentType } from "../../http/shared/headers";
+import { errorResponse } from "../../http/shared/errors";
+import { buildJsonArray, emptyJsonArray } from "../../http/v1/streams/shared/json";
+import { concatBuffers } from "../../http/v1/streams/shared/encoding";
 import {
   emptyResult,
   errorResult,
   dataResult,
   type ReadResult,
-} from "./result";
+} from "./types";
 
 export function readFromMessages(params: {
   messages: Uint8Array[];

@@ -1,17 +1,20 @@
-import { isJsonContentType } from "../../../shared/headers";
-import { toUint8Array } from "../shared/encoding";
-import { buildJsonArray, emptyJsonArray } from "../shared/json";
-import { concatBuffers } from "../shared/encoding";
-import { errorResponse } from "../../../shared/errors";
-import type { StreamMeta, StreamStorage } from "../../../../storage/types";
-import type { ReadResult } from "./result";
+import { isJsonContentType } from "../../http/shared/headers";
+import { toUint8Array } from "../../http/v1/streams/shared/encoding";
+import {
+  buildJsonArray,
+  emptyJsonArray,
+} from "../../http/v1/streams/shared/json";
+import { concatBuffers } from "../../http/v1/streams/shared/encoding";
+import { errorResponse } from "../../http/shared/errors";
+import type { StreamMeta, StreamStorage } from "../types";
+import type { ReadResult } from "./types";
 
 export async function readFromOffset(
   storage: StreamStorage,
   streamId: string,
   meta: StreamMeta,
   offset: number,
-  maxChunkBytes: number,
+  maxChunkBytes: number
 ): Promise<ReadResult> {
   const chunks: Array<{
     start_offset: number;
@@ -27,7 +30,10 @@ export async function readFromOffset(
     const overlap = await storage.selectOverlap(streamId, offset);
 
     if (overlap) {
-      if (isJsonContentType(meta.content_type) && overlap.start_offset !== offset) {
+      if (
+        isJsonContentType(meta.content_type) &&
+        overlap.start_offset !== offset
+      ) {
         return {
           body: new ArrayBuffer(0),
           nextOffset: offset,
@@ -95,7 +101,14 @@ export async function readFromOffset(
     const closedAtTail = meta.closed === 1 && upToDate;
     if (isJsonContentType(meta.content_type)) {
       const empty = emptyJsonArray();
-      return { body: empty, nextOffset: offset, upToDate, closedAtTail, hasData: false, writeTimestamp: 0 };
+      return {
+        body: empty,
+        nextOffset: offset,
+        upToDate,
+        closedAtTail,
+        hasData: false,
+        writeTimestamp: 0,
+      };
     }
     return {
       body: new ArrayBuffer(0),
@@ -114,11 +127,18 @@ export async function readFromOffset(
   let body: ArrayBuffer;
   if (isJsonContentType(meta.content_type)) {
     body = buildJsonArray(
-      chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes })),
+      chunks.map((chunk) => ({ body: chunk.body, sizeBytes: chunk.size_bytes }))
     );
   } else {
     body = concatBuffers(chunks.map((chunk) => toUint8Array(chunk.body)));
   }
 
-  return { body, nextOffset, upToDate, closedAtTail, hasData: true, writeTimestamp: maxCreatedAt };
+  return {
+    body,
+    nextOffset,
+    upToDate,
+    closedAtTail,
+    hasData: true,
+    writeTimestamp: maxCreatedAt,
+  };
 }
