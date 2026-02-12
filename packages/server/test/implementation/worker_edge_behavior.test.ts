@@ -8,7 +8,7 @@ describe("worker edge behavior", () => {
     let handle: WorkerHandle;
 
     beforeAll(async () => {
-      handle = await startWorker({ useProductionAuth: true });
+      handle = await startWorker({ configFile: "wrangler.auth.test.toml" });
     });
 
     afterAll(async () => {

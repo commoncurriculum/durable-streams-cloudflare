@@ -25,6 +25,8 @@ describe("worker restart", () => {
     expect(before).toBe("helloworld");
 
     await worker.stop();
+    // Wait for socket cleanup before restarting
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     worker = await startWorker({ port, persistDir });
     const restartedClient = createClient(worker.baseUrl);
@@ -59,6 +61,8 @@ describe("worker restart", () => {
     expect(firstOffset).toBeTruthy();
 
     await worker.stop();
+    // Wait for socket cleanup before restarting
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     worker = await startWorker({ port, persistDir });
     const restartedClient = createClient(worker.baseUrl);
