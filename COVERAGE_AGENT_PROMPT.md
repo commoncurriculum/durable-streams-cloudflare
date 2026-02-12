@@ -8,32 +8,22 @@ Copy this entire document and paste it into a new LLM session to work on test co
 
 Improve test coverage for the Durable Streams Cloudflare server package. Current coverage is **62.78%**, goal is **70%+**.
 
-## ⚠️ CRITICAL: Estuary Tests Currently Failing
+## 🚨 CRITICAL: TEST-DRIVEN DEVELOPMENT REQUIRED
 
-**Status**: 50 comprehensive estuary tests have been written but are failing with 400 Bad Request errors.
+**YOU MUST FOLLOW THIS WORKFLOW:**
 
-**Files Created** (in `test/implementation/estuary/`):
+1. Write ONE test
+2. Run that ONE test
+3. If it fails, debug and fix it
+4. If it passes, commit it
+5. Move to next test
 
-- `subscribe.test.ts` (11 tests)
-- `unsubscribe.test.ts` (8 tests)
-- `get.test.ts` (8 tests)
-- `touch.test.ts` (11 tests)
-- `delete.test.ts` (12 tests)
+**DO NOT:**
 
-**Issue**: All estuary endpoint requests return 400 Bad Request, suggesting:
-
-1. Request format/validation issue
-2. Missing bindings in test environment
-3. Path parsing middleware not working for estuary routes
-4. ArkType validation failing (uses `morphFallback`)
-
-**Next Agent Must**:
-
-1. Debug why `/v1/estuary/subscribe/test-project/stream-id` returns 400
-2. Check if auth is required (README examples show JWT tokens)
-3. Verify path-parsing middleware extracts projectId/streamId correctly
-4. Check test environment has all required DO namespaces (ESTUARY_DO, SUBSCRIPTION_DO)
-5. Read actual error response bodies to see validation messages
+- Write multiple tests without running them
+- Assume test format without validating
+- Copy-paste test patterns without verification
+- Write more than 1-2 tests before running them
 
 ## Quick Start
 
@@ -83,13 +73,52 @@ From highest to lowest impact:
 
 ## How to Add Tests
 
-### For Estuary Endpoints (Priority 1) - DEBUG NEEDED
+### For Estuary Endpoints (Priority 1) - TEST-DRIVEN APPROACH
 
-**⚠️ Tests exist but are failing - see top of document for details.**
+**NO TESTS EXIST YET - START FROM SCRATCH**
 
-The estuary test files already exist in `test/implementation/estuary/` but need debugging:
+**Step 1: Write the simplest possible test**
 
-**Correct API Format** (from README.md):
+```typescript
+// test/implementation/estuary/subscribe.test.ts
+import { describe, it, expect } from "vitest";
+
+const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
+
+describe("Estuary subscribe", () => {
+  it("returns something from subscribe endpoint", async () => {
+    const response = await fetch(`${BASE_URL}/v1/estuary/subscribe/test-project/test-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: "test-estuary" }),
+    });
+
+    // Just see what we get back
+    console.log("Status:", response.status);
+    console.log("Body:", await response.text());
+  });
+});
+```
+
+**Step 2: Run ONLY that test**
+
+```bash
+cd packages/server
+pnpm run test -- test/implementation/estuary/subscribe.test.ts
+```
+
+**Step 3: Debug based on actual response**
+
+- If 401/403: Auth required (check README for JWT format)
+- If 400: Validation error (read response body for error message)
+- If 404: Route not found (check path format)
+- If 500: Server error (check logs for stack trace)
+
+**Step 4: Fix and iterate**
+
+Based on what you learn, adjust the test. Only after ONE test passes, write the next one.
+
+**API Format** (from README.md):
 
 - Subscribe: `POST /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
 - Unsubscribe: `DELETE /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
@@ -97,29 +126,12 @@ The estuary test files already exist in `test/implementation/estuary/` but need 
 - Touch: `POST /v1/estuary/:projectId/:estuaryId`
 - Delete: `DELETE /v1/estuary/:projectId/:estuaryId`
 
-**Example Working Pattern** (from README):
+**Important Unknowns to Discover**:
 
-```bash
-curl -X POST -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $JWT" \
-  -d '{"estuaryId":"user-alice"}' \
-  $URL/v1/estuary/subscribe/my-project/notifications
-```
-
-**Key Points**:
-
-1. Router uses pattern `/v1/estuary/subscribe/:estuaryPath{.+}` with `{.+}` capturing rest of path
-2. Path-parsing middleware extracts projectId/streamId from path
-3. HTTP handler expects `projectId` and `streamId` from context, `estuaryId` from JSON body
-4. All examples in README show JWT auth - may be required
-
-**Debug Steps**:
-
-1. Check if authentication is required for estuary endpoints
-2. Add auth header to test requests if needed
-3. Read response body to see actual validation error messages
-4. Verify test environment has ESTUARY_DO and SUBSCRIPTION_DO bindings
-5. Check if path-parsing middleware is running for estuary routes
+1. Is auth required? (README shows JWT but might be optional for tests)
+2. Does source stream need to exist first?
+3. What bindings are needed in test env?
+4. What is the actual validation error format?
 
 ### For Queue Consumer (Priority 2)
 
@@ -252,7 +264,7 @@ describe("Feature unit test", () => {
 
 ## API Endpoints Reference
 
-**Estuary endpoints** (see `packages/server/README.md` for details):
+**Estuary endpoints** (from `packages/server/README.md`):
 
 ```
 POST   /v1/estuary/subscribe/:projectId/:streamId   Subscribe estuary to stream
@@ -262,7 +274,11 @@ POST   /v1/estuary/:projectId/:estuaryId            Touch (refresh TTL)
 DELETE /v1/estuary/:projectId/:estuaryId            Delete estuary
 ```
 
-**Important**: Subscribe/unsubscribe send `{"estuaryId": "..."}` in JSON body, not in path.
+**Important**:
+
+- Subscribe/unsubscribe send `{"estuaryId": "..."}` in JSON body
+- README examples show JWT auth but it may be optional
+- Test ONE endpoint at a time and actually read error responses
 
 ## Finding Uncovered Lines
 
@@ -284,13 +300,13 @@ cat src/http/v1/estuary/publish/index.ts
 
 After your work:
 
-- [ ] **FIX FAILING TESTS**: Debug and fix 50 existing estuary tests (currently failing with 400 errors)
 - [ ] Overall coverage ≥ 70% (currently 62.78%)
 - [ ] Estuary endpoints have ≥ 70% coverage (currently ~2%)
 - [ ] Queue consumer has ≥ 60% coverage (currently 0%)
 - [ ] All tests pass: `pnpm run test`
 - [ ] All CI checks pass (see AGENTS.md for checklist)
 - [ ] No new files with 0% coverage
+- [ ] Every test was run individually before writing the next one
 
 ## Testing Best Practices
 
@@ -339,44 +355,53 @@ open coverage-combined/index.html  # Visual report
 
 ## Start Here
 
-**FIRST PRIORITY**: Fix the failing estuary tests!
+**USE TEST-DRIVEN DEVELOPMENT:**
 
-1. Run `pnpm run test -- test/implementation/estuary/subscribe.test.ts` to see actual errors
-2. Read the response body from failed requests to see validation error messages
-3. Check if authentication is required (try adding mock JWT header)
-4. Verify bindings: check `vitest.implementation.config.ts` has ESTUARY_DO and SUBSCRIPTION_DO
-5. Test path parsing: add logs to see if projectId/streamId are being extracted
-6. Compare with working stream tests to find differences
+1. Run `pnpm cov` to see current coverage
+2. Run `pnpm run coverage:lines -- --zero` to see 0% files
+3. Pick ONE estuary endpoint (start with subscribe)
+4. Create `test/implementation/estuary/subscribe.test.ts`
+5. Write ONE simple test (just check status code)
+6. Run ONLY that test: `pnpm run test -- test/implementation/estuary/subscribe.test.ts`
+7. Read the actual error/response
+8. Fix the test based on what you learned
+9. Only after it passes, write the next test
+10. Repeat for each endpoint
 
-**AFTER fixing tests**:
+**ONE TEST AT A TIME. RUN IT. FIX IT. THEN MOVE ON.**
 
-1. Run `pnpm run test -- test/implementation/estuary/` to verify all pass
-2. Run `pnpm cov` to see coverage improvement
-3. Run `pnpm run coverage:lines -- estuary` to see what's still uncovered
-4. Add tests for publish/fanout endpoint (complex, involves queue)
-5. Add tests for queue consumer
-6. Verify CI passes: `pnpm -r run typecheck && pnpm -C packages/server run test`
+**After tests work**:
 
-**Focus on files with 0% coverage first - biggest impact!**
+1. Run `pnpm cov` to see coverage improvement
+2. Check what lines are still uncovered: `pnpm run coverage:lines -- estuary`
+3. Add more tests for uncovered paths (but still one at a time!)
+4. Verify CI passes: `pnpm -r run typecheck && pnpm -C packages/server run test`
 
 ## Expected Time
 
-- **Debug existing estuary tests**: ~1-2 hours (50 tests already written, just need fixing)
+- Write and validate estuary tests (ONE AT A TIME): ~2-3 hours
 - Add publish/fanout tests: ~1-2 hours (complex endpoint)
 - Queue consumer test: ~30 minutes (1 file)
 - Edge cases and refinement: ~1-2 hours
 
-Total: ~4-7 hours to reach 70% coverage
+Total: ~5-8 hours to reach 70% coverage
 
-## Key Learnings from Previous Attempt
+## Key Learnings - CRITICAL TO FOLLOW
 
-1. **Path format matters**: Estuary routes use `/:estuaryPath{.+}` pattern, middleware parses into projectId/streamId
-2. **Integration tests use fetch**: Real HTTP requests to live worker, NOT Hono's `app.request()`
-3. **Unit tests use app.request()**: Only for testing Hono app directly without worker
-4. **AUTH may be required**: README examples show JWT tokens for estuary endpoints
-5. **Validation is strict**: ArkType validation with `morphFallback` - check schemas carefully
-6. **Test environment**: Must have all DO bindings (STREAMS, ESTUARY_DO, SUBSCRIPTION_DO)
-7. **Read response bodies**: Don't just check status codes, read error messages for debugging
+1. **ONE TEST AT A TIME**: Write one test, run it, fix it, commit it, then next
+2. **Read actual errors**: Don't assume - read response bodies and logs
+3. **Integration tests use fetch**: Real HTTP requests to live worker, NOT `app.request()`
+4. **Unit tests use app.request()**: Only for testing Hono app directly without worker
+5. **Test environment**: Check `vitest.implementation.config.ts` for required bindings
+6. **Start simple**: First test should just check if endpoint exists (200 or 400, not 404)
+7. **Iterate based on feedback**: Each test teaches you something - use that knowledge
+8. **Don't batch write**: Writing 50 tests without running them = wasting time
+
+## Previous Mistake to Avoid
+
+**DO NOT DO THIS**: A previous agent wrote 50 estuary tests without running any of them. All 50 failed with 400 errors. This wasted time and had to be deleted.
+
+**DO THIS INSTEAD**: Write one test → Run it → Read error → Fix it → Commit it → Next test
 
 ---
 
