@@ -31,7 +31,7 @@
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
     "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit && pnpm exec tsc -p tsconfig.unit.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "pnpm exec tsc -p tsconfig.src.json --noEmit && pnpm exec tsc -p tsconfig.unit.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
     "openapi": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {

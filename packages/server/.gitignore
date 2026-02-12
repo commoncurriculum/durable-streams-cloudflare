@@ -5,3 +5,4 @@ node_modules/
 .dev.vars
 openapi.json
 openapi.yaml
+*.tsbuildinfo

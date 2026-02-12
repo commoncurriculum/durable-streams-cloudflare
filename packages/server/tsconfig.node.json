@@ -2,10 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": [
-      "@cloudflare/workers-types",
-      "@types/node"
-    ]
+    "composite": true,
+    "types": ["@cloudflare/workers-types", "@types/node"],
   },
-  "include": ["src", "test/implementation", "scripts"]
+  "include": ["src", "drizzle", "test/implementation", "scripts"],
 }
