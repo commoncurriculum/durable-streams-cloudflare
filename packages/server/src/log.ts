@@ -1,5 +1,5 @@
 /**
- * Structured logging — lightweight JSON to console.error / console.log.
+ * Structured logging using LogLayer.
  *
  * Every log entry is a single JSON line with consistent fields:
  *   { level, msg, ts, ...context }
@@ -8,42 +8,66 @@
  * each site includes only what's relevant.
  */
 
-export function logError(context: Record<string, unknown>, message: string, error?: unknown): void {
-  const entry: Record<string, unknown> = {
-    level: "error",
-    msg: message,
-    ts: Date.now(),
-    ...context,
-  };
-  if (error instanceof Error) {
-    entry.error = error.message;
-    if (error.stack) entry.stack = error.stack;
-  } else if (error !== undefined) {
-    entry.error = String(error);
+import { LogLayer, ConsoleTransport } from "loglayer";
+
+// Create a global logger instance configured for Cloudflare Workers
+// Using ConsoleTransport with structured JSON output
+const log = new LogLayer({
+  transport: new ConsoleTransport({
+    logger: console,
+    messageField: "msg",
+    dateField: "ts",
+    levelField: "level",
+    dateFn: () => Date.now(), // Unix timestamp in milliseconds
+    stringify: true, // Output as single JSON string per line
+  }),
+});
+
+/**
+ * Log an error with context and optional error object
+ */
+export function logError(
+  context: Record<string, unknown>,
+  message: string,
+  error?: unknown
+): void {
+  const logger = log.withContext(context);
+  if (error) {
+    logger.withError(error).error(message);
+  } else {
+    logger.error(message);
   }
-  console.error(JSON.stringify(entry));
 }
 
-export function logWarn(context: Record<string, unknown>, message: string, error?: unknown): void {
-  const entry: Record<string, unknown> = {
-    level: "warn",
-    msg: message,
-    ts: Date.now(),
-    ...context,
-  };
-  if (error instanceof Error) {
-    entry.error = error.message;
-  } else if (error !== undefined) {
-    entry.error = String(error);
+/**
+ * Log a warning with context and optional error object
+ */
+export function logWarn(
+  context: Record<string, unknown>,
+  message: string,
+  error?: unknown
+): void {
+  const logger = log.withContext(context);
+  if (error) {
+    logger.withError(error).warn(message);
+  } else {
+    logger.warn(message);
   }
-  console.error(JSON.stringify(entry));
 }
 
-export function logInfo(context: Record<string, unknown>, message: string): void {
-  console.log(JSON.stringify({
-    level: "info",
-    msg: message,
-    ts: Date.now(),
-    ...context,
-  }));
+/**
+ * Log an info message with context
+ */
+export function logInfo(
+  context: Record<string, unknown>,
+  message: string
+): void {
+  log.withContext(context).info(message);
+}
+
+/**
+ * Get the root logger instance for advanced usage
+ */
+export function getLogger() {
+  return log;
 }

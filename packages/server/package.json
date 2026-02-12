@@ -38,7 +38,8 @@
     "arkregex": "^0.0.5",
     "arktype": "^2.1.29",
     "hono": "^4",
-    "hono-openapi": "^1.2.0"
+    "hono-openapi": "^1.2.0",
+    "loglayer": "^8.2.1"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4"

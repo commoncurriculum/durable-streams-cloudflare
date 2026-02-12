@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { arktypeValidator } from "@hono/arktype-validator";
 import { logger } from "hono/logger";
+import { bodyLimit } from "hono/body-limit";
 import type { StreamDO } from "./v1/streams";
 import type { InFlightResult } from "./middleware/coalesce";
 import type { StreamMeta } from "./middleware/cache";
-import type { Timing } from "./shared/timing";
+
 import type {
   ProjectConfig,
   ProjectJwtClaims,
@@ -18,8 +19,11 @@ import { pathParsingMiddleware } from "./middleware/path-parsing";
 import { corsMiddleware } from "./middleware/cors";
 import { authenticationMiddleware } from "./middleware/authentication";
 import { authorizationMiddleware } from "./middleware/authorization";
-import { timingMiddleware } from "./middleware/timing";
+import { timingMiddleware, createTimer } from "./middleware/timing";
 import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
+
+// Limits
+import { MAX_APPEND_BYTES } from "./shared/limits";
 
 // Route handlers
 import {
@@ -55,7 +59,6 @@ export type BaseEnv = {
   SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
   ESTUARY_DO: DurableObjectNamespace<EstuaryDO>;
   R2?: R2Bucket;
-  DEBUG_TIMING?: string;
   METRICS?: AnalyticsEngineDataset;
   /**
    * KV namespace storing per-project signing secrets and stream metadata.
@@ -93,7 +96,6 @@ export function createStreamWorker<
       streamPath: string | null;
       corsOrigin: string | null;
       streamMeta: StreamMeta | null;
-      timing: Timing | null;
     };
   };
 
@@ -111,7 +113,8 @@ export function createStreamWorker<
 
   // Stream-scoped middleware
   app.use("/v1/stream/*", authorizationMiddleware);
-  app.use("/v1/stream/*", timingMiddleware);
+  app.use("/v1/stream/*", timingMiddleware());
+  app.use("/v1/stream/*", bodyLimit({ maxSize: MAX_APPEND_BYTES }));
   app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
   // #endregion docs-request-arrives
 
@@ -162,12 +165,11 @@ export function createStreamWorker<
   // Stream route — all pre/post-processing handled by middleware
   // biome-ignore lint: Hono context typing is complex
   app.all("/v1/stream/*", async (c: any) => {
-    const timing = c.get("timing");
     const doKey = c.get("streamPath");
     const stub = c.env.STREAMS.getByName(doKey);
-    const doneOrigin = timing?.start("edge.origin");
-    const response = await stub.routeStreamRequest(doKey, !!timing, c.req.raw);
-    doneOrigin?.();
+    const doneOrigin = createTimer(c, "edge.origin");
+    const response = await stub.routeStreamRequest(doKey, c.req.raw);
+    doneOrigin();
     return response;
   });
   // #endregion docs-route-to-do

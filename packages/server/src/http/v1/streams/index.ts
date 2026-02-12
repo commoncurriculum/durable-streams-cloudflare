@@ -5,7 +5,7 @@ import { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
 import { DoSqliteStorage } from "../../../storage/queries";
 import { parseStreamPathFromUrl } from "../../shared/stream-path";
-import { Timing, attachTiming } from "../../shared/timing";
+
 import type { StreamContext, StreamEnv } from "./types";
 import { ReadPath } from "./read/path";
 import {
@@ -36,7 +36,6 @@ import { appendStream } from "./append";
 type DoAppEnv = {
   Bindings: {
     streamId: string;
-    timingEnabled: boolean;
   };
   Variables: {
     streamContext: StreamContext;
@@ -89,14 +88,10 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
     // Build StreamContext for each request
     app.use("*", async (c, next) => {
-      const timing = c.env.timingEnabled ? new Timing() : null;
-      const doneTotal = timing?.start("do.total");
-
       c.set("streamContext", {
         state: this.ctx,
         env: this.env,
         storage: this.storage,
-        timing,
         longPoll: this.longPoll,
         sseState: this.sseState,
         getStream: (sid) => this.getStream(sid),
@@ -107,21 +102,14 @@ export class StreamDO extends DurableObject<StreamEnv> {
         encodeTailOffset: (sid, meta) =>
           encodeTailOffset(this.storage, sid, meta),
         readFromOffset: (sid, meta, offset, maxChunkBytes) =>
-          this.readPath.readFromOffset(
-            sid,
-            meta,
-            offset,
-            maxChunkBytes,
-            timing
-          ),
+          this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes),
         rotateSegment: (sid, options) => this.rotateSegment(sid, options),
         getWebSockets: (tag) => this.ctx.getWebSockets(tag),
       });
 
       await next();
 
-      doneTotal?.();
-      c.res = attachTiming(c.res, timing);
+      await next();
     });
 
     // Routes
@@ -251,10 +239,9 @@ export class StreamDO extends DurableObject<StreamEnv> {
 
   async routeStreamRequest(
     streamId: string,
-    timingEnabled: boolean,
     request: Request
   ): Promise<Response> {
-    return this.app.fetch(request, { streamId, timingEnabled });
+    return this.app.fetch(request, { streamId });
   }
 
   // RPC methods (called by edge router, estuary, subscription)
@@ -288,7 +275,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
       state: this.ctx,
       env: this.env,
       storage: this.storage,
-      timing: null,
       longPoll: this.longPoll,
       sseState: this.sseState,
       getStream: (sid) => this.getStream(sid),

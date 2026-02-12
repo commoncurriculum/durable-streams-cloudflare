@@ -1,7 +1,7 @@
 import { errorResponse } from "../../../shared/errors";
 import { isJsonContentType } from "../../../shared/headers";
 import { emptyJsonArray } from "../shared/json";
-import type { Timing } from "../../../shared/timing";
+
 import { readFromOffset } from "../../../../storage/stream/read";
 import { readFromMessages } from "../../../../storage/stream/read-messages";
 import {
@@ -55,7 +55,6 @@ export class ReadPath {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number,
-    timing: Timing | null,
   ): Promise<ReadResult> {
     const key = this.readKey(streamId, meta, offset, maxChunkBytes);
     const cached = this.recentReads.get(key);
@@ -70,7 +69,7 @@ export class ReadPath {
       : undefined;
     if (existing) return await existing;
 
-    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes, timing).then(
+    const pending = this.readFromOffsetInternal(streamId, meta, offset, maxChunkBytes).then(
       (result) => {
         if (!result.error && this.recentReads.size < MAX_RECENT_READS) {
           this.recentReads.set(key, { result, expiresAt: Date.now() + COALESCE_CACHE_MS });
@@ -104,7 +103,6 @@ export class ReadPath {
     meta: StreamMeta,
     offset: number,
     maxChunkBytes: number,
-    timing: Timing | null,
   ): Promise<ReadResult> {
     this.readStats.internalReads += 1;
 
