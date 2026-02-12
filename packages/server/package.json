@@ -32,11 +32,16 @@
     "test:implementation": "pnpm exec vitest run --config vitest.implementation.config.ts",
     "test:implementation-coverage": "pnpm exec vitest run --config vitest.integration-coverage.config.ts && pnpm exec nyc report --temp-dir .nyc_output --report-dir coverage-integration --reporter=text --reporter=html --reporter=json-summary --cwd=. --include=src/** --exclude=src/**/*.d.ts --exclude=src/**/types.ts --exclude=src/**/schema.ts",
     "test:coverage-all": "pnpm run test:coverage && pnpm run test:implementation-coverage && node scripts/merge-coverage.mjs",
+    "cov": "pnpm run test:coverage-all && pnpm run coverage",
+    "coverage": "node scripts/coverage-summary.mjs",
+    "coverage:unit": "node scripts/coverage-summary.mjs unit",
+    "coverage:integration": "node scripts/coverage-summary.mjs integration",
     "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
     "typecheck": "pnpm exec tsc -p tsconfig.src.json --noEmit && pnpm exec tsc -p tsconfig.unit.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
     "openapi": "tsx scripts/generate-openapi.ts",
-    "generate-client": "tsx scripts/generate-openapi.ts && pnpm --filter @durable-streams-cloudflare/estuary-client run generate"
+    "generate-client": "tsx scripts/generate-openapi.ts && pnpm --filter @durable-streams-cloudflare/estuary-client run generate",
+    "coverage:lines": "node scripts/coverage-lines.mjs"
   },
   "dependencies": {
     "@hono/standard-validator": "^0.2.2",
@@ -58,6 +63,7 @@
     "@durable-streams/server-conformance-tests": "^0.2.1",
     "@types/node": "^25.2.3",
     "@vitest/coverage-istanbul": "^4.0.18",
+    "@vitest/coverage-v8": "4.1.0-beta.3",
     "esbuild": "^0.27.3",
     "istanbul-lib-instrument": "^6.0.3",
     "jose": "^5.9.6",
