@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFromOffset } from "../../../src/storage/stream-do/read";
+import { readFromOffset } from "../../../../src/storage/stream-do/read";
 import {
   baseMeta,
   withStorage,
@@ -7,7 +7,7 @@ import {
   insertOp,
   insertJsonOp,
   decodeBody,
-} from "../helpers";
+} from "../../helpers";
 
 // ============================================================================
 // Binary content reads

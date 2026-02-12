@@ -3,8 +3,8 @@ import {
   parseProducerHeaders,
   evaluateProducer,
   type ProducerInput,
-} from "../../../src/http/v1/streams/shared/producer";
-import { STREAM_ID, baseProducerState, withStorage, seedProducer } from "../helpers";
+} from "../../../../../../src/http/v1/streams/shared/producer";
+import { STREAM_ID, baseProducerState, withStorage, seedProducer } from "../../../../helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers

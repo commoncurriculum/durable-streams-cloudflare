@@ -20,6 +20,9 @@
     "oxlint": "^1.43.0"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
     "overrides": {
       "vitest": "4.1.0-beta.1",
       "@vitest/runner": "4.1.0-beta.1",

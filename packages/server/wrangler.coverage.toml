@@ -1,0 +1,39 @@
+# Wrangler config for integration tests WITH Istanbul code coverage.
+# Identical to wrangler.test.toml except:
+#   1. main points to the pre-built instrumented bundle
+#   2. [build] runs the instrumentation build script first
+
+name = "durable-streams"
+main = "dist/test-worker-instrumented.js"
+compatibility_date = "2026-02-02"
+compatibility_flags = []
+
+[build]
+command = "node scripts/build-coverage.mjs"
+
+[durable_objects]
+bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamDO"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "durable-streams"
+
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "durable_streams_metrics"
+
+# KV namespace for per-project signing secrets and stream metadata
+[[kv_namespaces]]
+binding = "REGISTRY"
+id = "registry"
+
+[vars]
+# SEGMENT_MAX_MESSAGES = "1000"
+# SEGMENT_MAX_BYTES = "4194304"
+
+[observability]
+enabled = true

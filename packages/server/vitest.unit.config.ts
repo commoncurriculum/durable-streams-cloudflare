@@ -16,5 +16,12 @@ export default defineConfig({
     exclude: ["**/.git/**"],
     passWithNoTests: false,
     testTimeout: 10_000,
+    coverage: {
+      provider: "istanbul",
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.d.ts", "src/**/types.ts", "src/**/schema.ts"],
+      reporter: ["text", "html", "json-summary", "json"],
+      reportsDirectory: "./coverage",
+    },
   },
 });
