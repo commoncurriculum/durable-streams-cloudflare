@@ -308,45 +308,40 @@ export class StreamDoStorage implements StreamStorage {
     _streamId: string,
     offset: number
   ): Promise<ReadChunk | null> {
-    const result = this.sql.exec<{
-      start_offset: number;
-      end_offset: number;
-      size_bytes: number;
-      body: ArrayBuffer | string | number | null;
-      created_at: number;
-    }>(
-      `
-        SELECT start_offset, end_offset, size_bytes, body, created_at
-        FROM ops
-        WHERE start_offset < ? AND end_offset > ?
-        ORDER BY start_offset DESC
-        LIMIT 1
-      `,
-      offset,
-      offset
-    );
-    const rows = result.toArray();
-    return rows[0] ? (rows[0] as ReadChunk) : null;
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(
+        and(
+          sql`${ops.start_offset} < ${offset}`,
+          sql`${ops.end_offset} > ${offset}`
+        )
+      )
+      .orderBy(desc(ops.start_offset))
+      .limit(1);
+    return result[0] ? (result[0] as ReadChunk) : null;
   }
 
   async selectOpsFrom(_streamId: string, offset: number): Promise<ReadChunk[]> {
-    const result = this.sql.exec<{
-      start_offset: number;
-      end_offset: number;
-      size_bytes: number;
-      body: ArrayBuffer | string | number | null;
-      created_at: number;
-    }>(
-      `
-        SELECT start_offset, end_offset, size_bytes, body, created_at
-        FROM ops
-        WHERE start_offset >= ?
-        ORDER BY start_offset ASC
-        LIMIT 200
-      `,
-      offset
-    );
-    return result.toArray() as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(gte(ops.start_offset, offset))
+      .orderBy(asc(ops.start_offset))
+      .limit(200);
+    return result as ReadChunk[];
   }
 
   async selectOpsRange(
@@ -354,40 +349,34 @@ export class StreamDoStorage implements StreamStorage {
     startOffset: number,
     endOffset: number
   ): Promise<ReadChunk[]> {
-    const result = this.sql.exec<{
-      start_offset: number;
-      end_offset: number;
-      size_bytes: number;
-      body: ArrayBuffer | string | number | null;
-      created_at: number;
-    }>(
-      `
-        SELECT start_offset, end_offset, size_bytes, body, created_at
-        FROM ops
-        WHERE start_offset >= ? AND end_offset <= ?
-        ORDER BY start_offset ASC
-      `,
-      startOffset,
-      endOffset
-    );
-    return result.toArray() as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(
+        and(gte(ops.start_offset, startOffset), lte(ops.end_offset, endOffset))
+      )
+      .orderBy(asc(ops.start_offset));
+    return result as ReadChunk[];
   }
 
   async selectAllOps(_streamId: string): Promise<ReadChunk[]> {
-    const result = this.sql.exec<{
-      start_offset: number;
-      end_offset: number;
-      size_bytes: number;
-      body: ArrayBuffer | string | number | null;
-      created_at: number;
-    }>(
-      `
-        SELECT start_offset, end_offset, size_bytes, body, created_at
-        FROM ops
-        ORDER BY start_offset ASC
-      `
-    );
-    return result.toArray() as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .orderBy(asc(ops.start_offset));
+    return result as ReadChunk[];
   }
 
   async deleteOpsThrough(_streamId: string, endOffset: number): Promise<void> {
