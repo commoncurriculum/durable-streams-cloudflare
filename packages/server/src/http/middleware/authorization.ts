@@ -1,4 +1,4 @@
-import { errorResponse } from "../shared/errors";
+import { errorResponse, ErrorCode } from "../shared/errors";
 import { HEADER_STREAM_READER_KEY } from "../shared/headers";
 import { applyCorsHeaders } from "./cors";
 import { getStreamEntry } from "../../storage/registry";
@@ -9,8 +9,13 @@ import type { ProjectJwtClaims } from "./authentication";
 // Internal Helpers
 // ============================================================================
 
-function wrapAuthorizationError(status: number, error: string, origin: string | null): Response {
-  const resp = errorResponse(status, error);
+function wrapAuthorizationError(
+  status: number,
+  code: ErrorCode,
+  error: string,
+  origin: string | null,
+): Response {
+  const resp = errorResponse(status, code, error);
   applyCorsHeaders(resp.headers, origin);
   return resp;
 }
@@ -49,7 +54,11 @@ export async function authorizationMiddleware(
   const projectId = c.get("projectId");
   const doKey = c.get("streamPath");
   if (!projectId || !doKey) {
-    return errorResponse(400, "missing project or stream id");
+    return errorResponse(
+      400,
+      ErrorCode.MISSING_PROJECT_OR_STREAM_ID,
+      "missing project or stream id",
+    );
   }
   // #endregion docs-extract-stream-id
 
@@ -62,12 +71,14 @@ export async function authorizationMiddleware(
   if (isStreamRead) {
     streamMeta = await getStreamMeta(c.env.REGISTRY, doKey);
     if (!streamMeta?.public) {
-      if (!jwtClaims) return wrapAuthorizationError(401, "unauthorized", corsOrigin);
+      if (!jwtClaims)
+        return wrapAuthorizationError(401, ErrorCode.UNAUTHORIZED, "unauthorized", corsOrigin);
     }
   } else {
-    if (!jwtClaims) return wrapAuthorizationError(401, "unauthorized", corsOrigin);
+    if (!jwtClaims)
+      return wrapAuthorizationError(401, ErrorCode.UNAUTHORIZED, "unauthorized", corsOrigin);
     if (jwtClaims.scope !== "write" && jwtClaims.scope !== "manage") {
-      return wrapAuthorizationError(403, "forbidden", corsOrigin);
+      return wrapAuthorizationError(403, ErrorCode.FORBIDDEN, "forbidden", corsOrigin);
     }
   }
 

@@ -1,5 +1,6 @@
 import type { BaseEnv } from "../../../router";
 import { deleteEstuary } from "./index";
+import type { DeleteEstuaryResult } from "../types";
 
 /**
  * HTTP wrapper for DELETE /v1/estuary/:estuaryId
@@ -9,10 +10,10 @@ export async function deleteEstuaryHttp(c: any): Promise<Response> {
   const projectId = c.get("projectId");
   const estuaryId = c.get("estuaryId");
 
-  const result = await deleteEstuary(c.env as BaseEnv, {
+  const data: DeleteEstuaryResult = await deleteEstuary(c.env as BaseEnv, {
     projectId,
     estuaryId,
   });
 
-  return c.json(result);
+  return c.json(data);
 }

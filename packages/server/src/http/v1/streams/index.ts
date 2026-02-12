@@ -13,7 +13,7 @@ import { encodeStreamOffset, encodeTailOffset, resolveOffsetParam } from "./shar
 import { createStreamHttp } from "./create/http";
 import { handleDelete } from "./delete";
 import { readStreamHttp, headStreamHttp } from "./read/http";
-import { errorResponse } from "../../shared/errors";
+import { errorResponse, ErrorCode } from "../../shared/errors";
 import { isExpired } from "../../shared/expiry";
 import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../../shared/limits";
 import { deleteStreamEntry } from "../../../storage/registry";
@@ -117,7 +117,11 @@ export class StreamDO extends DurableObject<StreamEnv> {
         "unhandled error in route handler",
         err,
       );
-      return errorResponse(500, err instanceof Error ? err.message : "internal error");
+      return errorResponse(
+        500,
+        ErrorCode.INTERNAL_ERROR,
+        err instanceof Error ? err.message : "internal error",
+      );
     });
 
     return app;

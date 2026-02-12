@@ -1,4 +1,4 @@
-import { errorResponse, errorToResponse } from "../../../shared/errors";
+import { errorResponse, errorToResponse, ErrorCode } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_EXPIRES_AT,
@@ -30,7 +30,7 @@ export async function createStreamHttp(
         bodyBytes = new Uint8Array(await request.arrayBuffer());
       } catch {
         // If reading the body fails, treat it as payload too large
-        return errorResponse(413, "payload too large");
+        return errorResponse(413, ErrorCode.PAYLOAD_TOO_LARGE, "payload too large");
       }
 
       // 2. Parse producer headers (can fail with HTTP error response)

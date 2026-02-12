@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { errorResponse } from "../shared/errors";
+import { errorResponse, ErrorCode } from "../shared/errors";
 
 /**
  * Middleware that validates query parameters are not empty strings.
@@ -14,7 +14,11 @@ export function rejectEmptyQueryParams(paramNames: string[]): MiddlewareHandler 
     for (const paramName of paramNames) {
       const value = url.searchParams.get(paramName);
       if (value === "") {
-        return errorResponse(400, `${paramName} parameter cannot be empty`);
+        return errorResponse(
+          400,
+          ErrorCode.EMPTY_QUERY_PARAM,
+          `${paramName} parameter cannot be empty`,
+        );
       }
     }
 

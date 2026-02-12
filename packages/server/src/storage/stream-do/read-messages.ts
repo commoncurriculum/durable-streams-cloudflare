@@ -1,5 +1,5 @@
 import { isJsonContentType } from "../../http/shared/headers";
-import { errorResponse } from "../../http/shared/errors";
+import { errorResponse, ErrorCode } from "../../http/shared/errors";
 import { buildJsonArray, emptyJsonArray } from "../../http/v1/streams/shared/json";
 import { concatBuffers } from "../../http/v1/streams/shared/encoding";
 import { emptyResult, errorResult, dataResult, type ReadResult } from "./read-result";
@@ -44,7 +44,7 @@ function readJsonMessages(
 
   // Validate offset bounds
   if (relativeOffset < 0 || relativeOffset > messages.length) {
-    return errorResult(offset, errorResponse(400, "invalid offset"));
+    return errorResult(offset, errorResponse(400, ErrorCode.INVALID_OFFSET, "invalid offset"));
   }
 
   // Collect chunks up to byte limit

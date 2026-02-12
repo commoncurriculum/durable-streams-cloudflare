@@ -8,7 +8,7 @@ import {
   baseHeaders,
   isTextual,
 } from "../../../shared/headers";
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { logError, logWarn } from "../../../../log";
 import { buildEtag } from "../shared/etag";
 import { generateResponseCursor } from "./cursor";
@@ -100,12 +100,12 @@ export class LongPollQueue {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w.timer !== timer);
         resolve(true);
-      }, timeoutMs);
+      }, timeoutMs) as unknown as number;
 
       const waiter: Waiter = {
         offset,
         url,
-        timer: timer as unknown as number,
+        timer,
         resolve: (result) => resolve(result.timedOut),
       };
 
@@ -310,7 +310,7 @@ export async function handleLongPoll(
   url: URL,
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
-  if (!offsetParam) return errorResponse(400, "offset is required");
+  if (!offsetParam) return errorResponse(400, ErrorCode.OFFSET_REQUIRED, "offset is required");
   let cacheControl = `public, max-age=${LONG_POLL_CACHE_SECONDS}`;
   let offset: number;
   if (offsetParam === "now") {
@@ -366,7 +366,7 @@ export async function handleLongPoll(
   const timedOut = await ctx.longPoll.waitForData(offset, url.toString(), LONG_POLL_TIMEOUT_MS);
   doneWait?.();
   const current = await ctx.getStream(streamId);
-  if (!current) return errorResponse(404, "stream not found");
+  if (!current) return errorResponse(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
 
   if (timedOut) {
     const headers = buildLongPollHeaders({
@@ -415,7 +415,7 @@ export async function handleSse(
   url: URL,
 ): Promise<Response> {
   const offsetParam = url.searchParams.get("offset");
-  if (!offsetParam) return errorResponse(400, "offset is required");
+  if (!offsetParam) return errorResponse(400, ErrorCode.OFFSET_REQUIRED, "offset is required");
 
   // FIX-016: Reject new SSE connections when at capacity
   const maxSseClients = (() => {
@@ -424,7 +424,7 @@ export async function handleSse(
     return Number.isFinite(parsed) && parsed > 0 ? parsed : MAX_SSE_CLIENTS_DEFAULT;
   })();
   if (ctx.sseState.clients.size >= maxSseClients) {
-    return errorResponse(503, "too many SSE connections");
+    return errorResponse(503, ErrorCode.TOO_MANY_SSE_CONNECTIONS, "too many SSE connections");
   }
 
   let offset: number;
@@ -768,11 +768,11 @@ export async function handleWsUpgrade(
 ): Promise<Response> {
   const upgradeHeader = request.headers.get("Upgrade");
   if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
-    return errorResponse(426, "WebSocket upgrade required");
+    return errorResponse(426, ErrorCode.WEBSOCKET_UPGRADE_REQUIRED, "WebSocket upgrade required");
   }
 
   const offsetParam = url.searchParams.get("offset");
-  if (!offsetParam) return errorResponse(400, "offset is required");
+  if (!offsetParam) return errorResponse(400, ErrorCode.OFFSET_REQUIRED, "offset is required");
 
   let offset: number;
   if (offsetParam === "now") {

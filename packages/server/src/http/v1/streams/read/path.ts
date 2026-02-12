@@ -1,4 +1,4 @@
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { isJsonContentType } from "../../../shared/headers";
 import { emptyJsonArray } from "../shared/json";
 
@@ -146,7 +146,7 @@ export class ReadPath {
 
     // Validate offset is within segment bounds
     if (offset < segment.start_offset || offset > segment.end_offset) {
-      return { tier: "error", response: errorResponse(400, "invalid offset") };
+      return { tier: "error", response: errorResponse(400, ErrorCode.INVALID_OFFSET, "invalid offset") };
     }
 
     // At segment end boundary - return gap
@@ -175,7 +175,7 @@ export class ReadPath {
       return { tier: "gap", closedAtTail };
     }
 
-    return { tier: "error", response: errorResponse(500, "segment unavailable") };
+    return { tier: "error", response: errorResponse(500, ErrorCode.SEGMENT_UNAVAILABLE, "segment unavailable") };
   }
 
   // ============================================================================
@@ -209,7 +209,7 @@ export class ReadPath {
     doneR2?.();
 
     if (!object || !object.body) {
-      return errorResult(offset, errorResponse(500, "segment missing"), "r2");
+      return errorResult(offset, errorResponse(500, ErrorCode.SEGMENT_MISSING, "segment missing"), "r2");
     }
 
     // Decode segment messages
@@ -225,7 +225,7 @@ export class ReadPath {
     doneDecode?.();
 
     if (decoded.truncated) {
-      return errorResult(offset, errorResponse(500, "segment truncated"), "r2");
+      return errorResult(offset, errorResponse(500, ErrorCode.SEGMENT_TRUNCATED, "segment truncated"), "r2");
     }
 
     // Handle empty messages

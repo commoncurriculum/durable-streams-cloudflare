@@ -1,5 +1,6 @@
 import type { BaseEnv } from "../../../router";
 import { getEstuary } from "./index";
+import type { GetEstuaryResult } from "../types";
 
 /**
  * HTTP wrapper for GET /v1/estuary/:estuaryId
@@ -9,10 +10,10 @@ export async function getEstuaryHttp(c: any): Promise<Response> {
   const projectId = c.get("projectId");
   const estuaryId = c.get("estuaryId");
 
-  const result = await getEstuary(c.env as BaseEnv, {
+  const data: GetEstuaryResult = await getEstuary(c.env as BaseEnv, {
     projectId,
     estuaryId,
   });
 
-  return c.json(result);
+  return c.json(data);
 }

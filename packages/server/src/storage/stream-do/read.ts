@@ -2,7 +2,7 @@ import { isJsonContentType } from "../../http/shared/headers";
 import { toUint8Array } from "../../http/v1/streams/shared/encoding";
 import { buildJsonArray, emptyJsonArray } from "../../http/v1/streams/shared/json";
 import { concatBuffers } from "../../http/v1/streams/shared/encoding";
-import { errorResponse } from "../../http/shared/errors";
+import { errorResponse, ErrorCode } from "../../http/shared/errors";
 import type { StreamMeta, StreamStorage } from "./types";
 import type { ReadResult } from "./read-result";
 
@@ -35,7 +35,7 @@ export async function readFromOffset(
           closedAtTail: false,
           hasData: false,
           writeTimestamp: 0,
-          error: errorResponse(400, "invalid offset"),
+          error: errorResponse(400, ErrorCode.INVALID_OFFSET, "invalid offset"),
         };
       }
       const sliceStart = offset - overlap.start_offset;

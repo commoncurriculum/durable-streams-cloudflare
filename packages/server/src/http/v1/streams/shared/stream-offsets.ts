@@ -1,4 +1,4 @@
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { decodeOffsetParts, encodeOffset } from "./offsets";
 import type { ResolveOffsetResult } from "../types";
 import type { StreamMeta, StreamStorage } from "../../../../storage";
@@ -59,18 +59,18 @@ export async function resolveOffsetParam(
   offsetParam: string | null,
 ): Promise<ResolveOffsetResult> {
   if (offsetParam === null) {
-    return errorOffset("offset is required");
+    return errorOffset(ErrorCode.OFFSET_REQUIRED, "offset is required");
   }
 
   const decoded = decodeOffsetParts(offsetParam);
   if (!decoded) {
-    return errorOffset("invalid offset");
+    return errorOffset(ErrorCode.INVALID_OFFSET, "invalid offset");
   }
 
   const { readSeq, byteOffset } = decoded;
 
   if (readSeq > meta.read_seq) {
-    return errorOffset("invalid offset");
+    return errorOffset(ErrorCode.INVALID_OFFSET, "invalid offset");
   }
 
   if (readSeq === meta.read_seq) {
@@ -88,7 +88,7 @@ function resolveCurrentSegmentOffset(byteOffset: number, meta: StreamMeta): Reso
   const offset = meta.segment_start + byteOffset;
 
   if (offset > meta.tail_offset) {
-    return errorOffset("offset beyond tail");
+    return errorOffset(ErrorCode.OFFSET_BEYOND_TAIL, "offset beyond tail");
   }
 
   return { offset };
@@ -104,22 +104,22 @@ async function resolveHistoricalSegmentOffset(
   const segment = await storage.getSegmentByReadSeq(streamId, readSeq);
 
   if (!segment) {
-    return errorOffset("invalid offset");
+    return errorOffset(ErrorCode.INVALID_OFFSET, "invalid offset");
   }
 
   const offset = segment.start_offset + byteOffset;
 
   if (offset > segment.end_offset) {
-    return errorOffset("invalid offset");
+    return errorOffset(ErrorCode.INVALID_OFFSET, "invalid offset");
   }
 
   if (offset > meta.tail_offset) {
-    return errorOffset("offset beyond tail");
+    return errorOffset(ErrorCode.OFFSET_BEYOND_TAIL, "offset beyond tail");
   }
 
   return { offset };
 }
 
-function errorOffset(message: string): ResolveOffsetResult {
-  return { offset: 0, error: errorResponse(400, message) };
+function errorOffset(code: ErrorCode, message: string): ResolveOffsetResult {
+  return { offset: 0, error: errorResponse(400, code, message) };
 }

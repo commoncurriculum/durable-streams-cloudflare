@@ -1,5 +1,5 @@
 import { isJsonContentType } from "../http/shared/headers";
-import { errorResponse } from "../http/shared/errors";
+import { errorResponse, ErrorCode } from "../http/shared/errors";
 import { buildJsonArray, parseJsonMessages } from "../http/v1/streams/shared/json";
 import { concatBuffers, toUint8Array } from "../http/v1/streams/shared/encoding";
 import type { StorageStatement, StreamStorage } from "./stream-do/types";
@@ -28,7 +28,7 @@ export async function buildAppendBatch(
       statements: [],
       newTailOffset: 0,
       ssePayload: null,
-      error: errorResponse(404, "stream not found"),
+      error: errorResponse(404, ErrorCode.STREAM_NOT_FOUND, "stream not found"),
     };
   }
 
@@ -44,7 +44,7 @@ export async function buildAppendBatch(
         statements: [],
         newTailOffset: 0,
         ssePayload: null,
-        error: errorResponse(400, parsed.error),
+        error: errorResponse(400, ErrorCode.INVALID_JSON, parsed.error),
       };
     }
     if (parsed.emptyArray) {
@@ -52,7 +52,7 @@ export async function buildAppendBatch(
         statements: [],
         newTailOffset: 0,
         ssePayload: null,
-        error: errorResponse(400, "empty JSON array is not allowed"),
+        error: errorResponse(400, ErrorCode.EMPTY_JSON_ARRAY, "empty JSON array is not allowed"),
       };
     }
     messages = parsed.messages;
@@ -62,7 +62,7 @@ export async function buildAppendBatch(
         statements: [],
         newTailOffset: 0,
         ssePayload: null,
-        error: errorResponse(400, "empty body"),
+        error: errorResponse(400, ErrorCode.EMPTY_BODY, "empty body"),
       };
     }
     messages = [
@@ -136,8 +136,8 @@ export async function buildAppendBatch(
   const ssePayload = isJson
     ? buildJsonArray(messages)
     : messages.length === 1
-      ? messages[0].body
-      : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
+    ? messages[0].body
+    : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
 
   return { statements, newTailOffset: tailOffset, ssePayload };
 }
