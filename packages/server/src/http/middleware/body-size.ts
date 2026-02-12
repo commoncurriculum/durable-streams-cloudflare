@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { errorResponse } from "../shared/errors";
+import { errorResponse, ErrorCode } from "../shared/errors";
 
 /**
  * Middleware that validates Content-Length header before the body is read.
@@ -19,7 +19,7 @@ export function bodySizeLimit(maxSize: number): MiddlewareHandler {
     if (contentLength) {
       const size = Number.parseInt(contentLength, 10);
       if (Number.isFinite(size) && size > maxSize) {
-        return errorResponse(413, "payload too large");
+        return errorResponse(413, ErrorCode.PAYLOAD_TOO_LARGE, "payload too large");
       }
     }
 

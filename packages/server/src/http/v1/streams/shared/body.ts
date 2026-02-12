@@ -1,5 +1,5 @@
 import { MAX_APPEND_BYTES } from "../../../shared/limits";
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import type { Result } from "../types";
 
 /**
@@ -13,10 +13,16 @@ export function validateContentLength(
 
   const expected = Number.parseInt(contentLengthHeader, 10);
   if (!Number.isFinite(expected)) {
-    return { kind: "error", response: errorResponse(400, "invalid Content-Length") };
+    return {
+      kind: "error",
+      response: errorResponse(400, ErrorCode.INVALID_CONTENT_LENGTH, "invalid Content-Length"),
+    };
   }
   if (expected !== bodyLength) {
-    return { kind: "error", response: errorResponse(400, "content-length mismatch") };
+    return {
+      kind: "error",
+      response: errorResponse(400, ErrorCode.CONTENT_LENGTH_MISMATCH, "content-length mismatch"),
+    };
   }
   return { kind: "ok", value: null };
 }
@@ -26,7 +32,10 @@ export function validateContentLength(
  */
 export function validateBodySize(bodyLength: number): Result<null> {
   if (bodyLength > MAX_APPEND_BYTES) {
-    return { kind: "error", response: errorResponse(413, "payload too large") };
+    return {
+      kind: "error",
+      response: errorResponse(413, ErrorCode.PAYLOAD_TOO_LARGE, "payload too large"),
+    };
   }
   return { kind: "ok", value: null };
 }

@@ -5,7 +5,7 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   baseHeaders,
 } from "../../../shared/headers";
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode, type ErrorResponse } from "../../../shared/errors";
 import { encodeCurrentOffset } from "./stream-offsets";
 import type { Result } from "../types";
 import type { StreamMeta, StreamStorage } from "../../../../storage";
@@ -21,7 +21,8 @@ export function buildClosedConflict(meta: StreamMeta, nextOffsetHeader: string):
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,
     [HEADER_STREAM_CLOSED]: "true",
   });
-  return Response.json({ error: "stream is closed" }, { status: 409, headers });
+  const data: ErrorResponse = { code: ErrorCode.STREAM_CLOSED, error: "stream is closed" };
+  return Response.json(data, { status: 409, headers });
 }
 
 /** Validate the Stream-Seq header against the stream's last known value.
@@ -33,7 +34,7 @@ export function validateStreamSeq(meta: StreamMeta, streamSeq: string | null): R
   if (streamSeq && meta.last_stream_seq && streamSeq <= meta.last_stream_seq) {
     return {
       kind: "error",
-      response: errorResponse(409, "Stream-Seq regression"),
+      response: errorResponse(409, ErrorCode.STREAM_SEQ_REGRESSION, "Stream-Seq regression"),
     };
   }
   return { kind: "ok", value: null };

@@ -8,7 +8,7 @@ import {
   HEADER_STREAM_NEXT_OFFSET,
   baseHeaders,
 } from "../../../shared/headers";
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { isInteger } from "./validation";
 import type { ProducerState, StreamStorage } from "../../../../storage";
 
@@ -43,19 +43,31 @@ export function parseProducerHeaders(
 
   if (!id || !epochStr || !seqStr) {
     return {
-      error: errorResponse(400, "Producer headers must be provided together"),
+      error: errorResponse(
+        400,
+        ErrorCode.PRODUCER_HEADERS_INCOMPLETE,
+        "Producer headers must be provided together",
+      ),
     };
   }
 
   if (!PRODUCER_ID_PATTERN.test(id)) {
     return {
-      error: errorResponse(400, "Producer-Id must match /^[a-zA-Z0-9_\\-:.]{1,256}$/"),
+      error: errorResponse(
+        400,
+        ErrorCode.PRODUCER_ID_INVALID,
+        "Producer-Id must match /^[a-zA-Z0-9_\\-:.]{1,256}$/",
+      ),
     };
   }
 
   if (!isInteger(epochStr) || !isInteger(seqStr)) {
     return {
-      error: errorResponse(400, "Producer-Epoch and Producer-Seq must be integers"),
+      error: errorResponse(
+        400,
+        ErrorCode.PRODUCER_EPOCH_SEQ_NOT_INTEGERS,
+        "Producer-Epoch and Producer-Seq must be integers",
+      ),
     };
   }
 
@@ -64,7 +76,11 @@ export function parseProducerHeaders(
 
   if (epoch > Number.MAX_SAFE_INTEGER || seq > Number.MAX_SAFE_INTEGER) {
     return {
-      error: errorResponse(400, "Producer-Epoch and Producer-Seq must be <= 2^53-1"),
+      error: errorResponse(
+        400,
+        ErrorCode.PRODUCER_EPOCH_SEQ_OVERFLOW,
+        "Producer-Epoch and Producer-Seq must be <= 2^53-1",
+      ),
     };
   }
 
@@ -89,14 +105,18 @@ export async function evaluateProducer(
     if (producer.seq !== 0) {
       return {
         kind: "error",
-        response: errorResponse(400, "Producer-Seq must start at 0"),
+        response: errorResponse(
+          400,
+          ErrorCode.PRODUCER_SEQ_MUST_START_AT_ZERO,
+          "Producer-Seq must start at 0",
+        ),
       };
     }
     return { kind: "ok", state: null };
   }
 
   if (producer.epoch < existing.epoch) {
-    const res = errorResponse(403, "stale producer epoch");
+    const res = errorResponse(403, ErrorCode.STALE_PRODUCER_EPOCH, "stale producer epoch");
     res.headers.set(HEADER_PRODUCER_EPOCH, existing.epoch.toString());
     return { kind: "error", response: res };
   }
@@ -105,7 +125,11 @@ export async function evaluateProducer(
     if (producer.seq !== 0) {
       return {
         kind: "error",
-        response: errorResponse(400, "Producer-Seq must start at 0 for new epoch"),
+        response: errorResponse(
+          400,
+          ErrorCode.PRODUCER_SEQ_MUST_START_AT_ZERO,
+          "Producer-Seq must start at 0 for new epoch",
+        ),
       };
     }
     return { kind: "ok", state: existing };
@@ -116,7 +140,7 @@ export async function evaluateProducer(
   }
 
   if (producer.seq !== existing.last_seq + 1) {
-    const res = errorResponse(409, "producer sequence gap");
+    const res = errorResponse(409, ErrorCode.PRODUCER_SEQUENCE_GAP, "producer sequence gap");
     res.headers.set(HEADER_PRODUCER_EXPECTED_SEQ, (existing.last_seq + 1).toString());
     res.headers.set(HEADER_PRODUCER_RECEIVED_SEQ, producer.seq.toString());
     return { kind: "error", response: res };

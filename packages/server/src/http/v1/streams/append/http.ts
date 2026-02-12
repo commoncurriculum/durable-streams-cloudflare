@@ -1,4 +1,4 @@
-import { errorToResponse, HttpError } from "../../../shared/errors";
+import { errorToResponse, HttpError, ErrorCode } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_SEQ,
@@ -27,7 +27,7 @@ async function extractPostInput(streamId: string, request: Request): Promise<Raw
     bodyBytes = new Uint8Array(await request.arrayBuffer());
   } catch {
     // If reading the body fails, treat it as payload too large
-    throw new HttpError(413, "payload too large");
+    throw new HttpError(413, ErrorCode.PAYLOAD_TOO_LARGE, "payload too large");
   }
 
   return {

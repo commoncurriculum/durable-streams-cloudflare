@@ -1,5 +1,5 @@
 import { baseHeaders } from "../../../shared/headers";
-import { errorResponse } from "../../../shared/errors";
+import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { logWarn } from "../../../../log";
 import { deleteStreamEntry } from "../../../../storage/registry";
 import type { StreamContext } from "../types";
@@ -11,7 +11,7 @@ export async function handleDelete(ctx: StreamContext, streamId: string): Promis
     const doneGetStream = ctx.timing?.start("do.getStream");
     const meta = await ctx.getStream(streamId);
     doneGetStream?.();
-    if (!meta) return errorResponse(404, "stream not found");
+    if (!meta) return errorResponse(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
 
     const segments = ctx.env.R2 ? await ctx.storage.listSegments(streamId) : [];
 

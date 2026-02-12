@@ -1,7 +1,7 @@
 import { type } from "arktype";
 import { getProjectEntry, putProjectEntry } from "../../../storage/registry";
 import { PROJECT_ID_PATTERN } from "../../router";
-import { errorResponse } from "../../shared/errors";
+import { errorResponse, ErrorCode, type ErrorResponse } from "../../shared/errors";
 
 // ============================================================================
 // Validation schemas (used by router for arktypeValidator)
@@ -42,15 +42,16 @@ export type PutConfigResponse = typeof putConfigResponseSchema.infer;
 export async function getConfig(c: any): Promise<Response> {
   const jwtClaims = c.get("jwtClaims");
   if (!jwtClaims) {
-    return errorResponse(401, "unauthorized");
+    return errorResponse(401, ErrorCode.UNAUTHORIZED, "unauthorized");
   }
   const { projectId } = c.req.valid("param");
   if (jwtClaims.sub !== projectId || jwtClaims.scope !== "manage") {
-    return errorResponse(403, "forbidden");
+    return errorResponse(403, ErrorCode.FORBIDDEN, "forbidden");
   }
   const entry = await getProjectEntry(c.env.REGISTRY, projectId);
   if (!entry) {
-    return c.json({ error: "project not found" }, 404);
+    const err: ErrorResponse = { code: ErrorCode.PROJECT_NOT_FOUND, error: "project not found" };
+    return c.json(err, 404);
   }
   const data: GetConfigResponse = {
     signingSecrets: entry.signingSecrets,
@@ -64,11 +65,11 @@ export async function getConfig(c: any): Promise<Response> {
 export async function putConfig(c: any): Promise<Response> {
   const jwtClaims = c.get("jwtClaims");
   if (!jwtClaims) {
-    return errorResponse(401, "unauthorized");
+    return errorResponse(401, ErrorCode.UNAUTHORIZED, "unauthorized");
   }
   const { projectId } = c.req.valid("param");
   if (jwtClaims.sub !== projectId || jwtClaims.scope !== "manage") {
-    return errorResponse(403, "forbidden");
+    return errorResponse(403, ErrorCode.FORBIDDEN, "forbidden");
   }
   const body = c.req.valid("json");
   await putProjectEntry(c.env.REGISTRY, projectId, {

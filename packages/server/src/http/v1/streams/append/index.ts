@@ -10,7 +10,7 @@ import {
   baseHeaders,
   normalizeContentType,
 } from "../../../shared/headers";
-import { HttpError } from "../../../shared/errors";
+import { HttpError, ErrorCode } from "../../../shared/errors";
 import { evaluateProducer } from "../shared/producer";
 import { validateStreamSeq, buildClosedConflict } from "../shared/close";
 import { buildAppendBatch } from "../../../../storage/append-batch";
@@ -62,13 +62,13 @@ export async function appendStream(
   })();
   const dbSize = ctx.state.storage.sql.databaseSize;
   if (dbSize >= quotaBytes * 0.9) {
-    throw new HttpError(507, "Storage quota exceeded");
+    throw new HttpError(507, ErrorCode.STORAGE_QUOTA_EXCEEDED, "Storage quota exceeded");
   }
 
   // 2. Validate payload size (protects DO from oversized writes)
   const bodySizeResult = validateBodySize(payload.length);
   if (bodySizeResult.kind === "error") {
-    throw new HttpError(413, "Body size too large");
+    throw new HttpError(413, ErrorCode.PAYLOAD_TOO_LARGE, "Body size too large");
   }
 
   // 3. Get and validate stream exists
@@ -76,7 +76,7 @@ export async function appendStream(
   const meta = await ctx.getStream(streamId);
   doneGetStream?.();
 
-  if (!meta) throw new HttpError(404, "stream not found");
+  if (!meta) throw new HttpError(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
 
   // =========================================================================
   // Handle already-closed streams with nuanced responses
@@ -94,6 +94,7 @@ export async function appendStream(
         if (producerEvalClose.kind === "error") {
           throw new HttpError(
             producerEvalClose.response.status,
+            ErrorCode.PRODUCER_EVAL_FAILED,
             "Producer evaluation failed",
             producerEvalClose.response,
           );
@@ -144,6 +145,7 @@ export async function appendStream(
         if (producerEval.kind === "error") {
           throw new HttpError(
             producerEval.response.status,
+            ErrorCode.PRODUCER_EVAL_FAILED,
             "Producer evaluation failed",
             producerEval.response,
           );
@@ -167,12 +169,22 @@ export async function appendStream(
 
       // Not a duplicate → 409 with Stream-Closed header
       const nextOffset = await ctx.encodeTailOffset(streamId, meta);
-      throw new HttpError(409, "stream is closed", buildClosedConflict(meta, nextOffset));
+      throw new HttpError(
+        409,
+        ErrorCode.STREAM_CLOSED,
+        "stream is closed",
+        buildClosedConflict(meta, nextOffset),
+      );
     }
 
     // Regular append (no closeStream flag) to closed stream → 409 with headers
     const nextOffset = await ctx.encodeTailOffset(streamId, meta);
-    throw new HttpError(409, "stream is closed", buildClosedConflict(meta, nextOffset));
+    throw new HttpError(
+      409,
+      ErrorCode.STREAM_CLOSED,
+      "stream is closed",
+      buildClosedConflict(meta, nextOffset),
+    );
   }
 
   // =========================================================================
@@ -187,7 +199,7 @@ export async function appendStream(
     requestContentType &&
     normalizeContentType(meta.content_type) !== normalizeContentType(requestContentType)
   ) {
-    throw new HttpError(409, "content-type mismatch");
+    throw new HttpError(409, ErrorCode.CONTENT_TYPE_MISMATCH, "content-type mismatch");
   }
 
   // 4. Producer deduplication (moved BEFORE Stream-Seq validation so that
@@ -199,6 +211,7 @@ export async function appendStream(
   if (producerEval.kind === "error") {
     throw new HttpError(
       producerEval.response.status,
+      ErrorCode.PRODUCER_EVAL_FAILED,
       "Producer evaluation failed",
       producerEval.response,
     );
@@ -224,7 +237,12 @@ export async function appendStream(
   if (streamSeq) {
     const seqResult = validateStreamSeq(meta, streamSeq);
     if (seqResult.kind === "error") {
-      throw new HttpError(409, "Stream-Seq regression", seqResult.response);
+      throw new HttpError(
+        409,
+        ErrorCode.STREAM_SEQ_REGRESSION,
+        "Stream-Seq regression",
+        seqResult.response,
+      );
     }
   }
 
@@ -276,12 +294,12 @@ export async function appendStream(
 
   // 3d. Reject empty body without close
   if (payload.length === 0) {
-    throw new HttpError(400, "empty body");
+    throw new HttpError(400, ErrorCode.EMPTY_BODY, "empty body");
   }
 
   // 3e. Reject missing Content-Type on POST
   if (!requestContentType) {
-    throw new HttpError(400, "Content-Type is required");
+    throw new HttpError(400, ErrorCode.CONTENT_TYPE_REQUIRED, "Content-Type is required");
   }
 
   // (Producer dedup already handled above — skip old step 4)
@@ -328,7 +346,12 @@ export async function appendStream(
   doneBuild?.();
 
   if (batch.error) {
-    throw new HttpError(batch.error.status, "Batch build failed", batch.error);
+    throw new HttpError(
+      batch.error.status,
+      ErrorCode.BATCH_BUILD_FAILED,
+      "Batch build failed",
+      batch.error,
+    );
   }
 
   // 7. Execute batch atomically

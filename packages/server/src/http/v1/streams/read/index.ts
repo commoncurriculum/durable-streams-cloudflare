@@ -12,7 +12,7 @@ import {
 } from "../../../shared/headers";
 import { cacheControlFor, applyExpiryHeaders } from "../../../shared/expiry";
 import { emptyJsonArray } from "../shared/json";
-import { HttpError } from "../../../shared/errors";
+import { HttpError, ErrorCode } from "../../../shared/errors";
 import type { StreamContext } from "../types";
 
 export type ReadStreamOptions = {
@@ -48,7 +48,7 @@ export async function readStream(
   doneGetStream?.();
 
   if (!meta) {
-    throw new HttpError(404, "stream not found");
+    throw new HttpError(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
   }
 
   // 2. HEAD mode - return metadata only
@@ -98,13 +98,18 @@ export async function readStream(
     offsetParam === "-1" || !offsetParam ? ZERO_OFFSET : offsetParam,
   );
   if (resolved.error) {
-    throw new HttpError(resolved.error.status, "invalid offset", resolved.error);
+    throw new HttpError(
+      resolved.error.status,
+      ErrorCode.INVALID_OFFSET,
+      "invalid offset",
+      resolved.error,
+    );
   }
 
   const { offset } = resolved;
   const read = await ctx.readFromOffset(streamId, meta, offset, MAX_CHUNK_BYTES);
   if (read.error) {
-    throw new HttpError(read.error.status, "read error", read.error);
+    throw new HttpError(read.error.status, ErrorCode.INTERNAL_ERROR, "read error", read.error);
   }
 
   // 5. Build response headers

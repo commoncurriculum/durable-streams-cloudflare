@@ -49,7 +49,7 @@ import {
 import { handleFanoutQueue } from "../queue/fanout-consumer";
 
 // Error handling
-import { errorResponse } from "./shared/errors";
+import { errorResponse, errorResponseSchema, ErrorCode } from "./shared/errors";
 import { logError } from "../log";
 
 // ArkType schemas using `.pipe()` (morphs) can't be auto-converted to JSON Schema.
@@ -59,6 +59,11 @@ import { logError } from "../log";
 const morphFallback = {
   options: { fallback: { morph: (ctx: { base: unknown }) => ctx.base } },
 } as Record<string, unknown>;
+
+// Shared error response content for OpenAPI — reused across all error status codes.
+const errorContent = {
+  content: { "application/json": { schema: resolver(errorResponseSchema) } },
+};
 
 // ============================================================================
 // Types
@@ -177,9 +182,12 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
             },
           },
         },
-        401: { description: "Unauthorized — missing or invalid JWT" },
-        403: { description: "Forbidden — JWT scope is not 'manage' or sub doesn't match project" },
-        404: { description: "Project not found" },
+        401: { description: "Unauthorized — missing or invalid JWT", ...errorContent },
+        403: {
+          description: "Forbidden — JWT scope is not 'manage' or sub doesn't match project",
+          ...errorContent,
+        },
+        404: { description: "Project not found", ...errorContent },
       },
     }),
     validator("param", projectIdParamSchema, undefined, morphFallback),
@@ -201,8 +209,8 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
             },
           },
         },
-        401: { description: "Unauthorized" },
-        403: { description: "Forbidden" },
+        401: { description: "Unauthorized", ...errorContent },
+        403: { description: "Forbidden", ...errorContent },
       },
     }),
     validator("param", projectIdParamSchema, undefined, morphFallback),
@@ -328,7 +336,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
         "Create a new append-only stream. The Content-Type header sets the stream's content type.",
       responses: {
         201: { description: "Stream created" },
-        409: { description: "Stream already exists" },
+        409: { description: "Stream already exists", ...errorContent },
       },
     }),
     streamHandler,
@@ -343,9 +351,9 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       responses: {
         200: { description: "Messages appended" },
         204: { description: "Close-only append (no payload)" },
-        404: { description: "Stream not found" },
-        409: { description: "Content-type mismatch" },
-        413: { description: "Payload too large" },
+        404: { description: "Stream not found", ...errorContent },
+        409: { description: "Content-type mismatch", ...errorContent },
+        413: { description: "Payload too large", ...errorContent },
       },
     }),
     streamHandler,
@@ -360,7 +368,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       responses: {
         200: { description: "Messages returned" },
         304: { description: "Not modified (conditional GET with ETag)" },
-        404: { description: "Stream not found" },
+        404: { description: "Stream not found", ...errorContent },
       },
     }),
     streamHandler,
@@ -373,7 +381,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       description: "Permanently delete a stream and all its data.",
       responses: {
         204: { description: "Stream deleted" },
-        404: { description: "Stream not found" },
+        404: { description: "Stream not found", ...errorContent },
       },
     }),
     streamHandler,
@@ -389,7 +397,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
   // biome-ignore lint: Hono context typing is complex
   app.onError((err: Error, c: any) => {
     logError({ streamPath: c.get("streamPath"), method: c.req.method }, "unhandled error", err);
-    return errorResponse(500, err.message ?? "internal error");
+    return errorResponse(500, ErrorCode.INTERNAL_ERROR, err.message ?? "internal error");
   });
 
   return {

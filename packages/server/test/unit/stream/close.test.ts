@@ -30,7 +30,7 @@ describe("buildClosedConflict", () => {
     const response = buildClosedConflict(meta, nextOffset);
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "stream is closed" });
+    expect(await response.json()).toEqual({ code: "STREAM_CLOSED", error: "stream is closed" });
   });
 
   it("sets Stream-Next-Offset and Stream-Closed headers", () => {
