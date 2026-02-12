@@ -180,7 +180,10 @@ export async function appendStream(
   // =========================================================================
 
   // 3a. Validate content-type matches stream (if provided)
+  // Skip content-type validation for close-only operations (empty body + closeStream)
+  const isCloseOnly = payload.length === 0 && closeStream;
   if (
+    !isCloseOnly &&
     requestContentType &&
     normalizeContentType(meta.content_type) !== normalizeContentType(requestContentType)
   ) {

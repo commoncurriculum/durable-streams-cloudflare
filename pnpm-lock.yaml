@@ -25,9 +25,6 @@ importers:
       oxlint:
         specifier: ^1.43.0
         version: 1.43.0
-      prettier:
-        specifier: ^3.8.1
-        version: 3.8.1
 
   packages/admin-core:
     dependencies:
