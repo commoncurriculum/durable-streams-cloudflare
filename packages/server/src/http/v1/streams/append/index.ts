@@ -12,7 +12,7 @@ import {
 } from "../../../shared/headers";
 import { HttpError } from "../../../shared/errors";
 import { evaluateProducer } from "../shared/producer";
-import { validateStreamSeq } from "../shared/close";
+import { validateStreamSeq, buildClosedConflict } from "../shared/close";
 import { buildAppendBatch } from "../../../../storage/append-batch";
 import { broadcastSse, broadcastWebSocket } from "../realtime/handlers";
 import { buildPreCacheResponse } from "../realtime/handlers";
@@ -77,7 +77,107 @@ export async function appendStream(
   doneGetStream?.();
 
   if (!meta) throw new HttpError(404, "stream not found");
-  if (meta.closed) throw new HttpError(409, "stream is closed");
+
+  // =========================================================================
+  // Handle already-closed streams with nuanced responses
+  // =========================================================================
+  if (meta.closed) {
+    const isCloseOnly = payload.length === 0 && closeStream;
+    const isCloseWithBody = payload.length > 0 && closeStream;
+
+    if (isCloseOnly) {
+      // Close-only on already-closed stream → idempotent 204
+      // Content-type validation is skipped for close-only operations.
+      if (producer) {
+        const producerEvalClose = await evaluateProducer(ctx.storage, streamId, producer);
+
+        if (producerEvalClose.kind === "error") {
+          throw new HttpError(
+            producerEvalClose.response.status,
+            "Producer evaluation failed",
+            producerEvalClose.response,
+          );
+        }
+
+        if (producerEvalClose.kind === "duplicate") {
+          const dupOffset = await ctx.encodeOffset(
+            streamId,
+            meta,
+            producerEvalClose.state.last_offset,
+          );
+          const headers = baseHeaders({
+            [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
+            [HEADER_PRODUCER_EPOCH]: producerEvalClose.state.epoch.toString(),
+            [HEADER_PRODUCER_SEQ]: producerEvalClose.state.last_seq.toString(),
+            [HEADER_STREAM_CLOSED]: "true",
+          });
+          return {
+            status: 204,
+            headers,
+            newTailOffset: producerEvalClose.state.last_offset,
+          };
+        }
+      }
+
+      // No producer, or producer eval was "none"/"ok" → idempotent 204
+      const nextOffset = await ctx.encodeTailOffset(streamId, meta);
+      const headers = baseHeaders({
+        [HEADER_STREAM_NEXT_OFFSET]: nextOffset,
+        [HEADER_STREAM_CLOSED]: "true",
+      });
+      if (producer) {
+        headers.set(HEADER_PRODUCER_EPOCH, producer.epoch.toString());
+        headers.set(HEADER_PRODUCER_SEQ, producer.seq.toString());
+      }
+      return {
+        status: 204,
+        headers,
+        newTailOffset: meta.tail_offset,
+      };
+    }
+
+    if (isCloseWithBody) {
+      // Close with body on already-closed stream → check for producer dedup
+      if (producer) {
+        const producerEval = await evaluateProducer(ctx.storage, streamId, producer);
+
+        if (producerEval.kind === "error") {
+          throw new HttpError(
+            producerEval.response.status,
+            "Producer evaluation failed",
+            producerEval.response,
+          );
+        }
+
+        if (producerEval.kind === "duplicate") {
+          const dupOffset = await ctx.encodeOffset(streamId, meta, producerEval.state.last_offset);
+          const headers = baseHeaders({
+            [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
+            [HEADER_PRODUCER_EPOCH]: producerEval.state.epoch.toString(),
+            [HEADER_PRODUCER_SEQ]: producerEval.state.last_seq.toString(),
+            [HEADER_STREAM_CLOSED]: "true",
+          });
+          return {
+            status: 204,
+            headers,
+            newTailOffset: producerEval.state.last_offset,
+          };
+        }
+      }
+
+      // Not a duplicate → 409 with Stream-Closed header
+      const nextOffset = await ctx.encodeTailOffset(streamId, meta);
+      throw new HttpError(409, "stream is closed", buildClosedConflict(meta, nextOffset));
+    }
+
+    // Regular append (no closeStream flag) to closed stream → 409 with headers
+    const nextOffset = await ctx.encodeTailOffset(streamId, meta);
+    throw new HttpError(409, "stream is closed", buildClosedConflict(meta, nextOffset));
+  }
+
+  // =========================================================================
+  // Stream is NOT closed — normal append/close path
+  // =========================================================================
 
   // 3a. Validate content-type matches stream (if provided)
   if (
@@ -87,7 +187,37 @@ export async function appendStream(
     throw new HttpError(409, "content-type mismatch");
   }
 
-  // 3b. Validate Stream-Seq ordering
+  // 4. Producer deduplication (moved BEFORE Stream-Seq validation so that
+  //    duplicate detection takes priority over Stream-Seq regression checks)
+  const producerEval = producer
+    ? await evaluateProducer(ctx.storage, streamId, producer)
+    : { kind: "none" as const };
+
+  if (producerEval.kind === "error") {
+    throw new HttpError(
+      producerEval.response.status,
+      "Producer evaluation failed",
+      producerEval.response,
+    );
+  }
+  if (producerEval.kind === "duplicate") {
+    const dupOffset = await ctx.encodeOffset(streamId, meta, producerEval.state.last_offset);
+    const headers = baseHeaders({
+      [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
+      [HEADER_PRODUCER_EPOCH]: producerEval.state.epoch.toString(),
+      [HEADER_PRODUCER_SEQ]: producerEval.state.last_seq.toString(),
+    });
+    if (meta.closed === 1) {
+      headers.set(HEADER_STREAM_CLOSED, "true");
+    }
+    return {
+      status: 204,
+      headers,
+      newTailOffset: producerEval.state.last_offset,
+    };
+  }
+
+  // 3b. Validate Stream-Seq ordering (only for non-duplicate writes)
   if (streamSeq) {
     const seqResult = validateStreamSeq(meta, streamSeq);
     if (seqResult.kind === "error") {
@@ -97,31 +227,8 @@ export async function appendStream(
 
   // 3c. Handle close-only (empty body + Stream-Closed: true)
   if (payload.length === 0 && closeStream) {
-    const producerEvalClose = producer
-      ? await evaluateProducer(ctx.storage, streamId, producer)
-      : { kind: "none" as const };
-
-    if (producerEvalClose.kind === "error") {
-      throw new HttpError(
-        producerEvalClose.response.status,
-        "Producer evaluation failed",
-        producerEvalClose.response,
-      );
-    }
-    if (producerEvalClose.kind === "duplicate") {
-      const dupOffset = await ctx.encodeOffset(streamId, meta, producerEvalClose.state.last_offset);
-      const headers = baseHeaders({
-        [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
-        [HEADER_PRODUCER_EPOCH]: producerEvalClose.state.epoch.toString(),
-        [HEADER_PRODUCER_SEQ]: producerEvalClose.state.last_seq.toString(),
-        [HEADER_STREAM_CLOSED]: "true",
-      });
-      return {
-        status: 204,
-        headers,
-        newTailOffset: producerEvalClose.state.last_offset,
-      };
-    }
+    // Producer duplicate was already handled above. For "ok"/"none", proceed
+    // with closing the stream.
 
     // Close the stream
     await ctx.storage.closeStream(
@@ -174,34 +281,7 @@ export async function appendStream(
     throw new HttpError(400, "Content-Type is required");
   }
 
-  // 4. Producer deduplication
-  const producerEval = producer
-    ? await evaluateProducer(ctx.storage, streamId, producer)
-    : { kind: "none" as const };
-
-  if (producerEval.kind === "error") {
-    throw new HttpError(
-      producerEval.response.status,
-      "Producer evaluation failed",
-      producerEval.response,
-    );
-  }
-  if (producerEval.kind === "duplicate") {
-    const dupOffset = await ctx.encodeOffset(streamId, meta, producerEval.state.last_offset);
-    const headers = baseHeaders({
-      [HEADER_STREAM_NEXT_OFFSET]: dupOffset,
-      [HEADER_PRODUCER_EPOCH]: producerEval.state.epoch.toString(),
-      [HEADER_PRODUCER_SEQ]: producerEval.state.last_seq.toString(),
-    });
-    if (meta.closed === 1) {
-      headers.set(HEADER_STREAM_CLOSED, "true");
-    }
-    return {
-      status: 204,
-      headers,
-      newTailOffset: producerEval.state.last_offset,
-    };
-  }
+  // (Producer dedup already handled above — skip old step 4)
 
   // 5. Pre-cache optimization (before write)
   // Pre-cache responses for long-poll waiters before executing the write
