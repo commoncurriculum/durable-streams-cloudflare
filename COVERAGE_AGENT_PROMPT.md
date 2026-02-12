@@ -1,83 +1,69 @@
 # Coverage Improvement Agent Prompt
 
-Copy this entire document and paste it into a new LLM session to work on test coverage.
+## Objective
 
----
+Increase test coverage from 62.78% to 70%+ by writing integration tests for estuary endpoints.
 
-## Your Task
+## Critical Constraint: Iterative Testing Required
 
-Improve test coverage for the Durable Streams Cloudflare server package. Current coverage is **62.78%**, goal is **70%+**.
+Algorithm:
 
-## 🚨 CRITICAL: TEST-DRIVEN DEVELOPMENT REQUIRED
+1. Write single test function
+2. Execute: `pnpm run test -- <test-file-path>`
+3. Parse output (status codes, error messages, logs)
+4. If fail: debug based on actual error, modify test, goto 2
+5. If pass: commit, goto 1 for next test
 
-**YOU MUST FOLLOW THIS WORKFLOW:**
+Constraint: Maximum 1 test written before execution. Writing multiple tests without running = failure mode.
 
-1. Write ONE test
-2. Run that ONE test
-3. If it fails, debug and fix it
-4. If it passes, commit it
-5. Move to next test
-
-**DO NOT:**
-
-- Write multiple tests without running them
-- Assume test format without validating
-- Copy-paste test patterns without verification
-- Write more than 1-2 tests before running them
-
-## Quick Start
+## Initial Assessment Commands
 
 ```bash
-# Check current coverage status
 cd packages/server
-pnpm cov
-
-# See uncovered lines (machine-readable)
-pnpm run coverage:lines -- --zero
+pnpm cov                              # Current coverage metrics
+pnpm run coverage:lines -- --zero     # Files with 0% coverage
 ```
 
-## Current Priorities
+## Target Files (Priority Order)
 
-From highest to lowest impact:
+Priority 1 (0% coverage, ~377 lines):
 
-1. **🔴 CRITICAL: Estuary endpoints (0% coverage)**
-   - 20 files with 0% coverage
-   - ~377 uncovered lines
-   - Location: `src/http/v1/estuary/`
-   - Need integration tests in `test/implementation/estuary/`
+- `src/http/v1/estuary/subscribe/index.ts` (42 lines)
+- `src/http/v1/estuary/publish/index.ts` (62 lines)
+- `src/http/v1/estuary/unsubscribe/index.ts` (14 lines)
+- `src/http/v1/estuary/get/index.ts` (15 lines)
+- `src/http/v1/estuary/touch/index.ts` (19 lines)
+- `src/http/v1/estuary/delete/index.ts` (11 lines)
+- Related HTTP handlers and DO files
 
-2. **🟠 MEDIUM: Queue consumer (0% coverage)**
-   - 1 file: `src/queue/fanout-consumer.ts`
-   - ~18 uncovered lines
-   - Need integration test in `test/implementation/queue/`
+Priority 2 (0% coverage, ~18 lines):
 
-3. **🟡 LOW: Stream operations (50-75% coverage)**
-   - Append, delete, read operations need edge case tests
-   - Already have basic coverage, need improvement
+- `src/queue/fanout-consumer.ts`
 
-## Architecture Context
+Priority 3 (50-75% coverage):
 
-**Read these files first:**
+- Stream operations (lower priority due to existing coverage)
 
-- `AGENTS.md` - Development guidelines (YOU SHOULD ALREADY HAVE THIS)
-- `packages/server/COVERAGE.md` - Complete coverage guide
-- `packages/server/COVERAGE_QUICKSTART.md` - Quick reference
+## Technical Context
 
-**Key facts:**
+Runtime: Cloudflare Workers + Durable Objects (SQLite) + R2 + Analytics Engine
+Framework: Hono v4 (HTTP), ArkType v2 (validation)
+Test Framework: Vitest + `@cloudflare/vitest-pool-workers`
+Test Type: Integration tests use `fetch()` against live worker started by `global-setup.ts`
+Bindings: Real Cloudflare bindings required (no mocking)
 
-- Runtime: Cloudflare Workers + Durable Objects + R2 + SQLite
-- HTTP framework: Hono v4
-- Validation: ArkType v2
-- Testing: Vitest with `@cloudflare/vitest-pool-workers`
-- **DO NOT mock Cloudflare bindings** - use real ones
+Reference files:
 
-## How to Add Tests
+- `packages/server/AGENTS.md` - Development constraints
+- `packages/server/src/http/middleware/path-parsing.ts` - Request routing logic
+- `packages/server/src/http/router.ts` - Route definitions
+- `test/implementation/helpers.ts` - Test utilities
 
-### For Estuary Endpoints (Priority 1) - TEST-DRIVEN APPROACH
+## Test Implementation Protocol
 
-**NO TESTS EXIST YET - START FROM SCRATCH**
+### Phase 1: Discovery Test (Estuary Subscribe Endpoint)
 
-**Step 1: Write the simplest possible test**
+Create: `test/implementation/estuary/subscribe.test.ts`
 
 ```typescript
 // test/implementation/estuary/subscribe.test.ts
@@ -100,82 +86,68 @@ describe("Estuary subscribe", () => {
 });
 ```
 
-**Step 2: Run ONLY that test**
+Execute: `pnpm run test -- test/implementation/estuary/subscribe.test.ts`
+
+Parse output:
+
+- Status code analysis:
+  - 401/403 → Auth required, read README for JWT format
+  - 400 → Parse response body for validation error details
+  - 404 → Path incorrect, verify route pattern
+  - 500 → Read error logs for stack trace
+  - 200/201 → Success, analyze response structure
+
+Debugging decision tree:
+
+1. Read response.text() to get error message
+2. Check wrangler logs for server-side errors
+3. Compare with working stream tests in `test/implementation/streams/`
+4. Verify bindings in `vitest.implementation.config.ts`
+
+API endpoints (from `packages/server/README.md`):
+
+```
+POST   /v1/estuary/subscribe/:projectId/:streamId  Body: {"estuaryId":"string"}
+DELETE /v1/estuary/subscribe/:projectId/:streamId  Body: {"estuaryId":"string"}
+GET    /v1/estuary/:projectId/:estuaryId
+POST   /v1/estuary/:projectId/:estuaryId
+DELETE /v1/estuary/:projectId/:estuaryId
+```
+
+Discovery objectives:
+
+1. Determine if JWT auth required for test environment
+2. Determine if source stream must exist before subscription
+3. Identify required DO namespace bindings
+4. Map validation error response format
+
+### Phase 2: Queue Consumer (After Estuary Tests Pass)
+
+Path: `test/implementation/queue/fanout-consumer.test.ts`
+Approach: Trigger publish that exceeds inline fanout threshold, verify queue processing
+Prerequisites: Working subscribe + publish endpoints
+
+## Coverage Verification
+
+After each passing test:
 
 ```bash
 cd packages/server
-pnpm run test -- test/implementation/estuary/subscribe.test.ts
+pnpm cov                                # Full coverage report
+pnpm run coverage:lines -- estuary     # Specific file coverage
 ```
 
-**Step 3: Debug based on actual response**
-
-- If 401/403: Auth required (check README for JWT format)
-- If 400: Validation error (read response body for error message)
-- If 404: Route not found (check path format)
-- If 500: Server error (check logs for stack trace)
-
-**Step 4: Fix and iterate**
-
-Based on what you learn, adjust the test. Only after ONE test passes, write the next one.
-
-**API Format** (from README.md):
-
-- Subscribe: `POST /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
-- Unsubscribe: `DELETE /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
-- Get: `GET /v1/estuary/:projectId/:estuaryId`
-- Touch: `POST /v1/estuary/:projectId/:estuaryId`
-- Delete: `DELETE /v1/estuary/:projectId/:estuaryId`
-
-**Important Unknowns to Discover**:
-
-1. Is auth required? (README shows JWT but might be optional for tests)
-2. Does source stream need to exist first?
-3. What bindings are needed in test env?
-4. What is the actual validation error format?
-
-### For Queue Consumer (Priority 2)
-
-Create integration test in `test/implementation/queue/`:
-
-```typescript
-// test/implementation/queue/fanout-consumer.test.ts
-import { describe, it, expect } from "vitest";
-
-describe("Queue fanout consumer", () => {
-  it("processes fanout messages from queue", async () => {
-    // Test queue message handling
-    // Will need to trigger a publish that uses queue
-  });
-});
-```
-
-## Verification Workflow
-
-After adding tests:
+Post-completion verification:
 
 ```bash
-# 1. Run tests
-cd packages/server
-pnpm run test:implementation
-
-# 2. Generate coverage
-pnpm run test:coverage-all
-
-# 3. Check improvement
-pnpm run coverage:lines -- estuary
-
-# 4. Should see increased coverage
-pnpm run coverage
-
-# 5. Verify in HTML (optional)
-open coverage-combined/index.html
+pnpm -r run typecheck                  # Type safety
+pnpm -C packages/server run lint       # Code quality
+pnpm -C packages/server run test       # All tests pass
 ```
 
-## Common Patterns
+## Test Pattern Reference
 
-### Integration Test Structure
-
-**Integration tests use fetch against a real running worker** (NOT Hono's test client):
+Integration test structure (fetch against live worker):
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -200,19 +172,19 @@ describe("Feature name", () => {
 });
 ```
 
-**Helper utilities** (from `test/implementation/helpers.ts`):
+Available utilities (`test/implementation/helpers.ts`):
 
-- `createClient()` - Returns client with helper methods
-- `uniqueStreamId(prefix)` - Generates unique stream ID
-- `client.streamUrl(id, params)` - Build stream URL
-- `client.createStream(id, body, contentType)` - PUT stream
-- `client.appendStream(id, body, contentType)` - POST to stream
-- `client.deleteStream(id)` - DELETE stream
-- `client.readAllText(id, offset)` - GET stream as text
+```typescript
+createClient()                              // Returns client object
+uniqueStreamId(prefix)                      // UUID-based stream ID
+client.streamUrl(id, params?)               // Constructs URL
+client.createStream(id, body, contentType)  // PUT /v1/stream/:id
+client.appendStream(id, body, contentType)  // POST /v1/stream/:id
+client.deleteStream(id)                     // DELETE /v1/stream/:id
+client.readAllText(id, offset)              // GET /v1/stream/:id
+```
 
-### Content-Type Matching
-
-**IMPORTANT**: Stream content-type must match append content-type:
+Content-type constraint:
 
 ```typescript
 const client = createClient();
@@ -229,9 +201,7 @@ await client.appendStream(
 );
 ```
 
-### Unit Test Structure
-
-**Unit tests use Hono's `app.request()` method** with `@cloudflare/vitest-pool-workers`:
+Unit test structure (NOT used for estuary endpoints):
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -260,11 +230,11 @@ describe("Feature unit test", () => {
 });
 ```
 
-**Pattern**: Use `worker.app.request(path, init, env)` - this is Hono's standard testing approach. The third parameter passes the Cloudflare environment bindings.
+Note: Estuary tests are integration tests (use fetch), not unit tests (use app.request).
 
-## API Endpoints Reference
+## API Reference
 
-**Estuary endpoints** (from `packages/server/README.md`):
+Estuary endpoints:
 
 ```
 POST   /v1/estuary/subscribe/:projectId/:streamId   Subscribe estuary to stream
@@ -274,13 +244,13 @@ POST   /v1/estuary/:projectId/:estuaryId            Touch (refresh TTL)
 DELETE /v1/estuary/:projectId/:estuaryId            Delete estuary
 ```
 
-**Important**:
+Notes:
 
-- Subscribe/unsubscribe send `{"estuaryId": "..."}` in JSON body
-- README examples show JWT auth but it may be optional
-- Test ONE endpoint at a time and actually read error responses
+- Subscribe/unsubscribe: estuaryId in JSON body (not URL path)
+- JWT auth shown in README examples (determine if required during discovery)
+- Path parsing: middleware extracts projectId/streamId from URL segments
 
-## Finding Uncovered Lines
+## Coverage Analysis
 
 ```bash
 # See all uncovered lines for estuary
@@ -326,83 +296,101 @@ After your work:
 - Ignore the coverage report
 - Test dead code (remove it instead)
 
-## Getting Help
+## Reference Materials
 
-**If you need more context:**
+Source code:
 
-1. Read the uncovered file to understand what it does
-2. Check `packages/server/README.md` for API documentation
-3. **Look at existing tests in `test/implementation/streams/` for patterns** - These show the actual fetch + helpers approach
-4. Check `test/implementation/helpers.ts` for available test utilities
-5. Check `AGENTS.md` for development guidelines
-6. View the schema files in `src/http/v1/estuary/*/schema.ts` for validation rules
+- `src/http/v1/estuary/*/index.ts` - Business logic to cover
+- `src/http/v1/estuary/*/http.ts` - HTTP handlers
+- `src/http/v1/estuary/*/schema.ts` - ArkType validation schemas
 
-**Example real tests to study:**
+Existing test patterns:
 
-- `test/implementation/streams/characterization.test.ts` - Integration test patterns
-- `test/implementation/streams/stream_concurrency.test.ts` - Complex workflows
-- `test/unit/http/middleware/cors.test.ts` - Unit test pattern (NOTE: uses older worker.fetch!() style, use app.request() for new tests)
-- `test/unit/http/router.test.ts` - Pure function tests
+- `test/implementation/streams/characterization.test.ts` - Integration test example
+- `test/implementation/helpers.ts` - Available utilities
 
-**Coverage commands:**
+Coverage commands:
 
 ```bash
-pnpm cov                           # Run all + show summary
-pnpm run coverage:lines            # Show uncovered lines
-pnpm run coverage:lines -- --zero  # Only 0% files
-open coverage-combined/index.html  # Visual report
+pnpm cov                           # Full report
+pnpm run coverage:lines            # Per-file breakdown
+pnpm run coverage:lines -- --zero  # 0% coverage files
 ```
 
-## Start Here
+## Execution Plan
 
-**USE TEST-DRIVEN DEVELOPMENT:**
+Step 1: Assessment
 
-1. Run `pnpm cov` to see current coverage
-2. Run `pnpm run coverage:lines -- --zero` to see 0% files
-3. Pick ONE estuary endpoint (start with subscribe)
-4. Create `test/implementation/estuary/subscribe.test.ts`
-5. Write ONE simple test (just check status code)
-6. Run ONLY that test: `pnpm run test -- test/implementation/estuary/subscribe.test.ts`
-7. Read the actual error/response
-8. Fix the test based on what you learned
-9. Only after it passes, write the next test
-10. Repeat for each endpoint
+```bash
+cd packages/server
+pnpm cov
+pnpm run coverage:lines -- --zero
+```
 
-**ONE TEST AT A TIME. RUN IT. FIX IT. THEN MOVE ON.**
+Step 2: First Test
 
-**After tests work**:
+```bash
+mkdir -p test/implementation/estuary
+# Create subscribe.test.ts with single test
+pnpm run test -- test/implementation/estuary/subscribe.test.ts
+# Read output, debug, iterate until pass
+```
 
-1. Run `pnpm cov` to see coverage improvement
-2. Check what lines are still uncovered: `pnpm run coverage:lines -- estuary`
-3. Add more tests for uncovered paths (but still one at a time!)
-4. Verify CI passes: `pnpm -r run typecheck && pnpm -C packages/server run test`
+Step 3: Iterate
 
-## Expected Time
+- Write next test in same file
+- Run same command
+- Debug based on actual errors
+- Repeat until file covered
 
-- Write and validate estuary tests (ONE AT A TIME): ~2-3 hours
-- Add publish/fanout tests: ~1-2 hours (complex endpoint)
-- Queue consumer test: ~30 minutes (1 file)
-- Edge cases and refinement: ~1-2 hours
+Step 4: Next Endpoint
 
-Total: ~5-8 hours to reach 70% coverage
+- Create new test file (get.test.ts, touch.test.ts, etc.)
+- Follow same single-test iteration
+- Monitor coverage after each file
 
-## Key Learnings - CRITICAL TO FOLLOW
+Step 5: Verification
 
-1. **ONE TEST AT A TIME**: Write one test, run it, fix it, commit it, then next
-2. **Read actual errors**: Don't assume - read response bodies and logs
-3. **Integration tests use fetch**: Real HTTP requests to live worker, NOT `app.request()`
-4. **Unit tests use app.request()**: Only for testing Hono app directly without worker
-5. **Test environment**: Check `vitest.implementation.config.ts` for required bindings
-6. **Start simple**: First test should just check if endpoint exists (200 or 400, not 404)
-7. **Iterate based on feedback**: Each test teaches you something - use that knowledge
-8. **Don't batch write**: Writing 50 tests without running them = wasting time
+```bash
+pnpm cov                                           # Should show ~70%+
+pnpm run coverage:lines -- estuary                # Verify estuary coverage
+pnpm -r run typecheck && pnpm run lint && pnpm run test  # CI checks
+```
 
-## Previous Mistake to Avoid
+## Constraints
 
-**DO NOT DO THIS**: A previous agent wrote 50 estuary tests without running any of them. All 50 failed with 400 errors. This wasted time and had to be deleted.
+Hard requirements:
 
-**DO THIS INSTEAD**: Write one test → Run it → Read error → Fix it → Commit it → Next test
+1. Maximum 1 test function written before execution
+2. Must read actual error responses (status + body + logs)
+3. Integration tests use `fetch()`, never `app.request()`
+4. Must verify bindings exist before assuming failure cause
+5. Must check coverage after each test file completion
 
----
+Previous failure mode (to avoid):
 
-**You have all the context you need. Start with `pnpm cov` and tackle the 0% files first!**
+- Agent wrote 50 tests without running any
+- All returned 400 errors due to unknown issue
+- All tests deleted, no progress made
+- Cause: Violated single-test iteration constraint
+
+Success pattern:
+
+```
+write test → run → parse error → debug → fix → verify pass → commit → next
+```
+
+## Exit Criteria
+
+Coverage metrics:
+
+- Overall: ≥70% (current: 62.78%)
+- Estuary endpoints: ≥70% (current: ~2%)
+- Queue consumer: ≥60% (current: 0%)
+
+Quality checks:
+
+- All tests pass: `pnpm run test`
+- Type safety: `pnpm -r run typecheck`
+- Linting: `pnpm run lint`
+- No new 0% coverage files introduced
