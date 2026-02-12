@@ -315,9 +315,6 @@ importers:
 
   packages/server:
     dependencies:
-      '@hono/arktype-validator':
-        specifier: ^2.0.1
-        version: 2.0.1(arktype@2.1.29)(hono@4.11.7)
       '@hono/standard-validator':
         specifier: ^0.2.2
         version: 0.2.2(@standard-schema/spec@1.1.0)(hono@4.11.7)
@@ -1306,12 +1303,6 @@ packages:
     resolution: {integrity: sha512-LMcepvRaS9LYHJGsF0zzmgKCUim/X3N/DQKc4jepAXJ7l8QxJ1PmxJzqplF2Z3FE4PqBAIGyJAQ/w4B5dsqbtQ==}
     peerDependencies:
       react: '>= 16 || ^19.0.0-rc'
-
-  '@hono/arktype-validator@2.0.1':
-    resolution: {integrity: sha512-Z4PQFtzgbGneBap+TTViRIBAoUWbwEwg8PaKNqALAP6z9N2ksJI81PfcsSQNUzwtrn8LipkMvBb8/D9Pei2GJw==}
-    peerDependencies:
-      arktype: ^2.0.0-dev.14
-      hono: '*'
 
   '@hono/standard-validator@0.2.2':
     resolution: {integrity: sha512-mJ7W84Bt/rSvoIl63Ynew+UZOHAzzRAoAXb3JaWuxAkM/Lzg+ZHTCUiz77KOtn2e623WNN8LkD57Dk0szqUrIw==}
@@ -7502,11 +7493,6 @@ snapshots:
   '@heroicons/react@2.2.0(react@19.2.4)':
     dependencies:
       react: 19.2.4
-
-  '@hono/arktype-validator@2.0.1(arktype@2.1.29)(hono@4.11.7)':
-    dependencies:
-      arktype: 2.1.29
-      hono: 4.11.7
 
   '@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.11.7)':
     dependencies:
