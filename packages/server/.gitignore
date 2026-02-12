@@ -3,3 +3,5 @@ node_modules/
 .wrangler/state/**
 !.wrangler/state/**/.gitkeep
 .dev.vars
+openapi.json
+openapi.yaml
