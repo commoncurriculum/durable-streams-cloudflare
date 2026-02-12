@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
-import { createPersistDir, getAvailablePort, startWorker } from "./worker_harness";
+import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
+import { createPersistDir, getAvailablePort, startWorker } from "../worker_harness";
 
 const PRODUCER_HEADERS = {
   "Producer-Id": "producer-1",

@@ -1,5 +1,5 @@
 name = "durable-streams-auth-test"
-main = "test/implementation/test-worker-noauth.ts"
+main = "test/implementation/worker/test-worker-noauth.ts"
 compatibility_date = "2026-02-02"
 compatibility_flags = []
 

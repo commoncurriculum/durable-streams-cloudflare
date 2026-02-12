@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
+import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
 
 describe("characterization", () => {
   it("sends a 204 with Stream-Cursor on long-poll timeout", async () => {

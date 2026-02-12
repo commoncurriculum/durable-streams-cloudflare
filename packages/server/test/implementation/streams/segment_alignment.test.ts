@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { encodeOffset } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
+import { encodeOffset } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
 
 describe("segment boundary alignment", () => {
   it("serves reads across multiple segments", async () => {

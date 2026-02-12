@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
-import { buildStreamUrl, delay, uniqueStreamId, waitForCacheHit } from "./helpers";
-import { startWorker, type WorkerHandle } from "./worker_harness";
+import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import { buildStreamUrl, delay, uniqueStreamId, waitForCacheHit } from "../helpers";
+import { startWorker, type WorkerHandle } from "../worker_harness";
 
 describe("CDN reader key", () => {
   let handle: WorkerHandle;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decodeOffset, encodeOffset } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
+import { decodeOffset, encodeOffset } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
 
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;

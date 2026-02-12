@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, delay, uniqueStreamId, waitForReaderDone } from "./helpers";
+import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, delay, uniqueStreamId, waitForReaderDone } from "../helpers";
 
 describe("stream cleanup", () => {
   it("closes SSE connections when a stream is deleted", async () => {

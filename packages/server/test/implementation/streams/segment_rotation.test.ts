@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decodeOffsetParts } from "../../src/http/v1/streams/shared/offsets";
-import { createClient, uniqueStreamId } from "./helpers";
+import { decodeOffsetParts } from "../../../src/http/v1/streams/shared/offsets";
+import { createClient, uniqueStreamId } from "../helpers";
 
 describe("segment rotation", () => {
   it("increments read_seq after compaction", async () => {
