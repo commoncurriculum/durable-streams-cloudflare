@@ -1,6 +1,6 @@
 import { toUint8Array } from "./encoding";
 import { buildSegmentKey, encodeSegmentMessages } from "../../../../storage/segments";
-import type { StreamStorage } from "../../../../storage";
+import type { StreamStorage, BatchOperation } from "../../../../storage";
 import type { StreamEnv } from "../types";
 
 export type SegmentRotationResult = {
@@ -88,17 +88,18 @@ export async function rotateSegment(params: {
   // #endregion docs-rotate-store
 
   const remainingStats = await storage.getOpsStatsFrom(streamId, segmentEnd);
-  const batchStatements = [
-    storage.updateStreamStatement(
-      streamId,
-      ["read_seq = ?", "segment_start = ?", "segment_messages = ?", "segment_bytes = ?"],
-      [meta.read_seq + 1, segmentEnd, remainingStats.messageCount, remainingStats.sizeBytes],
-    ),
+  const batchOps: BatchOperation[] = [
+    storage.updateStreamMetaStatement(streamId, {
+      read_seq: meta.read_seq + 1,
+      segment_start: segmentEnd,
+      segment_messages: remainingStats.messageCount,
+      segment_bytes: remainingStats.sizeBytes,
+    }),
   ];
   if (deleteOps) {
-    batchStatements.push(storage.deleteOpsThroughStatement(streamId, segmentEnd));
+    batchOps.push(storage.deleteOpsThroughStatement(streamId, segmentEnd));
   }
-  await storage.batch(batchStatements);
+  await storage.batch(batchOps);
 
   const segment = {
     readSeq: meta.read_seq,

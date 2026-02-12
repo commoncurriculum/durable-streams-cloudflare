@@ -17,11 +17,9 @@ import type { EstuaryStorage } from "./types";
  */
 export class EstuaryDoStorage implements EstuaryStorage {
   private db: ReturnType<typeof drizzle>;
-  private sql: DurableObjectStorage["sql"];
 
   constructor(storage: DurableObjectStorage) {
     this.db = drizzle(storage);
-    this.sql = storage.sql;
   }
 
   /**
@@ -30,8 +28,6 @@ export class EstuaryDoStorage implements EstuaryStorage {
    */
   initSchema(): void {
     migrate(this.db, migrations);
-    // Clean up legacy table if it exists
-    this.sql.exec("DROP TABLE IF EXISTS session_info");
   }
 
   // ============================================================================

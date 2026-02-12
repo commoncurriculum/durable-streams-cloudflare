@@ -17,11 +17,9 @@ import type { StreamSubscribersStorage, SubscriberWithTimestamp } from "./types"
  */
 export class StreamSubscribersDoStorage implements StreamSubscribersStorage {
   private db: ReturnType<typeof drizzle>;
-  private sql: DurableObjectStorage["sql"];
 
   constructor(storage: DurableObjectStorage) {
     this.db = drizzle(storage);
-    this.sql = storage.sql;
   }
 
   /**

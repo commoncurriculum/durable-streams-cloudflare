@@ -1,6 +1,10 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { StreamDoStorage } from "../../src/storage/stream-do/queries";
-import type { StreamMeta, ProducerState } from "../../src/storage/stream-do/types";
+import type {
+  StreamMeta,
+  ProducerState,
+  StreamMetaUpdate,
+} from "../../src/storage/stream-do/types";
 
 export const STREAM_ID = "test-stream";
 
@@ -54,12 +58,12 @@ export async function withStorage(
 
 /**
  * Insert a stream and optionally update fields that insertStream initializes to 0.
- * Pass `updateFields` to set tail_offset, read_seq, segment_start, etc.
+ * Pass `updates` to set tail_offset, read_seq, segment_start, etc.
  */
 export async function seedStream(
   storage: StreamDoStorage,
   meta: StreamMeta,
-  updateFields?: { fields: string[]; values: unknown[] },
+  updates?: StreamMetaUpdate,
 ): Promise<void> {
   await storage.insertStream({
     streamId: meta.stream_id,
@@ -70,38 +74,28 @@ export async function seedStream(
     expiresAt: meta.expires_at,
     createdAt: meta.created_at,
   });
-  if (updateFields) {
-    await storage.batch([
-      storage.updateStreamStatement(meta.stream_id, updateFields.fields, updateFields.values),
-    ]);
+  if (updates) {
+    await storage.batch([storage.updateStreamMetaStatement(meta.stream_id, updates)]);
   }
 }
 
 /** Shorthand: seedStream with tail_offset, read_seq, segment_start, segment_messages, segment_bytes. */
 export async function seedStreamFull(storage: StreamDoStorage, meta: StreamMeta): Promise<void> {
   await seedStream(storage, meta, {
-    fields: [
-      "tail_offset = ?",
-      "read_seq = ?",
-      "segment_start = ?",
-      "segment_messages = ?",
-      "segment_bytes = ?",
-    ],
-    values: [
-      meta.tail_offset,
-      meta.read_seq,
-      meta.segment_start,
-      meta.segment_messages,
-      meta.segment_bytes,
-    ],
+    tail_offset: meta.tail_offset,
+    read_seq: meta.read_seq,
+    segment_start: meta.segment_start,
+    segment_messages: meta.segment_messages,
+    segment_bytes: meta.segment_bytes,
   });
 }
 
 /** Shorthand: seedStream with tail_offset, read_seq, segment_start. */
 export async function seedStreamOffsets(storage: StreamDoStorage, meta: StreamMeta): Promise<void> {
   await seedStream(storage, meta, {
-    fields: ["tail_offset = ?", "read_seq = ?", "segment_start = ?"],
-    values: [meta.tail_offset, meta.read_seq, meta.segment_start],
+    tail_offset: meta.tail_offset,
+    read_seq: meta.read_seq,
+    segment_start: meta.segment_start,
   });
 }
 

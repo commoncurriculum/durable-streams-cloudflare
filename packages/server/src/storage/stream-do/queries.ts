@@ -6,7 +6,7 @@
  */
 
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, gte, lte, and, sql, desc, asc } from "drizzle-orm";
+import { eq, gte, lte, and, lt, sql, desc, asc } from "drizzle-orm";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../../drizzle/migrations";
 import { streamMeta, producers, ops, segments } from "./schema";
@@ -19,7 +19,8 @@ import type {
   CreateStreamInput,
   SegmentInput,
   SegmentRecord,
-  StorageStatement,
+  BatchOperation,
+  StreamMetaUpdate,
 } from "./types";
 
 /**
@@ -27,11 +28,9 @@ import type {
  */
 export class StreamDoStorage implements StreamStorage {
   private db: ReturnType<typeof drizzle>;
-  private sql: DurableObjectStorage["sql"];
 
   constructor(storage: DurableObjectStorage) {
     this.db = drizzle(storage);
-    this.sql = storage.sql;
   }
 
   /**
@@ -46,11 +45,9 @@ export class StreamDoStorage implements StreamStorage {
   // Batch Operations
   // ============================================================================
 
-  async batch(statements: StorageStatement[]): Promise<void> {
-    // Execute raw SQL statements synchronously
-    // Durable Objects SQLite doesn't have async batch API
-    for (const statement of statements) {
-      this.sql.exec(statement.sql, ...statement.args);
+  async batch(operations: BatchOperation[]): Promise<void> {
+    for (const op of operations) {
+      await op();
     }
   }
 
@@ -117,15 +114,52 @@ export class StreamDoStorage implements StreamStorage {
     await this.db.delete(streamMeta);
   }
 
-  updateStreamStatement(
-    _streamId: string,
-    updateFields: string[],
-    updateValues: unknown[],
-  ): StorageStatement {
-    // StorageStatement for batch() - raw SQL preserved for dynamic field updates
-    return {
-      sql: `UPDATE stream_meta SET ${updateFields.join(", ")}`,
-      args: updateValues,
+  updateStreamMetaStatement(_streamId: string, updates: StreamMetaUpdate): BatchOperation {
+    return async () => {
+      const setObj: Record<string, unknown> = {};
+
+      if (updates.tail_offset !== undefined) {
+        setObj.tail_offset = updates.tail_offset;
+      }
+      if (updates.last_stream_seq !== undefined) {
+        setObj.last_stream_seq = updates.last_stream_seq;
+      }
+      if (updates.read_seq !== undefined) {
+        setObj.read_seq = updates.read_seq;
+      }
+      if (updates.segment_start !== undefined) {
+        setObj.segment_start = updates.segment_start;
+      }
+      if (updates.closed !== undefined) {
+        setObj.closed = updates.closed;
+      }
+      if (updates.closed_at !== undefined) {
+        setObj.closed_at = updates.closed_at;
+      }
+      if ("closed_by_producer_id" in updates) {
+        setObj.closed_by_producer_id = updates.closed_by_producer_id;
+      }
+      if ("closed_by_epoch" in updates) {
+        setObj.closed_by_epoch = updates.closed_by_epoch;
+      }
+      if ("closed_by_seq" in updates) {
+        setObj.closed_by_seq = updates.closed_by_seq;
+      }
+
+      // Absolute set takes precedence over increment for segment counters
+      if (updates.segment_messages !== undefined) {
+        setObj.segment_messages = updates.segment_messages;
+      } else if (updates.segment_messages_increment !== undefined) {
+        setObj.segment_messages = sql`${streamMeta.segment_messages} + ${updates.segment_messages_increment}`;
+      }
+
+      if (updates.segment_bytes !== undefined) {
+        setObj.segment_bytes = updates.segment_bytes;
+      } else if (updates.segment_bytes_increment !== undefined) {
+        setObj.segment_bytes = sql`${streamMeta.segment_bytes} + ${updates.segment_bytes_increment}`;
+      }
+
+      await this.db.update(streamMeta).set(setObj);
     };
   }
 
@@ -147,19 +181,26 @@ export class StreamDoStorage implements StreamStorage {
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
     lastUpdated: number,
-  ): StorageStatement {
-    // StorageStatement for batch() - could use Drizzle but raw SQL works
-    return {
-      sql: `
-        INSERT INTO producers (producer_id, epoch, last_seq, last_offset, last_updated)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(producer_id) DO UPDATE SET
-          epoch = excluded.epoch,
-          last_seq = excluded.last_seq,
-          last_offset = excluded.last_offset,
-          last_updated = excluded.last_updated
-      `,
-      args: [producer.id, producer.epoch, producer.seq, lastOffset, lastUpdated],
+  ): BatchOperation {
+    return async () => {
+      await this.db
+        .insert(producers)
+        .values({
+          producer_id: producer.id,
+          epoch: producer.epoch,
+          last_seq: producer.seq,
+          last_offset: lastOffset,
+          last_updated: lastUpdated,
+        })
+        .onConflictDoUpdate({
+          target: producers.producer_id,
+          set: {
+            epoch: sql`excluded.epoch`,
+            last_seq: sql`excluded.last_seq`,
+            last_offset: sql`excluded.last_offset`,
+            last_updated: sql`excluded.last_updated`,
+          },
+        });
     };
   }
 
@@ -181,13 +222,12 @@ export class StreamDoStorage implements StreamStorage {
     producerId: string,
     lastUpdated: number,
   ): Promise<boolean> {
-    this.sql.exec(
-      "UPDATE producers SET last_updated = ? WHERE producer_id = ?",
-      lastUpdated,
-      producerId,
-    );
-    const changes = this.sql.exec("SELECT changes() as c").one();
-    return (changes.c as number) > 0;
+    const result = await this.db
+      .update(producers)
+      .set({ last_updated: lastUpdated })
+      .where(eq(producers.producer_id, producerId))
+      .returning({ producer_id: producers.producer_id });
+    return result.length > 0;
   }
 
   async listProducers(_streamId: string): Promise<ProducerState[]> {
@@ -209,58 +249,52 @@ export class StreamDoStorage implements StreamStorage {
     producerSeq: number | null;
     body: ArrayBuffer;
     createdAt: number;
-  }): StorageStatement {
-    // StorageStatement for batch() - raw SQL preserved for performance
-    return {
-      sql: `
-        INSERT INTO ops (
-          start_offset,
-          end_offset,
-          size_bytes,
-          stream_seq,
-          producer_id,
-          producer_epoch,
-          producer_seq,
-          body,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      args: [
-        input.startOffset,
-        input.endOffset,
-        input.sizeBytes,
-        input.streamSeq,
-        input.producerId,
-        input.producerEpoch,
-        input.producerSeq,
-        input.body,
-        input.createdAt,
-      ],
+  }): BatchOperation {
+    return async () => {
+      await this.db.insert(ops).values({
+        start_offset: input.startOffset,
+        end_offset: input.endOffset,
+        size_bytes: input.sizeBytes,
+        stream_seq: input.streamSeq,
+        producer_id: input.producerId,
+        producer_epoch: input.producerEpoch,
+        producer_seq: input.producerSeq,
+        body: input.body,
+        created_at: input.createdAt,
+      });
     };
   }
 
   async selectOverlap(_streamId: string, offset: number): Promise<ReadChunk | null> {
-    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
-    // calls Node.js Buffer (unavailable in Workers runtime).
-    const cursor = this.sql.exec(
-      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset < ? AND end_offset > ? ORDER BY start_offset DESC LIMIT 1",
-      offset,
-      offset,
-    );
-    const rows = [...cursor];
-    if (rows.length === 0) return null;
-    return rows[0] as unknown as ReadChunk;
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(and(lt(ops.start_offset, offset), sql`${ops.end_offset} > ${offset}`))
+      .orderBy(desc(ops.start_offset))
+      .limit(1);
+    return (result[0] as ReadChunk | undefined) ?? null;
   }
 
   async selectOpsFrom(_streamId: string, offset: number): Promise<ReadChunk[]> {
-    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
-    // calls Node.js Buffer (unavailable in Workers runtime).
-    const cursor = this.sql.exec(
-      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? ORDER BY start_offset ASC LIMIT 200",
-      offset,
-    );
-    return [...cursor] as unknown as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(gte(ops.start_offset, offset))
+      .orderBy(asc(ops.start_offset))
+      .limit(200);
+    return result as ReadChunk[];
   }
 
   async selectOpsRange(
@@ -268,32 +302,42 @@ export class StreamDoStorage implements StreamStorage {
     startOffset: number,
     endOffset: number,
   ): Promise<ReadChunk[]> {
-    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
-    // calls Node.js Buffer (unavailable in Workers runtime).
-    const cursor = this.sql.exec(
-      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops WHERE start_offset >= ? AND end_offset <= ? ORDER BY start_offset ASC",
-      startOffset,
-      endOffset,
-    );
-    return [...cursor] as unknown as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .where(and(gte(ops.start_offset, startOffset), lte(ops.end_offset, endOffset)))
+      .orderBy(asc(ops.start_offset));
+    return result as ReadChunk[];
   }
 
   async selectAllOps(_streamId: string): Promise<ReadChunk[]> {
-    // Use raw SQL to avoid Drizzle's blob { mode: "buffer" } which
-    // calls Node.js Buffer (unavailable in Workers runtime).
-    const cursor = this.sql.exec(
-      "SELECT start_offset, end_offset, size_bytes, body, created_at FROM ops ORDER BY start_offset ASC",
-    );
-    return [...cursor] as unknown as ReadChunk[];
+    const result = await this.db
+      .select({
+        start_offset: ops.start_offset,
+        end_offset: ops.end_offset,
+        size_bytes: ops.size_bytes,
+        body: ops.body,
+        created_at: ops.created_at,
+      })
+      .from(ops)
+      .orderBy(asc(ops.start_offset));
+    return result as ReadChunk[];
   }
 
   async deleteOpsThrough(_streamId: string, endOffset: number): Promise<void> {
     await this.db.delete(ops).where(lte(ops.end_offset, endOffset));
   }
 
-  deleteOpsThroughStatement(_streamId: string, endOffset: number): StorageStatement {
-    // StorageStatement for batch()
-    return { sql: "DELETE FROM ops WHERE end_offset <= ?", args: [endOffset] };
+  deleteOpsThroughStatement(_streamId: string, endOffset: number): BatchOperation {
+    return async () => {
+      await this.db.delete(ops).where(lte(ops.end_offset, endOffset));
+    };
   }
 
   async getOpsStatsFrom(_streamId: string, startOffset: number): Promise<OpsStats> {
