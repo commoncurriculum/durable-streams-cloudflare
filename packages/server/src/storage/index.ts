@@ -1,4 +1,53 @@
-export { DoSqliteStorage } from "./queries";
+/**
+ * Storage layer barrel exports
+ *
+ * Organized by Durable Object:
+ * - stream-do: StreamDO storage (streams, producers, ops, segments)
+ * - estuary-do: EstuaryDO storage (estuary subscriptions)
+ * - stream-subscribers-do: StreamSubscribersDO storage (source stream subscribers)
+ *
+ * Shared utilities:
+ * - registry: KV operations for project/stream metadata
+ * - segments: Segment encoding/decoding utilities
+ */
+
+// ============================================================================
+// StreamDO Storage
+// ============================================================================
+export { StreamDoStorage } from "./stream-do";
+export type {
+  StreamStorage,
+  StreamMeta,
+  ProducerState,
+  SegmentRecord,
+  ReadChunk,
+  OpsStats,
+  CreateStreamInput,
+  SegmentInput,
+  StorageStatement,
+} from "./stream-do";
+
+// ============================================================================
+// EstuaryDO Storage
+// ============================================================================
+export { EstuaryDoStorage } from "./estuary-do";
+export type { EstuaryStorage, Subscription, EstuaryInfo } from "./estuary-do";
+
+// ============================================================================
+// StreamSubscribersDO Storage
+// ============================================================================
+export { StreamSubscribersDoStorage } from "./stream-subscribers-do";
+export type {
+  StreamSubscribersStorage,
+  Subscriber,
+  SubscriberWithTimestamp,
+} from "./stream-subscribers-do";
+
+// ============================================================================
+// Shared Utilities
+// ============================================================================
+
+// Registry (KV operations)
 export {
   createProject,
   addSigningKey,
@@ -16,11 +65,10 @@ export {
   listProjectStreams,
 } from "./registry";
 export type { ProjectEntry, StreamEntry } from "./registry";
-export { buildSegmentKey, encodeSegmentMessages, readSegmentMessages } from "./segments";
-export type {
-  StreamMeta,
-  StreamStorage,
-  ProducerState,
-  SegmentRecord,
-  OpsStats,
-} from "./types";
+
+// Segments (encoding/decoding utilities)
+export {
+  buildSegmentKey,
+  encodeSegmentMessages,
+  readSegmentMessages,
+} from "./segments";

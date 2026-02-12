@@ -10,9 +10,11 @@ import type {
   ProjectConfig,
   ProjectJwtClaims,
 } from "./middleware/authentication";
-import type { SubscriptionDO } from "../subscriptions/do";
-import type { EstuaryDO } from "../estuary/do";
-import type { FanoutQueueMessage } from "../subscriptions/types";
+import type {
+  StreamSubscribersDO,
+  EstuaryDO,
+  FanoutQueueMessage,
+} from "./v1/estuary";
 
 // Middleware
 import { pathParsingMiddleware } from "./middleware/path-parsing";
@@ -33,15 +35,18 @@ import {
   putConfig,
 } from "./v1/config";
 
+// Estuary endpoints
 import {
-  subscribe,
-  unsubscribe,
+  subscribeHttp,
   subscribeBodySchema,
+} from "./v1/estuary/subscribe/http";
+import {
+  unsubscribeHttp,
   unsubscribeBodySchema,
-  getEstuary,
-  touchEstuary,
-  deleteEstuary,
-} from "./v1/estuary";
+} from "./v1/estuary/unsubscribe/http";
+import { getEstuaryHttp } from "./v1/estuary/get/http";
+import { touchEstuaryHttp } from "./v1/estuary/touch/http";
+import { deleteEstuaryHttp } from "./v1/estuary/delete/http";
 
 // Queue handler
 import { handleFanoutQueue } from "../queue/fanout-consumer";
@@ -56,7 +61,7 @@ import { logError } from "../log";
 
 export type BaseEnv = {
   STREAMS: DurableObjectNamespace<StreamDO>;
-  SUBSCRIPTION_DO: DurableObjectNamespace<SubscriptionDO>;
+  SUBSCRIPTION_DO: DurableObjectNamespace<StreamSubscribersDO>;
   ESTUARY_DO: DurableObjectNamespace<EstuaryDO>;
   R2?: R2Bucket;
   METRICS?: AnalyticsEngineDataset;
@@ -147,19 +152,19 @@ export function createStreamWorker<
   app.post(
     "/v1/estuary/subscribe/*",
     arktypeValidator("json", subscribeBodySchema),
-    subscribe
+    subscribeHttp
   );
 
   app.delete(
     "/v1/estuary/subscribe/*",
     arktypeValidator("json", unsubscribeBodySchema),
-    unsubscribe
+    unsubscribeHttp
   );
 
   // Estuary management routes
-  app.get("/v1/estuary/*", getEstuary);
-  app.post("/v1/estuary/*", touchEstuary);
-  app.delete("/v1/estuary/*", deleteEstuary);
+  app.get("/v1/estuary/*", getEstuaryHttp);
+  app.post("/v1/estuary/*", touchEstuaryHttp);
+  app.delete("/v1/estuary/*", deleteEstuaryHttp);
 
   // #region docs-route-to-do
   // Stream route — all pre/post-processing handled by middleware

@@ -245,6 +245,10 @@ export class StreamDO extends DurableObject<StreamEnv> {
   }
 
   // RPC methods (called by edge router, estuary, subscription)
+  async getStreamMeta(streamId: string): Promise<StreamMeta | null> {
+    return this.getStream(streamId);
+  }
+
   async getIntrospection(
     streamId: string
   ): Promise<StreamIntrospection | null> {

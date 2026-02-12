@@ -7,9 +7,7 @@ export interface SubscribeResult {
 }
 
 export interface UnsubscribeResult {
-  estuaryId: string;
-  streamId: string;
-  unsubscribed: true;
+  success: true;
 }
 
 export interface DeleteEstuaryResult {
@@ -43,13 +41,11 @@ export interface FanoutQueueMessage {
   estuaryIds: string[];
   payload: string; // base64-encoded
   contentType: string;
-  producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string };
-}
-
-export interface FanoutResult {
-  successes: number;
-  failures: number;
-  staleEstuaryIds: string[];
+  producerHeaders?: {
+    producerId: string;
+    producerEpoch: string;
+    producerSeq: string;
+  };
 }
 
 export interface EstuaryInfo {
@@ -62,6 +58,13 @@ export interface EstuaryInfo {
 export interface TouchEstuaryResult {
   estuaryId: string;
   expiresAt: number;
+}
+
+export interface GetEstuaryResult {
+  estuaryId: string;
+  estuaryStreamPath: string;
+  subscriptions: Array<{ streamId: string }>;
+  contentType: string | null;
 }
 
 export interface SubscriberInfo {

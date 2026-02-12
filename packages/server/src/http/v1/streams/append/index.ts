@@ -13,7 +13,7 @@ import {
   baseHeaders,
 } from "../../../shared/headers";
 import { evaluateProducer } from "../shared/producer";
-import { buildAppendBatch } from "../../../../storage/append-batch";
+import { buildAppendBatch } from "../../../../storage/stream/append-batch";
 import { broadcastSse, broadcastWebSocket } from "../realtime/handlers";
 import { buildPreCacheResponse } from "../realtime/handlers";
 import type { StreamContext } from "../types";

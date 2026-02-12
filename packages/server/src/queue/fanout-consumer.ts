@@ -1,9 +1,9 @@
-import { fanoutToSubscribers } from "../subscriptions/fanout";
+import { fanoutToSubscribers } from "../storage/estuary/fanout";
 import { createMetrics } from "../metrics";
 import { logError } from "../log";
 import { base64ToBuffer } from "../util/base64";
 import type { BaseEnv } from "../http/router";
-import type { FanoutQueueMessage } from "../subscriptions/types";
+import type { FanoutQueueMessage } from "../http/v1/estuary/types";
 
 /**
  * Queue consumer for async fanout.
@@ -13,22 +13,38 @@ import type { FanoutQueueMessage } from "../subscriptions/types";
  */
 export async function handleFanoutQueue(
   batch: MessageBatch<FanoutQueueMessage>,
-  env: BaseEnv,
+  env: BaseEnv
 ): Promise<void> {
   const metrics = createMetrics(env.METRICS);
 
   for (const message of batch.messages) {
-    const { projectId, streamId, estuaryIds, payload: payloadBase64, contentType, producerHeaders } = message.body;
+    const {
+      projectId,
+      streamId,
+      estuaryIds,
+      payload: payloadBase64,
+      contentType,
+      producerHeaders,
+    } = message.body;
     const start = Date.now();
 
     try {
       const payload = base64ToBuffer(payloadBase64);
-      const result = await fanoutToSubscribers(env, projectId, estuaryIds, payload, contentType, producerHeaders);
+      const result = await fanoutToSubscribers(
+        env,
+        projectId,
+        estuaryIds,
+        payload,
+        contentType,
+        producerHeaders
+      );
 
       // Remove stale subscribers via DO RPC (project-scoped key)
       if (result.staleEstuaryIds.length > 0) {
         const doKey = `${projectId}/${streamId}`;
-        const stub = env.SUBSCRIPTION_DO.get(env.SUBSCRIPTION_DO.idFromName(doKey));
+        const stub = env.SUBSCRIPTION_DO.get(
+          env.SUBSCRIPTION_DO.idFromName(doKey)
+        );
         await stub.removeSubscribers(result.staleEstuaryIds);
       }
 
@@ -50,7 +66,16 @@ export async function handleFanoutQueue(
         message.ack();
       }
     } catch (err) {
-      logError({ projectId, streamId, estuaryCount: estuaryIds.length, component: "fanout-queue" }, "fanout queue message failed", err);
+      logError(
+        {
+          projectId,
+          streamId,
+          estuaryCount: estuaryIds.length,
+          component: "fanout-queue",
+        },
+        "fanout queue message failed",
+        err
+      );
       message.retry();
     }
   }

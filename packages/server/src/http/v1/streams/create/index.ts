@@ -13,7 +13,7 @@ import {
   baseHeaders,
 } from "../../../shared/headers";
 import { validateBodySize } from "../shared/body";
-import { buildAppendBatch } from "../../../../storage/append-batch";
+import { buildAppendBatch } from "../../../../storage/stream/append-batch";
 import { evaluateProducer } from "../shared/producer";
 import type { StreamContext } from "../types";
 import type { StreamMeta } from "../../../../storage/types";
