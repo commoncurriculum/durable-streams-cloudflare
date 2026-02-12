@@ -1,11 +1,11 @@
-import { isJsonContentType } from "../http/shared/headers";
-import { errorResponse, ErrorCode } from "../http/shared/errors";
-import { buildJsonArray, parseJsonMessages } from "../http/v1/streams/shared/json";
-import { concatBuffers, toUint8Array } from "../http/v1/streams/shared/encoding";
-import type { StorageStatement, StreamStorage } from "./stream-do/types";
+import { isJsonContentType } from "../../http/shared/headers";
+import { errorResponse, ErrorCode } from "../../http/shared/errors";
+import { buildJsonArray, parseJsonMessages } from "../../http/v1/streams/shared/json";
+import { concatBuffers, toUint8Array } from "../../http/v1/streams/shared/encoding";
+import type { BatchOperation, StreamMetaUpdate, StreamStorage } from "./types";
 
 export type AppendResult = {
-  statements: StorageStatement[];
+  statements: BatchOperation[];
   newTailOffset: number;
   ssePayload: ArrayBuffer | null;
   error?: Response;
@@ -32,7 +32,7 @@ export async function buildAppendBatch(
     };
   }
 
-  const statements: StorageStatement[] = [];
+  const operations: BatchOperation[] = [];
   const now = Date.now();
 
   let messages: Array<{ body: ArrayBuffer; sizeBytes: number }> = [];
@@ -83,7 +83,7 @@ export async function buildAppendBatch(
     const messageStart = tailOffset;
     const messageEnd = isJson ? messageStart + 1 : messageStart + message.sizeBytes;
 
-    statements.push(
+    operations.push(
       storage.insertOpStatement({
         streamId,
         startOffset: messageStart,
@@ -101,43 +101,41 @@ export async function buildAppendBatch(
     tailOffset = messageEnd;
   }
 
-  const updateFields: string[] = ["tail_offset = ?"];
-  const updateValues: unknown[] = [tailOffset];
+  const metaUpdate: StreamMetaUpdate = {
+    tail_offset: tailOffset,
+    segment_messages_increment: messageCount,
+    segment_bytes_increment: byteCount,
+  };
 
   if (opts.streamSeq) {
-    updateFields.push("last_stream_seq = ?");
-    updateValues.push(opts.streamSeq);
+    metaUpdate.last_stream_seq = opts.streamSeq;
   }
 
-  updateFields.push("segment_messages = segment_messages + ?", "segment_bytes = segment_bytes + ?");
-  updateValues.push(messageCount, byteCount);
-
   if (opts.closeStream) {
-    updateFields.push("closed = 1", "closed_at = ?");
-    updateValues.push(now);
+    metaUpdate.closed = 1;
+    metaUpdate.closed_at = now;
     if (opts.producer) {
-      updateFields.push("closed_by_producer_id = ?", "closed_by_epoch = ?", "closed_by_seq = ?");
-      updateValues.push(opts.producer.id, opts.producer.epoch, opts.producer.seq);
+      metaUpdate.closed_by_producer_id = opts.producer.id;
+      metaUpdate.closed_by_epoch = opts.producer.epoch;
+      metaUpdate.closed_by_seq = opts.producer.seq;
     } else {
-      updateFields.push(
-        "closed_by_producer_id = NULL",
-        "closed_by_epoch = NULL",
-        "closed_by_seq = NULL",
-      );
+      metaUpdate.closed_by_producer_id = null;
+      metaUpdate.closed_by_epoch = null;
+      metaUpdate.closed_by_seq = null;
     }
   }
 
-  statements.push(storage.updateStreamStatement(streamId, updateFields, updateValues));
+  operations.push(storage.updateStreamMetaStatement(streamId, metaUpdate));
 
   if (opts.producer) {
-    statements.push(storage.producerUpsertStatement(streamId, opts.producer, tailOffset, now));
+    operations.push(storage.producerUpsertStatement(streamId, opts.producer, tailOffset, now));
   }
 
   const ssePayload = isJson
     ? buildJsonArray(messages)
     : messages.length === 1
-    ? messages[0].body
-    : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
+      ? messages[0].body
+      : concatBuffers(messages.map((msg) => toUint8Array(msg.body)));
 
-  return { statements, newTailOffset: tailOffset, ssePayload };
+  return { statements: operations, newTailOffset: tailOffset, ssePayload };
 }

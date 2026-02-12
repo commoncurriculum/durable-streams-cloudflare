@@ -13,7 +13,7 @@ import {
 import { HttpError, ErrorCode } from "../../../shared/errors";
 import { evaluateProducer } from "../shared/producer";
 import { validateStreamSeq, buildClosedConflict } from "../shared/close";
-import { buildAppendBatch } from "../../../../storage/append-batch";
+import { buildAppendBatch } from "../../../../storage/stream-do/append-batch";
 import { broadcastSse, broadcastWebSocket } from "../realtime/handlers";
 import { buildPreCacheResponse } from "../realtime/handlers";
 import type { StreamContext } from "../types";

@@ -8,8 +8,33 @@
  * - segments: Metadata for cold segments stored in R2
  */
 
-import { sqliteTable, text, integer, index, blob } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, customType } from "drizzle-orm/sqlite-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-arktype";
+
+/**
+ * Custom blob type that works with ArrayBuffer in Cloudflare Workers.
+ *
+ * Drizzle's built-in blob({ mode: "buffer" }) assumes Node.js Buffer,
+ * which is unavailable in Workers without nodejs_compat. This custom type
+ * maps directly to/from ArrayBuffer — the native type returned by
+ * Durable Objects' SQLite API.
+ */
+const arrayBufferBlob = customType<{
+  data: ArrayBuffer;
+  driverData: ArrayBuffer;
+}>({
+  dataType() {
+    return "blob";
+  },
+  fromDriver(value: unknown): ArrayBuffer {
+    if (value instanceof ArrayBuffer) return value;
+    if (ArrayBuffer.isView(value)) return value.buffer as ArrayBuffer;
+    throw new Error(`Expected ArrayBuffer or ArrayBufferView, got ${typeof value}`);
+  },
+  toDriver(value: ArrayBuffer): ArrayBuffer {
+    return value;
+  },
+});
 
 /**
  * stream_meta: One row per stream containing all stream metadata
@@ -58,7 +83,7 @@ export const ops = sqliteTable(
     producer_id: text("producer_id"),
     producer_epoch: integer("producer_epoch"),
     producer_seq: integer("producer_seq"),
-    body: blob("body", { mode: "buffer" }).notNull(),
+    body: arrayBufferBlob("body").notNull(),
     created_at: integer("created_at").notNull(),
   },
   (table) => ({

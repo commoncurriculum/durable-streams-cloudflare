@@ -24,7 +24,8 @@ export type {
   OpsStats,
   CreateStreamInput,
   SegmentInput,
-  StorageStatement,
+  BatchOperation,
+  StreamMetaUpdate,
 } from "./stream-do";
 
 // ============================================================================

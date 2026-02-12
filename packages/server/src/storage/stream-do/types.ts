@@ -29,7 +29,7 @@ export type ReadChunk = {
   start_offset: number;
   end_offset: number;
   size_bytes: number;
-  body: ArrayBuffer | Uint8Array | string | number[];
+  body: ArrayBuffer;
   created_at: number;
 };
 
@@ -71,18 +71,48 @@ export type SegmentInput = {
 };
 
 /**
- * Storage statement for batch operations
+ * A deferred storage operation for use in batch().
+ *
+ * Each BatchOperation is a thunk that, when called, executes a single
+ * Drizzle ORM statement. Operations are collected and then executed
+ * sequentially inside batch() to form an atomic unit of work within
+ * a single Durable Object blockConcurrencyWhile callback.
  */
-export type StorageStatement = {
-  sql: string;
-  args: unknown[];
+export type BatchOperation = () => Promise<void>;
+
+/**
+ * Typed update descriptor for stream_meta fields.
+ *
+ * For segment counters, use the `_increment` variants for relative
+ * additions (append path) and the bare field names for absolute
+ * sets (rotate path). If both are provided for the same counter,
+ * the absolute value takes precedence.
+ */
+export type StreamMetaUpdate = {
+  tail_offset?: number;
+  last_stream_seq?: string;
+  read_seq?: number;
+  segment_start?: number;
+  /** Absolute set for segment_messages */
+  segment_messages?: number;
+  /** Absolute set for segment_bytes */
+  segment_bytes?: number;
+  /** Increment segment_messages by this amount */
+  segment_messages_increment?: number;
+  /** Increment segment_bytes by this amount */
+  segment_bytes_increment?: number;
+  closed?: number;
+  closed_at?: number;
+  closed_by_producer_id?: string | null;
+  closed_by_epoch?: number | null;
+  closed_by_seq?: number | null;
 };
 
 /**
  * Interface for StreamDO storage operations
  */
 export interface StreamStorage {
-  batch(statements: StorageStatement[]): Promise<void>;
+  batch(operations: BatchOperation[]): Promise<void>;
 
   getStream(streamId: string): Promise<StreamMeta | null>;
   insertStream(input: CreateStreamInput): Promise<void>;
@@ -99,7 +129,7 @@ export interface StreamStorage {
     producer: { id: string; epoch: number; seq: number },
     lastOffset: number,
     lastUpdated: number,
-  ): StorageStatement;
+  ): BatchOperation;
   upsertProducer(
     streamId: string,
     producer: { id: string; epoch: number; seq: number },
@@ -119,20 +149,16 @@ export interface StreamStorage {
     producerSeq: number | null;
     body: ArrayBuffer;
     createdAt: number;
-  }): StorageStatement;
+  }): BatchOperation;
 
-  updateStreamStatement(
-    streamId: string,
-    updateFields: string[],
-    updateValues: unknown[],
-  ): StorageStatement;
+  updateStreamMetaStatement(streamId: string, updates: StreamMetaUpdate): BatchOperation;
 
   selectOverlap(streamId: string, offset: number): Promise<ReadChunk | null>;
   selectOpsFrom(streamId: string, offset: number): Promise<ReadChunk[]>;
   selectOpsRange(streamId: string, startOffset: number, endOffset: number): Promise<ReadChunk[]>;
   selectAllOps(streamId: string): Promise<ReadChunk[]>;
   deleteOpsThrough(streamId: string, endOffset: number): Promise<void>;
-  deleteOpsThroughStatement(streamId: string, endOffset: number): StorageStatement;
+  deleteOpsThroughStatement(streamId: string, endOffset: number): BatchOperation;
   getOpsStatsFrom(streamId: string, startOffset: number): Promise<OpsStats>;
 
   insertSegment(input: SegmentInput): Promise<void>;
