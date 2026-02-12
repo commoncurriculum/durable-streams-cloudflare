@@ -3,8 +3,6 @@ import { isValidEstuaryId, DEFAULT_ESTUARY_TTL_SECONDS } from "../../../constant
 import { logError } from "../../../log";
 import { createMetrics } from "../../../metrics";
 import { putStreamMetadata } from "../../../storage/registry";
-import { handlePut } from "../streams/create";
-import { handleDelete } from "../streams/delete";
 
 // ============================================================================
 // Validation schemas
