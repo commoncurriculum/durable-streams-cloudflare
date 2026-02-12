@@ -109,11 +109,11 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
   app.use("*", authenticationMiddleware);
 
   // Stream-scoped middleware
-  app.use("/v1/stream/*", authorizationMiddleware);
-  app.use("/v1/stream/*", timingMiddleware());
-  app.use("/v1/stream/*", bodySizeLimit(MAX_APPEND_BYTES));
-  app.use("/v1/stream/*", rejectEmptyQueryParams(["offset", "cursor"]));
-  app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
+  app.use("/v1/stream/:streamPath{.+}", authorizationMiddleware);
+  app.use("/v1/stream/:streamPath{.+}", timingMiddleware());
+  app.use("/v1/stream/:streamPath{.+}", bodySizeLimit(MAX_APPEND_BYTES));
+  app.use("/v1/stream/:streamPath{.+}", rejectEmptyQueryParams(["offset", "cursor"]));
+  app.use("/v1/stream/:streamPath{.+}", createEdgeCacheMiddleware(inFlight));
   // #endregion docs-request-arrives
 
   // Health check
@@ -205,52 +205,25 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
 
   // Estuary subscribe/unsubscribe routes
   app.post(
-    "/v1/estuary/subscribe/*",
+    "/v1/estuary/subscribe/:estuaryPath{.+}",
     describeRoute({
       tags: ["Estuary"],
       summary: "Subscribe estuary to a stream",
       description:
         "Subscribe an estuary to a source stream. Messages published to the source are fan-out replicated to the estuary stream.",
-      responses: {
-        200: {
-          description: "Subscription created",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  estuaryId: { type: "string" },
-                  streamId: { type: "string" },
-                  estuaryStreamPath: { type: "string" },
-                  expiresAt: { type: "number" },
-                  isNewEstuary: { type: "boolean" },
-                },
-              },
-            },
-          },
-        },
-      },
+      responses: { 200: { description: "Subscription created" } },
     }),
     validator("json", subscribeBodySchema, undefined, morphFallback),
     subscribeHttp,
   );
 
   app.delete(
-    "/v1/estuary/subscribe/*",
+    "/v1/estuary/subscribe/:estuaryPath{.+}",
     describeRoute({
       tags: ["Estuary"],
       summary: "Unsubscribe estuary from a stream",
       description: "Remove an estuary's subscription to a source stream.",
-      responses: {
-        200: {
-          description: "Unsubscribed",
-          content: {
-            "application/json": {
-              schema: { type: "object", properties: { success: { type: "boolean" } } },
-            },
-          },
-        },
-      },
+      responses: { 200: { description: "Unsubscribed" } },
     }),
     validator("json", unsubscribeBodySchema, undefined, morphFallback),
     unsubscribeHttp,
@@ -258,126 +231,118 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
 
   // Estuary management routes
   app.get(
-    "/v1/estuary/*",
+    "/v1/estuary/:estuaryPath{.+}",
     describeRoute({
       tags: ["Estuary"],
       summary: "Get estuary info",
       description: "Retrieve estuary metadata including subscriptions and content type.",
-      responses: {
-        200: {
-          description: "Estuary info",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  estuaryId: { type: "string" },
-                  estuaryStreamPath: { type: "string" },
-                  subscriptions: {
-                    type: "array",
-                    items: { type: "object", properties: { streamId: { type: "string" } } },
-                  },
-                  contentType: { type: ["string", "null"] },
-                },
-              },
-            },
-          },
-        },
-      },
+      responses: { 200: { description: "Estuary info" } },
     }),
     getEstuaryHttp,
   );
   app.post(
-    "/v1/estuary/*",
+    "/v1/estuary/:estuaryPath{.+}",
     describeRoute({
       tags: ["Estuary"],
       summary: "Touch estuary",
       description: "Create or extend the TTL of an estuary stream.",
-      responses: {
-        200: {
-          description: "Estuary touched",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  estuaryId: { type: "string" },
-                  expiresAt: { type: "number" },
-                },
-              },
-            },
-          },
-        },
-      },
+      responses: { 200: { description: "Estuary touched" } },
     }),
     touchEstuaryHttp,
   );
   app.delete(
-    "/v1/estuary/*",
+    "/v1/estuary/:estuaryPath{.+}",
     describeRoute({
       tags: ["Estuary"],
       summary: "Delete estuary",
       description: "Delete an estuary and its underlying stream.",
-      responses: {
-        200: {
-          description: "Estuary deleted",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  estuaryId: { type: "string" },
-                  deleted: { type: "boolean" },
-                },
-              },
-            },
-          },
-        },
-      },
+      responses: { 200: { description: "Estuary deleted" } },
     }),
     deleteEstuaryHttp,
   );
 
   // #region docs-route-to-do
-  // Stream route — all pre/post-processing handled by middleware
-  app.all(
-    "/v1/stream/*",
+  // Stream route — all pre/post-processing handled by middleware.
+  // Each method is registered separately so hono-openapi emits per-method OpenAPI paths
+  // (app.all() stores specs as shared context rather than standalone paths).
+  // biome-ignore lint: Hono context typing is complex
+  const streamHandler = async (c: any) => {
+    const doKey = c.get("streamPath");
+    const stub = c.env.STREAMS.getByName(doKey);
+    const doneOrigin = createTimer(c, "edge.origin");
+    const response = await stub.routeStreamRequest(doKey, c.req.raw);
+    doneOrigin();
+    return response;
+  };
+
+  const streamPath = "/v1/stream/:streamPath{.+}";
+
+  app.put(
+    streamPath,
     describeRoute({
       tags: ["Streams"],
-      summary: "Stream operations",
+      summary: "Create a stream",
       description:
-        "Proxy to the stream Durable Object. PUT creates a stream, POST appends, GET reads (supports offset, cursor, long-poll, SSE, WebSocket), HEAD returns metadata, DELETE removes the stream.",
+        "Create a new append-only stream. The Content-Type header sets the stream's content type.",
       responses: {
-        200: { description: "Success — response varies by method and content type" },
-        201: { description: "Stream created (PUT)" },
-        204: { description: "Stream deleted or close-only append (DELETE / POST)" },
-        304: { description: "Not modified (conditional GET with ETag)" },
+        201: { description: "Stream created" },
+        409: { description: "Stream already exists" },
+      },
+    }),
+    streamHandler,
+  );
+  app.post(
+    streamPath,
+    describeRoute({
+      tags: ["Streams"],
+      summary: "Append to a stream",
+      description:
+        "Append one or more messages to an existing stream. Content-Type must match the stream's content type.",
+      responses: {
+        200: { description: "Messages appended" },
+        204: { description: "Close-only append (no payload)" },
         404: { description: "Stream not found" },
-        409: { description: "Content-type mismatch or stream already exists" },
+        409: { description: "Content-type mismatch" },
         413: { description: "Payload too large" },
       },
     }),
-    // biome-ignore lint: Hono context typing is complex
-    async (c: any) => {
-      const doKey = c.get("streamPath");
-      const stub = c.env.STREAMS.getByName(doKey);
-      const doneOrigin = createTimer(c, "edge.origin");
-      const response = await stub.routeStreamRequest(doKey, c.req.raw);
-      doneOrigin();
-      return response;
-    },
+    streamHandler,
+  );
+  app.get(
+    streamPath,
+    describeRoute({
+      tags: ["Streams"],
+      summary: "Read from a stream",
+      description:
+        "Read messages from a stream. Supports offset/cursor query params, long-poll (Prefer: wait=N), SSE (Accept: text/event-stream), and WebSocket (Upgrade: websocket).",
+      responses: {
+        200: { description: "Messages returned" },
+        304: { description: "Not modified (conditional GET with ETag)" },
+        404: { description: "Stream not found" },
+      },
+    }),
+    streamHandler,
+  );
+  app.delete(
+    streamPath,
+    describeRoute({
+      tags: ["Streams"],
+      summary: "Delete a stream",
+      description: "Permanently delete a stream and all its data.",
+      responses: {
+        204: { description: "Stream deleted" },
+        404: { description: "Stream not found" },
+      },
+    }),
+    streamHandler,
   );
   // #endregion docs-route-to-do
 
   // 404 fallback
-  app.all(
-    "*",
-    describeRoute({ hide: true }),
-    // biome-ignore lint: Hono context typing is complex
-    (c: any) => {
-      return c.text("not found", 404, { "Cache-Control": "no-store" });
-    },
-  );
+  // biome-ignore lint: Hono context typing is complex
+  app.all("*", (c: any) => {
+    return c.text("not found", 404, { "Cache-Control": "no-store" });
+  });
 
   // biome-ignore lint: Hono context typing is complex
   app.onError((err: Error, c: any) => {
