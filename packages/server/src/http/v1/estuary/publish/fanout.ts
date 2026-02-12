@@ -1,7 +1,15 @@
-import type { BaseEnv } from "../http/router";
-import { FANOUT_BATCH_SIZE, FANOUT_RPC_TIMEOUT_MS } from "../constants";
-import { logWarn } from "../log";
-import type { FanoutResult } from "./types";
+import type { BaseEnv } from "../../../router";
+import {
+  FANOUT_BATCH_SIZE,
+  FANOUT_RPC_TIMEOUT_MS,
+} from "../../../../constants";
+import { logWarn } from "../../../../log";
+
+export interface FanoutResult {
+  successes: number;
+  failures: number;
+  staleEstuaryIds: string[];
+}
 
 /**
  * Wrap a promise with a timeout. Rejects with a TimeoutError if the
@@ -30,8 +38,12 @@ export async function fanoutToSubscribers(
   estuaryIds: string[],
   payload: ArrayBuffer,
   contentType: string,
-  producerHeaders?: { producerId: string; producerEpoch: string; producerSeq: string },
-  rpcTimeoutMs: number = FANOUT_RPC_TIMEOUT_MS,
+  producerHeaders?: {
+    producerId: string;
+    producerEpoch: string;
+    producerSeq: string;
+  },
+  rpcTimeoutMs: number = FANOUT_RPC_TIMEOUT_MS
 ): Promise<FanoutResult> {
   let successes = 0;
   let failures = 0;
@@ -44,7 +56,7 @@ export async function fanoutToSubscribers(
       batch.map((estuaryId) => {
         const doKey = `${projectId}/${estuaryId}`;
         const stub = env.STREAMS.get(env.STREAMS.idFromName(doKey));
-        
+
         // Build POST request to append to stream
         const headers = new Headers({ "Content-Type": contentType });
         if (producerHeaders) {
@@ -52,7 +64,7 @@ export async function fanoutToSubscribers(
           headers.set("X-Producer-Epoch", producerHeaders.producerEpoch);
           headers.set("X-Producer-Seq", producerHeaders.producerSeq);
         }
-        
+
         const request = new Request(`https://do/v1/stream/${doKey}`, {
           method: "POST",
           headers,
@@ -60,12 +72,12 @@ export async function fanoutToSubscribers(
           // so each routeStreamRequest call needs its own copy.
           body: payload.slice(0),
         });
-        
+
         return withTimeout(
           stub.routeStreamRequest(doKey, false, request),
-          rpcTimeoutMs,
+          rpcTimeoutMs
         );
-      }),
+      })
     );
     results.push(...batchResults);
   }
@@ -82,12 +94,23 @@ export async function fanoutToSubscribers(
         failures++;
       } else {
         // Other error
-        logWarn({ estuaryId: estuaryIds[i], component: "fanout", status: response.status }, "fanout RPC failed");
+        logWarn(
+          {
+            estuaryId: estuaryIds[i],
+            component: "fanout",
+            status: response.status,
+          },
+          "fanout RPC failed"
+        );
         failures++;
       }
     } else {
       const error = result.reason;
-      logWarn({ estuaryId: estuaryIds[i], component: "fanout" }, "fanout RPC rejected", error);
+      logWarn(
+        { estuaryId: estuaryIds[i], component: "fanout" },
+        "fanout RPC rejected",
+        error
+      );
       failures++;
     }
   }

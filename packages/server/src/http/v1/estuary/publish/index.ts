@@ -74,7 +74,7 @@ export async function publishToStream(
   // NOT the hex-encoded source offset.
   const fanoutSeq = ctx.nextFanoutSeq;
   const newFanoutSeq = ctx.nextFanoutSeq + 1;
-  await ctx.storage.persistFanoutSeq(nextSeq);
+  await ctx.storage.persistFanoutSeq(newFanoutSeq);
 
   const fanoutProducerHeaders = {
     producerId: `fanout:${streamId}`,
@@ -164,13 +164,13 @@ export async function publishToStream(
       // Circuit breaker is open — skip inline fanout entirely.
       // Source write already committed; never return an error here.
       fanoutMode = "circuit-open";
-    } else if (subscribers.length > maxInline) {
+    } else if (subscriberIds.length > maxInline) {
       // Too many subscribers for inline fanout without a queue
       fanoutMode = "skipped";
       logWarn(
         {
           streamId,
-          subscribers: subscribers.length,
+          subscribers: subscriberIds.length,
           maxInline,
           component: "fanout",
         },
@@ -181,7 +181,7 @@ export async function publishToStream(
       const fanoutResult = await fanoutToSubscribers(
         ctx.env,
         projectId,
-        subscribers,
+        subscriberIds,
         fanoutPayload,
         params.contentType,
         fanoutProducerHeaders
@@ -189,7 +189,7 @@ export async function publishToStream(
       successCount = fanoutResult.successes;
       failureCount = fanoutResult.failures;
       ctx.updateCircuitBreaker(fanoutResult.successes, fanoutResult.failures);
-      ctx.removeStaleSubscribers(fanoutResult.staleEstuaryIds);
+      await ctx.removeStaleSubscribers(fanoutResult.staleEstuaryIds);
     }
 
     // Record fanout metrics (only for inline — queued records its own)
@@ -197,7 +197,7 @@ export async function publishToStream(
       const latencyMs = Date.now() - start;
       metrics.fanout({
         streamId,
-        subscribers: subscribers.length,
+        subscribers: subscriberIds.length,
         success: successCount,
         failures: failureCount,
         latencyMs,
@@ -206,7 +206,7 @@ export async function publishToStream(
         logWarn(
           {
             streamId,
-            subscribers: subscribers.length,
+            subscribers: subscriberIds.length,
             successes: successCount,
             failures: failureCount,
             latencyMs,
@@ -217,14 +217,14 @@ export async function publishToStream(
       }
     } else if (fanoutMode === "circuit-open") {
       logWarn(
-        { streamId, subscribers: subscribers.length, component: "fanout" },
+        { streamId, subscribers: subscriberIds.length, component: "fanout" },
         "fanout skipped: circuit breaker open"
       );
     }
   }
 
   // Record publish metric
-  metrics.publish(streamId, subscribers.length, Date.now() - start);
+  metrics.publish(streamId, subscriberIds.length, Date.now() - start);
 
   return {
     result: {
@@ -233,7 +233,7 @@ export async function publishToStream(
       upToDate: null,
       streamClosed: null,
       body: "",
-      fanoutCount: subscribers.length,
+      fanoutCount: subscriberIds.length,
       fanoutSuccesses: successCount,
       fanoutFailures: failureCount,
       fanoutMode,
