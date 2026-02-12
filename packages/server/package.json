@@ -35,7 +35,7 @@
     "openapi": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {
-    "@hono/arktype-validator": "^2.0.1",
+
     "@hono/standard-validator": "^0.2.2",
     "arkregex": "^0.0.5",
     "arktype": "^2.1.29",

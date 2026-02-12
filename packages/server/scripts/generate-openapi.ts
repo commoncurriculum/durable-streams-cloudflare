@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateSpecs } from "hono-openapi";
 import { createStreamWorker } from "../src/http/router";
 
-const outDir = path.resolve(import.meta.dirname, "..");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const outDir = path.resolve(__dirname, "..");
 
 async function main() {
   const { app } = createStreamWorker();
