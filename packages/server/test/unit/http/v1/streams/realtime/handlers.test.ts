@@ -3,7 +3,7 @@ import {
   buildSseControlEvent,
   buildWsControlMessage,
   buildLongPollHeaders,
-} from "../../../src/http/v1/streams/realtime/handlers";
+} from "../../../../../../src/http/v1/streams/realtime/handlers";
 
 describe("buildSseControlEvent with writeTimestamp", () => {
   it("includes streamWriteTimestamp when writeTimestamp > 0", () => {
