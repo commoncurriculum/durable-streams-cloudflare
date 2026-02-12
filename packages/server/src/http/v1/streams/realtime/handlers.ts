@@ -23,7 +23,7 @@ import {
 } from "../../../shared/limits";
 import { ZERO_OFFSET } from "../shared/offsets";
 import { applyExpiryHeaders } from "../../../shared/expiry";
-import type { StreamMeta } from "../../../../storage";
+import type { StreamMeta } from "../../../../storage/stream-do";
 import type { StreamContext } from "../types";
 
 // ============================================================================

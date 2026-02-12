@@ -10,7 +10,7 @@ import {
 } from "../../../shared/headers";
 import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { isInteger } from "./validation";
-import type { ProducerState, StreamStorage } from "../../../../storage";
+import type { ProducerState, StreamStorage } from "../../../../storage/stream-do";
 
 // #region docs-producer-types
 export type ProducerInput = {

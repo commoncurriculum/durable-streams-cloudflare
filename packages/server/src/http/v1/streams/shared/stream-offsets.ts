@@ -1,7 +1,7 @@
 import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { decodeOffsetParts, encodeOffset } from "./offsets";
 import type { ResolveOffsetResult } from "../types";
-import type { StreamMeta, StreamStorage } from "../../../../storage";
+import type { StreamMeta, StreamStorage } from "../../../../storage/stream-do";
 
 // ============================================================================
 // Offset encoding
