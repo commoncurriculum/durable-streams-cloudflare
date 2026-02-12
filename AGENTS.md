@@ -83,18 +83,25 @@ Both core and subscription use [ArkType v2](https://arktype.io/) for schema vali
 pnpm -r run typecheck
 ```
 
-Runs `tsc --noEmit` in every package that has a `typecheck` script (core, subscription, admin-core, admin-subscription, cli).
+Runs `tsc --noEmit` in every package that has a `typecheck` script.
 
-### 2. Lint (core + subscription)
+### 2. Format check (all packages)
 
 ```sh
-pnpm -C packages/core run lint
-pnpm -C packages/subscription run lint
+pnpm -r run format:check
 ```
 
-Runs `oxlint src test` in each package. Fix all errors **and** warnings — CI treats warnings as informational today but errors are fatal.
+Runs `oxfmt --check` in every package with source code. Fails if any file needs formatting. To auto-fix: `pnpm -r run format`
 
-### 3. Tests (all packages)
+### 3. Lint (all packages)
+
+```sh
+pnpm -r run lint
+```
+
+Runs `oxlint src test` (or `oxlint src` for packages without tests). Fix all errors **and** warnings — CI treats warnings as informational today but errors are fatal.
+
+### 4. Tests (all packages)
 
 ```sh
 pnpm -r run test

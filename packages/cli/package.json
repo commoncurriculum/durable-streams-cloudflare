@@ -12,6 +12,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
+    "format": "oxfmt --write src",
+    "format:check": "oxfmt --check src",
+    "lint": "oxlint src",
     "prepublishOnly": "pnpm run clean && pnpm run build",
     "typecheck": "tsc --noEmit"
   },
