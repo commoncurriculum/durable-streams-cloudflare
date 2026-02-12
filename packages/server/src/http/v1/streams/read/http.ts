@@ -44,7 +44,12 @@ export async function readStreamHttp(
     }
 
     // 2. Determine read mode from query params
-    const offsetParam = url.searchParams.get("offset") ?? "-1";
+    const offsetParamRaw = url.searchParams.get("offset");
+    // Reject empty string as invalid (e.g., ?offset=)
+    if (offsetParamRaw === "") {
+      return errorResponse(400, "offset parameter cannot be empty");
+    }
+    const offsetParam = offsetParamRaw ?? "-1";
     const cursor = url.searchParams.get("cursor");
 
     let mode: "head" | "now" | "offset";

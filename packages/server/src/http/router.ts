@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { arktypeValidator } from "@hono/arktype-validator";
 import { logger } from "hono/logger";
-import { bodyLimit } from "hono/body-limit";
 import type { StreamDO } from "./v1/streams";
 import type { InFlightResult } from "./middleware/coalesce";
 import type { StreamMeta } from "./middleware/cache";
@@ -16,6 +15,7 @@ import { authenticationMiddleware } from "./middleware/authentication";
 import { authorizationMiddleware } from "./middleware/authorization";
 import { timingMiddleware, createTimer } from "./middleware/timing";
 import { createEdgeCacheMiddleware } from "./middleware/edge-cache";
+import { bodySizeLimit } from "./middleware/body-size";
 
 // Limits
 import { MAX_APPEND_BYTES } from "./shared/limits";
@@ -99,7 +99,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
   // Stream-scoped middleware
   app.use("/v1/stream/*", authorizationMiddleware);
   app.use("/v1/stream/*", timingMiddleware());
-  app.use("/v1/stream/*", bodyLimit({ maxSize: MAX_APPEND_BYTES }));
+  app.use("/v1/stream/*", bodySizeLimit(MAX_APPEND_BYTES));
   app.use("/v1/stream/*", createEdgeCacheMiddleware(inFlight));
   // #endregion docs-request-arrives
 

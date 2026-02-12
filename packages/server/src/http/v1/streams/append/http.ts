@@ -1,4 +1,4 @@
-import { errorResponse, errorToResponse } from "../../../shared/errors";
+import { errorResponse, errorToResponse, HttpError } from "../../../shared/errors";
 import {
   HEADER_STREAM_CLOSED,
   HEADER_STREAM_SEQ,
@@ -18,10 +18,17 @@ function parseContentType(request: Request): string | null {
 
 /**
  * Extract raw data from a POST request.
- * This is a simple data extraction with no validation logic.
+ * Body size validation is handled by middleware (bodySizeLimit) before this function is called.
  */
 async function extractPostInput(streamId: string, request: Request): Promise<RawPostInput> {
-  const bodyBytes = new Uint8Array(await request.arrayBuffer());
+  // Wrap arrayBuffer() to catch platform-level errors (e.g., Cloudflare's own hard limits)
+  let bodyBytes: Uint8Array;
+  try {
+    bodyBytes = new Uint8Array(await request.arrayBuffer());
+  } catch {
+    // If reading the body fails, treat it as payload too large
+    throw new HttpError(413, "payload too large");
+  }
 
   return {
     streamId,
@@ -71,43 +78,47 @@ export async function appendStreamHttp(
   streamId: string,
   request: Request,
 ): Promise<Response> {
-  // 1. Parse HTTP request OUTSIDE blockConcurrencyWhile (no state mutation here)
-  const raw = await extractPostInput(streamId, request);
-  const parsed = parsePostInput(raw);
-  if (parsed.kind === "error") return parsed.response;
+  try {
+    // 1. Parse HTTP request OUTSIDE blockConcurrencyWhile (no state mutation here)
+    const raw = await extractPostInput(streamId, request);
+    const parsed = parsePostInput(raw);
+    if (parsed.kind === "error") return parsed.response;
 
-  const { bodyBytes, producer, closeStream } = parsed.value;
+    const { bodyBytes, producer, closeStream } = parsed.value;
 
-  // 2. Validate Content-Length header matches actual body (HTTP protocol requirement)
-  const contentLengthHeader = request.headers.get("Content-Length");
-  if (contentLengthHeader !== null) {
-    const declaredLength = Number.parseInt(contentLengthHeader, 10);
-    if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
-      return errorResponse(
-        400,
-        `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
-      );
+    // 2. Validate Content-Length header matches actual body (HTTP protocol requirement)
+    const contentLengthHeader = request.headers.get("Content-Length");
+    if (contentLengthHeader !== null) {
+      const declaredLength = Number.parseInt(contentLengthHeader, 10);
+      if (Number.isNaN(declaredLength) || declaredLength !== bodyBytes.length) {
+        return errorResponse(
+          400,
+          `Content-Length mismatch: header=${contentLengthHeader}, actual=${bodyBytes.length}`,
+        );
+      }
     }
+
+    // 3. Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
+    return ctx.state.blockConcurrencyWhile(async () => {
+      try {
+        const result = await appendStream(ctx, {
+          streamId,
+          payload: bodyBytes,
+          contentType: parsed.value.contentType,
+          streamSeq: parsed.value.streamSeq,
+          producer: producer ?? undefined,
+          closeStream,
+        });
+
+        return new Response(null, {
+          status: result.status,
+          headers: result.headers,
+        });
+      } catch (error) {
+        return errorToResponse(error);
+      }
+    });
+  } catch (error) {
+    return errorToResponse(error);
   }
-
-  // 3. Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
-  return ctx.state.blockConcurrencyWhile(async () => {
-    try {
-      const result = await appendStream(ctx, {
-        streamId,
-        payload: bodyBytes,
-        contentType: parsed.value.contentType,
-        streamSeq: parsed.value.streamSeq,
-        producer: producer ?? undefined,
-        closeStream,
-      });
-
-      return new Response(null, {
-        status: result.status,
-        headers: result.headers,
-      });
-    } catch (error) {
-      return errorToResponse(error);
-    }
-  });
 }
