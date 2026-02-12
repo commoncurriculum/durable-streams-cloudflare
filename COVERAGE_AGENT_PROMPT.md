@@ -8,6 +8,33 @@ Copy this entire document and paste it into a new LLM session to work on test co
 
 Improve test coverage for the Durable Streams Cloudflare server package. Current coverage is **62.78%**, goal is **70%+**.
 
+## ⚠️ CRITICAL: Estuary Tests Currently Failing
+
+**Status**: 50 comprehensive estuary tests have been written but are failing with 400 Bad Request errors.
+
+**Files Created** (in `test/implementation/estuary/`):
+
+- `subscribe.test.ts` (11 tests)
+- `unsubscribe.test.ts` (8 tests)
+- `get.test.ts` (8 tests)
+- `touch.test.ts` (11 tests)
+- `delete.test.ts` (12 tests)
+
+**Issue**: All estuary endpoint requests return 400 Bad Request, suggesting:
+
+1. Request format/validation issue
+2. Missing bindings in test environment
+3. Path parsing middleware not working for estuary routes
+4. ArkType validation failing (uses `morphFallback`)
+
+**Next Agent Must**:
+
+1. Debug why `/v1/estuary/subscribe/test-project/stream-id` returns 400
+2. Check if auth is required (README examples show JWT tokens)
+3. Verify path-parsing middleware extracts projectId/streamId correctly
+4. Check test environment has all required DO namespaces (ESTUARY_DO, SUBSCRIPTION_DO)
+5. Read actual error response bodies to see validation messages
+
 ## Quick Start
 
 ```bash
@@ -56,51 +83,43 @@ From highest to lowest impact:
 
 ## How to Add Tests
 
-### For Estuary Endpoints (Priority 1)
+### For Estuary Endpoints (Priority 1) - DEBUG NEEDED
 
-Create integration tests in `test/implementation/estuary/`:
+**⚠️ Tests exist but are failing - see top of document for details.**
 
-```typescript
-// test/implementation/estuary/subscribe.test.ts
-import { describe, it, expect } from "vitest";
-import { createClient, uniqueStreamId } from "../helpers";
+The estuary test files already exist in `test/implementation/estuary/` but need debugging:
 
-describe("Estuary subscribe", () => {
-  it("subscribes session to estuary", async () => {
-    const baseUrl = process.env.IMPLEMENTATION_TEST_URL;
-    const estuaryId = uniqueStreamId("estuary");
+**Correct API Format** (from README.md):
 
-    // Create estuary first
-    const createRes = await fetch(`${baseUrl}/v1/estuary/${estuaryId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        streamId: "test-stream",
-        contentType: "application/json",
-      }),
-    });
-    expect(createRes.status).toBe(201);
+- Subscribe: `POST /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
+- Unsubscribe: `DELETE /v1/estuary/subscribe/:projectId/:streamId` with body `{"estuaryId":"user-123"}`
+- Get: `GET /v1/estuary/:projectId/:estuaryId`
+- Touch: `POST /v1/estuary/:projectId/:estuaryId`
+- Delete: `DELETE /v1/estuary/:projectId/:estuaryId`
 
-    // Subscribe
-    const subscribeRes = await fetch(`${baseUrl}/v1/estuary/${estuaryId}/subscribe`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: "session-1" }),
-    });
-    expect(subscribeRes.status).toBe(200);
-  });
-});
+**Example Working Pattern** (from README):
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"estuaryId":"user-alice"}' \
+  $URL/v1/estuary/subscribe/my-project/notifications
 ```
 
-**Note**: Use `createClient()` and `uniqueStreamId()` from `../helpers` - see existing tests in `test/implementation/streams/` for patterns.
+**Key Points**:
 
-**Files to create:**
+1. Router uses pattern `/v1/estuary/subscribe/:estuaryPath{.+}` with `{.+}` capturing rest of path
+2. Path-parsing middleware extracts projectId/streamId from path
+3. HTTP handler expects `projectId` and `streamId` from context, `estuaryId` from JSON body
+4. All examples in README show JWT auth - may be required
 
-- `test/implementation/estuary/subscribe.test.ts` - subscribe/unsubscribe
-- `test/implementation/estuary/publish.test.ts` - publish/fanout
-- `test/implementation/estuary/touch.test.ts` - keepalive
-- `test/implementation/estuary/get.test.ts` - get info
-- `test/implementation/estuary/delete.test.ts` - delete estuary
+**Debug Steps**:
+
+1. Check if authentication is required for estuary endpoints
+2. Add auth header to test requests if needed
+3. Read response body to see actual validation error messages
+4. Verify test environment has ESTUARY_DO and SUBSCRIPTION_DO bindings
+5. Check if path-parsing middleware is running for estuary routes
 
 ### For Queue Consumer (Priority 2)
 
@@ -236,14 +255,14 @@ describe("Feature unit test", () => {
 **Estuary endpoints** (see `packages/server/README.md` for details):
 
 ```
-PUT    /v1/estuary/:id                    Create estuary
-GET    /v1/estuary/:id                    Get estuary info
-DELETE /v1/estuary/:id                    Delete estuary
-POST   /v1/estuary/:id/subscribe          Subscribe session
-POST   /v1/estuary/:id/unsubscribe        Unsubscribe session
-POST   /v1/estuary/:id/publish            Publish to all subscribers
-POST   /v1/estuary/:id/touch              Keep session alive
+POST   /v1/estuary/subscribe/:projectId/:streamId   Subscribe estuary to stream
+DELETE /v1/estuary/subscribe/:projectId/:streamId   Unsubscribe estuary from stream
+GET    /v1/estuary/:projectId/:estuaryId            Get estuary info
+POST   /v1/estuary/:projectId/:estuaryId            Touch (refresh TTL)
+DELETE /v1/estuary/:projectId/:estuaryId            Delete estuary
 ```
+
+**Important**: Subscribe/unsubscribe send `{"estuaryId": "..."}` in JSON body, not in path.
 
 ## Finding Uncovered Lines
 
@@ -265,6 +284,7 @@ cat src/http/v1/estuary/publish/index.ts
 
 After your work:
 
+- [ ] **FIX FAILING TESTS**: Debug and fix 50 existing estuary tests (currently failing with 400 errors)
 - [ ] Overall coverage ≥ 70% (currently 62.78%)
 - [ ] Estuary endpoints have ≥ 70% coverage (currently ~2%)
 - [ ] Queue consumer has ≥ 60% coverage (currently 0%)
@@ -319,25 +339,44 @@ open coverage-combined/index.html  # Visual report
 
 ## Start Here
 
-1. Run `pnpm cov` to see current status
-2. Run `pnpm run coverage:lines -- --zero` to see priority files
-3. Pick the estuary endpoint with the most uncovered lines
-4. Read the source file to understand what it does
-5. Create a test file in `test/implementation/estuary/`
-6. Write tests covering the main code paths
-7. Run `pnpm run test:implementation` to verify tests pass
-8. Run `pnpm cov` to see coverage improvement
-9. Repeat for next file
+**FIRST PRIORITY**: Fix the failing estuary tests!
+
+1. Run `pnpm run test -- test/implementation/estuary/subscribe.test.ts` to see actual errors
+2. Read the response body from failed requests to see validation error messages
+3. Check if authentication is required (try adding mock JWT header)
+4. Verify bindings: check `vitest.implementation.config.ts` has ESTUARY_DO and SUBSCRIPTION_DO
+5. Test path parsing: add logs to see if projectId/streamId are being extracted
+6. Compare with working stream tests to find differences
+
+**AFTER fixing tests**:
+
+1. Run `pnpm run test -- test/implementation/estuary/` to verify all pass
+2. Run `pnpm cov` to see coverage improvement
+3. Run `pnpm run coverage:lines -- estuary` to see what's still uncovered
+4. Add tests for publish/fanout endpoint (complex, involves queue)
+5. Add tests for queue consumer
+6. Verify CI passes: `pnpm -r run typecheck && pnpm -C packages/server run test`
 
 **Focus on files with 0% coverage first - biggest impact!**
 
 ## Expected Time
 
-- Estuary tests: ~2-4 hours (20 files)
+- **Debug existing estuary tests**: ~1-2 hours (50 tests already written, just need fixing)
+- Add publish/fanout tests: ~1-2 hours (complex endpoint)
 - Queue consumer test: ~30 minutes (1 file)
-- Edge cases: ~1-2 hours
+- Edge cases and refinement: ~1-2 hours
 
 Total: ~4-7 hours to reach 70% coverage
+
+## Key Learnings from Previous Attempt
+
+1. **Path format matters**: Estuary routes use `/:estuaryPath{.+}` pattern, middleware parses into projectId/streamId
+2. **Integration tests use fetch**: Real HTTP requests to live worker, NOT Hono's `app.request()`
+3. **Unit tests use app.request()**: Only for testing Hono app directly without worker
+4. **AUTH may be required**: README examples show JWT tokens for estuary endpoints
+5. **Validation is strict**: ArkType validation with `morphFallback` - check schemas carefully
+6. **Test environment**: Must have all DO bindings (STREAMS, ESTUARY_DO, SUBSCRIPTION_DO)
+7. **Read response bodies**: Don't just check status codes, read error messages for debugging
 
 ---
 
