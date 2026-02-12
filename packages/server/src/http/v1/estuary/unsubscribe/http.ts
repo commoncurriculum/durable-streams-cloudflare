@@ -2,12 +2,13 @@ import { type } from "arktype";
 import type { BaseEnv } from "../../../router";
 import { unsubscribeFromStream } from "./index";
 import { isValidEstuaryId } from "../../../../constants";
+import type { UnsubscribeResult } from "../types";
 
 // ============================================================================
 // Validation Schema
 // ============================================================================
 
-export const unsubscribeBodySchema = type({
+export const unsubscribeRequestSchema = type({
   estuaryId: type("string > 0").pipe((s, ctx) => {
     if (!isValidEstuaryId(s)) return ctx.error("Invalid estuaryId format");
     return s;
@@ -27,11 +28,11 @@ export async function unsubscribeHttp(c: any): Promise<Response> {
   const streamId = c.get("streamId");
   const { estuaryId } = c.req.valid("json");
 
-  const result = await unsubscribeFromStream(c.env as BaseEnv, {
+  const data: UnsubscribeResult = await unsubscribeFromStream(c.env as BaseEnv, {
     projectId,
     streamId,
     estuaryId,
   });
 
-  return c.json(result);
+  return c.json(data);
 }

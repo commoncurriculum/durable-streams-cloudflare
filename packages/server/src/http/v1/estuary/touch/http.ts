@@ -1,5 +1,6 @@
 import type { BaseEnv } from "../../../router";
 import { touchEstuary } from "./index";
+import type { TouchEstuaryResult } from "../types";
 
 /**
  * HTTP wrapper for POST /v1/estuary/:estuaryId
@@ -9,10 +10,10 @@ export async function touchEstuaryHttp(c: any): Promise<Response> {
   const projectId = c.get("projectId");
   const estuaryId = c.get("estuaryId");
 
-  const result = await touchEstuary(c.env as BaseEnv, {
+  const data: TouchEstuaryResult = await touchEstuary(c.env as BaseEnv, {
     projectId,
     estuaryId,
   });
 
-  return c.json(result);
+  return c.json(data);
 }

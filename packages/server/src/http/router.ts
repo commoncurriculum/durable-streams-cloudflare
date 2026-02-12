@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { describeRoute, validator } from "hono-openapi";
+import { describeRoute, resolver, validator } from "hono-openapi";
 import { logger } from "hono/logger";
 import type { StreamDO } from "./v1/streams";
 import type { InFlightResult } from "./middleware/coalesce";
@@ -22,14 +22,28 @@ import { rejectEmptyQueryParams } from "./middleware/query-validation";
 import { MAX_APPEND_BYTES } from "./shared/limits";
 
 // Route handlers
-import { projectIdParamSchema, configBodySchema, getConfig, putConfig } from "./v1/config";
+import {
+  projectIdParamSchema,
+  putConfigRequestSchema,
+  getConfigResponseSchema,
+  putConfigResponseSchema,
+  getConfig,
+  putConfig,
+} from "./v1/config";
 
 // Estuary endpoints
-import { subscribeHttp, subscribeBodySchema } from "./v1/estuary/subscribe/http";
-import { unsubscribeHttp, unsubscribeBodySchema } from "./v1/estuary/unsubscribe/http";
+import { subscribeHttp, subscribeRequestSchema } from "./v1/estuary/subscribe/http";
+import { unsubscribeHttp, unsubscribeRequestSchema } from "./v1/estuary/unsubscribe/http";
 import { getEstuaryHttp } from "./v1/estuary/get/http";
 import { touchEstuaryHttp } from "./v1/estuary/touch/http";
 import { deleteEstuaryHttp } from "./v1/estuary/delete/http";
+import {
+  subscribeResponseSchema,
+  unsubscribeResponseSchema,
+  getEstuaryResponseSchema,
+  touchEstuaryResponseSchema,
+  deleteEstuaryResponseSchema,
+} from "./v1/estuary/types";
 
 // Queue handler
 import { handleFanoutQueue } from "../queue/fanout-consumer";
@@ -159,14 +173,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
           description: "Project configuration",
           content: {
             "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  signingSecrets: { type: "array", items: { type: "string" } },
-                  corsOrigins: { type: "array", items: { type: "string" } },
-                  isPublic: { type: "boolean" },
-                },
-              },
+              schema: resolver(getConfigResponseSchema, morphFallback),
             },
           },
         },
@@ -190,7 +197,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
           description: "Configuration updated",
           content: {
             "application/json": {
-              schema: { type: "object", properties: { ok: { type: "boolean" } } },
+              schema: resolver(putConfigResponseSchema, morphFallback),
             },
           },
         },
@@ -199,7 +206,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       },
     }),
     validator("param", projectIdParamSchema, undefined, morphFallback),
-    validator("json", configBodySchema),
+    validator("json", putConfigRequestSchema),
     putConfig,
   );
 
@@ -211,9 +218,16 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       summary: "Subscribe estuary to a stream",
       description:
         "Subscribe an estuary to a source stream. Messages published to the source are fan-out replicated to the estuary stream.",
-      responses: { 200: { description: "Subscription created" } },
+      responses: {
+        200: {
+          description: "Subscription created",
+          content: {
+            "application/json": { schema: resolver(subscribeResponseSchema) },
+          },
+        },
+      },
     }),
-    validator("json", subscribeBodySchema, undefined, morphFallback),
+    validator("json", subscribeRequestSchema, undefined, morphFallback),
     subscribeHttp,
   );
 
@@ -223,9 +237,16 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       tags: ["Estuary"],
       summary: "Unsubscribe estuary from a stream",
       description: "Remove an estuary's subscription to a source stream.",
-      responses: { 200: { description: "Unsubscribed" } },
+      responses: {
+        200: {
+          description: "Unsubscribed",
+          content: {
+            "application/json": { schema: resolver(unsubscribeResponseSchema) },
+          },
+        },
+      },
     }),
-    validator("json", unsubscribeBodySchema, undefined, morphFallback),
+    validator("json", unsubscribeRequestSchema, undefined, morphFallback),
     unsubscribeHttp,
   );
 
@@ -236,7 +257,14 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       tags: ["Estuary"],
       summary: "Get estuary info",
       description: "Retrieve estuary metadata including subscriptions and content type.",
-      responses: { 200: { description: "Estuary info" } },
+      responses: {
+        200: {
+          description: "Estuary info",
+          content: {
+            "application/json": { schema: resolver(getEstuaryResponseSchema) },
+          },
+        },
+      },
     }),
     getEstuaryHttp,
   );
@@ -246,7 +274,14 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       tags: ["Estuary"],
       summary: "Touch estuary",
       description: "Create or extend the TTL of an estuary stream.",
-      responses: { 200: { description: "Estuary touched" } },
+      responses: {
+        200: {
+          description: "Estuary touched",
+          content: {
+            "application/json": { schema: resolver(touchEstuaryResponseSchema) },
+          },
+        },
+      },
     }),
     touchEstuaryHttp,
   );
@@ -256,7 +291,14 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
       tags: ["Estuary"],
       summary: "Delete estuary",
       description: "Delete an estuary and its underlying stream.",
-      responses: { 200: { description: "Estuary deleted" } },
+      responses: {
+        200: {
+          description: "Estuary deleted",
+          content: {
+            "application/json": { schema: resolver(deleteEstuaryResponseSchema) },
+          },
+        },
+      },
     }),
     deleteEstuaryHttp,
   );

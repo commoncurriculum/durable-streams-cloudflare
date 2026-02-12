@@ -1,19 +1,51 @@
-export interface SubscribeResult {
-  estuaryId: string;
-  streamId: string;
-  estuaryStreamPath: string;
-  expiresAt: number;
-  isNewEstuary: boolean;
-}
+import { type } from "arktype";
 
-export interface UnsubscribeResult {
-  success: true;
-}
+// ============================================================================
+// Response schemas — single source of truth for OpenAPI + TS types
+// ============================================================================
 
-export interface DeleteEstuaryResult {
-  estuaryId: string;
-  deleted: true;
-}
+export const subscribeResponseSchema = type({
+  estuaryId: "string",
+  streamId: "string",
+  estuaryStreamPath: "string",
+  expiresAt: "number",
+  isNewEstuary: "boolean",
+});
+
+export type SubscribeResult = typeof subscribeResponseSchema.infer;
+
+export const unsubscribeResponseSchema = type({
+  success: "true",
+});
+
+export type UnsubscribeResult = typeof unsubscribeResponseSchema.infer;
+
+export const deleteEstuaryResponseSchema = type({
+  estuaryId: "string",
+  deleted: "true",
+});
+
+export type DeleteEstuaryResult = typeof deleteEstuaryResponseSchema.infer;
+
+export const touchEstuaryResponseSchema = type({
+  estuaryId: "string",
+  expiresAt: "number",
+});
+
+export type TouchEstuaryResult = typeof touchEstuaryResponseSchema.infer;
+
+export const getEstuaryResponseSchema = type({
+  estuaryId: "string",
+  estuaryStreamPath: "string",
+  subscriptions: type({ streamId: "string" }).array(),
+  contentType: "string | null",
+});
+
+export type GetEstuaryResult = typeof getEstuaryResponseSchema.infer;
+
+// ============================================================================
+// Non-HTTP types (internal, not exposed via OpenAPI)
+// ============================================================================
 
 export interface PublishParams {
   payload: ArrayBuffer;
@@ -53,18 +85,6 @@ export interface EstuaryInfo {
   estuaryStreamPath: string;
   subscriptions: Array<{ streamId: string }>;
   contentType?: string | null;
-}
-
-export interface TouchEstuaryResult {
-  estuaryId: string;
-  expiresAt: number;
-}
-
-export interface GetEstuaryResult {
-  estuaryId: string;
-  estuaryStreamPath: string;
-  subscriptions: Array<{ streamId: string }>;
-  contentType: string | null;
 }
 
 export interface SubscriberInfo {

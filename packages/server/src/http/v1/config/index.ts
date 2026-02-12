@@ -14,11 +14,25 @@ export const projectIdParamSchema = type({
   }),
 });
 
-export const configBodySchema = type({
+export const putConfigRequestSchema = type({
   signingSecrets: "string[] >= 1",
   "corsOrigins?": "string[]",
   "isPublic?": "boolean",
 });
+
+export const getConfigResponseSchema = type({
+  signingSecrets: "string[]",
+  corsOrigins: "string[]",
+  isPublic: "boolean",
+});
+
+export type GetConfigResponse = typeof getConfigResponseSchema.infer;
+
+export const putConfigResponseSchema = type({
+  ok: "boolean",
+});
+
+export type PutConfigResponse = typeof putConfigResponseSchema.infer;
 
 // ============================================================================
 // Handlers
@@ -38,11 +52,12 @@ export async function getConfig(c: any): Promise<Response> {
   if (!entry) {
     return c.json({ error: "project not found" }, 404);
   }
-  return c.json({
+  const data: GetConfigResponse = {
     signingSecrets: entry.signingSecrets,
     corsOrigins: entry.corsOrigins ?? [],
     isPublic: entry.isPublic ?? false,
-  });
+  };
+  return c.json(data);
 }
 
 // biome-ignore lint: Hono context typing is complex; handlers are wired through the router
@@ -61,5 +76,6 @@ export async function putConfig(c: any): Promise<Response> {
     corsOrigins: body.corsOrigins,
     isPublic: body.isPublic,
   });
-  return c.json({ ok: true });
+  const data: PutConfigResponse = { ok: true };
+  return c.json(data);
 }
