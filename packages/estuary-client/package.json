@@ -1,0 +1,41 @@
+{
+  "name": "@durable-streams-cloudflare/estuary-client",
+  "version": "0.8.0",
+  "description": "Auto-generated TypeScript client for the Durable Streams API",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/generated/client.d.ts",
+      "import": "./dist/generated/client.js"
+    }
+  },
+  "scripts": {
+    "generate": "orval",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "format": "oxfmt --write src",
+    "format:check": "oxfmt --check src",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "axios": "^1.7.0"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-query": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "orval": "^7.0.0",
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT"
+}
