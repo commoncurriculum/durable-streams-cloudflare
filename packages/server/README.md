@@ -7,6 +7,7 @@ This package merges the functionality of `@durable-streams-cloudflare/core` and 
 ## Features
 
 ### Core Streaming
+
 - **Durable Object per stream** — single-threaded sequencer with strong ordering
 - **SQLite hot log** — low-latency writes via DO transactional storage
 - **R2 cold segments** — automatic rotation of historical data to immutable R2 objects
@@ -19,6 +20,7 @@ This package merges the functionality of `@durable-streams-cloudflare/core` and 
 - **Conformance-tested** — passes the official Durable Streams test suite
 
 ### Pub/Sub Subscriptions (Estuary)
+
 - **Fan-out to subscribers** — publish once, distribute to N estuary streams
 - **Inline & queued fan-out** — synchronous for <200 subscribers, queued for hot topics
 - **Circuit breaker** — protects publish path when subscribers fail
@@ -26,6 +28,7 @@ This package merges the functionality of `@durable-streams-cloudflare/core` and 
 - **Content-type validation** — estuaries inherit source stream content type
 
 ### Hono Integration
+
 - **JWT authentication** — `hono/jwt` for HMAC-SHA256 token verification
 - **CORS middleware** — `hono/cors` with per-project origin configuration
 - **HTTP logger** — `hono/logger` for request logging
@@ -44,7 +47,12 @@ npm install @durable-streams-cloudflare/server
 `src/worker.ts`:
 
 ```ts
-import { ServerWorker, StreamDO, SubscriptionDO, EstuaryDO } from "@durable-streams-cloudflare/server";
+import {
+  ServerWorker,
+  StreamDO,
+  SubscriptionDO,
+  EstuaryDO,
+} from "@durable-streams-cloudflare/server";
 
 export default ServerWorker;
 export { StreamDO, SubscriptionDO, EstuaryDO };
@@ -96,6 +104,7 @@ queue = "subscription-fanout"
 [vars]
 ESTUARY_TTL_SECONDS = "86400"
 ```
+
 tag = "v1"
 new_sqlite_classes = ["StreamDO"]
 
@@ -108,17 +117,19 @@ binding = "METRICS"
 dataset = "durable_streams_metrics"
 
 # Required for projectJwtAuth()
+
 [[kv_namespaces]]
 binding = "REGISTRY"
 id = "<your-kv-namespace-id>"
-```
+
+````
 
 ### 3. Deploy
 
 ```bash
 npx wrangler r2 bucket create durable-streams
 npx wrangler deploy
-```
+````
 
 ### 4. Try It
 
@@ -174,12 +185,12 @@ export { StreamDO };
 }
 ```
 
-| Claim | Required | Description |
-|-------|----------|-------------|
-| `sub` | Yes | Must match the project ID in the URL path |
-| `scope` | Yes | `"write"` (read+write) or `"read"` (read-only) |
-| `exp` | Yes | Unix timestamp expiry |
-| `stream_id` | No | If present, restricts reads to this specific stream |
+| Claim       | Required | Description                                         |
+| ----------- | -------- | --------------------------------------------------- |
+| `sub`       | Yes      | Must match the project ID in the URL path           |
+| `scope`     | Yes      | `"write"` (read+write) or `"read"` (read-only)      |
+| `exp`       | Yes      | Unix timestamp expiry                               |
+| `stream_id` | No       | If present, restricts reads to this specific stream |
 
 Create a project and get its signing secret via the admin dashboard or CLI:
 
@@ -236,11 +247,17 @@ export { StreamDO };
 
 ```ts
 type AuthorizeMutation<E> = (
-  request: Request, doKey: string, env: E, timing: Timing | null,
+  request: Request,
+  doKey: string,
+  env: E,
+  timing: Timing | null,
 ) => AuthResult | Promise<AuthResult>;
 
 type AuthorizeRead<E> = (
-  request: Request, doKey: string, env: E, timing: Timing | null,
+  request: Request,
+  doKey: string,
+  env: E,
+  timing: Timing | null,
 ) => ReadAuthResult | Promise<ReadAuthResult>;
 
 type AuthResult = { ok: true } | { ok: false; response: Response };
@@ -251,13 +268,13 @@ type ReadAuthResult = { ok: true } | { ok: false; response: Response };
 
 All endpoints are under `/v1/stream/:id`.
 
-| Method | Description |
-|--------|-------------|
-| `PUT` | Create a stream (optional body as first message) |
-| `POST` | Append a message (or close the stream) |
-| `GET` | Read messages — catch-up, long-poll (`?live=long-poll`), or SSE (`?live=sse`) |
-| `HEAD` | Get stream metadata headers without body |
-| `DELETE` | Delete a stream and all its data |
+| Method   | Description                                                                   |
+| -------- | ----------------------------------------------------------------------------- |
+| `PUT`    | Create a stream (optional body as first message)                              |
+| `POST`   | Append a message (or close the stream)                                        |
+| `GET`    | Read messages — catch-up, long-poll (`?live=long-poll`), or SSE (`?live=sse`) |
+| `HEAD`   | Get stream metadata headers without body                                      |
+| `DELETE` | Delete a stream and all its data                                              |
 
 **Query parameters:** `offset` (start reading from this position), `live` (`long-poll` or `sse`).
 
@@ -267,20 +284,20 @@ See the [Durable Streams protocol spec](https://github.com/electric-sql/durable-
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DEBUG_TIMING` | `0` | Set to `1` to emit `Server-Timing` headers |
-| `SEGMENT_MAX_MESSAGES` | `1000` | Max messages per R2 segment before rotation |
-| `SEGMENT_MAX_BYTES` | `4194304` | Max bytes per R2 segment before rotation |
+| Variable               | Default   | Description                                 |
+| ---------------------- | --------- | ------------------------------------------- |
+| `DEBUG_TIMING`         | `0`       | Set to `1` to emit `Server-Timing` headers  |
+| `SEGMENT_MAX_MESSAGES` | `1000`    | Max messages per R2 segment before rotation |
+| `SEGMENT_MAX_BYTES`    | `4194304` | Max bytes per R2 segment before rotation    |
 
 ### Wrangler Bindings
 
-| Binding | Type | Description |
-|---------|------|-------------|
-| `STREAMS` | Durable Object | StreamDO namespace (required) |
-| `R2` | R2 Bucket | Cold segment storage (required) |
-| `REGISTRY` | KV Namespace | Per-project signing secrets and public stream flags (required when using `projectJwtAuth`) |
-| `METRICS` | Analytics Engine | Stream operation metrics (optional) |
+| Binding    | Type             | Description                                                                                |
+| ---------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `STREAMS`  | Durable Object   | StreamDO namespace (required)                                                              |
+| `R2`       | R2 Bucket        | Cold segment storage (required)                                                            |
+| `REGISTRY` | KV Namespace     | Per-project signing secrets and public stream flags (required when using `projectJwtAuth`) |
+| `METRICS`  | Analytics Engine | Stream operation metrics (optional)                                                        |
 
 ## Architecture
 
@@ -327,9 +344,11 @@ MIT
 ### Core Streaming Routes
 
 #### `PUT /v1/stream/:projectId/:streamId`
+
 Create or touch a stream. Requires write or manage scope JWT.
 
 **Headers:**
+
 - `Authorization: Bearer <JWT>` (required)
 - `Content-Type: application/json` (or your preferred type)
 - `Stream-Expires-At: <ISO8601>` (optional TTL)
@@ -337,9 +356,11 @@ Create or touch a stream. Requires write or manage scope JWT.
 **Response:** `201 Created` or `409 Conflict` if already exists with different content-type
 
 #### `POST /v1/stream/:projectId/:streamId`
+
 Append a message to the stream. Requires write or manage scope JWT.
 
 **Headers:**
+
 - `Authorization: Bearer <JWT>` (required)
 - `Content-Type: application/json` (must match stream content-type)
 - `Producer-Id`, `Producer-Epoch`, `Producer-Seq` (optional idempotency)
@@ -349,9 +370,11 @@ Append a message to the stream. Requires write or manage scope JWT.
 **Response:** `200 OK` with `Stream-Next-Offset` header
 
 #### `GET /v1/stream/:projectId/:streamId`
+
 Read from a stream. Requires read, write, or manage scope JWT (or public stream).
 
 **Query Parameters:**
+
 - `offset=<hex>` (required) - Offset to read from
 - `live=long-poll|sse` (optional) - Real-time mode
 - `limit=<N>` (optional) - Max messages per response
@@ -359,6 +382,7 @@ Read from a stream. Requires read, write, or manage scope JWT (or public stream)
 **Response:** `200 OK` with messages, `Stream-Next-Offset`, `Stream-Up-To-Date` headers
 
 #### `DELETE /v1/stream/:projectId/:streamId`
+
 Delete a stream. Requires manage scope JWT.
 
 **Response:** `200 OK`
@@ -366,9 +390,11 @@ Delete a stream. Requires manage scope JWT.
 ### Subscription Routes (Estuary)
 
 #### `POST /v1/estuary/subscribe/:projectId/:streamId`
+
 Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist.
 
 **Body:**
+
 ```json
 {
   "estuaryId": "user-123",
@@ -377,6 +403,7 @@ Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist
 ```
 
 **Response:**
+
 ```json
 {
   "estuaryId": "user-123",
@@ -388,9 +415,11 @@ Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist
 ```
 
 #### `DELETE /v1/estuary/subscribe/:projectId/:streamId`
+
 Unsubscribe an estuary from a stream.
 
 **Body:**
+
 ```json
 {
   "estuaryId": "user-123"
@@ -398,6 +427,7 @@ Unsubscribe an estuary from a stream.
 ```
 
 **Response:**
+
 ```json
 {
   "estuaryId": "user-123",
@@ -407,36 +437,26 @@ Unsubscribe an estuary from a stream.
 ```
 
 #### `GET /v1/estuary/:projectId/:estuaryId`
+
 Get estuary information including all subscriptions.
 
 **Response:**
+
 ```json
 {
   "estuaryId": "user-123",
   "estuaryStreamPath": "/v1/stream/my-project/user-123",
-  "subscriptions": [
-    { "streamId": "notifications" },
-    { "streamId": "alerts" }
-  ],
+  "subscriptions": [{ "streamId": "notifications" }, { "streamId": "alerts" }],
   "contentType": "application/json"
 }
 ```
 
-#### `POST /v1/estuary/:projectId/:estuaryId`
-Touch (refresh TTL) on an estuary stream.
-
-**Response:**
-```json
-{
-  "estuaryId": "user-123",
-  "expiresAt": 1738986400000
-}
-```
-
 #### `DELETE /v1/estuary/:projectId/:estuaryId`
+
 Delete an estuary stream and all its subscriptions.
 
 **Response:**
+
 ```json
 {
   "estuaryId": "user-123",
@@ -447,9 +467,11 @@ Delete an estuary stream and all its subscriptions.
 ### Configuration Routes
 
 #### `GET /v1/config/:projectId`
+
 Get project configuration (signing secrets, CORS origins).
 
 #### `PUT /v1/config/:projectId`
+
 Update project configuration.
 
 ## Pub/Sub Usage Example
@@ -499,12 +521,12 @@ Subscription functionality calls stream operations via `internal-api.ts` which d
 
 ### Fan-out Modes
 
-| Subscriber Count | Mode | Behavior |
-|------------------|------|----------|
-| ≤ 200 (default) | Inline | Synchronous fanout within publish request |
-| > 200 | Queued | Enqueues batches to `FANOUT_QUEUE`, async delivery |
-| > 1000 (no queue) | Skipped | Publish succeeds, fanout skipped to protect origin |
-| Circuit open | Circuit-open | Inline fanout skipped after repeated failures |
+| Subscriber Count  | Mode         | Behavior                                           |
+| ----------------- | ------------ | -------------------------------------------------- |
+| ≤ 200 (default)   | Inline       | Synchronous fanout within publish request          |
+| > 200             | Queued       | Enqueues batches to `FANOUT_QUEUE`, async delivery |
+| > 1000 (no queue) | Skipped      | Publish succeeds, fanout skipped to protect origin |
+| Circuit open      | Circuit-open | Inline fanout skipped after repeated failures      |
 
 ## Migration from Core + Subscription
 
