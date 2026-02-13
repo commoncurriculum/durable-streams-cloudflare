@@ -76,7 +76,7 @@ const response = await fetch(client.streamUrl(streamId));
 
 ### Coverage
 
-**Current Overall Coverage: 76.11% lines** (1756/2307 lines covered)
+**Current Overall Coverage: 80.14% lines** (1849/2307 lines covered)
 
 For complete coverage documentation, see **`packages/server/COVERAGE.md`**.
 

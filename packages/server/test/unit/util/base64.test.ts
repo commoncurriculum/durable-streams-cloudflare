@@ -10,7 +10,7 @@ import { bufferToBase64, base64ToBuffer } from "../../../src/util/base64";
  */
 function stringToBuffer(s: string): ArrayBuffer {
   const encoder = new TextEncoder();
-  return encoder.encode(s).buffer;
+  return encoder.encode(s).buffer as ArrayBuffer;
 }
 
 /**
