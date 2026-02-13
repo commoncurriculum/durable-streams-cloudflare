@@ -34,7 +34,8 @@ const baseMeta = (overrides: Partial<StreamMeta> = {}): StreamMeta => ({
   ...overrides,
 });
 
-const textPayload = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer as ArrayBuffer;
+const textPayload = (text: string): ArrayBuffer =>
+  new TextEncoder().encode(text).buffer as ArrayBuffer;
 
 // ===========================================================================
 // LongPollQueue
@@ -158,7 +159,12 @@ describe("buildSseControlEvent", () => {
       streamClosed: false,
       cursor: "c1",
     });
-    const json = JSON.parse(payload.split("\n").find((l) => l.startsWith("data:"))!.slice(5));
+    const json = JSON.parse(
+      payload
+        .split("\n")
+        .find((l) => l.startsWith("data:"))!
+        .slice(5),
+    );
     expect(json.streamNextOffset).toBe("100");
     expect(json.upToDate).toBe(true);
     expect(json.streamCursor).toBeTruthy();
@@ -173,7 +179,12 @@ describe("buildSseControlEvent", () => {
       streamClosed: true,
       cursor: "c1",
     });
-    const json = JSON.parse(payload.split("\n").find((l) => l.startsWith("data:"))!.slice(5));
+    const json = JSON.parse(
+      payload
+        .split("\n")
+        .find((l) => l.startsWith("data:"))!
+        .slice(5),
+    );
     expect(json.streamClosed).toBe(true);
     expect(json.streamCursor).toBeUndefined();
     expect(nextCursor).toBeNull();
@@ -187,7 +198,12 @@ describe("buildSseControlEvent", () => {
       cursor: "c1",
       writeTimestamp: 1707312000000,
     });
-    const json = JSON.parse(payload.split("\n").find((l) => l.startsWith("data:"))!.slice(5));
+    const json = JSON.parse(
+      payload
+        .split("\n")
+        .find((l) => l.startsWith("data:"))!
+        .slice(5),
+    );
     expect(json.streamWriteTimestamp).toBe(1707312000000);
   });
 
@@ -199,7 +215,12 @@ describe("buildSseControlEvent", () => {
       cursor: "c1",
       writeTimestamp: 0,
     });
-    const json = JSON.parse(payload.split("\n").find((l) => l.startsWith("data:"))!.slice(5));
+    const json = JSON.parse(
+      payload
+        .split("\n")
+        .find((l) => l.startsWith("data:"))!
+        .slice(5),
+    );
     expect(json.streamWriteTimestamp).toBeUndefined();
   });
 });
