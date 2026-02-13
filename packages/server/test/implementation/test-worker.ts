@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { SignJWT } from "jose";
 import { type } from "arktype";
-import { StreamDO } from "../../src/http/worker";
+import { StreamDO, StreamSubscribersDO, EstuaryDO } from "../../src/http/worker";
 import { createStreamWorker } from "../../src/http/worker";
 import type { BaseEnv } from "../../src/http/worker";
 
@@ -280,4 +280,4 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   }
 }
 
-export { StreamDO };
+export { StreamDO, StreamSubscribersDO, EstuaryDO };
