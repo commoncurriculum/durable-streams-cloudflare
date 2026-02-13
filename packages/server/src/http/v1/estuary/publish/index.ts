@@ -2,11 +2,7 @@ import { fanoutToSubscribers } from "./fanout";
 import { createMetrics } from "../../../../metrics";
 import { logError, logWarn } from "../../../../log";
 import { bufferToBase64 } from "../../../../util/base64";
-import {
-  FANOUT_QUEUE_THRESHOLD,
-  FANOUT_QUEUE_BATCH_SIZE,
-  MAX_INLINE_FANOUT,
-} from "../../../../constants";
+import { FANOUT_QUEUE_THRESHOLD, FANOUT_QUEUE_BATCH_SIZE } from "../../../../constants";
 import type { BaseEnv } from "../../../router";
 import type { PublishParams, PublishResult, FanoutQueueMessage } from "../types";
 import type { StreamSubscribersStorage } from "../../../../storage/stream-subscribers-do";
@@ -92,14 +88,6 @@ export async function publishToStream(
         ? thresholdParsed
         : FANOUT_QUEUE_THRESHOLD;
 
-    const maxInlineParsed = ctx.env.MAX_INLINE_FANOUT
-      ? parseInt(ctx.env.MAX_INLINE_FANOUT, 10)
-      : undefined;
-    const maxInline =
-      maxInlineParsed && Number.isFinite(maxInlineParsed) && maxInlineParsed > 0
-        ? maxInlineParsed
-        : MAX_INLINE_FANOUT;
-
     if (ctx.env.FANOUT_QUEUE && subscriberIds.length > threshold) {
       // Queued fanout — enqueue and return immediately
       try {
@@ -127,8 +115,6 @@ export async function publishToStream(
         );
         if (!ctx.shouldAttemptInlineFanout()) {
           fanoutMode = "circuit-open";
-        } else if (subscriberIds.length > maxInline) {
-          fanoutMode = "skipped";
         } else {
           const fanoutResult = await fanoutToSubscribers(
             ctx.env,
@@ -148,18 +134,6 @@ export async function publishToStream(
       // Circuit breaker is open — skip inline fanout entirely.
       // Source write already committed; never return an error here.
       fanoutMode = "circuit-open";
-    } else if (subscriberIds.length > maxInline) {
-      // Too many subscribers for inline fanout without a queue
-      fanoutMode = "skipped";
-      logWarn(
-        {
-          streamId,
-          subscribers: subscriberIds.length,
-          maxInline,
-          component: "fanout",
-        },
-        "inline fanout skipped: too many subscribers and no queue configured",
-      );
     } else {
       // Inline fanout
       const fanoutResult = await fanoutToSubscribers(

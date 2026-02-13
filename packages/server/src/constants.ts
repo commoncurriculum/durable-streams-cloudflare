@@ -51,12 +51,6 @@ export const FANOUT_QUEUE_THRESHOLD = 200;
 export const FANOUT_QUEUE_BATCH_SIZE = 50;
 
 /**
- * Maximum number of subscribers for inline fanout (without a queue).
- * Above this, fanout is skipped to protect the publish path.
- */
-export const MAX_INLINE_FANOUT = 1000;
-
-/**
  * Per-RPC timeout in milliseconds for fanout writes.
  * Workers RPC has no native timeout, so we use Promise.race with setTimeout.
  */
