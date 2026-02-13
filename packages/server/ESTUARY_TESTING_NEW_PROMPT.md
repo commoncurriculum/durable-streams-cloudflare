@@ -25,131 +25,109 @@ Add comprehensive integration tests for Estuary endpoints to increase coverage f
 
 Estuary provides pub/sub functionality on top of Durable Streams:
 
-- **Subscribe**: Create a subscription to receive messages from a stream
-- **Publish**: Fan out messages to all subscribers
-- **Get**: Retrieve subscription details
-- **Delete**: Remove a subscription
-- **Unsubscribe**: Alias for delete
+- **Subscribe**: Create a subscription (estuary) to receive messages from a source stream
+- **Fanout**: Automatically replicate messages from source streams to subscribed estuaries
+- **Get**: Retrieve estuary details
+- **Delete**: Remove an estuary and all its subscriptions
+- **Unsubscribe**: Remove a specific subscription
 
-## Files Needing Tests (Currently 0% Coverage)
+## Architecture Understanding
 
-### Publish (96 lines)
+**CRITICAL: The publish architecture is NOT what you might expect!**
 
-- `src/http/v1/estuary/publish/index.ts` (62 lines)
-- `src/http/v1/estuary/publish/fanout.ts` (34 lines)
+1. **There is NO direct HTTP `/v1/estuary/publish/` endpoint** - publishing happens indirectly
+2. **Actual flow**: POST to source stream → StreamDO.appendStream() → calls StreamSubscribersDO.fanoutOnly()
+3. **fanoutOnly()** is the RPC method that fans out to subscribers
+4. **`publish/index.ts` is UNUSED DEAD CODE** - it contains a `publishToStream()` function that's never called
+5. The actual fanout logic is in `publish/fanout.ts` (used by fanoutOnly)
+
+So when you test "publishing", you're actually testing: **append to source stream → automatic fanout to subscribers**
+
+## Files Needing Tests
+
+### Fanout (34 lines) - ACTIVE CODE
+
+- `src/http/v1/estuary/publish/fanout.ts` (34 lines) - Used by fanoutOnly() RPC method
 
 ### Subscribe (49 lines)
 
 - `src/http/v1/estuary/subscribe/index.ts` (42 lines)
 - `src/http/v1/estuary/subscribe/http.ts` (7 lines)
 
-### Get (19 lines)
+### Get (19 lines) - ✅ COMPLETE (100% coverage)
 
 - `src/http/v1/estuary/get/index.ts` (15 lines)
 - `src/http/v1/estuary/get/http.ts` (4 lines)
 
-### Delete (15 lines)
+### Delete (15 lines) - ✅ COMPLETE (100% coverage)
 
 - `src/http/v1/estuary/delete/index.ts` (11 lines)
 - `src/http/v1/estuary/delete/http.ts` (4 lines)
 
-### Unsubscribe (21 lines)
+### Unsubscribe (21 lines) - ✅ COMPLETE (92.8% coverage)
 
 - `src/http/v1/estuary/unsubscribe/index.ts` (14 lines)
 - `src/http/v1/estuary/unsubscribe/http.ts` (7 lines)
 
 ## Your Tasks
 
-### Task 1: Add Helper Functions
+**NOTE**: Tests already exist in `test/implementation/estuary/`. Your job is to ADD MORE tests to improve coverage, not create from scratch.
 
-Add these to `test/implementation/helpers.ts`:
+### Task 1: Add Comprehensive Fanout Tests
+
+Create `test/implementation/estuary/publish.test.ts` with these scenarios:
+
+**Remember: "Publishing" means POST to source stream, which triggers automatic fanout!**
+
+- ✅ Single subscriber fanout
+- ✅ Multiple subscriber fanout (3+ subscribers)
+- ✅ No subscribers (should succeed, just append to source)
+- ✅ Multiple sequential messages
+- ✅ Different content types (application/json, text/plain)
+- ✅ Late subscriber (added after initial publish)
+- ✅ Message order preservation
+- ❌ 404 for non-existent source stream
+- ❌ 409 for content-type mismatch
+
+**Helper function for polling**:
 
 ```typescript
-estuaryUrl(path: string) {
-  return `${this.baseUrl}/v1/estuary/${path}`;
-}
-
-async subscribe(streamId: string, subscriberUrl: string, ttlSeconds = 3600) {
-  return fetch(this.estuaryUrl(`subscribe/${streamId}`), {
-    method: "POST",
-    headers: this.headers(),
-    body: JSON.stringify({ subscriberUrl, ttlSeconds }),
-  });
-}
-
-async publish(streamId: string, message: string, contentType = "text/plain") {
-  return fetch(this.estuaryUrl(`publish/${streamId}`), {
-    method: "POST",
-    headers: { ...this.headers(), "Content-Type": contentType },
-    body: message,
-  });
-}
-
-async getSubscription(streamId: string, subscriptionId: string) {
-  return fetch(this.estuaryUrl(`subscription/${streamId}/${subscriptionId}`), {
-    method: "GET",
-    headers: this.headers(),
-  });
-}
-
-async deleteSubscription(streamId: string, subscriptionId: string) {
-  return fetch(this.estuaryUrl(`subscription/${streamId}/${subscriptionId}`), {
-    method: "DELETE",
-    headers: this.headers(),
-  });
+async function pollEstuaryUntilData(
+  estuaryPath: string,
+  maxAttempts = 20,
+  delayMs = 100,
+): Promise<string> {
+  // Fanout is fire-and-forget, so poll rather than fixed delay
+  for (let i = 0; i < maxAttempts; i++) {
+    const response = await fetch(`${BASE_URL}/v1/stream/${estuaryPath}?offset=${ZERO_OFFSET}`);
+    if (response.status === 200) {
+      const data = await response.text();
+      if (data.length > 50) return data; // Has actual message data
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error(`Estuary did not receive data after ${maxAttempts} attempts`);
 }
 ```
 
-### Task 2: Create Test Files
+### Task 2: Enhance Subscribe Tests
 
-Create these files in `test/implementation/estuary/`:
+Add to `test/implementation/estuary/subscribe.test.ts`:
 
-#### `publish.test.ts`
+- ✅ Invalid estuaryId format (expect 400)
+- ✅ Missing estuaryId (expect 400)
+- ✅ Same estuary subscribing to multiple source streams
+- ✅ Content-type mismatch when subscribing to second stream (expect 500)
+- ✅ Improved idempotency testing
 
-Test scenarios:
+### Task 3: Verify Existing Tests
 
-- ✅ Publish to stream with one subscriber
-- ✅ Publish to stream with multiple subscribers
-- ✅ Publish appends to underlying stream
-- ✅ Publish with no subscribers (still appends)
-- ❌ 404 for non-existent stream
-- ❌ 401 without auth
-- ❌ 409 for content-type mismatch
+These files already exist with good coverage - verify they pass:
 
-#### `get.test.ts`
-
-Test scenarios:
-
-- ✅ Get subscription details
-- ✅ Response includes all fields (subscriptionId, streamId, subscriberUrl, expiresAt)
-- ❌ 404 for non-existent subscription
-- ❌ 401 without auth
-
-#### `delete.test.ts`
-
-Test scenarios:
-
-- ✅ Delete subscription
-- ✅ Idempotent (204 even if already deleted)
-- ❌ 401 without auth
-
-#### `unsubscribe.test.ts`
-
-Test scenarios:
-
-- ✅ Unsubscribe removes subscription
-- ✅ Idempotent
-- ❌ 401 without auth
-
-### Task 3: Update Existing Tests
-
-Update `test/implementation/estuary/subscribe.test.ts` to add:
-
-- Multiple subscriptions to same stream
-- Custom TTL values
-- Invalid TTL (400)
-- Invalid subscriberUrl (400)
-- Missing body (400)
+- `test/implementation/estuary/get.test.ts` (100% coverage)
+- `test/implementation/estuary/delete.test.ts` (100% coverage)
+- `test/implementation/estuary/unsubscribe.test.ts` (92.8% coverage)
+- `test/implementation/estuary/fanout.test.ts` (basic fanout test)
 
 ## Test Pattern
 
@@ -157,47 +135,50 @@ Use this pattern for all tests:
 
 ```typescript
 import { expect, it, describe } from "vitest";
-import { createClient, uniqueStreamId } from "../helpers.ts";
+import { uniqueStreamId } from "../helpers";
+
+const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 
 describe("Estuary - [Operation]", () => {
-  const client = createClient();
-
   it("success case", async () => {
-    const streamId = uniqueStreamId("test");
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
 
-    // Create stream first
-    await client.createStream(streamId, "", "text/plain");
-
-    // Test the operation
-    const response = await client.[operation](...);
-
-    expect(response.status).toBe(201);
-    const data = await response.json();
-    // Assert on response data
-  });
-
-  it("error case - 404", async () => {
-    const response = await client.[operation]("non-existent", ...);
-    expect(response.status).toBe(404);
-  });
-
-  it("error case - 401", async () => {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }, // No auth
-      body: "..."
+    // Create source stream with projectId/streamId path
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
     });
-    expect(response.status).toBe(401);
+
+    // Subscribe estuary to source
+    const response = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estuaryId }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.estuaryId).toBe(estuaryId);
   });
 });
 ```
 
 ## Critical Notes
 
-1. **Content-type must match**: Stream and publish content-type must match
-2. **Stream must exist first**: Use `client.createStream()` before testing estuary operations
-3. **Real bindings only**: Use `@cloudflare/vitest-pool-workers` - no mocks
-4. **Unique IDs**: Use `uniqueStreamId()` for each test
+1. **Content-type must match**: Stream and fanout content-type must match
+2. **Use projectId/streamId paths**: Format is `projectId/streamId`, create with `?public=true`
+3. **estuaryId is a UUID**: Use `crypto.randomUUID()`, not a prefixed stream ID
+4. **Fanout is async**: Use polling helper to wait for messages to arrive in estuaries
+5. **No auth in tests**: All test streams use `?public=true` for simplicity
+6. **Real bindings only**: Tests run against live wrangler workers - no mocks
+7. **Unique IDs**: Use `uniqueStreamId()` for source streams, `crypto.randomUUID()` for estuaries
 
 ## How to Verify Coverage Improved
 
@@ -306,15 +287,31 @@ $ pnpm run coverage:lines -- estuary  # Now shows REAL current coverage
 
 ## Success Criteria
 
-- ✅ All 4 new test files created (`publish.test.ts`, `get.test.ts`, `delete.test.ts`, `unsubscribe.test.ts`)
-- ✅ Existing `subscribe.test.ts` updated with more scenarios
-- ✅ All tests pass
-- ✅ Estuary coverage: 1.8% → 70%+
-- ✅ Overall coverage: 63% → 75%+
-- ✅ No estuary files in zero coverage list
+- ✅ New `publish.test.ts` created (10+ comprehensive fanout tests)
+- ✅ Existing `subscribe.test.ts` enhanced (5+ additional test cases)
+- ✅ All tests pass (27+ test files, 91+ tests)
+- ✅ Estuary coverage: 70.3% → 75%+
+- ✅ Overall coverage: 73% → 75%+
+- ✅ Subscribe coverage: 83%+
+- ✅ Fanout coverage: 80%+
+- ✅ No new 0% files introduced
 - ✅ Typecheck passes
-- ✅ Lint passes
+- ✅ Lint passes (0 errors, 0 warnings)
 - ✅ Format check passes
+- ✅ Unit tests pass (341+ tests)
+- ✅ Conformance tests pass (239 tests)
+
+## Expected Coverage After Changes
+
+Based on previous successful run:
+
+- **Overall**: 73.06% → 75%+ (target)
+- **Estuary average**: 70.5% → 75%+
+- **Subscribe**: 83.3%
+- **Unsubscribe**: 92.8%
+- **Get**: 100%
+- **Delete**: 100%
+- **Fanout**: 76.5% → 80%+
 
 ## Documentation References
 
@@ -329,5 +326,20 @@ $ pnpm run coverage:lines -- estuary  # Now shows REAL current coverage
 2. **Coverage files can be hours or days old - they will LIE to you**
 3. **Always generate fresh coverage before checking numbers**
 4. **If coverage shows 0% but tests exist, you're looking at STALE data**
+5. **Run formatting after writing tests**: `pnpm -C packages/server run format`
 
 **DO NOT skip the coverage verification step.** You MUST run fresh coverage and confirm the numbers improved. Simply writing tests is not enough - you must verify they actually cover the code WITH FRESH DATA.
+
+## Known Issues & Solutions
+
+### Issue: Validation returns 400 instead of 500
+
+**Expected**: Validation errors (invalid estuaryId format, missing fields) return **400 Bad Request**, not 500
+
+**Correct Test**: `expect(response.status).toBe(400);`
+
+### Issue: `publish/index.ts` shows 0% coverage
+
+**Expected**: This file contains unused dead code (`publishToStream()` function is never called)
+
+**Solution**: File can be safely deleted - the actual fanout logic is in `fanout.ts` and called via `fanoutOnly()` RPC method
