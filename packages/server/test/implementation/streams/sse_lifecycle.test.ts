@@ -86,7 +86,7 @@ describe("SSE lifecycle", () => {
 		expect(buffer).toContain("data:broadcast-test\n");
 	});
 
-	it("receives stream-closed control event when stream is closed with data", async () => {
+	it("receives stream-closed control event on close-only (no body)", async () => {
 		const client = createClient();
 		const streamId = uniqueStreamId("sse-close");
 
@@ -112,14 +112,10 @@ describe("SSE lifecycle", () => {
 			if (result.value) buffer += decoder.decode(result.value, { stream: true });
 		}
 
-		// Close the stream WITH data (close-only doesn't broadcast to SSE)
+		// Close the stream with NO body — SSE clients should still be notified
 		await fetch(client.streamUrl(streamId), {
 			method: "POST",
-			headers: {
-				"Content-Type": "text/plain",
-				"Stream-Closed": "true",
-			},
-			body: "final",
+			headers: { "Stream-Closed": "true" },
 		});
 
 		// Read until we see "streamClosed" in a control event
@@ -135,7 +131,6 @@ describe("SSE lifecycle", () => {
 
 		await reader.cancel();
 
-		expect(buffer).toContain("data:final");
 		expect(buffer).toContain('"streamClosed":true');
 	});
 });
