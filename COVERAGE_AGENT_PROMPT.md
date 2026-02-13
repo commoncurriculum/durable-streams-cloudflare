@@ -107,8 +107,8 @@ Debugging decision tree:
 API endpoints (from `packages/server/README.md`):
 
 ```
-POST   /v1/estuary/subscribe/:projectId/:streamId  Body: {"estuaryId":"string"}
-DELETE /v1/estuary/subscribe/:projectId/:streamId  Body: {"estuaryId":"string"}
+POST   /v1/estuary/subscribe/:projectIdAndStreamId  Body: {"estuaryId":"string"}
+DELETE /v1/estuary/subscribe/:projectIdAndStreamId  Body: {"estuaryId":"string"}
 GET    /v1/estuary/:projectId/:estuaryId
 POST   /v1/estuary/:projectId/:estuaryId
 DELETE /v1/estuary/:projectId/:estuaryId
@@ -237,8 +237,8 @@ Note: Estuary tests are integration tests (use fetch), not unit tests (use app.r
 Estuary endpoints:
 
 ```
-POST   /v1/estuary/subscribe/:projectId/:streamId   Subscribe estuary to stream
-DELETE /v1/estuary/subscribe/:projectId/:streamId   Unsubscribe estuary from stream
+POST   /v1/estuary/subscribe/:projectIdAndStreamId   Subscribe estuary to stream
+DELETE /v1/estuary/subscribe/:projectIdAndStreamId   Unsubscribe estuary from stream
 GET    /v1/estuary/:projectId/:estuaryId            Get estuary info
 POST   /v1/estuary/:projectId/:estuaryId            Touch (refresh TTL)
 DELETE /v1/estuary/:projectId/:estuaryId            Delete estuary

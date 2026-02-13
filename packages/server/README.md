@@ -343,7 +343,7 @@ MIT
 
 ### Core Streaming Routes
 
-#### `PUT /v1/stream/:projectId/:streamId`
+#### `PUT /v1/stream/:projectIdAndStreamId`
 
 Create or touch a stream. Requires write or manage scope JWT.
 
@@ -355,7 +355,7 @@ Create or touch a stream. Requires write or manage scope JWT.
 
 **Response:** `201 Created` or `409 Conflict` if already exists with different content-type
 
-#### `POST /v1/stream/:projectId/:streamId`
+#### `POST /v1/stream/:projectIdAndStreamId`
 
 Append a message to the stream. Requires write or manage scope JWT.
 
@@ -369,7 +369,7 @@ Append a message to the stream. Requires write or manage scope JWT.
 
 **Response:** `200 OK` with `Stream-Next-Offset` header
 
-#### `GET /v1/stream/:projectId/:streamId`
+#### `GET /v1/stream/:projectIdAndStreamId`
 
 Read from a stream. Requires read, write, or manage scope JWT (or public stream).
 
@@ -381,7 +381,7 @@ Read from a stream. Requires read, write, or manage scope JWT (or public stream)
 
 **Response:** `200 OK` with messages, `Stream-Next-Offset`, `Stream-Up-To-Date` headers
 
-#### `DELETE /v1/stream/:projectId/:streamId`
+#### `DELETE /v1/stream/:projectIdAndStreamId`
 
 Delete a stream. Requires manage scope JWT.
 
@@ -389,7 +389,7 @@ Delete a stream. Requires manage scope JWT.
 
 ### Subscription Routes (Estuary)
 
-#### `POST /v1/estuary/subscribe/:projectId/:streamId`
+#### `POST /v1/estuary/subscribe/:projectIdAndStreamId`
 
 Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist.
 
@@ -414,7 +414,7 @@ Subscribe an estuary to a stream. Creates the estuary stream if it doesn't exist
 }
 ```
 
-#### `DELETE /v1/estuary/subscribe/:projectId/:streamId`
+#### `DELETE /v1/estuary/subscribe/:projectIdAndStreamId`
 
 Unsubscribe an estuary from a stream.
 
@@ -533,8 +533,8 @@ If you're currently running separate `@durable-streams-cloudflare/core` and `@du
 
 1. Deploy `@durable-streams-cloudflare/server` as a new worker
 2. Update client code to point to new routes:
-   - `/v1/estuary/publish/:projectId/:streamId` → Use `/v1/stream/:projectId/:streamId` (POST)
-   - `/v1/estuary/subscribe/:projectId/:streamId` → Same path, new worker
+   - `/v1/estuary/publish/:projectIdAndStreamId` → Use `/v1/stream/:projectIdAndStreamId` (POST)
+   - `/v1/estuary/subscribe/:projectIdAndStreamId` → Same path, new worker
 3. No data migration needed - DOs migrate automatically when accessed
 4. Remove old workers once verified
 
