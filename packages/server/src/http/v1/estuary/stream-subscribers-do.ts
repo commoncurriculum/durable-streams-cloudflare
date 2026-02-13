@@ -10,11 +10,17 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { logInfo } from "../../../log";
-import { CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_RECOVERY_MS } from "../../../constants";
+import {
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+  CIRCUIT_BREAKER_RECOVERY_MS,
+  FANOUT_QUEUE_THRESHOLD,
+  FANOUT_QUEUE_BATCH_SIZE,
+} from "../../../constants";
 import type { BaseEnv } from "../../router";
 import type { GetSubscribersResult, FanoutQueueMessage } from "./types";
 import { StreamSubscribersDoStorage } from "../../../storage/stream-subscribers-do";
 import { fanoutToSubscribers } from "./publish/fanout";
+import { bufferToBase64 } from "../../../util/base64";
 
 export interface StreamSubscribersDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
@@ -92,12 +98,12 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
     streamId: string,
     payload: ArrayBuffer,
     contentType: string,
-  ): Promise<{ successCount: number; failureCount: number }> {
+  ): Promise<{ successCount: number; failureCount: number; fanoutMode: string }> {
     const subscriberIds = await this.storage.getSubscriberIds();
 
     // Early return if no subscribers
     if (subscriberIds.length === 0) {
-      return { successCount: 0, failureCount: 0 };
+      return { successCount: 0, failureCount: 0, fanoutMode: "skipped" };
     }
 
     // Track fanout sequence for producer-based deduplication
@@ -105,18 +111,79 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
     this.nextFanoutSeq++;
     await this.storage.persistFanoutSeq(this.nextFanoutSeq);
 
-    // Fan out with producer headers for idempotency
+    const producerHeaders = {
+      producerId: `fanout:${streamId}`,
+      producerEpoch: "1",
+      producerSeq: fanoutSeq.toString(),
+    };
+
+    // Decide: queue vs inline fanout
+    const threshold = this.env.FANOUT_QUEUE_THRESHOLD
+      ? Number.parseInt(this.env.FANOUT_QUEUE_THRESHOLD, 10)
+      : FANOUT_QUEUE_THRESHOLD;
+
+    const useQueue =
+      this.env.FANOUT_QUEUE && subscriberIds.length > threshold && this.shouldAttemptInlineFanout();
+
+    if (useQueue) {
+      // Queue path: batch subscriber IDs into queue messages
+      const payloadBase64 = bufferToBase64(payload);
+
+      for (let i = 0; i < subscriberIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+        const batch = subscriberIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+        await this.env.FANOUT_QUEUE!.send({
+          projectId,
+          streamId,
+          estuaryIds: batch,
+          payload: payloadBase64,
+          contentType,
+          producerHeaders,
+        });
+      }
+
+      logInfo(
+        {
+          streamId,
+          subscribers: subscriberIds.length,
+          batches: Math.ceil(subscriberIds.length / FANOUT_QUEUE_BATCH_SIZE),
+          component: "fanout-queue",
+        },
+        "fanout queued",
+      );
+
+      return { successCount: subscriberIds.length, failureCount: 0, fanoutMode: "queued" };
+    }
+
+    // Inline path (below threshold or no queue binding or circuit open)
+    if (!this.shouldAttemptInlineFanout()) {
+      // Circuit breaker is open — if queue is available, use it as fallback
+      if (this.env.FANOUT_QUEUE) {
+        const payloadBase64 = bufferToBase64(payload);
+        for (let i = 0; i < subscriberIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+          const batch = subscriberIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+          await this.env.FANOUT_QUEUE.send({
+            projectId,
+            streamId,
+            estuaryIds: batch,
+            payload: payloadBase64,
+            contentType,
+            producerHeaders,
+          });
+        }
+        return { successCount: subscriberIds.length, failureCount: 0, fanoutMode: "circuit-open" };
+      }
+      // No queue available and circuit is open — skip fanout
+      return { successCount: 0, failureCount: subscriberIds.length, fanoutMode: "circuit-open" };
+    }
+
+    // Inline fanout
     const result = await fanoutToSubscribers(
       this.env,
       projectId,
       subscriberIds,
       payload,
       contentType,
-      {
-        producerId: `fanout:${streamId}`,
-        producerEpoch: "1",
-        producerSeq: fanoutSeq.toString(),
-      },
+      producerHeaders,
     );
 
     // Update circuit breaker and clean up stale subscribers
@@ -125,7 +192,7 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
       await this.storage.removeSubscribers(result.staleEstuaryIds);
     }
 
-    return { successCount: result.successes, failureCount: result.failures };
+    return { successCount: result.successes, failureCount: result.failures, fanoutMode: "inline" };
   }
 
   // ============================================================================
