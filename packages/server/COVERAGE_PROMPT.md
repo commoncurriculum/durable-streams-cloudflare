@@ -2,29 +2,25 @@
 
 When working on test coverage for this project, follow this workflow:
 
-## 1. Always Run Fresh Coverage First
+## 1. Check Existing Coverage Data
+
+**DO NOT run `pnpm -r run cov` at the start.** It takes 90+ seconds and wastes tokens. Coverage was already collected. Instead, read the existing data:
 
 ```bash
-pnpm -C packages/server cov
-```
-
-This takes 60-90 seconds. **Never trust existing coverage files** - they can be hours or days old.
-
-## 2. Identify What Needs Testing
-
-```bash
-# Show all uncovered lines
-pnpm -C packages/server run coverage:lines
+# Show all uncovered lines (uses already-collected data)
+pnpm -r run coverage:lines
 
 # Show only 0% files
-pnpm -C packages/server run coverage:lines -- --zero
+pnpm -r run coverage:lines -- --zero
 
 # Filter by specific area
-pnpm -C packages/server run coverage:lines -- estuary
-pnpm -C packages/server run coverage:lines -- src/http/v1/streams/append
+pnpm -r run coverage:lines -- estuary
+pnpm -r run coverage:lines -- src/http/v1/streams/append
 ```
 
-## 3. Write Tests
+Only re-run `pnpm -r run cov` **after** you've written new tests and need to verify improvement.
+
+## 2. Write Tests
 
 Follow patterns in CLAUDE.md:
 - Unit tests use `worker.app.request()` pattern
@@ -32,25 +28,18 @@ Follow patterns in CLAUDE.md:
 - Prefer `@cloudflare/vitest-pool-workers` real bindings over mocks
 - Only mock when testing failure paths that can't be triggered naturally
 
-## 4. Verify Coverage Improved
+## 3. Verify Coverage Improved
 
 ```bash
-# Run fresh coverage again
-pnpm -C packages/server cov
+# Run fresh coverage ONLY after writing tests
+pnpm -r run cov
 
 # Check your specific area improved
-pnpm -C packages/server run coverage:lines -- your-area
+pnpm -r run coverage:lines -- your-area
 
 # Verify no new 0% files
-pnpm -C packages/server run coverage:lines -- --zero
+pnpm -r run coverage:lines -- --zero
 ```
-
-## Current Status (as of 2026-02-13)
-
-**Overall: 80.14% lines** (1849/2307)
-
-**0% Coverage Files:**
-- Storage DO index files (re-exports only, 0 actual lines)
 
 ## Success Criteria
 
