@@ -14,8 +14,13 @@ import { HttpError, ErrorCode } from "../../../shared/errors";
 import { evaluateProducer } from "../shared/producer";
 import { validateStreamSeq, buildClosedConflict } from "../shared/close";
 import { buildAppendBatch } from "../../../../storage/stream-do/append-batch";
-import { broadcastSse, broadcastWebSocket } from "../realtime/handlers";
-import { buildPreCacheResponse } from "../realtime/handlers";
+import {
+  broadcastSse,
+  broadcastSseControl,
+  broadcastWebSocket,
+  broadcastWebSocketControl,
+  buildPreCacheResponse,
+} from "../realtime/handlers";
 import type { StreamContext } from "../types";
 import type { StreamSubscribersDO } from "../../estuary/stream-subscribers-do";
 
@@ -309,6 +314,10 @@ export async function appendStream(
 
     // Notify waiters
     ctx.longPoll.notifyAll();
+
+    // Notify SSE and WebSocket clients that the stream closed
+    await broadcastSseControl(ctx, streamId, meta, meta.tail_offset, true);
+    await broadcastWebSocketControl(ctx, streamId, meta, meta.tail_offset, true);
 
     // Record metrics
     if (ctx.env.METRICS) {

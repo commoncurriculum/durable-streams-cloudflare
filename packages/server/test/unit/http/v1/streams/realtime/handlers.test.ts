@@ -34,7 +34,7 @@ const baseMeta = (overrides: Partial<StreamMeta> = {}): StreamMeta => ({
   ...overrides,
 });
 
-const textPayload = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer;
+const textPayload = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer as ArrayBuffer;
 
 // ===========================================================================
 // LongPollQueue
