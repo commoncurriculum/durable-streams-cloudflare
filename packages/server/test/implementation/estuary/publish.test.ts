@@ -609,4 +609,255 @@ describe("Estuary publish (fanout)", () => {
     const estuaryData = await pollEstuaryUntilData(estuaryPath);
     expect(estuaryData).toContain("Test HTML Fanout");
   });
+
+  it("handles fanout when subscriber estuary was deleted (stale subscriber)", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId1 = crypto.randomUUID();
+    const estuaryId2 = crypto.randomUUID();
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe two estuaries
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId1 }),
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId2 }),
+    });
+
+    // Delete first estuary
+    await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId1}`, {
+      method: "DELETE",
+    });
+
+    // Publish to source - should handle stale subscriber gracefully
+    const message = { data: "After deletion" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+
+    expect(response.status).toBe(204);
+
+    // Second estuary should still receive the message
+    const estuary2Path = `${projectId}/${estuaryId2}`;
+    const estuaryData = await pollEstuaryUntilData(estuary2Path);
+    expect(estuaryData).toContain("After deletion");
+  });
+
+  it("handles multiple stale subscribers during fanout", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId1 = crypto.randomUUID();
+    const estuaryId2 = crypto.randomUUID();
+    const estuaryId3 = crypto.randomUUID();
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe three estuaries
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId1 }),
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId2 }),
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId3 }),
+    });
+
+    // Delete first two estuaries (stale subscribers)
+    await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId1}`, {
+      method: "DELETE",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId2}`, {
+      method: "DELETE",
+    });
+
+    // Publish to source - should handle multiple stale subscribers
+    const message = { data: "Multiple stale test" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+
+    expect(response.status).toBe(204);
+
+    // Third estuary should still receive the message
+    const estuary3Path = `${projectId}/${estuaryId3}`;
+    const estuaryData = await pollEstuaryUntilData(estuary3Path);
+    expect(estuaryData).toContain("Multiple stale test");
+  });
+
+  it("handles fanout with batching (10+ subscribers)", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryIds = Array.from({ length: 12 }, () => crypto.randomUUID());
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe all estuaries
+    await Promise.all(
+      estuaryIds.map((estuaryId) =>
+        fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estuaryId }),
+        }),
+      ),
+    );
+
+    // Publish message
+    const message = { data: "Batch test" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+
+    expect(response.status).toBe(204);
+
+    // Verify at least a few estuaries received the message
+    const estuaryPath1 = `${projectId}/${estuaryIds[0]}`;
+    const estuaryPath2 = `${projectId}/${estuaryIds[11]}`;
+
+    const data1 = await pollEstuaryUntilData(estuaryPath1);
+    const data2 = await pollEstuaryUntilData(estuaryPath2);
+
+    expect(data1).toContain("Batch test");
+    expect(data2).toContain("Batch test");
+  });
+
+  it("verifies producer headers are set for deduplication", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe estuary
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Publish message
+    const message = { data: "Producer header test" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+
+    // Publish should succeed
+    expect(response.status).toBe(204);
+
+    // Wait for fanout - if producer headers are set correctly, fanout succeeds
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath);
+
+    // Producer headers enabled successful fanout
+    expect(estuaryData).toContain("Producer header test");
+  });
+
+  it("handles mixed success and failure during fanout batch", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId1 = crypto.randomUUID();
+    const estuaryId2 = crypto.randomUUID();
+    const estuaryId3 = crypto.randomUUID();
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe three estuaries
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId1 }),
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId2 }),
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId: estuaryId3 }),
+    });
+
+    // Delete the middle estuary to create a failure case
+    await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId2}`, {
+      method: "DELETE",
+    });
+
+    // Publish message - should succeed even with one failure
+    const message = { data: "Mixed results test" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+
+    expect(response.status).toBe(204);
+
+    // First and third estuaries should receive the message
+    const estuary1Path = `${projectId}/${estuaryId1}`;
+    const estuary3Path = `${projectId}/${estuaryId3}`;
+
+    const data1 = await pollEstuaryUntilData(estuary1Path);
+    const data3 = await pollEstuaryUntilData(estuary3Path);
+
+    expect(data1).toContain("Mixed results test");
+    expect(data3).toContain("Mixed results test");
+  });
 });

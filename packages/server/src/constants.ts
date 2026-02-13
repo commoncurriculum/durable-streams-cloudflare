@@ -7,12 +7,11 @@ import { regex } from "arkregex";
 // #region synced-to-docs:id-patterns
 /**
  * Pattern for valid estuary IDs.
- * Must be a UUID (8-4-4-4-12 hex format).
+ * Allows alphanumeric characters, hyphens, underscores, colons, and periods.
+ * Does not allow quotes, semicolons, spaces, or other special characters
+ * that could be used in SQL injection attacks.
  */
-export const ESTUARY_ID_PATTERN = regex(
-  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-  "i",
-);
+export const ESTUARY_ID_PATTERN = regex("^[a-zA-Z0-9_\\-:.]+$");
 
 /**
  * Pattern for valid stream IDs.

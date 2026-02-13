@@ -74,7 +74,7 @@ describe("Estuary get", () => {
 
   it("validates estuaryId format", async () => {
     const projectId = "test-project";
-    const invalidEstuaryId = "not-a-uuid";
+    const invalidEstuaryId = "estuary;DROP TABLE"; // SQL injection attempt
 
     const response = await fetch(`${BASE_URL}/v1/estuary/${projectId}/${invalidEstuaryId}`);
 

@@ -75,7 +75,7 @@ describe("Estuary unsubscribe", () => {
   it("validates estuaryId format", async () => {
     const projectId = "test-project";
     const sourceStreamId = uniqueStreamId("source");
-    const invalidEstuaryId = "not-a-uuid";
+    const invalidEstuaryId = "estuary;DROP TABLE"; // SQL injection attempt
 
     // Create source stream
     const sourceStreamPath = `${projectId}/${sourceStreamId}`;
