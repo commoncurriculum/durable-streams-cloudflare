@@ -15,13 +15,15 @@ async function pollEstuaryUntilData(
   estuaryPath: string,
   maxAttempts = 20,
   delayMs = 100,
+  expectedContent?: string,
 ): Promise<string> {
   for (let i = 0; i < maxAttempts; i++) {
     const response = await fetch(`${BASE_URL}/v1/stream/${estuaryPath}?offset=${ZERO_OFFSET}`);
     if (response.status === 200) {
       const data = await response.text();
       // Check if we have actual message data (not just metadata)
-      if (data.length > 50) {
+      // If expectedContent is provided, keep polling until it appears
+      if (data.length > 50 && (!expectedContent || data.includes(expectedContent))) {
         return data;
       }
     }
@@ -315,14 +317,15 @@ describe("Estuary publish (fanout)", () => {
     });
 
     // Verify both messages in estuary1
+    // Use expectedContent to wait for queue-delivered second message
     const estuary1Path = `${projectId}/${estuaryId1}`;
-    const data1 = await pollEstuaryUntilData(estuary1Path);
+    const data1 = await pollEstuaryUntilData(estuary1Path, 30, 200, "second message");
     expect(data1).toContain("first message");
     expect(data1).toContain("second message");
 
     // Verify only second message in estuary2 (subscribed late)
     const estuary2Path = `${projectId}/${estuaryId2}`;
-    const data2 = await pollEstuaryUntilData(estuary2Path);
+    const data2 = await pollEstuaryUntilData(estuary2Path, 30, 200, "second message");
     expect(data2).toContain("second message");
     // estuary2 should not have first message (subscribed after it was published)
     // Note: It might have it if it was backfilled, depending on implementation
