@@ -21,6 +21,7 @@ import type {
 import { StreamSubscribersDoStorage } from "../../../storage/stream-subscribers-do";
 import { publishToStream } from "./publish";
 import type { PublishContext } from "./publish";
+import { fanoutToSubscribers } from "./publish/fanout";
 
 export interface StreamSubscribersDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
@@ -108,6 +109,59 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
     this.nextFanoutSeq = newFanoutSeq;
 
     return result;
+  }
+
+  /**
+   * Fanout-only RPC method.
+   *
+   * Called by StreamDO after it has already written to source stream.
+   * Fans out the payload to all subscribed estuary streams without re-writing to source.
+   *
+   * This is the entry point for the append → fanout flow:
+   * 1. Client POSTs to source stream
+   * 2. StreamDO.appendStream() writes to source
+   * 3. StreamDO calls this method to trigger fanout
+   * 4. This method fans out to all subscribers
+   */
+  async fanoutOnly(
+    projectId: string,
+    streamId: string,
+    payload: ArrayBuffer,
+    contentType: string,
+  ): Promise<{ successCount: number; failureCount: number }> {
+    const subscriberIds = await this.storage.getSubscriberIds();
+
+    // Early return if no subscribers
+    if (subscriberIds.length === 0) {
+      return { successCount: 0, failureCount: 0 };
+    }
+
+    // Track fanout sequence for producer-based deduplication
+    const fanoutSeq = this.nextFanoutSeq;
+    this.nextFanoutSeq++;
+    await this.storage.persistFanoutSeq(this.nextFanoutSeq);
+
+    // Fan out with producer headers for idempotency
+    const result = await fanoutToSubscribers(
+      this.env,
+      projectId,
+      subscriberIds,
+      payload,
+      contentType,
+      {
+        producerId: `fanout:${streamId}`,
+        producerEpoch: "1",
+        producerSeq: fanoutSeq.toString(),
+      },
+    );
+
+    // Update circuit breaker and clean up stale subscribers
+    this.updateCircuitBreaker(result.successes, result.failures);
+    if (result.staleEstuaryIds.length > 0) {
+      await this.storage.removeSubscribers(result.staleEstuaryIds);
+    }
+
+    return { successCount: result.successes, failureCount: result.failures };
   }
 
   // ============================================================================

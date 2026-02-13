@@ -19,6 +19,7 @@ export type StreamEnv = {
   DO_STORAGE_QUOTA_BYTES?: string;
   METRICS?: AnalyticsEngineDataset;
   REGISTRY?: KVNamespace;
+  SUBSCRIPTION_DO?: DurableObjectNamespace;
 };
 
 export type ResolveOffsetResult = {
