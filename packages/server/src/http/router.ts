@@ -35,13 +35,11 @@ import {
 import { subscribeHttp, subscribeRequestSchema } from "./v1/estuary/subscribe/http";
 import { unsubscribeHttp, unsubscribeRequestSchema } from "./v1/estuary/unsubscribe/http";
 import { getEstuaryHttp } from "./v1/estuary/get/http";
-import { touchEstuaryHttp } from "./v1/estuary/touch/http";
 import { deleteEstuaryHttp } from "./v1/estuary/delete/http";
 import {
   subscribeResponseSchema,
   unsubscribeResponseSchema,
   getEstuaryResponseSchema,
-  touchEstuaryResponseSchema,
   deleteEstuaryResponseSchema,
 } from "./v1/estuary/types";
 
@@ -276,23 +274,7 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
     }),
     getEstuaryHttp,
   );
-  app.post(
-    "/v1/estuary/:estuaryPath{.+}",
-    describeRoute({
-      tags: ["Estuary"],
-      summary: "Touch estuary",
-      description: "Create or extend the TTL of an estuary stream.",
-      responses: {
-        200: {
-          description: "Estuary touched",
-          content: {
-            "application/json": { schema: resolver(touchEstuaryResponseSchema) },
-          },
-        },
-      },
-    }),
-    touchEstuaryHttp,
-  );
+
   app.delete(
     "/v1/estuary/:estuaryPath{.+}",
     describeRoute({

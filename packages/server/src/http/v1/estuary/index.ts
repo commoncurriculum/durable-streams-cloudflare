@@ -110,7 +110,6 @@ export type {
   UnsubscribeResult,
   DeleteEstuaryResult,
   GetEstuaryResult,
-  TouchEstuaryResult,
   EstuaryInfo,
   PublishParams,
   PublishResult,
