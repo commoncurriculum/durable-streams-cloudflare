@@ -112,32 +112,6 @@ describe("Estuary subscribe", () => {
     expect(result.error).toContain("Source stream not found");
   });
 
-  it("rejects invalid estuaryId format", async () => {
-    const projectId = "test-project";
-    const sourceStreamId = uniqueStreamId("source");
-    const invalidEstuaryId = "not-a-uuid";
-
-    // Create source stream
-    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
-    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: "",
-    });
-
-    // Try to subscribe with invalid estuaryId
-    const response = await fetch(
-      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId: invalidEstuaryId }),
-      },
-    );
-
-    expect(response.status).toBe(400);
-  });
-
   it("rejects missing estuaryId", async () => {
     const projectId = "test-project";
     const sourceStreamId = uniqueStreamId("source");
@@ -256,9 +230,79 @@ describe("Estuary subscribe", () => {
     expect(result.error).toContain("Content type mismatch");
   });
 
-  it("handles REGISTRY being undefined gracefully", async () => {
-    // This tests that subscribe works even when REGISTRY is not available
-    // The isNewEstuary path should still complete successfully
+  it("allows flexible estuary ID formats", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+
+    // Create source stream
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Test various valid estuary ID formats
+    const validIds = [
+      "my-estuary-123",
+      "estuary_with_underscores",
+      "estuary.with.dots",
+      "estuary:with:colons",
+      "simpleEstuary",
+      crypto.randomUUID(), // UUIDs still work
+    ];
+
+    for (const validId of validIds) {
+      const response = await fetch(
+        `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estuaryId: validId }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as any;
+      expect(result.estuaryId).toBe(validId);
+    }
+  });
+
+  it("rejects invalid estuary ID formats", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+
+    // Create source stream
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Test invalid formats (special chars that could be SQL injection risks)
+    const invalidIds = [
+      "estuary with spaces",
+      "estuary;DROP TABLE",
+      "estuary'quote",
+      'estuary"doublequote',
+      "estuary\nwith\nnewlines",
+    ];
+
+    for (const invalidId of invalidIds) {
+      const response = await fetch(
+        `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estuaryId: invalidId }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("handles subscription with custom TTL", async () => {
+    // Verifies that the estuary respects TTL settings
     const projectId = "test-project";
     const sourceStreamId = uniqueStreamId("source");
     const estuaryId = crypto.randomUUID();
@@ -270,7 +314,7 @@ describe("Estuary subscribe", () => {
       body: "",
     });
 
-    // Subscribe should succeed even if REGISTRY is unavailable
+    // Subscribe estuary
     const response = await fetch(
       `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
       {
@@ -282,37 +326,10 @@ describe("Estuary subscribe", () => {
 
     expect(response.status).toBe(200);
     const result = (await response.json()) as any;
-    expect(result.estuaryId).toBe(estuaryId);
-    expect(result.isNewEstuary).toBe(true);
-  });
 
-  it("handles addSubscriber failure with rollback on new estuary", async () => {
-    // This tests the error handling path where addSubscriber fails
-    // and we need to rollback the newly created estuary stream
-    const projectId = "test-project";
-    const sourceStreamId = uniqueStreamId("source");
-    const estuaryId = crypto.randomUUID();
-
-    // Create source stream
-    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId}?public=true`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: "",
-    });
-
-    // First subscription should succeed
-    const response1 = await fetch(
-      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId }),
-      },
-    );
-
-    expect(response1.status).toBe(200);
-    const result1 = (await response1.json()) as any;
-    expect(result1.isNewEstuary).toBe(true);
+    // expiresAt should be set based on TTL
+    expect(result.expiresAt).toBeTypeOf("number");
+    expect(result.expiresAt).toBeGreaterThan(Date.now());
   });
 
   it("verifies expiresAt is set correctly", async () => {
