@@ -51,6 +51,12 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 - **Cloudflare Vitest integration**: Use `@cloudflare/vitest-pool-workers` for tests that need Cloudflare runtime APIs (DurableObject, WorkerEntrypoint, bindings, etc.) without mocking. Docs: https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/
 - **Miniflare**: Local simulator for Workers runtime, used under the hood by `wrangler dev` and `@cloudflare/vitest-pool-workers`. Docs: https://developers.cloudflare.com/workers/testing/miniflare/
 
+### 🚨 COVERAGE VERIFICATION - MANDATORY READING
+
+**Before checking or reporting ANY coverage numbers, read: `packages/server/COVERAGE_VERIFICATION_CHECKLIST.md`**
+
+This checklist is MANDATORY for all LLMs. Coverage files can be stale and will lie to you. Follow the checklist exactly.
+
 ### Test Patterns
 
 **Unit tests** should use `worker.app.request()` per [Hono testing docs](https://hono.dev/docs/guides/testing):
@@ -78,22 +84,30 @@ const response = await fetch(client.streamUrl(streamId));
 
 **Current Coverage**: 62.78% lines (combined unit + integration)
 
+**🚨 MANDATORY FOR ALL LLMs: READ `packages/server/COVERAGE_VERIFICATION_CHECKLIST.md` FIRST**
+
+Before reporting ANY coverage numbers, you MUST follow the checklist in `COVERAGE_VERIFICATION_CHECKLIST.md`. Coverage files can be HOURS or DAYS OLD and will give you COMPLETELY WRONG information. Always run fresh coverage first.
+
+**⚠️ CRITICAL: NEVER TRUST EXISTING COVERAGE FILES - ALWAYS RUN FRESH**
+
+Coverage data can be STALE (hours or days old). You MUST run `pnpm -C packages/server cov` FIRST before checking any coverage numbers. Old coverage files will give you completely wrong information.
+
 **Quick Commands**:
 
 ```bash
-# Run all tests + show summary
+# STEP 1: MANDATORY - Run all tests + generate fresh coverage (takes 60-90 seconds)
 pnpm -C packages/server cov
 
-# Show uncovered lines (machine-readable, parseable by agents)
+# STEP 2: ONLY AFTER STEP 1 - Show uncovered lines (machine-readable, parseable by agents)
 pnpm -C packages/server run coverage:lines
 
-# Filter by area
+# Filter by area (ONLY after running fresh coverage)
 pnpm -C packages/server run coverage:lines -- estuary
 
-# Only 0% coverage files
+# Only 0% coverage files (ONLY after running fresh coverage)
 pnpm -C packages/server run coverage:lines -- --zero
 
-# Files below threshold
+# Files below threshold (ONLY after running fresh coverage)
 pnpm -C packages/server run coverage:lines -- --below 50
 ```
 
@@ -226,17 +240,55 @@ pnpm -C packages/server run test
 
 ### Coverage Workflow
 
+**⚠️ CRITICAL WARNING: NEVER REPORT COVERAGE WITHOUT RUNNING FRESH TESTS FIRST**
+
+Coverage files can be STALE (hours or days old). Looking at old coverage data will give you COMPLETELY WRONG information about what is tested. You MUST generate fresh coverage EVERY TIME.
+
+**MANDATORY: After writing tests, you MUST verify coverage improved. Follow these steps IN ORDER:**
+
 ```bash
-# Before opening PR
+# Step 1: MANDATORY - Run all tests with coverage collection (takes 60-90 seconds)
+# DO NOT SKIP THIS STEP - existing coverage files are STALE
 pnpm -C packages/server cov
 
-# Should show 62.78%+ overall coverage
-# Check for new files with 0% coverage
-# Verify your changes are tested
+# Step 2: ONLY AFTER STEP 1 - Check coverage for your specific area
+pnpm -C packages/server run coverage:lines -- estuary
+# Or check a specific file:
+pnpm -C packages/server run coverage:lines -- src/http/v1/estuary/publish/index.ts
 
-# View uncovered lines for specific files
-pnpm -C packages/server run coverage:lines -- path/to/file.ts
+# Step 3: Verify no new 0% coverage files
+pnpm -C packages/server run coverage:lines -- --zero
+
+# Step 4: Check files below 50% coverage
+pnpm -C packages/server run coverage:lines -- --below 50
 ```
+
+**Common Mistake - DO NOT DO THIS:**
+
+```bash
+# ❌ WRONG - Looking at old coverage files
+$ pnpm run coverage:lines -- estuary
+# Shows 0% but this is STALE DATA from hours ago!
+
+# ✅ CORRECT - Always run fresh coverage first
+$ pnpm -C packages/server cov  # Takes 60-90 seconds
+$ pnpm run coverage:lines -- estuary
+# Shows actual current coverage
+```
+
+**What success looks like:**
+
+- Overall coverage: 63%+ (should increase if you added tests)
+- Your area goes from low/0% to 70%+
+- No new files in the 0% list
+
+**If coverage shows 0% but tests exist:** You are looking at STALE data. Run `pnpm -C packages/server cov` first.
+
+**Detailed guides**:
+
+- **MANDATORY CHECKLIST**: `packages/server/COVERAGE_VERIFICATION_CHECKLIST.md` - Follow this EXACTLY before reporting coverage
+- **Step-by-step guide**: `packages/server/HOW_TO_RUN_COVERAGE.md` - Complete instructions
+- **Quick reference**: `packages/server/COVERAGE_QUICKSTART.md` - Fast lookup
 
 ## Test Refactoring Task
 
