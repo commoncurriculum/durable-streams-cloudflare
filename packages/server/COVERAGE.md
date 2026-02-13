@@ -1,11 +1,11 @@
 # Coverage Guide
 
-**Current Overall Coverage: 76.11% lines** (as of last run)
+**Current Overall Coverage: 80.14% lines** (as of 2026-02-13)
 
-- **Lines**: 76.11% (1756/2307)
-- **Statements**: 74.31% (1840/2476)
-- **Functions**: 77.27% (289/374)
-- **Branches**: 67.62% (921/1362)
+- **Lines**: 80.14% (1849/2307)
+- **Statements**: 78.35% (1940/2476)
+- **Functions**: 83.42% (312/374)
+- **Branches**: 69.89% (952/1362)
 
 ## Quick Commands
 
@@ -64,16 +64,18 @@ The `coverage:lines` script shows uncovered lines in an easy-to-parse format:
 
 ## Areas Needing Coverage (0% files)
 
-**Queue:**
-- `src/queue/fanout-consumer.ts` - 0% (18 lines)
-
-**Utilities:**
-- `src/util/base64.ts` - 0% (13 lines)
-
 **Storage DO index files** (re-exports only, 0 actual lines):
 - `src/storage/stream-do/index.ts`
 - `src/storage/estuary-do/index.ts`
 - `src/storage/stream-subscribers-do/index.ts`
+
+## Priority Areas for Testing
+
+- `src/http/v1/estuary/index.ts` — 29.0%
+- `src/http/worker.ts` — 33.3%
+- `src/http/v1/streams/realtime/handlers.ts` — 46.9%
+- `src/http/v1/streams/append/index.ts` — 55.1%
+- `src/storage/estuary-do/queries.ts` — 58.3%
 
 ## How Coverage Works
 
@@ -133,7 +135,7 @@ pnpm run coverage:lines -- --zero
 
 ### What Success Looks Like
 
-- Overall coverage: 76%+ (should increase if you added tests)
+- Overall coverage: 80%+ (should increase if you added tests)
 - Your file goes from low/0% to 70%+
 - No new files in the 0% list
 - All your test files pass
@@ -205,7 +207,7 @@ Example:
 ```
 After running fresh coverage (pnpm cov):
 - src/http/v1/estuary/publish/index.ts: 0% (62 uncovered lines)
-- Overall: 76.11% lines
+- Overall: 80.14% lines
 ```
 
 ## Further Reading

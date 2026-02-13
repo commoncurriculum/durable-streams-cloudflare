@@ -47,16 +47,14 @@ pnpm -C packages/server run coverage:lines -- --zero
 
 ## Current Status (as of 2026-02-13)
 
-**Overall: 76.11% lines** (1756/2307)
+**Overall: 80.14% lines** (1849/2307)
 
 **0% Coverage Files:**
-- `src/queue/fanout-consumer.ts` (18 lines)
-- `src/util/base64.ts` (13 lines)
 - Storage DO index files (re-exports only, 0 actual lines)
 
 ## Success Criteria
 
-- Overall coverage stays at or above 76%
+- Overall coverage stays at or above 80%
 - Your area goes from low/0% to 70%+
 - No new files added to 0% list
 - All tests pass
