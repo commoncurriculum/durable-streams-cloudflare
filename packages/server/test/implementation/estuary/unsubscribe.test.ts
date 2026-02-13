@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { uniqueStreamId } from "../helpers";
+import type { UnsubscribeResult } from "../../../src/http/v1/estuary/types";
+import type { subscribeRequestSchema } from "../../../src/http/v1/estuary/subscribe/http";
+import type { unsubscribeRequestSchema } from "../../../src/http/v1/estuary/unsubscribe/http";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
+
+type SubscribeRequest = typeof subscribeRequestSchema.infer;
+type UnsubscribeRequest = typeof unsubscribeRequestSchema.infer;
 
 describe("Estuary unsubscribe", () => {
   it("can unsubscribe an estuary from a stream", async () => {
@@ -18,24 +24,26 @@ describe("Estuary unsubscribe", () => {
     });
 
     // Subscribe first
+    const subscribeBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(subscribeBody),
     });
 
     // Unsubscribe
+    const unsubscribeBody: UnsubscribeRequest = { estuaryId };
     const response = await fetch(
       `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId }),
+        body: JSON.stringify(unsubscribeBody),
       },
     );
 
     expect(response.status).toBe(200);
-    const result = await response.json();
+    const result = (await response.json()) as UnsubscribeResult;
 
     expect(result).toMatchObject({
       success: true,
@@ -48,18 +56,19 @@ describe("Estuary unsubscribe", () => {
     const estuaryId = crypto.randomUUID();
 
     // Try to unsubscribe from non-existent stream
+    const requestBody: UnsubscribeRequest = { estuaryId };
     const response = await fetch(
       `${BASE_URL}/v1/estuary/subscribe/${projectId}/${nonExistentStreamId}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId }),
+        body: JSON.stringify(requestBody),
       },
     );
 
     // Should succeed even if subscription didn't exist (idempotent)
     expect(response.status).toBe(200);
-    const result = (await response.json()) as any;
+    const result = (await response.json()) as UnsubscribeResult;
     expect(result.success).toBe(true);
   });
 
@@ -77,17 +86,18 @@ describe("Estuary unsubscribe", () => {
     });
 
     // Try to unsubscribe with invalid estuaryId
+    const requestBody = { estuaryId: invalidEstuaryId };
     const response = await fetch(
       `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId: invalidEstuaryId }),
+        body: JSON.stringify(requestBody),
       },
     );
 
     expect(response.status).toBe(400);
-    const result = (await response.json()) as any;
+    const result = (await response.json()) as { success: false; error: string };
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });

@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { uniqueStreamId } from "../helpers";
+import type { GetEstuaryResult } from "../../../src/http/v1/estuary/types";
+import type { subscribeRequestSchema } from "../../../src/http/v1/estuary/subscribe/http";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
+
+type SubscribeRequest = typeof subscribeRequestSchema.infer;
 
 describe("Estuary get", () => {
   it("can get estuary info with subscriptions", async () => {
@@ -24,23 +28,24 @@ describe("Estuary get", () => {
     });
 
     // Subscribe to both streams
+    const requestBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId1}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId2}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     // Get estuary info
     const response = await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId}`);
 
     expect(response.status).toBe(200);
-    const result = (await response.json()) as any;
+    const result = (await response.json()) as GetEstuaryResult;
 
     expect(result).toMatchObject({
       estuaryId,
@@ -63,7 +68,7 @@ describe("Estuary get", () => {
     const response = await fetch(`${BASE_URL}/v1/estuary/${projectId}/${nonExistentEstuaryId}`);
 
     expect(response.status).toBe(500);
-    const result = (await response.json()) as any;
+    const result = (await response.json()) as { error: string };
     expect(result.error).toBeDefined();
   });
 
@@ -74,7 +79,7 @@ describe("Estuary get", () => {
     const response = await fetch(`${BASE_URL}/v1/estuary/${projectId}/${invalidEstuaryId}`);
 
     expect(response.status).toBe(500);
-    const result = (await response.json()) as any;
+    const result = (await response.json()) as { error: string };
     expect(result.error).toContain("Invalid estuaryId format");
   });
 });
