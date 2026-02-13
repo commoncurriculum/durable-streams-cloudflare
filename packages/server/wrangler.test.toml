@@ -4,11 +4,23 @@ compatibility_date = "2026-02-02"
 compatibility_flags = []
 
 [durable_objects]
-bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" },
+  { name = "SUBSCRIPTION_DO", class_name = "StreamSubscribersDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
+]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["StreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["StreamSubscribersDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["EstuaryDO"]
 
 [[r2_buckets]]
 binding = "R2"
