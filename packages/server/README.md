@@ -521,12 +521,11 @@ Subscription functionality calls stream operations via `internal-api.ts` which d
 
 ### Fan-out Modes
 
-| Subscriber Count  | Mode         | Behavior                                           |
-| ----------------- | ------------ | -------------------------------------------------- |
-| ≤ 200 (default)   | Inline       | Synchronous fanout within publish request          |
-| > 200             | Queued       | Enqueues batches to `FANOUT_QUEUE`, async delivery |
-| > 1000 (no queue) | Skipped      | Publish succeeds, fanout skipped to protect origin |
-| Circuit open      | Circuit-open | Inline fanout skipped after repeated failures      |
+| Subscriber Count | Mode         | Behavior                                           |
+| ---------------- | ------------ | -------------------------------------------------- |
+| ≤ 200 (default)  | Inline       | Synchronous fanout within publish request          |
+| > 200            | Queued       | Enqueues batches to `FANOUT_QUEUE`, async delivery |
+| Circuit open     | Circuit-open | Inline fanout skipped after repeated failures      |
 
 ## Migration from Core + Subscription
 
