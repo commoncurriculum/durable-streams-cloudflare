@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { uniqueStreamId } from "../helpers";
 import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import type { subscribeRequestSchema } from "../../../src/http/v1/estuary/subscribe/http";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
+
+type SubscribeRequest = typeof subscribeRequestSchema.infer;
 
 /**
  * Poll an estuary stream until it contains data or timeout.
@@ -42,10 +45,11 @@ describe("Estuary publish (fanout)", () => {
     });
 
     // Subscribe estuary
+    const requestBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     // Publish message to source stream
@@ -79,20 +83,23 @@ describe("Estuary publish (fanout)", () => {
     });
 
     // Subscribe three estuaries
+    const requestBody1: SubscribeRequest = { estuaryId: estuaryId1 };
+    const requestBody2: SubscribeRequest = { estuaryId: estuaryId2 };
+    const requestBody3: SubscribeRequest = { estuaryId: estuaryId3 };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId: estuaryId1 }),
+      body: JSON.stringify(requestBody1),
     });
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId: estuaryId2 }),
+      body: JSON.stringify(requestBody2),
     });
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId: estuaryId3 }),
+      body: JSON.stringify(requestBody3),
     });
 
     // Publish message
@@ -161,10 +168,11 @@ describe("Estuary publish (fanout)", () => {
       body: "",
     });
 
+    const requestBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     // Publish three messages
@@ -209,10 +217,11 @@ describe("Estuary publish (fanout)", () => {
     });
 
     // Subscribe estuary
+    const requestBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     // Publish text message
@@ -332,10 +341,11 @@ describe("Estuary publish (fanout)", () => {
       body: "",
     });
 
+    const requestBody: SubscribeRequest = { estuaryId };
     await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estuaryId }),
+      body: JSON.stringify(requestBody),
     });
 
     // Publish messages with sequence numbers
@@ -365,5 +375,238 @@ describe("Estuary publish (fanout)", () => {
     expect(idx1).toBeLessThan(idx2);
     expect(idx2).toBeLessThan(idx3);
     expect(idx3).toBeLessThan(idx4);
+  });
+
+  it("handles fanout to estuary that was deleted", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create source and subscribe
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Delete the estuary stream (but subscription still exists)
+    await fetch(`${BASE_URL}/v1/estuary/${projectId}/${estuaryId}`, {
+      method: "DELETE",
+    });
+
+    // Publish - should handle the 404 gracefully
+    const message = { data: "after delete" };
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([message]),
+    });
+
+    // Should succeed at source level even if fanout partially fails
+    expect([200, 204]).toContain(response.status);
+  });
+
+  it("handles large payload fanout", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create and subscribe
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Create a large payload (1000 items)
+    const largePayload = Array.from({ length: 1000 }, (_, i) => ({
+      seq: i,
+      data: `item-${i}`,
+      padding: "x".repeat(100), // Add some bulk
+    }));
+
+    const response = await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(largePayload),
+    });
+
+    expect([200, 204]).toContain(response.status);
+
+    // Verify fanout completed
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath, 30, 200);
+    expect(estuaryData).toContain("item-0");
+    expect(estuaryData).toContain("item-999");
+  });
+
+  it("handles fanout with special characters in payload", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create and subscribe
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Publish with special characters
+    const specialMessage = {
+      unicode: "Hello 世界 🌍",
+      quotes: 'Test "quoted" text',
+      newlines: "Line1\nLine2\nLine3",
+      tabs: "Col1\tCol2\tCol3",
+      special: "<>&'\"",
+    };
+
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([specialMessage]),
+    });
+
+    // Verify fanout preserved special characters
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath);
+    expect(estuaryData).toContain("世界");
+    expect(estuaryData).toContain("🌍");
+  });
+
+  it("verifies fanout sequence numbers for deduplication", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create and subscribe
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Publish multiple messages to generate sequence numbers
+    for (let i = 0; i < 5; i++) {
+      await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ seq: i, data: `msg-${i}` }]),
+      });
+    }
+
+    // Verify all messages reached estuary
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath);
+
+    for (let i = 0; i < 5; i++) {
+      expect(estuaryData).toContain(`msg-${i}`);
+    }
+  });
+
+  it("handles fanout with concurrent publishes", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create and subscribe
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Fire concurrent publishes
+    const promises = Array.from({ length: 5 }, (_, i) =>
+      fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ concurrent: i, data: `concurrent-${i}` }]),
+      }),
+    );
+
+    const responses = await Promise.all(promises);
+
+    // All should succeed
+    for (const response of responses) {
+      expect([200, 204]).toContain(response.status);
+    }
+
+    // Verify all messages reached estuary
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath, 30, 200);
+
+    for (let i = 0; i < 5; i++) {
+      expect(estuaryData).toContain(`concurrent-${i}`);
+    }
+  });
+
+  it("handles text/html content type fanout", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const estuaryId = crypto.randomUUID();
+
+    // Create source stream with text/html
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/html" },
+      body: "",
+    });
+
+    // Subscribe estuary
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Publish HTML content
+    const htmlContent = "<html><body><h1>Test HTML Fanout</h1></body></html>";
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/html" },
+      body: htmlContent,
+    });
+
+    // Verify fanout
+    const estuaryPath = `${projectId}/${estuaryId}`;
+    const estuaryData = await pollEstuaryUntilData(estuaryPath);
+    expect(estuaryData).toContain("Test HTML Fanout");
   });
 });

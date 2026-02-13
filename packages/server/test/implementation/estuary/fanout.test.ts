@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { uniqueStreamId } from "../helpers";
 import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
+import type { SubscribeResult } from "../../../src/http/v1/estuary/types";
+import type { subscribeRequestSchema } from "../../../src/http/v1/estuary/subscribe/http";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
+
+type SubscribeRequest = typeof subscribeRequestSchema.infer;
 
 /**
  * Poll an estuary stream until it contains data or timeout.
@@ -43,16 +47,17 @@ describe("Estuary fanout", () => {
     expect(createResponse.status).toBe(201);
 
     // 2. Subscribe estuary to source stream
+    const requestBody: SubscribeRequest = { estuaryId };
     const subResponse = await fetch(
       `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estuaryId }),
+        body: JSON.stringify(requestBody),
       },
     );
     expect(subResponse.status).toBe(200);
-    const subResult = (await subResponse.json()) as any;
+    const subResult = (await subResponse.json()) as SubscribeResult;
     expect(subResult.isNewEstuary).toBe(true);
 
     // 3. Publish message to source stream
