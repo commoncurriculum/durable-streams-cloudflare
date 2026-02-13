@@ -3,7 +3,7 @@
  *
  * Each source stream gets its own StreamSubscribersDO instance.
  * Tracks which estuaries subscribe to this stream.
- * Provides publish() RPC method for fanout to subscribers.
+ * Provides fanoutOnly() RPC method for fanout to subscribers.
  *
  * This is an INTERNAL DO - only called via RPC, never via HTTP.
  */
@@ -12,15 +12,8 @@ import { DurableObject } from "cloudflare:workers";
 import { logInfo } from "../../../log";
 import { CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_RECOVERY_MS } from "../../../constants";
 import type { BaseEnv } from "../../router";
-import type {
-  PublishParams,
-  PublishResult,
-  GetSubscribersResult,
-  FanoutQueueMessage,
-} from "./types";
+import type { GetSubscribersResult, FanoutQueueMessage } from "./types";
 import { StreamSubscribersDoStorage } from "../../../storage/stream-subscribers-do";
-import { publishToStream } from "./publish";
-import type { PublishContext } from "./publish";
 import { fanoutToSubscribers } from "./publish/fanout";
 
 export interface StreamSubscribersDOEnv extends BaseEnv {
@@ -79,37 +72,8 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
   }
 
   // ============================================================================
-  // Publish (RPC entrypoint for fanout)
+  // Fanout (RPC entrypoint)
   // ============================================================================
-
-  async publish(
-    projectId: string,
-    streamId: string,
-    params: PublishParams,
-  ): Promise<PublishResult> {
-    // Build context for THE ONE publish function
-    const ctx: PublishContext = {
-      env: this.env,
-      storage: this.storage,
-      nextFanoutSeq: this.nextFanoutSeq,
-      shouldAttemptInlineFanout: () => this.shouldAttemptInlineFanout(),
-      updateCircuitBreaker: (successes, failures) => this.updateCircuitBreaker(successes, failures),
-      removeStaleSubscribers: async (estuaryIds) =>
-        await this.storage.removeSubscribers(estuaryIds),
-    };
-
-    // Call THE ONE publish function
-    const { result, newFanoutSeq } = await publishToStream(ctx, {
-      projectId,
-      streamId,
-      params,
-    });
-
-    // Update sequence number
-    this.nextFanoutSeq = newFanoutSeq;
-
-    return result;
-  }
 
   /**
    * Fanout-only RPC method.

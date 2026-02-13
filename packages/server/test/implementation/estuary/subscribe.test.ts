@@ -104,4 +104,146 @@ describe("Estuary subscribe", () => {
     const result = (await response.json()) as any;
     expect(result.error).toContain("Source stream not found");
   });
+
+  it("rejects invalid estuaryId format", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+    const invalidEstuaryId = "not-a-uuid";
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Try to subscribe with invalid estuaryId
+    const response = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estuaryId: invalidEstuaryId }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects missing estuaryId", async () => {
+    const projectId = "test-project";
+    const sourceStreamId = uniqueStreamId("source");
+
+    // Create source stream
+    const sourceStreamPath = `${projectId}/${sourceStreamId}`;
+    await fetch(`${BASE_URL}/v1/stream/${sourceStreamPath}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Try to subscribe without estuaryId
+    const response = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("can subscribe same estuary to multiple source streams", async () => {
+    const projectId = "test-project";
+    const sourceStreamId1 = uniqueStreamId("source1");
+    const sourceStreamId2 = uniqueStreamId("source2");
+    const estuaryId = crypto.randomUUID();
+
+    // Create two source streams
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId1}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId2}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Subscribe same estuary to both streams
+    const response1 = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId1}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estuaryId }),
+      },
+    );
+
+    const response2 = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId2}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estuaryId }),
+      },
+    );
+
+    expect(response1.status).toBe(200);
+    const result1 = (await response1.json()) as any;
+    expect(result1.isNewEstuary).toBe(true);
+    expect(result1.streamId).toBe(sourceStreamId1);
+
+    expect(response2.status).toBe(200);
+    const result2 = (await response2.json()) as any;
+    expect(result2.isNewEstuary).toBe(false); // Estuary already exists
+    expect(result2.streamId).toBe(sourceStreamId2);
+  });
+
+  it("rejects subscribing estuary with mismatched content type", async () => {
+    const projectId = "test-project";
+    const sourceStreamId1 = uniqueStreamId("source1");
+    const sourceStreamId2 = uniqueStreamId("source2");
+    const estuaryId = crypto.randomUUID();
+
+    // Create first source stream with application/json
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId1}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+
+    // Create second source stream with text/plain
+    await fetch(`${BASE_URL}/v1/stream/${projectId}/${sourceStreamId2}?public=true`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain" },
+      body: "",
+    });
+
+    // Subscribe estuary to first stream (json)
+    await fetch(`${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId1}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estuaryId }),
+    });
+
+    // Try to subscribe same estuary to second stream (text/plain) - should fail
+    const response = await fetch(
+      `${BASE_URL}/v1/estuary/subscribe/${projectId}/${sourceStreamId2}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estuaryId }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    const result = (await response.json()) as any;
+    expect(result.error).toContain("Content type mismatch");
+  });
 });
