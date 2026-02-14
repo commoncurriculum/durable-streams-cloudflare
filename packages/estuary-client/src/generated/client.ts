@@ -5,10 +5,7 @@
  * Durable Streams on Cloudflare — append-only event streams with pub/sub fan-out.
  * OpenAPI spec version: 0.8.0
  */
-import {
-  useMutation,
-  useQuery
-} from '@tanstack/react-query';
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   DataTag,
   DefinedInitialDataOptions,
@@ -21,20 +18,172 @@ import type {
   UseMutationOptions,
   UseMutationResult,
   UseQueryOptions,
-  UseQueryResult
-} from '@tanstack/react-query';
+  UseQueryResult,
+} from "@tanstack/react-query";
 
-import axios from 'axios';
-import type {
-  AxiosError,
-  AxiosRequestConfig,
-  AxiosResponse
-} from 'axios';
+import axios from "axios";
+import type { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
 
 export type GetV1ConfigByProjectId200 = {
-  signingSecrets?: string[];
-  corsOrigins?: string[];
-  isPublic?: boolean;
+  corsOrigins: string[];
+  isPublic: boolean;
+  signingSecrets: string[];
+};
+
+export type GetV1ConfigByProjectId401Code =
+  (typeof GetV1ConfigByProjectId401Code)[keyof typeof GetV1ConfigByProjectId401Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetV1ConfigByProjectId401Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type GetV1ConfigByProjectId401 = {
+  code: GetV1ConfigByProjectId401Code;
+  error: string;
+};
+
+export type GetV1ConfigByProjectId403Code =
+  (typeof GetV1ConfigByProjectId403Code)[keyof typeof GetV1ConfigByProjectId403Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetV1ConfigByProjectId403Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type GetV1ConfigByProjectId403 = {
+  code: GetV1ConfigByProjectId403Code;
+  error: string;
+};
+
+export type GetV1ConfigByProjectId404Code =
+  (typeof GetV1ConfigByProjectId404Code)[keyof typeof GetV1ConfigByProjectId404Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetV1ConfigByProjectId404Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type GetV1ConfigByProjectId404 = {
+  code: GetV1ConfigByProjectId404Code;
+  error: string;
 };
 
 export type PutV1ConfigByProjectIdBody = {
@@ -45,7 +194,111 @@ export type PutV1ConfigByProjectIdBody = {
 };
 
 export type PutV1ConfigByProjectId200 = {
-  ok?: boolean;
+  ok: boolean;
+};
+
+export type PutV1ConfigByProjectId401Code =
+  (typeof PutV1ConfigByProjectId401Code)[keyof typeof PutV1ConfigByProjectId401Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PutV1ConfigByProjectId401Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PutV1ConfigByProjectId401 = {
+  code: PutV1ConfigByProjectId401Code;
+  error: string;
+};
+
+export type PutV1ConfigByProjectId403Code =
+  (typeof PutV1ConfigByProjectId403Code)[keyof typeof PutV1ConfigByProjectId403Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PutV1ConfigByProjectId403Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PutV1ConfigByProjectId403 = {
+  code: PutV1ConfigByProjectId403Code;
+  error: string;
 };
 
 export type PostV1EstuarySubscribeByEstuaryPathBody = {
@@ -53,879 +306,1531 @@ export type PostV1EstuarySubscribeByEstuaryPathBody = {
   estuaryId: string;
 };
 
+export type PostV1EstuarySubscribeByEstuaryPath200 = {
+  estuaryId: string;
+  estuaryStreamPath: string;
+  expiresAt: number;
+  isNewEstuary: boolean;
+  streamId: string;
+};
+
 export type DeleteV1EstuarySubscribeByEstuaryPathBody = {
   /** @minLength 1 */
   estuaryId: string;
+};
+
+export type DeleteV1EstuarySubscribeByEstuaryPath200 = {
+  success: "true";
+};
+
+export type GetV1EstuaryByEstuaryPath200ContentType = string | null;
+
+export type GetV1EstuaryByEstuaryPath200SubscriptionsItem = {
+  streamId: string;
+};
+
+export type GetV1EstuaryByEstuaryPath200 = {
+  contentType: GetV1EstuaryByEstuaryPath200ContentType;
+  estuaryId: string;
+  estuaryStreamPath: string;
+  subscriptions: GetV1EstuaryByEstuaryPath200SubscriptionsItem[];
+};
+
+export type PostV1EstuaryByEstuaryPath200 = {
+  estuaryId: string;
+  expiresAt: number;
+};
+
+export type DeleteV1EstuaryByEstuaryPath200 = {
+  deleted: "true";
+  estuaryId: string;
+};
+
+export type PutV1StreamByStreamPath409Code =
+  (typeof PutV1StreamByStreamPath409Code)[keyof typeof PutV1StreamByStreamPath409Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PutV1StreamByStreamPath409Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PutV1StreamByStreamPath409 = {
+  code: PutV1StreamByStreamPath409Code;
+  error: string;
+};
+
+export type PostV1StreamByStreamPath404Code =
+  (typeof PostV1StreamByStreamPath404Code)[keyof typeof PostV1StreamByStreamPath404Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PostV1StreamByStreamPath404Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PostV1StreamByStreamPath404 = {
+  code: PostV1StreamByStreamPath404Code;
+  error: string;
+};
+
+export type PostV1StreamByStreamPath409Code =
+  (typeof PostV1StreamByStreamPath409Code)[keyof typeof PostV1StreamByStreamPath409Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PostV1StreamByStreamPath409Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PostV1StreamByStreamPath409 = {
+  code: PostV1StreamByStreamPath409Code;
+  error: string;
+};
+
+export type PostV1StreamByStreamPath413Code =
+  (typeof PostV1StreamByStreamPath413Code)[keyof typeof PostV1StreamByStreamPath413Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PostV1StreamByStreamPath413Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type PostV1StreamByStreamPath413 = {
+  code: PostV1StreamByStreamPath413Code;
+  error: string;
+};
+
+export type GetV1StreamByStreamPath404Code =
+  (typeof GetV1StreamByStreamPath404Code)[keyof typeof GetV1StreamByStreamPath404Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetV1StreamByStreamPath404Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type GetV1StreamByStreamPath404 = {
+  code: GetV1StreamByStreamPath404Code;
+  error: string;
+};
+
+export type DeleteV1StreamByStreamPath404Code =
+  (typeof DeleteV1StreamByStreamPath404Code)[keyof typeof DeleteV1StreamByStreamPath404Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const DeleteV1StreamByStreamPath404Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type DeleteV1StreamByStreamPath404 = {
+  code: DeleteV1StreamByStreamPath404Code;
+  error: string;
 };
 
 /**
  * Returns 200 OK if the worker is running.
  * @summary Health check
  */
-export const getHealth = (
-     options?: AxiosRequestConfig
- ): Promise<AxiosResponse<string>> => {
-    
-    
-    return axios.get(
-      `http://localhost:8787/health`,{
-        responseType: 'text',
-    ...options,}
-    );
-  }
-
-
-
+export const getHealth = (options?: AxiosRequestConfig): Promise<AxiosResponse<string>> => {
+  return axios.get(`http://localhost:8787/health`, {
+    responseType: "text",
+    ...options,
+  });
+};
 
 export const getGetHealthQueryKey = () => {
-    return [
-    `http://localhost:8787/health`
-    ] as const;
-    }
+  return [`http://localhost:8787/health`] as const;
+};
 
-    
-export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = AxiosError<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, axios?: AxiosRequestConfig}
-) => {
+export const getGetHealthQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHealth>>,
+  TError = AxiosError<unknown>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
+  axios?: AxiosRequestConfig;
+}) => {
+  const { query: queryOptions, axios: axiosOptions } = options ?? {};
 
-const {query: queryOptions, axios: axiosOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetHealthQueryKey();
 
-  const queryKey =  queryOptions?.queryKey ?? getGetHealthQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) =>
+    getHealth({ signal, ...axiosOptions });
 
-  
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHealth>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData> };
+};
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) => getHealth({ signal, ...axiosOptions });
+export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>;
+export type GetHealthQueryError = AxiosError<unknown>;
 
-      
-
-      
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData> & { queryKey: DataTag<QueryKey, TData> }
-}
-
-export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>
-export type GetHealthQueryError = AxiosError<unknown>
-
-
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = AxiosError<unknown>>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
+export function useGetHealth<
+  TData = Awaited<ReturnType<typeof getHealth>>,
+  TError = AxiosError<unknown>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
+      Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
           TError,
           Awaited<ReturnType<typeof getHealth>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = AxiosError<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetHealth<
+  TData = Awaited<ReturnType<typeof getHealth>>,
+  TError = AxiosError<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
+      Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
           TError,
           Awaited<ReturnType<typeof getHealth>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = AxiosError<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetHealth<
+  TData = Awaited<ReturnType<typeof getHealth>>,
+  TError = AxiosError<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
 /**
  * @summary Health check
  */
 
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = AxiosError<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+export function useGetHealth<
+  TData = Awaited<ReturnType<typeof getHealth>>,
+  TError = AxiosError<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+  const queryOptions = getGetHealthQueryOptions(options);
 
-  const queryOptions = getGetHealthQueryOptions(options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData>;
+  };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
-
-
-
-
 
 /**
  * Retrieve signing secrets, CORS origins, and public flag for a project. Requires a manage-scope JWT.
  * @summary Get project configuration
  */
 export const getV1ConfigByProjectId = (
-    projectId: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<GetV1ConfigByProjectId200>> => {
-    
-    
-    return axios.get(
-      `http://localhost:8787/v1/config/${projectId}`,options
-    );
-  }
+  projectId: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<GetV1ConfigByProjectId200>> => {
+  return axios.get(`http://localhost:8787/v1/config/${projectId}`, options);
+};
 
+export const getGetV1ConfigByProjectIdQueryKey = (projectId?: string) => {
+  return [`http://localhost:8787/v1/config/${projectId}`] as const;
+};
 
-
-
-export const getGetV1ConfigByProjectIdQueryKey = (projectId?: string,) => {
-    return [
-    `http://localhost:8787/v1/config/${projectId}`
-    ] as const;
-    }
-
-    
-export const getGetV1ConfigByProjectIdQueryOptions = <TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError = AxiosError<void>>(projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>>, axios?: AxiosRequestConfig}
+export const getGetV1ConfigByProjectIdQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+  TError = AxiosError<
+    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+  >,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
 ) => {
+  const { query: queryOptions, axios: axiosOptions } = options ?? {};
 
-const {query: queryOptions, axios: axiosOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetV1ConfigByProjectIdQueryKey(projectId);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetV1ConfigByProjectIdQueryKey(projectId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ConfigByProjectId>>> = ({ signal }) =>
+    getV1ConfigByProjectId(projectId, { signal, ...axiosOptions });
 
-  
+  return { queryKey, queryFn, enabled: !!projectId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData> };
+};
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ConfigByProjectId>>> = ({ signal }) => getV1ConfigByProjectId(projectId, { signal, ...axiosOptions });
+export type GetV1ConfigByProjectIdQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1ConfigByProjectId>>
+>;
+export type GetV1ConfigByProjectIdQueryError = AxiosError<
+  GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+>;
 
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData> & { queryKey: DataTag<QueryKey, TData> }
-}
-
-export type GetV1ConfigByProjectIdQueryResult = NonNullable<Awaited<ReturnType<typeof getV1ConfigByProjectId>>>
-export type GetV1ConfigByProjectIdQueryError = AxiosError<void>
-
-
-export function useGetV1ConfigByProjectId<TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError = AxiosError<void>>(
- projectId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>> & Pick<
+export function useGetV1ConfigByProjectId<
+  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+  TError = AxiosError<
+    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+  >,
+>(
+  projectId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
+    > &
+      Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
           TError,
           Awaited<ReturnType<typeof getV1ConfigByProjectId>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1ConfigByProjectId<TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError = AxiosError<void>>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>> & Pick<
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1ConfigByProjectId<
+  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+  TError = AxiosError<
+    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+  >,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
+    > &
+      Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
           TError,
           Awaited<ReturnType<typeof getV1ConfigByProjectId>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1ConfigByProjectId<TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError = AxiosError<void>>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1ConfigByProjectId<
+  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+  TError = AxiosError<
+    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+  >,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
 /**
  * @summary Get project configuration
  */
 
-export function useGetV1ConfigByProjectId<TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError = AxiosError<void>>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+export function useGetV1ConfigByProjectId<
+  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
+  TError = AxiosError<
+    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
+  >,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+  const queryOptions = getGetV1ConfigByProjectIdQueryOptions(projectId, options);
 
-  const queryOptions = getGetV1ConfigByProjectIdQueryOptions(projectId,options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData>;
+  };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
-
-
-
-
 
 /**
  * Set signing secrets, CORS origins, and public flag for a project. Requires a manage-scope JWT.
  * @summary Update project configuration
  */
 export const putV1ConfigByProjectId = (
-    projectId: string,
-    putV1ConfigByProjectIdBody: PutV1ConfigByProjectIdBody, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<PutV1ConfigByProjectId200>> => {
-    
-    
-    return axios.put(
-      `http://localhost:8787/v1/config/${projectId}`,
-      putV1ConfigByProjectIdBody,options
-    );
-  }
+  projectId: string,
+  putV1ConfigByProjectIdBody: PutV1ConfigByProjectIdBody,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<PutV1ConfigByProjectId200>> => {
+  return axios.put(
+    `http://localhost:8787/v1/config/${projectId}`,
+    putV1ConfigByProjectIdBody,
+    options,
+  );
+};
 
+export const getPutV1ConfigByProjectIdMutationOptions = <
+  TError = AxiosError<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
+    TError,
+    { projectId: string; data: PutV1ConfigByProjectIdBody },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
+  TError,
+  { projectId: string; data: PutV1ConfigByProjectIdBody },
+  TContext
+> => {
+  const mutationKey = ["putV1ConfigByProjectId"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
+    { projectId: string; data: PutV1ConfigByProjectIdBody }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
 
-export const getPutV1ConfigByProjectIdMutationOptions = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putV1ConfigByProjectId>>, TError,{projectId: string;data: PutV1ConfigByProjectIdBody}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof putV1ConfigByProjectId>>, TError,{projectId: string;data: PutV1ConfigByProjectIdBody}, TContext> => {
+    return putV1ConfigByProjectId(projectId, data, axiosOptions);
+  };
 
-const mutationKey = ['putV1ConfigByProjectId'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type PutV1ConfigByProjectIdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putV1ConfigByProjectId>>
+>;
+export type PutV1ConfigByProjectIdMutationBody = PutV1ConfigByProjectIdBody;
+export type PutV1ConfigByProjectIdMutationError = AxiosError<
+  PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403
+>;
 
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putV1ConfigByProjectId>>, {projectId: string;data: PutV1ConfigByProjectIdBody}> = (props) => {
-          const {projectId,data} = props ?? {};
-
-          return  putV1ConfigByProjectId(projectId,data,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PutV1ConfigByProjectIdMutationResult = NonNullable<Awaited<ReturnType<typeof putV1ConfigByProjectId>>>
-    export type PutV1ConfigByProjectIdMutationBody = PutV1ConfigByProjectIdBody
-    export type PutV1ConfigByProjectIdMutationError = AxiosError<void>
-
-    /**
+/**
  * @summary Update project configuration
  */
-export const usePutV1ConfigByProjectId = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putV1ConfigByProjectId>>, TError,{projectId: string;data: PutV1ConfigByProjectIdBody}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-        TError,
-        {projectId: string;data: PutV1ConfigByProjectIdBody},
-        TContext
-      > => {
+export const usePutV1ConfigByProjectId = <
+  TError = AxiosError<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
+      TError,
+      { projectId: string; data: PutV1ConfigByProjectIdBody },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
+  TError,
+  { projectId: string; data: PutV1ConfigByProjectIdBody },
+  TContext
+> => {
+  const mutationOptions = getPutV1ConfigByProjectIdMutationOptions(options);
 
-      const mutationOptions = getPutV1ConfigByProjectIdMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Subscribe an estuary to a source stream. Messages published to the source are fan-out replicated to the estuary stream.
  * @summary Subscribe estuary to a stream
  */
 export const postV1EstuarySubscribeByEstuaryPath = (
-    estuaryPath: string,
-    postV1EstuarySubscribeByEstuaryPathBody: PostV1EstuarySubscribeByEstuaryPathBody, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.post(
-      `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
-      postV1EstuarySubscribeByEstuaryPathBody,options
-    );
-  }
+  estuaryPath: string,
+  postV1EstuarySubscribeByEstuaryPathBody: PostV1EstuarySubscribeByEstuaryPathBody,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<PostV1EstuarySubscribeByEstuaryPath200>> => {
+  return axios.post(
+    `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
+    postV1EstuarySubscribeByEstuaryPathBody,
+    options,
+  );
+};
 
+export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
+    TError,
+    { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
+  TError,
+  { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
+  TContext
+> => {
+  const mutationKey = ["postV1EstuarySubscribeByEstuaryPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
+    { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody }
+  > = (props) => {
+    const { estuaryPath, data } = props ?? {};
 
-export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: PostV1EstuarySubscribeByEstuaryPathBody}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: PostV1EstuarySubscribeByEstuaryPathBody}, TContext> => {
+    return postV1EstuarySubscribeByEstuaryPath(estuaryPath, data, axiosOptions);
+  };
 
-const mutationKey = ['postV1EstuarySubscribeByEstuaryPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type PostV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>
+>;
+export type PostV1EstuarySubscribeByEstuaryPathMutationBody =
+  PostV1EstuarySubscribeByEstuaryPathBody;
+export type PostV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>;
 
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>, {estuaryPath: string;data: PostV1EstuarySubscribeByEstuaryPathBody}> = (props) => {
-          const {estuaryPath,data} = props ?? {};
-
-          return  postV1EstuarySubscribeByEstuaryPath(estuaryPath,data,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>>
-    export type PostV1EstuarySubscribeByEstuaryPathMutationBody = PostV1EstuarySubscribeByEstuaryPathBody
-    export type PostV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>
-
-    /**
+/**
  * @summary Subscribe estuary to a stream
  */
-export const usePostV1EstuarySubscribeByEstuaryPath = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: PostV1EstuarySubscribeByEstuaryPathBody}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-        TError,
-        {estuaryPath: string;data: PostV1EstuarySubscribeByEstuaryPathBody},
-        TContext
-      > => {
+export const usePostV1EstuarySubscribeByEstuaryPath = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
+      TError,
+      { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
+  TError,
+  { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
+  TContext
+> => {
+  const mutationOptions = getPostV1EstuarySubscribeByEstuaryPathMutationOptions(options);
 
-      const mutationOptions = getPostV1EstuarySubscribeByEstuaryPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Remove an estuary's subscription to a source stream.
  * @summary Unsubscribe estuary from a stream
  */
 export const deleteV1EstuarySubscribeByEstuaryPath = (
-    estuaryPath: string,
-    deleteV1EstuarySubscribeByEstuaryPathBody: DeleteV1EstuarySubscribeByEstuaryPathBody, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.delete(
-      `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,{data:
-      deleteV1EstuarySubscribeByEstuaryPathBody, ...options}
-    );
-  }
+  estuaryPath: string,
+  deleteV1EstuarySubscribeByEstuaryPathBody: DeleteV1EstuarySubscribeByEstuaryPathBody,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<DeleteV1EstuarySubscribeByEstuaryPath200>> => {
+  return axios.delete(`http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`, {
+    data: deleteV1EstuarySubscribeByEstuaryPathBody,
+    ...options,
+  });
+};
 
+export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
+    TError,
+    { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
+  TError,
+  { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
+  TContext
+> => {
+  const mutationKey = ["deleteV1EstuarySubscribeByEstuaryPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
+    { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody }
+  > = (props) => {
+    const { estuaryPath, data } = props ?? {};
 
-export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: DeleteV1EstuarySubscribeByEstuaryPathBody}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: DeleteV1EstuarySubscribeByEstuaryPathBody}, TContext> => {
+    return deleteV1EstuarySubscribeByEstuaryPath(estuaryPath, data, axiosOptions);
+  };
 
-const mutationKey = ['deleteV1EstuarySubscribeByEstuaryPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type DeleteV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>
+>;
+export type DeleteV1EstuarySubscribeByEstuaryPathMutationBody =
+  DeleteV1EstuarySubscribeByEstuaryPathBody;
+export type DeleteV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>;
 
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>, {estuaryPath: string;data: DeleteV1EstuarySubscribeByEstuaryPathBody}> = (props) => {
-          const {estuaryPath,data} = props ?? {};
-
-          return  deleteV1EstuarySubscribeByEstuaryPath(estuaryPath,data,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>>
-    export type DeleteV1EstuarySubscribeByEstuaryPathMutationBody = DeleteV1EstuarySubscribeByEstuaryPathBody
-    export type DeleteV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>
-
-    /**
+/**
  * @summary Unsubscribe estuary from a stream
  */
-export const useDeleteV1EstuarySubscribeByEstuaryPath = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>, TError,{estuaryPath: string;data: DeleteV1EstuarySubscribeByEstuaryPathBody}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-        TError,
-        {estuaryPath: string;data: DeleteV1EstuarySubscribeByEstuaryPathBody},
-        TContext
-      > => {
+export const useDeleteV1EstuarySubscribeByEstuaryPath = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
+      TError,
+      { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
+  TError,
+  { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
+  TContext
+> => {
+  const mutationOptions = getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions(options);
 
-      const mutationOptions = getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Retrieve estuary metadata including subscriptions and content type.
  * @summary Get estuary info
  */
 export const getV1EstuaryByEstuaryPath = (
-    estuaryPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.get(
-      `http://localhost:8787/v1/estuary/${estuaryPath}`,options
-    );
-  }
+  estuaryPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<GetV1EstuaryByEstuaryPath200>> => {
+  return axios.get(`http://localhost:8787/v1/estuary/${estuaryPath}`, options);
+};
 
+export const getGetV1EstuaryByEstuaryPathQueryKey = (estuaryPath?: string) => {
+  return [`http://localhost:8787/v1/estuary/${estuaryPath}`] as const;
+};
 
-
-
-export const getGetV1EstuaryByEstuaryPathQueryKey = (estuaryPath?: string,) => {
-    return [
-    `http://localhost:8787/v1/estuary/${estuaryPath}`
-    ] as const;
-    }
-
-    
-export const getGetV1EstuaryByEstuaryPathQueryOptions = <TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError = AxiosError<unknown>>(estuaryPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>>, axios?: AxiosRequestConfig}
+export const getGetV1EstuaryByEstuaryPathQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+  TError = AxiosError<unknown>,
+>(
+  estuaryPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
 ) => {
+  const { query: queryOptions, axios: axiosOptions } = options ?? {};
 
-const {query: queryOptions, axios: axiosOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetV1EstuaryByEstuaryPathQueryKey(estuaryPath);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetV1EstuaryByEstuaryPathQueryKey(estuaryPath);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>> = ({
+    signal,
+  }) => getV1EstuaryByEstuaryPath(estuaryPath, { signal, ...axiosOptions });
 
-  
+  return { queryKey, queryFn, enabled: !!estuaryPath, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData> };
+};
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>> = ({ signal }) => getV1EstuaryByEstuaryPath(estuaryPath, { signal, ...axiosOptions });
+export type GetV1EstuaryByEstuaryPathQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
+>;
+export type GetV1EstuaryByEstuaryPathQueryError = AxiosError<unknown>;
 
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(estuaryPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData> & { queryKey: DataTag<QueryKey, TData> }
-}
-
-export type GetV1EstuaryByEstuaryPathQueryResult = NonNullable<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>>
-export type GetV1EstuaryByEstuaryPathQueryError = AxiosError<unknown>
-
-
-export function useGetV1EstuaryByEstuaryPath<TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError = AxiosError<unknown>>(
- estuaryPath: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>> & Pick<
+export function useGetV1EstuaryByEstuaryPath<
+  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+  TError = AxiosError<unknown>,
+>(
+  estuaryPath: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
+    > &
+      Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
           TError,
           Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1EstuaryByEstuaryPath<TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError = AxiosError<unknown>>(
- estuaryPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>> & Pick<
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1EstuaryByEstuaryPath<
+  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+  TError = AxiosError<unknown>,
+>(
+  estuaryPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
+    > &
+      Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
           TError,
           Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1EstuaryByEstuaryPath<TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError = AxiosError<unknown>>(
- estuaryPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1EstuaryByEstuaryPath<
+  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+  TError = AxiosError<unknown>,
+>(
+  estuaryPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
 /**
  * @summary Get estuary info
  */
 
-export function useGetV1EstuaryByEstuaryPath<TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError = AxiosError<unknown>>(
- estuaryPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+export function useGetV1EstuaryByEstuaryPath<
+  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
+  TError = AxiosError<unknown>,
+>(
+  estuaryPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+  const queryOptions = getGetV1EstuaryByEstuaryPathQueryOptions(estuaryPath, options);
 
-  const queryOptions = getGetV1EstuaryByEstuaryPathQueryOptions(estuaryPath,options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData>;
+  };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
-
-
-
-
 
 /**
  * Create or extend the TTL of an estuary stream.
  * @summary Touch estuary
  */
 export const postV1EstuaryByEstuaryPath = (
-    estuaryPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.post(
-      `http://localhost:8787/v1/estuary/${estuaryPath}`,undefined,options
-    );
-  }
+  estuaryPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<PostV1EstuaryByEstuaryPath200>> => {
+  return axios.post(`http://localhost:8787/v1/estuary/${estuaryPath}`, undefined, options);
+};
 
+export const getPostV1EstuaryByEstuaryPathMutationOptions = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
+    TError,
+    { estuaryPath: string },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
+  TError,
+  { estuaryPath: string },
+  TContext
+> => {
+  const mutationKey = ["postV1EstuaryByEstuaryPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
+    { estuaryPath: string }
+  > = (props) => {
+    const { estuaryPath } = props ?? {};
 
-export const getPostV1EstuaryByEstuaryPathMutationOptions = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext> => {
+    return postV1EstuaryByEstuaryPath(estuaryPath, axiosOptions);
+  };
 
-const mutationKey = ['postV1EstuaryByEstuaryPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type PostV1EstuaryByEstuaryPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>
+>;
 
+export type PostV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>;
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>, {estuaryPath: string}> = (props) => {
-          const {estuaryPath} = props ?? {};
-
-          return  postV1EstuaryByEstuaryPath(estuaryPath,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostV1EstuaryByEstuaryPathMutationResult = NonNullable<Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>>
-    
-    export type PostV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>
-
-    /**
+/**
  * @summary Touch estuary
  */
-export const usePostV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-        TError,
-        {estuaryPath: string},
-        TContext
-      > => {
+export const usePostV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
+      TError,
+      { estuaryPath: string },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
+  TError,
+  { estuaryPath: string },
+  TContext
+> => {
+  const mutationOptions = getPostV1EstuaryByEstuaryPathMutationOptions(options);
 
-      const mutationOptions = getPostV1EstuaryByEstuaryPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Delete an estuary and its underlying stream.
  * @summary Delete estuary
  */
 export const deleteV1EstuaryByEstuaryPath = (
-    estuaryPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.delete(
-      `http://localhost:8787/v1/estuary/${estuaryPath}`,options
-    );
-  }
+  estuaryPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<DeleteV1EstuaryByEstuaryPath200>> => {
+  return axios.delete(`http://localhost:8787/v1/estuary/${estuaryPath}`, options);
+};
 
+export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
+  TError = AxiosError<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
+    TError,
+    { estuaryPath: string },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
+  TError,
+  { estuaryPath: string },
+  TContext
+> => {
+  const mutationKey = ["deleteV1EstuaryByEstuaryPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
+    { estuaryPath: string }
+  > = (props) => {
+    const { estuaryPath } = props ?? {};
 
-export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext> => {
+    return deleteV1EstuaryByEstuaryPath(estuaryPath, axiosOptions);
+  };
 
-const mutationKey = ['deleteV1EstuaryByEstuaryPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type DeleteV1EstuaryByEstuaryPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>
+>;
 
+export type DeleteV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>;
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>, {estuaryPath: string}> = (props) => {
-          const {estuaryPath} = props ?? {};
-
-          return  deleteV1EstuaryByEstuaryPath(estuaryPath,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteV1EstuaryByEstuaryPathMutationResult = NonNullable<Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>>
-    
-    export type DeleteV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>
-
-    /**
+/**
  * @summary Delete estuary
  */
-export const useDeleteV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>, TError,{estuaryPath: string}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-        TError,
-        {estuaryPath: string},
-        TContext
-      > => {
+export const useDeleteV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
+      TError,
+      { estuaryPath: string },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
+  TError,
+  { estuaryPath: string },
+  TContext
+> => {
+  const mutationOptions = getDeleteV1EstuaryByEstuaryPathMutationOptions(options);
 
-      const mutationOptions = getDeleteV1EstuaryByEstuaryPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Create a new append-only stream. The Content-Type header sets the stream's content type.
  * @summary Create a stream
  */
 export const putV1StreamByStreamPath = (
-    streamPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.put(
-      `http://localhost:8787/v1/stream/${streamPath}`,undefined,options
-    );
-  }
+  streamPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<void>> => {
+  return axios.put(`http://localhost:8787/v1/stream/${streamPath}`, undefined, options);
+};
 
+export const getPutV1StreamByStreamPathMutationOptions = <
+  TError = AxiosError<PutV1StreamByStreamPath409>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
+    TError,
+    { streamPath: string },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationKey = ["putV1StreamByStreamPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
+    { streamPath: string }
+  > = (props) => {
+    const { streamPath } = props ?? {};
 
-export const getPutV1StreamByStreamPathMutationOptions = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof putV1StreamByStreamPath>>, TError,{streamPath: string}, TContext> => {
+    return putV1StreamByStreamPath(streamPath, axiosOptions);
+  };
 
-const mutationKey = ['putV1StreamByStreamPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type PutV1StreamByStreamPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof putV1StreamByStreamPath>>
+>;
 
+export type PutV1StreamByStreamPathMutationError = AxiosError<PutV1StreamByStreamPath409>;
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putV1StreamByStreamPath>>, {streamPath: string}> = (props) => {
-          const {streamPath} = props ?? {};
-
-          return  putV1StreamByStreamPath(streamPath,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PutV1StreamByStreamPathMutationResult = NonNullable<Awaited<ReturnType<typeof putV1StreamByStreamPath>>>
-    
-    export type PutV1StreamByStreamPathMutationError = AxiosError<void>
-
-    /**
+/**
  * @summary Create a stream
  */
-export const usePutV1StreamByStreamPath = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-        TError,
-        {streamPath: string},
-        TContext
-      > => {
+export const usePutV1StreamByStreamPath = <
+  TError = AxiosError<PutV1StreamByStreamPath409>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
+      TError,
+      { streamPath: string },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationOptions = getPutV1StreamByStreamPathMutationOptions(options);
 
-      const mutationOptions = getPutV1StreamByStreamPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Append one or more messages to an existing stream. Content-Type must match the stream's content type.
  * @summary Append to a stream
  */
 export const postV1StreamByStreamPath = (
-    streamPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void | void>> => {
-    
-    
-    return axios.post(
-      `http://localhost:8787/v1/stream/${streamPath}`,undefined,options
-    );
-  }
+  streamPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<void | void>> => {
+  return axios.post(`http://localhost:8787/v1/stream/${streamPath}`, undefined, options);
+};
 
+export const getPostV1StreamByStreamPathMutationOptions = <
+  TError = AxiosError<
+    PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
+    TError,
+    { streamPath: string },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationKey = ["postV1StreamByStreamPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
+    { streamPath: string }
+  > = (props) => {
+    const { streamPath } = props ?? {};
 
-export const getPostV1StreamByStreamPathMutationOptions = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof postV1StreamByStreamPath>>, TError,{streamPath: string}, TContext> => {
+    return postV1StreamByStreamPath(streamPath, axiosOptions);
+  };
 
-const mutationKey = ['postV1StreamByStreamPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type PostV1StreamByStreamPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV1StreamByStreamPath>>
+>;
 
+export type PostV1StreamByStreamPathMutationError = AxiosError<
+  PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
+>;
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postV1StreamByStreamPath>>, {streamPath: string}> = (props) => {
-          const {streamPath} = props ?? {};
-
-          return  postV1StreamByStreamPath(streamPath,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostV1StreamByStreamPathMutationResult = NonNullable<Awaited<ReturnType<typeof postV1StreamByStreamPath>>>
-    
-    export type PostV1StreamByStreamPathMutationError = AxiosError<void>
-
-    /**
+/**
  * @summary Append to a stream
  */
-export const usePostV1StreamByStreamPath = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-        TError,
-        {streamPath: string},
-        TContext
-      > => {
+export const usePostV1StreamByStreamPath = <
+  TError = AxiosError<
+    PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
+      TError,
+      { streamPath: string },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationOptions = getPostV1StreamByStreamPathMutationOptions(options);
 
-      const mutationOptions = getPostV1StreamByStreamPathMutationOptions(options);
+  return useMutation(mutationOptions, queryClient);
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
-    
 /**
  * Read messages from a stream. Supports offset/cursor query params, long-poll (Prefer: wait=N), SSE (Accept: text/event-stream), and WebSocket (Upgrade: websocket).
  * @summary Read from a stream
  */
 export const getV1StreamByStreamPath = (
-    streamPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.get(
-      `http://localhost:8787/v1/stream/${streamPath}`,options
-    );
-  }
+  streamPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<void>> => {
+  return axios.get(`http://localhost:8787/v1/stream/${streamPath}`, options);
+};
 
+export const getGetV1StreamByStreamPathQueryKey = (streamPath?: string) => {
+  return [`http://localhost:8787/v1/stream/${streamPath}`] as const;
+};
 
-
-
-export const getGetV1StreamByStreamPathQueryKey = (streamPath?: string,) => {
-    return [
-    `http://localhost:8787/v1/stream/${streamPath}`
-    ] as const;
-    }
-
-    
-export const getGetV1StreamByStreamPathQueryOptions = <TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError = AxiosError<void>>(streamPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>>, axios?: AxiosRequestConfig}
+export const getGetV1StreamByStreamPathQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+>(
+  streamPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
 ) => {
+  const { query: queryOptions, axios: axiosOptions } = options ?? {};
 
-const {query: queryOptions, axios: axiosOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetV1StreamByStreamPathQueryKey(streamPath);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetV1StreamByStreamPathQueryKey(streamPath);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamByStreamPath>>> = ({
+    signal,
+  }) => getV1StreamByStreamPath(streamPath, { signal, ...axiosOptions });
 
-  
+  return { queryKey, queryFn, enabled: !!streamPath, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData> };
+};
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamByStreamPath>>> = ({ signal }) => getV1StreamByStreamPath(streamPath, { signal, ...axiosOptions });
+export type GetV1StreamByStreamPathQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1StreamByStreamPath>>
+>;
+export type GetV1StreamByStreamPathQueryError = AxiosError<void | GetV1StreamByStreamPath404>;
 
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(streamPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData> & { queryKey: DataTag<QueryKey, TData> }
-}
-
-export type GetV1StreamByStreamPathQueryResult = NonNullable<Awaited<ReturnType<typeof getV1StreamByStreamPath>>>
-export type GetV1StreamByStreamPathQueryError = AxiosError<void>
-
-
-export function useGetV1StreamByStreamPath<TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError = AxiosError<void>>(
- streamPath: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>> & Pick<
+export function useGetV1StreamByStreamPath<
+  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+>(
+  streamPath: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
+    > &
+      Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
           TError,
           Awaited<ReturnType<typeof getV1StreamByStreamPath>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1StreamByStreamPath<TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError = AxiosError<void>>(
- streamPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>> & Pick<
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1StreamByStreamPath<
+  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+>(
+  streamPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
+    > &
+      Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
           TError,
           Awaited<ReturnType<typeof getV1StreamByStreamPath>>
-        > , 'initialData'
-      >, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
-export function useGetV1StreamByStreamPath<TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError = AxiosError<void>>(
- streamPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> }
+        >,
+        "initialData"
+      >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useGetV1StreamByStreamPath<
+  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+>(
+  streamPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
 /**
  * @summary Read from a stream
  */
 
-export function useGetV1StreamByStreamPath<TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError = AxiosError<void>>(
- streamPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+export function useGetV1StreamByStreamPath<
+  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
+  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+>(
+  streamPath: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+  const queryOptions = getGetV1StreamByStreamPathQueryOptions(streamPath, options);
 
-  const queryOptions = getGetV1StreamByStreamPathQueryOptions(streamPath,options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData>;
+  };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
-
-
-
-
 
 /**
  * Permanently delete a stream and all its data.
  * @summary Delete a stream
  */
 export const deleteV1StreamByStreamPath = (
-    streamPath: string, options?: AxiosRequestConfig
- ): Promise<AxiosResponse<void>> => {
-    
-    
-    return axios.delete(
-      `http://localhost:8787/v1/stream/${streamPath}`,options
-    );
-  }
+  streamPath: string,
+  options?: AxiosRequestConfig,
+): Promise<AxiosResponse<void>> => {
+  return axios.delete(`http://localhost:8787/v1/stream/${streamPath}`, options);
+};
 
+export const getDeleteV1StreamByStreamPathMutationOptions = <
+  TError = AxiosError<DeleteV1StreamByStreamPath404>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
+    TError,
+    { streamPath: string },
+    TContext
+  >;
+  axios?: AxiosRequestConfig;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationKey = ["deleteV1StreamByStreamPath"];
+  const { mutation: mutationOptions, axios: axiosOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, axios: undefined };
 
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
+    { streamPath: string }
+  > = (props) => {
+    const { streamPath } = props ?? {};
 
-export const getDeleteV1StreamByStreamPathMutationOptions = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>, TError,{streamPath: string}, TContext> => {
+    return deleteV1StreamByStreamPath(streamPath, axiosOptions);
+  };
 
-const mutationKey = ['deleteV1StreamByStreamPath'];
-const {mutation: mutationOptions, axios: axiosOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, axios: undefined};
+  return { mutationFn, ...mutationOptions };
+};
 
-      
+export type DeleteV1StreamByStreamPathMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>
+>;
 
+export type DeleteV1StreamByStreamPathMutationError = AxiosError<DeleteV1StreamByStreamPath404>;
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>, {streamPath: string}> = (props) => {
-          const {streamPath} = props ?? {};
-
-          return  deleteV1StreamByStreamPath(streamPath,axiosOptions)
-        }
-
-        
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteV1StreamByStreamPathMutationResult = NonNullable<Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>>
-    
-    export type DeleteV1StreamByStreamPathMutationError = AxiosError<void>
-
-    /**
+/**
  * @summary Delete a stream
  */
-export const useDeleteV1StreamByStreamPath = <TError = AxiosError<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>, TError,{streamPath: string}, TContext>, axios?: AxiosRequestConfig}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-        TError,
-        {streamPath: string},
-        TContext
-      > => {
+export const useDeleteV1StreamByStreamPath = <
+  TError = AxiosError<DeleteV1StreamByStreamPath404>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
+      TError,
+      { streamPath: string },
+      TContext
+    >;
+    axios?: AxiosRequestConfig;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
+  TError,
+  { streamPath: string },
+  TContext
+> => {
+  const mutationOptions = getDeleteV1StreamByStreamPathMutationOptions(options);
 
-      const mutationOptions = getDeleteV1StreamByStreamPathMutationOptions(options);
-
-      return useMutation(mutationOptions, queryClient);
-    }
+  return useMutation(mutationOptions, queryClient);
+};

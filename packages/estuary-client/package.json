@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "generate": "orval",
+    "generate": "orval && oxfmt --write src/generated",
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
