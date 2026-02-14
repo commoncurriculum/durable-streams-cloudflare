@@ -15,6 +15,7 @@
     "format": "oxfmt --write src",
     "format:check": "oxfmt --check src",
     "lint": "oxlint src",
+    "lint:fix": "oxlint --fix src",
     "prepublishOnly": "pnpm run clean && pnpm run build",
     "typecheck": "tsc --noEmit"
   },
