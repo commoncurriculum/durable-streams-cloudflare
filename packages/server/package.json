@@ -24,7 +24,7 @@
     "dev": "wrangler dev --local --port 8787 --inspector-port 9229 --persist-to ../../.wrangler/state",
     "lint": "oxlint src test",
     "lint:fix": "oxlint --fix src test",
-    "format": "oxfmt --write src test",
+    "format": "oxlint --fix src test && oxfmt --write src test",
     "format:check": "oxfmt --check src test",
     "conformance": "pnpm exec vitest run --config vitest.conformance.config.ts",
     "test": "pnpm run test:implementation",
