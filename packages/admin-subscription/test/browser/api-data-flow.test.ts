@@ -5,10 +5,9 @@ const ADMIN_URL = process.env.ADMIN_URL!;
 const CORE_URL = process.env.CORE_URL!;
 const PROJECT_ID = `apidf-${Date.now()}`;
 
-let signingSecret: string;
 
 test.beforeAll(async ({ browser }) => {
-  signingSecret = await createProject(browser, ADMIN_URL, PROJECT_ID);
+  await createProject(browser, ADMIN_URL, PROJECT_ID);
 });
 
 // ── Test 1: Session creation registers a stream on core ──

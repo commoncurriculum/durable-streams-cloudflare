@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { ZERO_OFFSET } from "../../../src/http/v1/streams/shared/offsets";
 import { createClient, delay, uniqueStreamId } from "../helpers";
 
 function parseSseEvents(buffer: string): Array<{ event: string; data: string }> {

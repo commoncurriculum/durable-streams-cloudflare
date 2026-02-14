@@ -1,7 +1,6 @@
 export {
   LongPollQueue,
   handleLongPoll,
-  handleSse,
   handleWsUpgrade,
   buildSseDataEvent,
   buildSseControlEvent,
@@ -15,7 +14,6 @@ export {
 } from "./handlers";
 export type {
   SseState,
-  SseClient,
   WsDataMessage,
   WsControlMessage,
   WsAttachment,

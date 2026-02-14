@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import { createProject, createSession } from "./helpers";
 
 const ADMIN_URL = process.env.ADMIN_URL!;
-const CORE_URL = process.env.CORE_URL!;
 const PROJECT_ID = `ssread-${Date.now()}`;
 const STREAM_ID = "read-test-stream";
 

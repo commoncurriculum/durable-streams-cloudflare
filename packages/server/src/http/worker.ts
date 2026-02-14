@@ -2,7 +2,6 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { createStreamWorker } from "./router";
 import { StreamDO } from "./v1/streams";
 import { StreamSubscribersDO, EstuaryDO } from "./v1/estuary";
-import type { StreamIntrospection } from "./v1/streams";
 import type { BaseEnv } from "./router";
 
 // Created at module scope so the in-flight coalescing Map is shared across
@@ -27,5 +26,4 @@ class ServerWorker extends WorkerEntrypoint<BaseEnv> {
 }
 
 export { ServerWorker, StreamDO, StreamSubscribersDO, EstuaryDO, createStreamWorker };
-export type { StreamIntrospection } from "./v1/streams";
 export type { BaseEnv } from "./router";
