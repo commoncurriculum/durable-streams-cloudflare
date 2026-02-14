@@ -71,6 +71,18 @@ Both core and subscription use [ArkType v2](https://arktype.io/) for schema vali
 - **Checking for errors**: Use `result instanceof type.errors` (not `=== undefined` or truthiness checks).
 - **arkregex**: Use `regex("pattern", "flags")` from `arkregex` instead of raw `RegExp` literals for patterns used in validation. Provides typed capture groups.
 
+## API Client Generation
+
+The `packages/estuary-client` package contains an auto-generated TypeScript client (with React Query hooks) built from the server's OpenAPI spec using [Orval](https://orval.dev/).
+
+To regenerate after changing any API routes:
+
+```bash
+pnpm -C packages/server run generate-client
+```
+
+This runs two steps: (1) regenerates `packages/server/openapi.json` from the Hono routes, then (2) runs Orval to produce `packages/estuary-client/src/generated/client.ts`. No manual edits to generated files — just re-run the script.
+
 ## Pre-Push Checklist (CI Parity)
 
 **Before declaring work complete, you MUST run every command below and confirm they all pass.** These are the exact checks GitHub Actions runs on every push and PR. A failure in any of them will block the PR.

@@ -35,7 +35,8 @@
     "bench": "pnpm exec vitest bench --config vitest.bench.config.ts",
     "perf": "pnpm exec vitest run --config vitest.performance.config.ts",
     "typecheck": "pnpm exec tsc -p tsconfig.src.json --noEmit && pnpm exec tsc -p tsconfig.unit.json --noEmit && pnpm exec tsc -p tsconfig.node.json --noEmit",
-    "openapi": "tsx scripts/generate-openapi.ts"
+    "openapi": "tsx scripts/generate-openapi.ts",
+    "generate-client": "tsx scripts/generate-openapi.ts && pnpm --filter @durable-streams-cloudflare/estuary-client run generate"
   },
   "dependencies": {
     "@hono/standard-validator": "^0.2.2",
