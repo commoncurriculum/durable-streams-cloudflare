@@ -11,6 +11,7 @@
     "format": "oxfmt --write src",
     "format:check": "oxfmt --check src",
     "lint": "oxlint src",
+    "lint:fix": "oxlint --fix src",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json"
   },
   "dependencies": {
