@@ -167,35 +167,31 @@ describe("long-poll pre-cache warming and concurrent waiters", () => {
     },
   );
 
-  it(
-    "long-poll response after wake-up includes ETag header",
-    { timeout: 30000 },
-    async () => {
-      const client = createClient();
-      const streamId = uniqueStreamId("lp-etag");
+  it("long-poll response after wake-up includes ETag header", { timeout: 30000 }, async () => {
+    const client = createClient();
+    const streamId = uniqueStreamId("lp-etag");
 
-      await client.createStream(streamId, "start", "text/plain");
+    await client.createStream(streamId, "start", "text/plain");
 
-      // Read to get the tail offset
-      const readRes = await fetch(client.streamUrl(streamId, { offset: ZERO_OFFSET }));
-      const tailOffset = readRes.headers.get("Stream-Next-Offset")!;
-      await readRes.arrayBuffer();
+    // Read to get the tail offset
+    const readRes = await fetch(client.streamUrl(streamId, { offset: ZERO_OFFSET }));
+    const tailOffset = readRes.headers.get("Stream-Next-Offset")!;
+    await readRes.arrayBuffer();
 
-      const [response] = await Promise.all([
-        fetch(client.streamUrl(streamId, { offset: tailOffset, live: "long-poll" })),
-        (async () => {
-          await delay(500);
-          await client.appendStream(streamId, "etag-test", "text/plain");
-        })(),
-      ]);
+    const [response] = await Promise.all([
+      fetch(client.streamUrl(streamId, { offset: tailOffset, live: "long-poll" })),
+      (async () => {
+        await delay(500);
+        await client.appendStream(streamId, "etag-test", "text/plain");
+      })(),
+    ]);
 
-      expect(response.status).toBe(200);
-      await response.arrayBuffer(); // consume body
+    expect(response.status).toBe(200);
+    await response.arrayBuffer(); // consume body
 
-      // After wake-up, the response should have an ETag for cacheability
-      expect(response.headers.get("ETag")).toBeTruthy();
-    },
-  );
+    // After wake-up, the response should have an ETag for cacheability
+    expect(response.headers.get("ETag")).toBeTruthy();
+  });
 
   it(
     "long-poll waiter at tail gets correct Content-Type from stream",
