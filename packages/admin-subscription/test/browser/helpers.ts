@@ -1,6 +1,5 @@
 import type { Browser } from "@playwright/test";
 
-const ADMIN_URL = process.env.ADMIN_URL!;
 
 /**
  * Create a project via the admin API route.

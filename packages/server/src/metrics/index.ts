@@ -63,14 +63,6 @@ export class Metrics {
     });
   }
 
-  estuaryTouch(estuaryId: string, latencyMs: number) {
-    this.ae?.writeDataPoint({
-      blobs: ["", estuaryId, "estuary_touch", ""],
-      doubles: [1, latencyMs, 0, 0],
-      indexes: ["estuary"],
-    });
-  }
-
   estuaryGet(estuaryId: string, latencyMs: number) {
     this.ae?.writeDataPoint({
       blobs: ["", estuaryId, "estuary_get", ""],

@@ -2,11 +2,16 @@ import { errorResponse, ErrorCode } from "../../../shared/errors";
 import { isJsonContentType } from "../../../shared/headers";
 import { emptyJsonArray } from "../shared/json";
 
-import { readFromOffset } from "../../../../storage";
-import { readFromMessages } from "../../../../storage";
-import { emptyResult, errorResult, gapResult, type ReadResult } from "../../../../storage";
+import { readFromOffset } from "../../../../storage/stream-do";
+import { readFromMessages } from "../../../../storage/stream-do";
+import {
+  emptyResult,
+  errorResult,
+  gapResult,
+  type ReadResult,
+} from "../../../../storage/stream-do";
 import { readSegmentMessages } from "../../../../storage/segments";
-import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage";
+import type { SegmentRecord, StreamMeta, StreamStorage } from "../../../../storage/stream-do";
 import type { Timing } from "../../../shared/timing";
 import type { StreamEnv } from "../types";
 

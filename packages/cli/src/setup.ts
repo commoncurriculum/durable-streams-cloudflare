@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { generateSigningSecret } from "./create-project";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,20 +11,6 @@ const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function run(cmd: string, opts?: { input?: string }): string {
-  try {
-    return execSync(cmd, {
-      encoding: "utf-8",
-      stdio: opts?.input ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
-      input: opts?.input,
-    }).trim();
-  } catch (e: unknown) {
-    const msg =
-      e instanceof Error ? ((e as Error & { stderr?: string }).stderr ?? e.message) : String(e);
-    throw new Error(`Command failed: ${cmd}\n${msg}`);
-  }
-}
 
 function runMayFail(
   cmd: string,

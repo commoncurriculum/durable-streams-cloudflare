@@ -58,7 +58,7 @@ export type StreamEntry = {
 };
 
 // ============================================================================
-// Read / Write
+// Project Entry Read / Write
 // ============================================================================
 
 /**
@@ -102,143 +102,6 @@ export async function putProjectEntry(
 }
 
 // ============================================================================
-// Mutations (read-modify-write)
-// ============================================================================
-
-/**
- * Create a new project with one signing secret.
- * If the project already exists, overwrites it (use for initial setup only).
- */
-export async function createProject(
-  kv: KVNamespace,
-  projectId: string,
-  signingSecret: string,
-  options?: { corsOrigins?: string[] },
-): Promise<void> {
-  const existing = await getProjectEntry(kv, projectId);
-  await putProjectEntry(kv, projectId, {
-    ...existing,
-    signingSecrets: [signingSecret],
-    ...(options?.corsOrigins ? { corsOrigins: options.corsOrigins } : {}),
-  });
-}
-
-/**
- * Add a signing key (prepended as new primary).
- * Preserves all other fields.
- */
-export async function addSigningKey(
-  kv: KVNamespace,
-  projectId: string,
-  newSecret: string,
-): Promise<{ keyCount: number }> {
-  const entry = await getProjectEntry(kv, projectId);
-  if (!entry) throw new Error(`Project "${projectId}" not found`);
-  entry.signingSecrets = [newSecret, ...entry.signingSecrets];
-  await putProjectEntry(kv, projectId, entry);
-  return { keyCount: entry.signingSecrets.length };
-}
-
-/**
- * Remove a signing key. Refuses to remove the last one.
- * Preserves all other fields.
- */
-export async function removeSigningKey(
-  kv: KVNamespace,
-  projectId: string,
-  secretToRemove: string,
-): Promise<{ keyCount: number }> {
-  const entry = await getProjectEntry(kv, projectId);
-  if (!entry) throw new Error(`Project "${projectId}" not found`);
-  const filtered = entry.signingSecrets.filter((s) => s !== secretToRemove);
-  if (filtered.length === 0) throw new Error("Cannot remove the last signing key");
-  entry.signingSecrets = filtered;
-  await putProjectEntry(kv, projectId, entry);
-  return { keyCount: filtered.length };
-}
-
-/**
- * Add a CORS origin if not already present.
- * Preserves all other fields.
- */
-export async function addCorsOrigin(
-  kv: KVNamespace,
-  projectId: string,
-  origin: string,
-): Promise<void> {
-  const entry = await getProjectEntry(kv, projectId);
-  if (!entry) throw new Error(`Project "${projectId}" not found`);
-  const origins = entry.corsOrigins ?? [];
-  if (!origins.includes(origin)) {
-    origins.push(origin);
-  }
-  entry.corsOrigins = origins;
-  await putProjectEntry(kv, projectId, entry);
-}
-
-/**
- * Remove a CORS origin.
- * Preserves all other fields.
- */
-export async function removeCorsOrigin(
-  kv: KVNamespace,
-  projectId: string,
-  origin: string,
-): Promise<void> {
-  const entry = await getProjectEntry(kv, projectId);
-  if (!entry) throw new Error(`Project "${projectId}" not found`);
-  entry.corsOrigins = (entry.corsOrigins ?? []).filter((o) => o !== origin);
-  await putProjectEntry(kv, projectId, entry);
-}
-
-/**
- * Update project privacy setting.
- * Preserves all other fields.
- */
-export async function updatePrivacy(
-  kv: KVNamespace,
-  projectId: string,
-  isPublic: boolean,
-): Promise<void> {
-  const entry = await getProjectEntry(kv, projectId);
-  if (!entry) throw new Error(`Project "${projectId}" not found`);
-  entry.isPublic = isPublic;
-  await putProjectEntry(kv, projectId, entry);
-}
-
-/**
- * List all project IDs (keys without "/" are projects).
- */
-export async function listProjects(kv: KVNamespace): Promise<string[]> {
-  const list = await kv.list();
-  return list.keys
-    .map((k) => k.name)
-    .filter((name) => !name.includes("/"))
-    .sort();
-}
-
-/**
- * List all stream entries for a project (keys matching `{projectId}/{streamId}`).
- * Returns stream IDs with their metadata.
- */
-export async function listProjectStreams(
-  kv: KVNamespace,
-  projectId: string,
-): Promise<{ streamId: string; createdAt: number }[]> {
-  const prefix = `${projectId}/`;
-  const list = await kv.list({ prefix });
-  const results: { streamId: string; createdAt: number }[] = [];
-  for (const key of list.keys) {
-    const streamId = key.name.slice(prefix.length);
-    const entry = await getStreamEntry(kv, key.name);
-    if (entry) {
-      results.push({ streamId, createdAt: entry.created_at });
-    }
-  }
-  return results.sort((a, b) => b.createdAt - a.createdAt);
-}
-
-// ============================================================================
 // Stream Entry Read / Write
 // ============================================================================
 
@@ -258,23 +121,6 @@ export async function getStreamEntry(kv: KVNamespace, doKey: string): Promise<St
   }
 
   return validated as StreamEntry;
-}
-
-/**
- * Write a stream entry to KV.
- * Validates the entry before writing.
- */
-export async function putStreamEntry(
-  kv: KVNamespace,
-  doKey: string,
-  entry: StreamEntry,
-): Promise<void> {
-  // Validate before writing
-  const validated = streamEntrySchema(entry);
-  if (validated instanceof type.errors) {
-    throw new Error(`Invalid stream entry: ${validated.summary}`);
-  }
-  await kv.put(doKey, JSON.stringify(entry));
 }
 
 /**
@@ -300,22 +146,7 @@ export async function putStreamMetadata(
   // (ArkType rejects explicit undefined for optional string fields)
   const readerKey = metadata.readerKey ?? existing?.readerKey;
   if (readerKey) entry.readerKey = readerKey;
-  await putStreamEntry(kv, doKey, entry);
-}
-
-/**
- * Rotate the reader key for a stream.
- * Preserves all other fields.
- */
-export async function rotateStreamReaderKey(
-  kv: KVNamespace,
-  doKey: string,
-  newReaderKey: string,
-): Promise<void> {
-  const entry = await getStreamEntry(kv, doKey);
-  if (!entry) throw new Error(`Stream "${doKey}" not found in REGISTRY`);
-  entry.readerKey = newReaderKey;
-  await putStreamEntry(kv, doKey, entry);
+  await kv.put(doKey, JSON.stringify(entry));
 }
 
 /**

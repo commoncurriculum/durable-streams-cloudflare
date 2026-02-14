@@ -4,11 +4,10 @@ import { createProject, createSession } from "./helpers";
 const ADMIN_URL = process.env.ADMIN_URL!;
 const PROJECT_ID = `projov-${Date.now()}`;
 
-let sessionId: string;
 
 test.beforeAll(async ({ browser }) => {
   await createProject(browser, ADMIN_URL, PROJECT_ID);
-  sessionId = await createSession(ADMIN_URL, PROJECT_ID);
+  await createSession(ADMIN_URL, PROJECT_ID);
 });
 
 // ── Project overview shows real session count ──

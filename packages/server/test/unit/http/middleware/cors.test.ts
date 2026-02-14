@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { createStreamWorker } from "../../../../src/http/worker";
-import type { BaseEnv } from "../../../../src/http/worker";
 
 const PROJECT_ID = "_default";
 const SECRET = "test-secret";
@@ -49,17 +48,6 @@ function writeClaims(overrides?: Record<string, unknown>) {
   };
 }
 
-function makeEnv(): BaseEnv {
-  return { ...env } as unknown as BaseEnv;
-}
-
-function makeCtx(): ExecutionContext {
-  return {
-    waitUntil: () => {},
-    passThroughOnException: () => {},
-  } as unknown as ExecutionContext;
-}
-
 describe("Per-project CORS from KV", () => {
   let worker: ReturnType<typeof createStreamWorker>;
 
@@ -78,16 +66,16 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://any-origin.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
@@ -104,13 +92,13 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: { "Content-Type": "text/plain", Origin: "https://test.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://test.com");
@@ -124,28 +112,28 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://any-origin.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it("project routes with no KV entry have no CORS headers", async () => {
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream?offset=-1", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream?offset=-1",
+      {
         headers: { Origin: "https://any-origin.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
@@ -160,16 +148,16 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "OPTIONS",
         headers: {
           Origin: "https://example.com",
           "Access-Control-Request-Method": "POST",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(204);
@@ -179,16 +167,16 @@ describe("Per-project CORS from KV", () => {
   });
 
   it("OPTIONS preflight at non-stream paths has no CORS headers", async () => {
-    const response = await worker.fetch!(
-      new Request("http://localhost/health", {
+    const response = await worker.app.request(
+      "/health",
+      {
         method: "OPTIONS",
         headers: {
           Origin: "https://example.com",
           "Access-Control-Request-Method": "GET",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(204);
@@ -204,12 +192,12 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/health", {
+    const response = await worker.app.request(
+      "/health",
+      {
         headers: { Origin: "https://any-origin.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(200);
@@ -226,12 +214,12 @@ describe("Per-project CORS from KV", () => {
     );
 
     const token = await createTestJwt(readClaims(), SECRET);
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/nonexistent?offset=-1", {
+    const response = await worker.app.request(
+      "/v1/stream/nonexistent?offset=-1",
+      {
         headers: { Authorization: `Bearer ${token}` },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(404);
@@ -251,29 +239,29 @@ describe("Per-project CORS from KV", () => {
     const token = await createTestJwt(writeClaims(), SECRET);
 
     // Create a stream with text/plain
-    await worker.fetch!(
-      new Request("http://localhost/v1/stream/conflict-test", {
+    await worker.app.request(
+      "/v1/stream/conflict-test",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Authorization: `Bearer ${token}`,
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     // Try to re-create with different content type → 409
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/conflict-test", {
+    const response = await worker.app.request(
+      "/v1/stream/conflict-test",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(409);
@@ -290,13 +278,13 @@ describe("Per-project CORS from KV", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/my-project/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/my-project/test-stream",
+      {
         method: "PUT",
         headers: { "Content-Type": "text/plain", Origin: "https://myapp.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://myapp.com");
@@ -312,10 +300,6 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
     await env.REGISTRY.delete("my-project");
   });
 
-  function makeEnvWithGlobal(corsOrigins: string): BaseEnv {
-    return { ...env, CORS_ORIGINS: corsOrigins } as unknown as BaseEnv;
-  }
-
   it("CORS_ORIGINS alone enables CORS even without project corsOrigins", async () => {
     await env.REGISTRY.put(
       "_default",
@@ -324,16 +308,16 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://global.example.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("https://global.example.com"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "https://global.example.com" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://global.example.com");
@@ -348,16 +332,16 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/my-project/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/my-project/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://global.example.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("https://global.example.com"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "https://global.example.com" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://global.example.com");
@@ -372,16 +356,16 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/my-project/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/my-project/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://project.example.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("https://global.example.com"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "https://global.example.com" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://project.example.com");
@@ -395,13 +379,13 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: { "Content-Type": "text/plain", Origin: "https://any.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("*"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "*" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
@@ -415,32 +399,32 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: {
           "Content-Type": "text/plain",
           Origin: "https://second.example.com",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("https://first.example.com, https://second.example.com"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "https://first.example.com, https://second.example.com" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://second.example.com");
   });
 
   it("OPTIONS preflight uses global origins", async () => {
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "OPTIONS",
         headers: {
           Origin: "https://global.example.com",
           "Access-Control-Request-Method": "POST",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal("https://global.example.com"),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "https://global.example.com" },
     );
 
     expect(response.status).toBe(204);
@@ -455,13 +439,13 @@ describe("Global CORS origins (CORS_ORIGINS env var)", () => {
       }),
     );
 
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/stream/test-stream", {
+    const response = await worker.app.request(
+      "/v1/stream/test-stream",
+      {
         method: "PUT",
         headers: { "Content-Type": "text/plain", Origin: "https://any.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnvWithGlobal(""),
-      makeCtx(),
+      },
+      { ...env, CORS_ORIGINS: "" },
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
@@ -481,12 +465,12 @@ describe("CORS with ?public=true query param", () => {
   it("GET with ?public=true returns CORS headers even without KV corsOrigins", async () => {
     const w = createStreamWorker();
 
-    const response = await w.fetch!(
-      new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true&offset=-1`, {
+    const response = await w.app.request(
+      `/v1/stream/${PROJECT}/some-stream?public=true&offset=-1`,
+      {
         headers: { Origin: "https://any-origin.com" },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     // Auth may block (401) but CORS headers should still be present
@@ -496,16 +480,16 @@ describe("CORS with ?public=true query param", () => {
   it("OPTIONS preflight with ?public=true returns CORS headers even without KV corsOrigins", async () => {
     const w = createStreamWorker();
 
-    const response = await w.fetch!(
-      new Request(`http://localhost/v1/stream/${PROJECT}/some-stream?public=true`, {
+    const response = await w.app.request(
+      `/v1/stream/${PROJECT}/some-stream?public=true`,
+      {
         method: "OPTIONS",
         headers: {
           Origin: "https://any-origin.com",
           "Access-Control-Request-Method": "GET",
         },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
 
     expect(response.status).toBe(204);

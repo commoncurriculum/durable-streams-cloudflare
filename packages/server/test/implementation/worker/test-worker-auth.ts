@@ -3,7 +3,7 @@ import { SignJWT } from "jose";
 import { StreamDO } from "../../../src/http/worker";
 import { createStreamWorker } from "../../../src/http/worker";
 import type { BaseEnv } from "../../../src/http/worker";
-import { createProject } from "../../../src/storage/registry";
+
 import { parseStreamPathFromUrl } from "../../../src/http/shared/stream-path";
 
 // ============================================================================
@@ -20,9 +20,13 @@ const registeredProjects = new Set<string>();
 
 async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
   if (registeredProjects.has(projectId)) return;
-  await createProject(kv, projectId, TEST_SIGNING_SECRET, {
-    corsOrigins: ["*"],
-  });
+  await kv.put(
+    projectId,
+    JSON.stringify({
+      signingSecrets: [TEST_SIGNING_SECRET],
+      corsOrigins: ["*"],
+    }),
+  );
   registeredProjects.add(projectId);
 }
 

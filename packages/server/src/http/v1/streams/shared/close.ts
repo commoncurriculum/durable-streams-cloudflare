@@ -8,7 +8,7 @@ import {
 import { errorResponse, ErrorCode, type ErrorResponse } from "../../../shared/errors";
 import { encodeCurrentOffset } from "./stream-offsets";
 import type { Result } from "../types";
-import type { StreamMeta, StreamStorage } from "../../../../storage";
+import type { StreamMeta, StreamStorage } from "../../../../storage/stream-do";
 import type { ProducerInput } from "./producer";
 
 export type CloseOnlyResult = {

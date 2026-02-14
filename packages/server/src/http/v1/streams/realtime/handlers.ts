@@ -17,13 +17,11 @@ import {
   LONG_POLL_CACHE_SECONDS,
   LONG_POLL_TIMEOUT_MS,
   MAX_CHUNK_BYTES,
-  MAX_SSE_CLIENTS_DEFAULT,
   SSE_BROADCAST_BATCH_SIZE,
-  SSE_RECONNECT_MS,
 } from "../../../shared/limits";
 import { ZERO_OFFSET } from "../shared/offsets";
 import { applyExpiryHeaders } from "../../../shared/expiry";
-import type { StreamMeta } from "../../../../storage";
+import type { StreamMeta } from "../../../../storage/stream-do";
 import type { StreamContext } from "../types";
 
 // ============================================================================
@@ -404,98 +402,6 @@ export async function handleLongPoll(
 // #endregion docs-long-poll-wait
 
 // ============================================================================
-// SSE Handler
-// ============================================================================
-
-// #region docs-sse-setup
-export async function handleSse(
-  ctx: StreamContext,
-  streamId: string,
-  meta: StreamMeta,
-  url: URL,
-): Promise<Response> {
-  const offsetParam = url.searchParams.get("offset");
-  if (!offsetParam) return errorResponse(400, ErrorCode.OFFSET_REQUIRED, "offset is required");
-
-  // FIX-016: Reject new SSE connections when at capacity
-  const maxSseClients = (() => {
-    const raw = ctx.env.MAX_SSE_CLIENTS;
-    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : MAX_SSE_CLIENTS_DEFAULT;
-  })();
-  if (ctx.sseState.clients.size >= maxSseClients) {
-    return errorResponse(503, ErrorCode.TOO_MANY_SSE_CONNECTIONS, "too many SSE connections");
-  }
-
-  let offset: number;
-  if (offsetParam === "now") {
-    offset = meta.tail_offset;
-  } else {
-    const resolved = await ctx.resolveOffset(
-      streamId,
-      meta,
-      offsetParam === "-1" ? ZERO_OFFSET : offsetParam,
-    );
-    if (resolved.error) return resolved.error;
-    offset = resolved.offset;
-  }
-  const contentType = meta.content_type;
-  const useBase64 = !isTextual(contentType);
-
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
-
-  const clientId = ctx.sseState.nextId++;
-  const client: SseClient = {
-    id: clientId,
-    writer,
-    offset,
-    contentType,
-    useBase64,
-    closed: false,
-    cursor: url.searchParams.get("cursor") ?? "",
-  };
-
-  ctx.sseState.clients.set(clientId, client);
-
-  // Record metrics for SSE connection
-  if (ctx.env.METRICS) {
-    ctx.env.METRICS.writeDataPoint({
-      indexes: [streamId],
-      blobs: [streamId, "sse_connect", "anonymous"],
-      doubles: [1, 0],
-    });
-  }
-  // #endregion docs-sse-setup
-
-  // #region docs-sse-lifecycle
-  client.closeTimer = setTimeout(async () => {
-    if (client.closed) return;
-    await closeSseClient(ctx, client);
-  }, SSE_RECONNECT_MS) as unknown as number;
-
-  const headers = baseHeaders({
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-    [HEADER_STREAM_NEXT_OFFSET]: await ctx.encodeTailOffset(streamId, meta),
-  });
-
-  if (useBase64) headers.set(HEADER_SSE_DATA_ENCODING, "base64");
-
-  ctx.state.waitUntil(
-    (async () => {
-      await Promise.resolve();
-      await runSseSession(ctx, streamId, meta, client);
-    })(),
-  );
-
-  return new Response(readable, { status: 200, headers });
-}
-// #endregion docs-sse-lifecycle
-
-// ============================================================================
 // SSE Broadcast
 // ============================================================================
 
@@ -581,81 +487,6 @@ export async function broadcastSseControl(
 export async function closeAllSseClients(ctx: StreamContext): Promise<void> {
   const entries = Array.from(ctx.sseState.clients.values());
   for (const client of entries) {
-    await closeSseClient(ctx, client);
-  }
-}
-
-// ============================================================================
-// SSE Session
-// ============================================================================
-
-async function runSseSession(
-  ctx: StreamContext,
-  streamId: string,
-  meta: StreamMeta,
-  client: SseClient,
-): Promise<void> {
-  try {
-    let currentOffset = client.offset;
-    let read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
-    if (read.error) {
-      logWarn(
-        {
-          streamId,
-          clientId: client.id,
-          offset: currentOffset,
-          component: "sse",
-        },
-        "SSE session initial read error",
-      );
-      await closeSseClient(ctx, client);
-      return;
-    }
-
-    if (read.hasData) {
-      const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-      await writeSseData(
-        client,
-        read.body,
-        nextOffsetHeader,
-        read.upToDate,
-        read.closedAtTail,
-        read.writeTimestamp,
-      );
-      currentOffset = read.nextOffset;
-      client.offset = currentOffset;
-
-      while (!read.upToDate && !read.closedAtTail) {
-        read = await ctx.readFromOffset(streamId, meta, currentOffset, MAX_CHUNK_BYTES);
-        if (read.error) break;
-        if (!read.hasData) break;
-        const header = await ctx.encodeOffset(streamId, meta, read.nextOffset);
-        await writeSseData(
-          client,
-          read.body,
-          header,
-          read.upToDate,
-          read.closedAtTail,
-          read.writeTimestamp,
-        );
-        currentOffset = read.nextOffset;
-        client.offset = currentOffset;
-      }
-    } else {
-      const header = await ctx.encodeOffset(streamId, meta, currentOffset);
-      await writeSseControl(
-        client,
-        header,
-        true,
-        meta.closed === 1 && currentOffset >= meta.tail_offset,
-      );
-    }
-
-    if (meta.closed === 1 && currentOffset >= meta.tail_offset) {
-      await closeSseClient(ctx, client);
-    }
-  } catch (e) {
-    logError({ streamId, clientId: client.id, component: "sse" }, "SSE session error", e);
     await closeSseClient(ctx, client);
   }
 }

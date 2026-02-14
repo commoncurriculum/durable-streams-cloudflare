@@ -12,11 +12,23 @@ compatibility_flags = []
 command = "node scripts/build-coverage.mjs"
 
 [durable_objects]
-bindings = [{ name = "STREAMS", class_name = "StreamDO" }]
+bindings = [
+  { name = "STREAMS", class_name = "StreamDO" },
+  { name = "SUBSCRIPTION_DO", class_name = "StreamSubscribersDO" },
+  { name = "ESTUARY_DO", class_name = "EstuaryDO" },
+]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["StreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["StreamSubscribersDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["EstuaryDO"]
 
 [[r2_buckets]]
 binding = "R2"
@@ -31,9 +43,22 @@ dataset = "durable_streams_metrics"
 binding = "REGISTRY"
 id = "registry"
 
+# Queue-based fanout for hot topics.
+[[queues.producers]]
+binding = "FANOUT_QUEUE"
+queue = "subscription-fanout"
+
+[[queues.consumers]]
+queue = "subscription-fanout"
+max_batch_size = 10
+max_batch_timeout = 1
+max_retries = 3
+
 [vars]
 # SEGMENT_MAX_MESSAGES = "1000"
 # SEGMENT_MAX_BYTES = "4194304"
+# Low threshold so tests with 2+ subscribers trigger the queue path
+FANOUT_QUEUE_THRESHOLD = "1"
 
 [observability]
 enabled = true

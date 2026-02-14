@@ -51,6 +51,53 @@ Each package has its own `README.md`, `package.json`, `wrangler.toml`, and vites
 - **Cloudflare Vitest integration**: Use `@cloudflare/vitest-pool-workers` for tests that need Cloudflare runtime APIs (DurableObject, WorkerEntrypoint, bindings, etc.) without mocking. Docs: https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/
 - **Miniflare**: Local simulator for Workers runtime, used under the hood by `wrangler dev` and `@cloudflare/vitest-pool-workers`. Docs: https://developers.cloudflare.com/workers/testing/miniflare/
 
+### Test Patterns
+
+**Unit tests** should use `worker.app.request()` per [Hono testing docs](https://hono.dev/docs/guides/testing):
+
+```typescript
+const response = await worker.app.request(
+  "/v1/stream/test",
+  { method: "PUT", headers: { "Content-Type": "text/plain" } },
+  env,
+);
+```
+
+**Note**: Some existing unit tests use the older `worker.fetch!()` pattern. See `REFACTOR_TESTS_PROMPT.md` for refactoring these to the cleaner `app.request()` pattern.
+
+**Integration tests** use `fetch` with helper utilities from `test/implementation/helpers.ts`:
+
+```typescript
+const client = createClient();
+const streamId = uniqueStreamId("test");
+await client.createStream(streamId, "", "text/plain");
+const response = await fetch(client.streamUrl(streamId));
+```
+
+### Coverage
+
+**Current Overall Coverage: 80.14% lines** (1849/2307 lines covered)
+
+For complete coverage documentation, see **`packages/server/COVERAGE.md`**.
+
+**Quick reference:**
+
+```bash
+# 1. ALWAYS run fresh coverage first (60-90 seconds)
+pnpm -C packages/server cov
+
+# 2. Show uncovered lines
+pnpm -C packages/server run coverage:lines
+
+# 3. Filter by area
+pnpm -C packages/server run coverage:lines -- estuary
+
+# 4. Show 0% coverage files
+pnpm -C packages/server run coverage:lines -- --zero
+```
+
+**⚠️ CRITICAL**: Coverage files can be STALE (hours or days old). ALWAYS run `pnpm -C packages/server cov` before checking coverage. See `packages/server/COVERAGE.md` for details.
+
 ### Common Test Pitfalls
 
 - **Content-type mismatch (409)**: Server validates that append content-type matches the stream's content-type. When creating streams in tests, the default content-type is `application/json`. If the test then publishes with `text/plain`, server returns 409. Fix: pass matching content-type when creating the stream.
@@ -155,3 +202,9 @@ pnpm -C packages/server run test
 | Package           | `pnpm test` runs                 | Config             |
 | ----------------- | -------------------------------- | ------------------ |
 | `packages/server` | Integration tests (live workers) | `vitest.config.ts` |
+
+## Test Refactoring Task
+
+**TODO**: Existing unit tests use verbose `worker.fetch!()` pattern. Should be refactored to clean `worker.app.request()` pattern per Hono docs.
+
+See `REFACTOR_TESTS_PROMPT.md` for full instructions or `REFACTOR_TESTS_SHORT.md` for quick reference.

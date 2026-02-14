@@ -1,6 +1,6 @@
 import { toUint8Array } from "./encoding";
 import { buildSegmentKey, encodeSegmentMessages } from "../../../../storage/segments";
-import type { StreamStorage, BatchOperation } from "../../../../storage";
+import type { StreamStorage, BatchOperation } from "../../../../storage/stream-do";
 import type { StreamEnv } from "../types";
 
 export type SegmentRotationResult = {

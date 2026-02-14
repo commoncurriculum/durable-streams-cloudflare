@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { SignJWT } from "jose";
 import { createStreamWorker } from "../../../../../src/http/worker";
-import type { BaseEnv } from "../../../../../src/http/worker";
 
 // ============================================================================
 // JWT Test Helpers
@@ -29,17 +28,6 @@ function manageClaims(overrides?: Record<string, unknown>) {
   };
 }
 
-function makeEnv(): BaseEnv {
-  return { ...env } as unknown as BaseEnv;
-}
-
-function makeCtx(): ExecutionContext {
-  return {
-    waitUntil: () => {},
-    passThroughOnException: () => {},
-  } as unknown as ExecutionContext;
-}
-
 async function fetchConfig(
   worker: ReturnType<typeof createStreamWorker>,
   method: string,
@@ -49,14 +37,14 @@ async function fetchConfig(
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers["Content-Type"] = "application/json";
-  return worker.fetch!(
-    new Request(`http://localhost/v1/config/${PROJECT_ID}`, {
+  return worker.app.request(
+    `/v1/config/${PROJECT_ID}`,
+    {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-    }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-    makeEnv(),
-    makeCtx(),
+    },
+    env,
   );
 }
 
@@ -247,24 +235,24 @@ describe("Config API - routing", () => {
 
   it("returns 404 for non-matching paths", async () => {
     const token = await createTestJwt(manageClaims(), SECRET);
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/config/", {
+    const response = await worker.app.request(
+      "/v1/config/",
+      {
         headers: { Authorization: `Bearer ${token}` },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
     expect(response.status).toBe(404);
   });
 
   it("rejects invalid project id characters", async () => {
     const token = await createTestJwt(manageClaims({ sub: "bad project!" }), SECRET);
-    const response = await worker.fetch!(
-      new Request("http://localhost/v1/config/bad%20project!", {
+    const response = await worker.app.request(
+      "/v1/config/bad%20project!",
+      {
         headers: { Authorization: `Bearer ${token}` },
-      }) as unknown as Request<unknown, IncomingRequestCfProperties>,
-      makeEnv(),
-      makeCtx(),
+      },
+      env,
     );
     expect(response.status).toBe(400);
   });
