@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "format": "oxfmt --write src",
+    "format": "oxlint --fix src && oxfmt --write src",
     "format:check": "oxfmt --check src",
     "lint": "oxlint src",
     "lint:fix": "oxlint --fix src",

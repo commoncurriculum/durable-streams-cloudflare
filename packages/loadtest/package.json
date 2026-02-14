@@ -8,7 +8,7 @@
     "diagnose": "tsx src/diagnose-cdn.ts",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "format": "oxfmt --write src",
+    "format": "oxlint --fix src && oxfmt --write src",
     "format:check": "oxfmt --check src",
     "lint": "oxlint src",
     "lint:fix": "oxlint --fix src",
