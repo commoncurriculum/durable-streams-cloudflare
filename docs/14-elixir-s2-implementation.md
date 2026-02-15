@@ -319,10 +319,9 @@ defmodule DurableStreams.S2Client do
     basin = basin_name(project_id)
     stream = stream_name(stream_id)
 
-    Req.post(base_url() <> "/streams/#{stream}/records",
-      json: %{start: %{from: %{seqNum: offset}}, stop: %{limits: %{count: 100}}},
-      headers: [{"s2-basin", basin}],
-      method: :get
+    Req.get(base_url() <> "/streams/#{stream}/records",
+      params: [start_seq_num: offset, limit: 100],
+      headers: [{"s2-basin", basin}]
     )
   end
 
@@ -524,7 +523,9 @@ For backward-compatible clients, the Elixir implementation can emit offsets in t
 
 ```elixir
 def encode_offset(seq_num) do
-  "#{String.pad_leading("0", 16, "0")}_#{String.pad_leading(Integer.to_string(seq_num), 16, "0")}"
+  read_seq = String.pad_leading("0", 16, "0")
+  byte_off = String.pad_leading(Integer.to_string(seq_num), 16, "0")
+  "#{read_seq}_#{byte_off}"
 end
 
 def decode_offset(offset_str) do
