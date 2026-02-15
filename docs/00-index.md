@@ -43,6 +43,14 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
+14. **[S2 Integration Options](14-s2-integration-options.md)** -- In-depth analysis of three approaches to integrating S2.dev: as a backing store replacement, via protocol adapter, or with a native S2 client library. Includes implementation details, cost comparisons, feature matrices, and migration roadmaps.
+
+15. **[S2 Native Client Deep Dive](15-s2-native-client-deep-dive.md)** -- Detailed analysis of S2's authentication model and building an auth proxy to preserve JWT-based UX. Includes S2 access token scoping, JWT-to-S2-token exchange implementation, complete code examples, and migration path. Compares S2's granular permission system with Durable Streams' JWT auth.
+
+16. **[Client API & CDN Comparison](16-client-api-cdn-comparison.md)** -- Side-by-side comparison of Durable Streams HTTP-first API vs S2 SDK-first API. Analyzes developer experience, type safety, and feature parity. Examines S2's CDN compatibility and explains Durable Streams' offset/cursor-based caching design that enables 99% HIT rate and 162x cost reduction. Includes recommendations by workload type.
+
+17. **[S2 HTTP API & CDN Strategies](17-s2-http-api-cdn-strategies.md)** -- Confirms S2 has full REST API (SDK optional). Explores three strategies for enabling CDN caching with S2: protocol adapter with transformation, caching proxy with headers, and hybrid approach. Includes complete implementation examples for Durable Streams → S2 protocol adapter with cursor rotation and at-tail detection. Cost analysis: $68-218/month (S2+CDN) vs $18/month (current DO+CDN).
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
