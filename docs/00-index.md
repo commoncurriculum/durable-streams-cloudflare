@@ -43,6 +43,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
+14. **[Elixir Implementation with S2 Storage](14-elixir-s2-implementation.md)** -- Alternative implementation using Elixir/OTP on Kubernetes with S2 (s2-lite) as the durable stream storage backend. Architecture mapping, code examples, Kubernetes deployment, cost comparison.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
