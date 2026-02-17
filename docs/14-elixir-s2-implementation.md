@@ -84,7 +84,9 @@ Writes are cheap. At 1 write/second for 30 days:
 
 **The cost problem is reads, not writes.**
 
-## Three Architecture Options
+## Architecture Options
+
+Options 1–3 below are building blocks. **Option 4 (below) combines CDN collapsing + SSE fan-out to handle both modes at scale** — this is the recommended approach for production.
 
 ### Option 1: Clients Hit S2 Directly (No Middleware)
 
@@ -253,82 +255,130 @@ The "thundering herd" in the old model was: app restart → clients reconnect �
 
 **Verdict: This is the architecture that makes S2 economically viable at scale.** Without read fan-out, S2's per-minute ReadSession pricing makes it more expensive than Cloudflare at >1K readers.
 
-## Recommendation
+## Recommended: Option 4 — CDN + SSE Fan-Out Adapter
 
-| Scale (total concurrent readers) | Recommended Option |
-|-------|-------------------|
-| < 100 total | **Option 1** (direct S2) or **Option 2** (thin adapter) |
-| 100–1K total | **Option 2** (thin adapter, ~$4-43/mo in read sessions) |
-| > 1K total, mostly long-poll | **Option 4** (CDN + thin adapter — simplest, stateless) |
-| > 1K total, many SSE clients | **Option 3** (adapter + in-process fan-out) |
-| Any scale with browser clients | **Option 2, 3, or 4** (need auth + CORS) |
-
-For Common Curriculum's use case: if you have browser clients and anticipate >100 concurrent readers per stream, go directly to **Option 3** or **Option 4**.
-
-## Option 4: CDN Collapsing with the Protocol Adapter
-
-Since the adapter translates S2 to Durable Streams protocol, and the Durable Streams protocol was designed for CDN cacheability (Chapter 5–6), **you can put a CDN in front of the adapter and get the same request collapsing that the Cloudflare implementation uses.**
+Options 1–3 each solve part of the problem. Option 4 combines them to handle **both SSE and long-poll at scale** — the same dual-mode approach the current Cloudflare implementation uses.
 
 ```
-                            ┌─ CDN (Cloudflare / CloudFront / Fastly) ─┐
-                            │                                          │
-Client A ── long-poll ─────>│  Cache key: /stream/x?offset=42&cursor=y │
-Client B ── long-poll ─────>│  1 MISS → Adapter → S2                   │
-Client C ── long-poll ─────>│  N-1 HITs → cached response              │
-                            └──────────────────────────────────────────┘
-                                           │
-                                    Adapter (thin, Option 2)
-                                           │
-                                          S2
+                    ┌─── CDN (Cloudflare / CloudFront / Fastly) ───┐
+                    │                                               │
+LP Client A ───────>│  Cache key: /stream/x?offset=42&cursor=y     │
+LP Client B ───────>│  1 MISS → Adapter → S2, N-1 HITs → cached   │
+LP Client C ───────>│  (request collapsing, Chapter 5-6)           │
+                    └───────────────────────────────────────────────┘
+                                         │ (cache MISS only)
+                    ┌────────────────────┴──────────────────────┐
+                    │           Adapter (~500 lines)             │
+                    │                                            │
+SSE Client D ──────>│  ┌─ SSE conn D ─┐                         │
+SSE Client E ──────>│  ├─ SSE conn E ─┤ → 1 S2 ReadSession     │──> S2
+SSE Client F ──────>│  └─ SSE conn F ─┘   per stream            │
+                    │                                            │
+                    │  Long-poll (on cache MISS):                │
+                    │  → S2 Read with wait=30                    │
+                    │  ← DS response + Stream-Cursor + Cache-Ctrl│
+                    │                                            │
+                    │  Auth + CORS + Protocol Translation        │
+                    └───────────────────────────────────────────┘
+                                         │
+                                        S2
 ```
 
-**How it works:**
+### How It Works (Both Modes)
 
-The adapter returns Durable Streams protocol responses with the same cache-friendly headers the Cloudflare implementation uses:
+**Long-poll path (CDN-collapsed):**
+1. Client sends `GET /stream/x?offset=42&live=long-poll&cursor=y`.
+2. CDN checks cache. HIT → return cached response (no adapter hit). MISS → forward to adapter.
+3. Adapter calls S2 with `wait=30`. S2 holds until new data or timeout.
+4. Adapter returns DS-format response with `Cache-Control: public, max-age=20` + rotated `Stream-Cursor`.
+5. CDN caches response. Next N-1 clients at same offset+cursor get cache HITs.
+6. **Result: 10K long-poll readers on 100 streams = ~100 adapter hits per cycle.** Same as current CF implementation.
 
-1. **Long-poll reads**: Adapter returns `Cache-Control: public, max-age=20` + `Stream-Cursor` (rotated per response). The cursor makes the URL unique per poll cycle. CDN caches the response. N clients at the same offset+cursor = 1 origin hit.
+**SSE path (in-process fan-out):**
+1. Client sends `GET /stream/x?live=sse&offset=40`, `Accept: text/event-stream`.
+2. CDN passes through (streaming responses aren't cacheable).
+3. Adapter checks: is there already an S2 read session for this stream?
+   - **Yes** → send catch-up from in-memory buffer, add client to broadcast list.
+   - **No** → open ONE S2 read session from the requested offset, start broadcasting.
+4. As records arrive from S2, adapter broadcasts to ALL connected SSE clients for that stream.
+5. Last SSE client disconnects → adapter closes the S2 read session for that stream.
+6. **Result: 10K SSE readers on 100 streams = 100 S2 read sessions.** Same collapse ratio.
 
-2. **Mid-stream catch-up reads**: Adapter returns `Cache-Control: public, max-age=60`. Data at a given offset is immutable. CDN caches indefinitely within TTL.
+**Catch-up reads (CDN-cached):**
+- Mid-stream reads return `Cache-Control: public, max-age=60`. Data at a given offset is immutable. CDN caches.
 
-3. **SSE reads**: Not cached (streaming). CDN passes through to adapter, which opens S2 read session (or forwards S2's native SSE).
+**Writes:**
+- POST passes through CDN (not cached) → adapter → S2.
 
-4. **Writes**: Not cached (POST). Pass through to S2.
+### This Is the Same Architecture as the Current CF Implementation
 
-**This is the same mechanism as Chapter 6 (Request Collapsing)**, just with S2 as the backend instead of a Durable Object. The `Stream-Cursor` rotation prevents stale loops. `Cache-Control` headers control TTLs. The CDN does the fan-out for long-poll reads.
+| Layer | Cloudflare (current) | S2 + Adapter (Option 4) |
+|-------|---------------------|------------------------|
+| Long-poll fan-out | CDN request collapsing | CDN request collapsing (same mechanism) |
+| SSE fan-out | DO Hibernation WS → edge worker → SSE | 1 S2 ReadSession per stream → adapter → N SSE clients |
+| Write path | Edge → DO (SQLite) | Adapter → S2 (object storage) |
+| State on redeploy | DO preserved, WS drops | S2 preserved, SSE drops (same) |
+| Thundering herd (LP) | CDN absorbs | CDN absorbs (same) |
+| Thundering herd (SSE) | Clients reconnect, DO already has data | Clients reconnect, adapter opens S2 session from their offset |
 
-**Cost impact (managed S2):**
+The key insight: **the CDN handles long-poll fan-out, the adapter handles SSE fan-out.** Neither alone solves both — you need the combination.
 
-| Concurrent long-poll readers | CDN HIT rate | S2 ReadSessions needed | S2 cost/month |
-|------------------------------|-------------|----------------------|---------------|
-| 10K readers, 100 streams | ~99% (same as CF) | ~100 (1 per stream, only on MISS) | **~$4** |
-| 100K readers, 1K streams | ~99% | ~1,000 | **~$43** |
+### Cost (Managed S2)
 
-CDN collapsing reduces S2 read costs the same way it reduces DO costs. The adapter only sees cache MISSes.
+| Scenario | S2 ReadSessions | S2 cost/month | vs Cloudflare |
+|----------|----------------|---------------|---------------|
+| 10K LP readers, 100 streams | ~100 (CDN collapses) | **~$4** | Comparable (~$18 CF) |
+| 10K SSE readers, 100 streams | 100 (fan-out collapses) | **~$4** | Comparable |
+| 10K mixed (5K LP + 5K SSE), 100 streams | 100 SSE sessions + ~100 LP misses/cycle | **~$4-8** | Comparable |
+| 100K mixed, 1K streams | 1K SSE sessions + ~1K LP misses/cycle | **~$43-86** | Better at scale (no per-req CF billing) |
 
-**What the adapter needs (for this option):**
-- **No in-memory state.** Completely stateless — the CDN does the fan-out, not the adapter.
-- Protocol translation (~100 lines): translate S2 responses to DS format with correct `Cache-Control`, `Stream-Cursor`, `ETag`.
-- Auth + CORS (~50 lines).
-- Long-poll: use S2's `wait` parameter (up to 60s), return with cursor rotation.
+**Both modes collapse to O(streams), not O(readers).** LP via CDN caching, SSE via in-process fan-out. This matches Cloudflare's economics.
 
-**This is Option 2 (thin adapter) + a CDN = the economics of Option 3 without the complexity.** The CDN replaces the in-process fan-out. The adapter stays stateless.
+### What the Adapter Holds in Memory (Per Active Stream)
 
-**Comparison of fan-out approaches:**
+- 1 S2 read session connection (opened on first SSE client, closed when last disconnects)
+- List of connected SSE client handles
+- Small ring buffer of recent records (for SSE catch-up and long-poll cache-miss handling)
 
-| | Option 3 (in-process) | Option 4 (CDN) |
-|---|---|---|
-| Adapter complexity | ~500-800 lines, stateful | ~300 lines, stateless |
-| Fan-out mechanism | BEAM broadcast / Go channels | CDN cache |
-| SSE fan-out | Yes (in-process) | No (each SSE = 1 S2 session) |
-| Long-poll fan-out | Yes | Yes (CDN collapses) |
-| Cost at 10K LP readers | ~$4-43/mo | ~$4-43/mo (same) |
-| Cost at 10K SSE readers | ~$4-43/mo | **$432/mo** (no SSE fan-out) |
-| Redeploy impact | SSE connections drop | Same |
-| CDN dependency | None | Requires CDN |
+This is transient, self-healing state — not subscription state. On redeploy:
+- SSE clients auto-reconnect (`EventSource` built-in retry) with `Last-Event-ID`.
+- First reconnecting client triggers a new S2 read session from their offset.
+- No database query needed to rebuild state. S2 is the source of truth.
 
-**Key trade-off:** Option 4 collapses long-poll reads but NOT SSE. If most of your clients use long-poll (with SSE as a nice-to-have), Option 4 is simpler and cheaper. If you have many SSE-only clients, you need Option 3's in-process fan-out.
+### Adapter Size Estimate
 
-**Recommendation update:** If your clients can use long-poll (which they can — the Durable Streams client library supports both), **Option 4 (CDN + thin adapter) is the simplest path to scale.** It's the same architecture as the current Cloudflare implementation but with S2 replacing the DO.
+| Component | Lines | Stateful? |
+|-----------|-------|-----------|
+| Auth (JWT verification) | ~50 | No |
+| CORS | ~20 | No |
+| Protocol translation (DS ↔ S2) | ~100 | No |
+| Long-poll handler (pass to S2 + DS headers) | ~80 | No |
+| SSE fan-out (per-stream session + broadcast) | ~200 | Yes (per-stream) |
+| Catch-up read handler | ~50 | No |
+| **Total** | **~500** | |
+
+~500 lines total. The SSE fan-out is the only stateful part, and it's the same pattern whether you use Elixir (GenServer per stream + PubSub), Go (goroutine per stream + channels), or Node (EventEmitter per stream).
+
+### Why Elixir Is a Good Fit (But Not Required)
+
+Elixir/BEAM excels here because the adapter needs to handle many concurrent long-lived connections (SSE) plus per-stream coordination (fan-out). Specifically:
+- **Millions of lightweight processes** — one per SSE client + one per active stream. Trivial overhead.
+- **Built-in broadcast** — `Phoenix.PubSub` or plain `send/2` to a list of PIDs.
+- **Graceful connection handling** — process-per-connection model means a crashed client doesn't affect others.
+- **Hot code reload** — update adapter logic without dropping SSE connections.
+
+But the adapter is ~500 lines. Go, Rust, or even a Cloudflare Worker with Durable Objects could do this too. Pick the language your team operates best.
+
+## Recommendation Summary
+
+| Scale | Recommended |
+|-------|-------------|
+| < 100 total concurrent readers | **Option 1** (direct S2) or **Option 2** (thin adapter) |
+| 100–1K total | **Option 2** (thin adapter) |
+| > 1K total (SSE + long-poll) | **Option 4** (CDN + SSE fan-out adapter) |
+| Any scale with browser clients | **Option 2 or 4** (need auth + CORS) |
+
+**For Common Curriculum:** You need both SSE and long-poll at scale → **Option 4**. It's the S2 equivalent of the current Cloudflare architecture: CDN collapses long-poll, adapter collapses SSE, both modes scale to O(streams) not O(readers).
 
 ## s2-lite vs Managed S2
 
@@ -398,18 +448,18 @@ Client: GET /v1/stream/myproject/mystream?live=sse&offset=40
         Accept: text/event-stream
 
 Adapter:
-  - (Option 2) Opens S2 ReadSession for this client
+  - (Option 2) Opens S2 ReadSession for this client (1:1)
   - (Option 3) Joins existing per-stream fan-out, catches up from buffer
-  - (Option 4) Same as Option 2 — SSE connections pass through to S2
-  - S2 natively serves SSE (`Accept: text/event-stream`), so adapter can
-    pass through with minimal transformation of the event id format.
+  - (Option 4) Joins existing per-stream fan-out (same as Option 3 for SSE)
+  - S2 natively serves SSE (`Accept: text/event-stream`), so the per-stream
+    S2 session receives native SSE events. Adapter reformats and broadcasts:
 
-    S2 SSE events:
+    S2 SSE events (from single per-stream session):
     event: batch
     id: 40,1708012345000,1
     data: {"records":[{"seq_num":40,"body":"...","headers":[...]}]}
 
-    Adapter can reformat to match DS protocol if needed:
+    Adapter broadcasts to all connected SSE clients for this stream:
     id: 40
     data: {"text":"hello"}
 ```
@@ -422,7 +472,8 @@ Client: GET /v1/stream/myproject/mystream?offset=43&live=long-poll
 Adapter:
   - (Option 2) S2 Read with wait=30
   - (Option 3) Check buffer, if at tail → park request, resolve when new data arrives
-  - (Option 4) S2 Read with wait=30, add Stream-Cursor + Cache-Control headers → CDN caches
+  - (Option 4) CDN handles caching. On cache MISS: S2 Read with wait=30,
+               return with Stream-Cursor + Cache-Control headers
 
   If new data within 30s:
     200 OK + records + Stream-Next-Offset + Stream-Cursor + Cache-Control: public, max-age=20
@@ -450,62 +501,64 @@ Durable Streams uses `readSeq_byteOffset` format (e.g., `0000000000000001_000000
 
 For the Common Curriculum use case (single writer per stream): `matchSeqNum` is sufficient. The adapter doesn't need to implement the full epoch/seq state machine.
 
-## What's Elixir Actually Doing? (Justification)
+## What's the Adapter Actually Doing? (Justification)
 
-With Option 3, the adapter has four jobs:
+With Option 4, the adapter has five jobs:
 
 1. **Auth + CORS** (~50 lines). Verify JWTs, add CORS headers. This is why clients can't hit S2 directly from browsers.
 
 2. **Protocol translation** (~100 lines). Map Durable Streams HTTP protocol to S2 API. Headers, offsets, response format.
 
-3. **Read fan-out** (~200 lines). Collapse N readers into 1 S2 read session per stream. This is the economic justification — turns O(readers) cost into O(streams) cost.
+3. **SSE fan-out** (~200 lines). Collapse N SSE readers into 1 S2 read session per stream. Broadcast records to all connected clients. This is the economic justification for SSE — turns O(readers) cost into O(streams) cost.
 
-4. **SSE bridging** (~50 lines). Convert S2 read session records to `text/event-stream` format.
+4. **Long-poll handling** (~80 lines). On CDN cache MISS: call S2 with `wait` param, return DS-format response with `Stream-Cursor` + `Cache-Control` headers so CDN can cache it. CDN handles the fan-out for long-poll.
 
-Without #3, you don't need a middleware layer — clients could hit S2 directly (Option 1) or through a trivial proxy (Option 2). **Read fan-out is the reason the middleware exists** — unless you use a CDN (Option 4), which achieves the same thing for long-poll reads without middleware complexity.
+5. **SSE bridging** (~50 lines). Convert S2 read session records to `text/event-stream` format for clients.
 
-If your reader count stays under ~100 per stream, skip to Option 2 and save the complexity.
+Without #3, SSE costs scale linearly ($432/mo at 10K readers on managed S2). Without the CDN in front, long-poll costs scale linearly too. The combination gives you O(streams) for both modes.
 
 ## s2-lite Eliminates the Cost Argument
 
 If you run **s2-lite** (self-hosted) instead of managed S2:
-- No per-ReadSession cost → no need for read fan-out for cost reasons.
+- No per-ReadSession cost → SSE fan-out is still good practice (reduces s2-lite load), but not required for cost.
 - **Option 2 (thin adapter) becomes sufficient at any reader count**, as long as s2-lite can handle the throughput.
-- The adapter's only jobs are auth, CORS, and protocol translation.
+- You'd still want Option 4's CDN collapsing to reduce load on s2-lite for long-poll, but it's about throughput not cost.
 - s2-lite is single-node, but for your expected load, a single instance handles it.
 
 The decision tree:
 
 ```
-Are you using managed S2?
-├── Yes → Do you have >1K total concurrent readers?
-│         ├── Mostly long-poll → Option 4 (CDN + thin adapter, stateless)
-│         ├── Many SSE clients → Option 3 (adapter + in-process fan-out)
-│         └── No  → Option 2 (thin adapter)
-└── No (s2-lite) → Option 2 (thin adapter, any reader count)
+Do you need SSE + long-poll at scale (>1K readers)?
+├── Yes → Option 4 (CDN + SSE fan-out adapter)
+│         ├── Managed S2 → cost-effective ($4-43/mo for both modes)
+│         └── s2-lite → even cheaper (~$30/mo pod cost), CDN reduces s2-lite load
+└── No (< 1K readers)
+    ├── Need auth/CORS/protocol compat? → Option 2 (thin adapter)
+    └── Server-to-server only? → Option 1 (direct S2)
 ```
 
 ## Comparison to Cloudflare Implementation
 
-| Concern | Cloudflare (current) | S2 + Adapter |
-|---------|---------------------|--------------|
+| Concern | Cloudflare (current) | S2 + Adapter (Option 4) |
+|---------|---------------------|------------------------|
 | Write path | Edge Worker → DO (SQLite tx) | Adapter → S2 (object storage) |
-| Read fan-out | CDN request collapsing ($0 per HIT) | Option 4: CDN collapsing (same mechanism); Option 3: in-process fan-out |
-| SSE | Internal WS bridge + DO Hibernation | S2 natively serves SSE; adapter passes through or reformats |
-| Long-poll | DO `LongPollQueue` + cache | S2 `wait` param (up to 60s) or adapter buffer |
+| Long-poll fan-out | CDN request collapsing | CDN request collapsing (same mechanism) |
+| SSE fan-out | DO Hibernation WS → edge SSE bridge | 1 S2 ReadSession per stream → adapter broadcast |
+| Long-poll | DO `LongPollQueue` + cache | S2 `wait` param + CDN caching |
 | Durability | DO SQLite + R2 segments | S2 + object storage (SlateDB) |
 | Cold storage | R2 segments | S2/SlateDB tiers to S3 internally |
 | State on redeploy | DO state preserved (but WS connections drop) | S2 state preserved, SSE connections drop (same) |
-| Thundering herd | CDN absorbs reconnect storm | CDN absorbs (Option 4); S2 absorbs reads directly (Option 2/3) |
+| Thundering herd (LP) | CDN absorbs reconnect storm | CDN absorbs (same) |
+| Thundering herd (SSE) | DO has data, WS reconnects | Adapter opens S2 session from client's offset |
 | Auth | KV-stored JWT secrets ($32/mo at scale) | S2 per-stream tokens or adapter JWTs |
-| Cost at 10K readers | ~$18/mo (with CDN @ 99% HIT) | ~$4-43/mo (managed S2 + CDN/fan-out) or ~$30/mo (s2-lite) |
+| Cost at 10K readers (mixed) | ~$18/mo (with CDN @ 99% HIT) | ~$4-43/mo (managed S2) or ~$30/mo (s2-lite) |
 
 ## Open Questions
 
-1. **Managed S2 vs s2-lite?** Managed S2 has per-call pricing that hurts at high reader counts (unless you use CDN collapsing or in-process fan-out). s2-lite has no per-call cost but is single-node. For your K8s deployment, s2-lite backed by S3 may be the pragmatic choice — you control the infra and avoid per-minute read session charges.
+1. **Managed S2 vs s2-lite?** Managed S2 has per-call pricing that Option 4 mitigates via CDN + SSE fan-out. s2-lite has no per-call cost but is single-node. For your K8s deployment, s2-lite backed by S3 may be the pragmatic choice — you control the infra and avoid per-minute read session charges.
 
-2. **Is the Durable Streams protocol needed?** S2 natively serves SSE and supports long-poll via the `wait` parameter. If you're building new clients, S2's native protocol (via the TypeScript SDK or raw `EventSource`) may be sufficient. The protocol adapter is needed if you want CDN collapsing (Option 4 requires DS-style cursor rotation) or have existing DS clients. S2's `readSession` already provides the "offline → catch-up → live tail" flow natively.
+2. **Is the Durable Streams protocol needed?** S2 natively serves SSE and supports long-poll via the `wait` parameter. If you're building new clients, S2's native protocol (via the TypeScript SDK or raw `EventSource`) may be sufficient. The protocol adapter is needed for CDN collapsing (requires DS-style cursor rotation) and for SSE fan-out (the adapter collapses N clients to 1 S2 session). S2's read sessions already provide the "offline → catch-up → live tail" flow natively.
 
-3. **Which language for the adapter?** Elixir shines for Option 3 (BEAM handles millions of connections for fan-out). For Options 2 and 4, any language works — the adapter is ~300 lines of HTTP plumbing. A Cloudflare Worker would even work for Option 2/4 (zero infra to manage).
+3. **Which language for the adapter?** The ~500-line adapter needs SSE fan-out (stateful, concurrent connections). Elixir/BEAM excels here (lightweight processes, built-in broadcast). Go is also strong (goroutines + channels). For Options 1-2 (no fan-out), any language works.
 
 4. **S2 CORS support?** If S2's managed API supports browser CORS headers, Option 1 (direct S2 access with per-stream tokens) becomes viable for browser clients without any middleware. Check with S2.

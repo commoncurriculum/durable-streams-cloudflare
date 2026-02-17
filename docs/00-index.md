@@ -43,7 +43,7 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
-14. **[S2 as the Stream Backend](14-elixir-s2-implementation.md)** -- Evaluation of S2 (managed or s2-lite) as storage layer replacing DO + SQLite + R2. Four architecture options: direct S2 access, thin protocol adapter, adapter with in-process fan-out, and CDN collapsing with DS protocol. Includes S2 auth model (per-stream tokens), native SSE support, cost analysis, and protocol mapping.
+14. **[S2 as the Stream Backend](14-elixir-s2-implementation.md)** -- Evaluation of S2 (managed or s2-lite) as storage layer replacing DO + SQLite + R2. Recommended: CDN collapsing for long-poll + SSE fan-out adapter — handles both modes at scale, same dual-mode approach as the current CF implementation. Includes S2 auth model (per-stream tokens), native SSE support, cost analysis, and DS ↔ S2 protocol mapping.
 
 ## Reading Order
 
