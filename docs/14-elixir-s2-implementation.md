@@ -255,12 +255,14 @@ Records:
   { action: "unsubscribe", session_id: "alice", ts: ... }
 ```
 
-To get the current subscriber list, read the full metadata stream and replay the subscribe/unsubscribe events. This is fast because metadata streams are small (hundreds of records, not millions).
+To get the current subscriber list, read the full metadata stream and replay the subscribe/unsubscribe events. This is fast because metadata streams are small (hundreds of records, not millions). For high-frequency publishes, cache the reduced subscriber set in ETS with a short TTL and invalidate on subscription changes.
 
 ```elixir
 defmodule DurableStreams.Subscriptions do
   @doc """
   Get current subscribers by replaying the subscription log.
+  In production, cache this result in ETS with a TTL to avoid
+  re-reading on every publish.
   """
   def list_subscribers(basin, stream_id) do
     meta_stream = "_meta/subs/#{stream_id}"
@@ -287,24 +289,28 @@ defmodule DurableStreams.Subscriptions do
   Fan out a message to all subscribers' session streams.
   """
   def fanout(basin, stream_id, payload, content_type) do
-    {:ok, subscribers} = list_subscribers(basin, stream_id)
+    case list_subscribers(basin, stream_id) do
+      {:ok, subscribers} ->
+        subscribers
+        |> Task.async_stream(
+          fn session_id ->
+            session_stream = "session:#{session_id}"
+            DurableStreams.S2.append(basin, session_stream, [
+              %{body: payload, headers: [{"content-type", content_type}]}
+            ])
+          end,
+          max_concurrency: 50,
+          timeout: 10_000,
+          on_timeout: :kill_task
+        )
+        |> Enum.reduce(%{ok: 0, error: 0}, fn
+          {:ok, {:ok, _}}, acc -> %{acc | ok: acc.ok + 1}
+          _, acc -> %{acc | error: acc.error + 1}
+        end)
 
-    subscribers
-    |> Task.async_stream(
-      fn session_id ->
-        session_stream = "session:#{session_id}"
-        DurableStreams.S2.append(basin, session_stream, [
-          %{body: payload, headers: [{"content-type", content_type}]}
-        ])
-      end,
-      max_concurrency: 50,
-      timeout: 10_000,
-      on_timeout: :kill_task
-    )
-    |> Enum.reduce(%{ok: 0, error: 0}, fn
-      {:ok, {:ok, _}}, acc -> %{acc | ok: acc.ok + 1}
-      _, acc -> %{acc | error: acc.error + 1}
-    end)
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end
 ```
@@ -469,12 +475,15 @@ defmodule DurableStreams.S2 do
   @doc """
   Opens a streaming read session. Returns a Stream that yields records.
   Uses S2's native tailing — blocks until new data arrives.
+
+  Implementation uses Req's streaming response support (:into option)
+  to consume S2's chunked HTTP response as an Elixir Stream.
   """
   def read_session(basin, stream, opts) do
-    # S2 read sessions use HTTP streaming (chunked transfer or SSE)
-    # The Req library supports streaming responses via :into option
     params = build_read_params(opts)
 
+    # open_read_connection/3, read_next_record/1, close_connection/1
+    # are implementation details that wrap Req's streaming HTTP client.
     Stream.resource(
       fn -> open_read_connection(basin, stream, params) end,
       fn conn -> read_next_record(conn) end,
@@ -632,6 +641,7 @@ spec:
       labels:
         app: durable-streams
     spec:
+      terminationGracePeriodSeconds: 60  # Allow SSE connections to drain on deploy
       containers:
         - name: app
           image: your-registry/durable-streams:latest
