@@ -45,6 +45,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 14. **[S2 as the Stream Backend](14-elixir-s2-implementation.md)** -- Evaluation of S2 (managed or s2-lite) as storage layer replacing DO + SQLite + R2. Recommended: CDN collapsing for long-poll + SSE fan-out adapter — handles both modes at scale, same dual-mode approach as the current CF implementation. Includes S2 auth model (per-stream tokens), native SSE support, cost analysis, and DS ↔ S2 protocol mapping.
 
+15. **[S2 Adapter — Implementation Reference](15-s2-adapter-implementation.md)** -- Complete implementation of the Option 4 adapter (Chapter 14). File tree, supervision tree, all source files with full sample code: S2 HTTP client, protocol translation (DS ↔ S2), SSE fan-out hub (GenServer per stream), SSE controller (chunked streaming), stream controller (CRUD + long-poll + catch-up), auth, router, config, Dockerfile, K8s manifests. Request flow diagrams for every operation.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
