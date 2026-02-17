@@ -43,7 +43,7 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
-14. **[Elixir + S2 — Stateless API Layer](14-elixir-s2-implementation.md)** -- Stateless Elixir API servers backed by S2 for all durable state. No in-memory state, no thundering herd on redeploy. S2 handles writes, read tailing, and storage tiering. Multiple instances behind a load balancer.
+14. **[S2 as the Stream Backend](14-elixir-s2-implementation.md)** -- Evaluation of S2 (managed or s2-lite) as storage layer replacing DO + SQLite + R2. Three architecture options analyzed against S2 pricing: direct client access, thin protocol adapter (DS ↔ S2), and adapter with read fan-out. Cost analysis, protocol mapping, and when each option makes sense.
 
 ## Reading Order
 
