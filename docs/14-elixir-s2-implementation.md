@@ -29,7 +29,7 @@ The critical number: **ReadSession at $0.000001/minute.** Every open read sessio
 
 | Concurrent SSE readers | Read session cost/month | Compare to Cloudflare |
 |------------------------|------------------------|-----------------------|
-| 100 | 100 × 43,200 min = $4.32 | — |
+| 100 | 100 readers × 43,200 min/mo = $4.32 | — |
 | 1,000 | $43.20 | ~$18 (CF with CDN) |
 | 10,000 | **$432.00** | ~$18 (CF with CDN) |
 | 100,000 | **$4,320.00** | ~$18 (CF with CDN) |
@@ -215,11 +215,11 @@ The "thundering herd" in the old model was: app restart → clients reconnect �
 
 ## Recommendation
 
-| Scale | Recommended Option |
+| Scale (total concurrent readers) | Recommended Option |
 |-------|-------------------|
-| < 100 concurrent readers | **Option 1** (direct S2, server-to-server) or **Option 2** (thin adapter) |
-| 100–1K concurrent readers | **Option 2** (thin adapter, ~$4-43/mo in read sessions) |
-| > 1K concurrent readers | **Option 3** (adapter + read fan-out) |
+| < 100 total | **Option 1** (direct S2, server-to-server) or **Option 2** (thin adapter) |
+| 100–1K total | **Option 2** (thin adapter, ~$4-43/mo in read sessions) |
+| > 1K total | **Option 3** (adapter + read fan-out) |
 | Any scale with browser clients | **Option 2 or 3** (need auth + CORS) |
 
 For Common Curriculum's use case: if you have browser clients and anticipate >100 concurrent readers per stream, go directly to **Option 3**.
@@ -258,7 +258,7 @@ Client: POST /v1/stream/myproject/mystream
 
 Adapter: POST https://s2/streams/mystream/records
          S2-Basin: ds-myproject
-         Body: { "records": [{ "body": "eyJ0ZXh0IjoiaGVsbG8ifQ==",
+         Body: { "records": [{ "body": "eyJ0ZXh0IjoiaGVsbG8ifQ==",  // base64("{"text":"hello"}")
                                "headers": [["content-type", "application/json"]] }] }
 
 S2 response: { "start": { "seqNum": 42 }, "end": { "seqNum": 43 }, "tail": { "seqNum": 43 } }
@@ -367,7 +367,7 @@ The decision tree:
 
 ```
 Are you using managed S2?
-├── Yes → Do you have >1K concurrent readers per stream?
+├── Yes → Do you have >1K total concurrent readers?
 │         ├── Yes → Option 3 (adapter + read fan-out)
 │         └── No  → Option 2 (thin adapter)
 └── No (s2-lite) → Option 2 (thin adapter, any reader count)
