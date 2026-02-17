@@ -86,7 +86,7 @@ Writes are cheap. At 1 write/second for 30 days:
 
 ## Architecture Options
 
-Options 1–3 below are building blocks. **Option 4 (below) combines CDN collapsing + SSE fan-out to handle both modes at scale** — this is the recommended approach for production.
+Options 1–3 below are building blocks. **[Option 4](#recommended-option-4--cdn--sse-fan-out-adapter) combines CDN collapsing + SSE fan-out to handle both modes at scale** — this is the recommended approach for production.
 
 ### Option 1: Clients Hit S2 Directly (No Middleware)
 
@@ -365,7 +365,6 @@ Elixir/BEAM excels here because the adapter needs to handle many concurrent long
 - **Millions of lightweight processes** — one per SSE client + one per active stream. Trivial overhead.
 - **Built-in broadcast** — `Phoenix.PubSub` or plain `send/2` to a list of PIDs.
 - **Graceful connection handling** — process-per-connection model means a crashed client doesn't affect others.
-- **Hot code reload** — update adapter logic without dropping SSE connections.
 
 But the adapter is ~500 lines. Go, Rust, or even a Cloudflare Worker with Durable Objects could do this too. Pick the language your team operates best.
 
@@ -520,10 +519,10 @@ Without #3, SSE costs scale linearly ($432/mo at 10K readers on managed S2). Wit
 ## s2-lite Eliminates the Cost Argument
 
 If you run **s2-lite** (self-hosted) instead of managed S2:
-- No per-ReadSession cost → SSE fan-out is still good practice (reduces s2-lite load), but not required for cost.
-- **Option 2 (thin adapter) becomes sufficient at any reader count**, as long as s2-lite can handle the throughput.
-- You'd still want Option 4's CDN collapsing to reduce load on s2-lite for long-poll, but it's about throughput not cost.
-- s2-lite is single-node, but for your expected load, a single instance handles it.
+- No per-ReadSession cost → fan-out is still good practice (reduces s2-lite load), but not required for cost.
+- **Option 2 (thin adapter)** works at any reader count if s2-lite can handle the throughput.
+- **Option 4** is still recommended at high scale because CDN collapsing reduces load on s2-lite (throughput, not cost) and SSE fan-out avoids opening thousands of read sessions against a single-node server.
+- s2-lite is single-node, so fan-out protects it from connection saturation even though sessions are free.
 
 The decision tree:
 
