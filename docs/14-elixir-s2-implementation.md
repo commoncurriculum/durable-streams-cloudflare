@@ -1,87 +1,411 @@
-# Chapter 14: Elixir Implementation with S2 Storage
+# Chapter 14: Elixir + S2 — Stateless API Layer with Durable Stream Storage
 
-An alternative implementation of Durable Streams using Elixir/OTP deployed on Kubernetes, with [S2](https://github.com/s2-streamstore/s2) (specifically `s2-lite`) as the durable stream storage backend. This design replaces Cloudflare Durable Objects + SQLite + R2 with Elixir GenServers + S2, while preserving the same protocol semantics and pub/sub fan-out model.
+A design for scalable real-time streaming using **stateless** Elixir API servers backed by [S2](https://github.com/s2-streamstore/s2) for all durable state. Deployed on Kubernetes with multiple app instances. No in-memory state that would be lost on redeploy.
 
-## Motivation
+## Goals
 
-Cloudflare Durable Objects provide excellent single-writer semantics and built-in durability, but introduce platform lock-in and operational concerns:
+1. **Scalable writes without touching our database.** Writes go to S2 (backed by object storage). Spiky traffic is S2's problem, not ours.
+2. **No thundering herd on redeploy.** All state lives in S2, not in app server memory. Redeploying Elixir nodes loses nothing. Clients reconnect to any instance and resume from their last sequence number.
+3. **Real-time client protocol.** SSE for live tailing, long-poll for catch-up. Clients who go offline resume seamlessly from their last position.
+4. **Horizontally scalable.** Multiple Elixir instances behind a load balancer. No distributed Erlang, no GenServer-per-stream, no in-memory coordination.
 
-- **Reliability**: DO availability depends entirely on Cloudflare's infrastructure — no self-hosted fallback.
-- **Debugging**: Limited observability into DO internals; no SSH, no local replica, no custom profiling.
-- **Vendor lock-in**: SQLite-in-DO, R2, Hibernation API, and service bindings are all Cloudflare-specific.
-- **Cost at scale**: Fan-out write amplification (Chapter 2) means SQLite row writes dominate at high subscriber counts.
+## Why S2
 
-S2 provides a purpose-built durable streams API that maps cleanly to the Durable Streams protocol. Running on Kubernetes gives full operational control.
+[S2](https://s2.dev) is a durable streams API backed entirely by object storage. `s2-lite` is the open-source, self-hostable implementation using [SlateDB](https://slatedb.io) over S3/Tigris.
 
-## S2 Overview
+What S2 gives us that we'd otherwise need to build:
 
-[S2](https://s2.dev) is a serverless datastore for real-time streaming data. `s2-lite` is the open-source, self-hostable implementation.
+| Capability | S2 provides | Without S2 |
+|------------|------------|------------|
+| Durable append-only log | ✅ Native — data is on object storage before ACK | Build our own on Postgres/Redis |
+| Live tailing (read sessions) | ✅ `readSession` with `waitSecs` blocks until new data arrives | Build pub/sub + polling |
+| Catch-up reads | ✅ Read from any sequence number | Query database with offset |
+| Sequence numbers | ✅ Monotonic per stream, assigned on append | Generate our own |
+| Backpressure | ✅ Append sessions with `maxInflightBytes` | Build our own |
+| Ordering | ✅ Single-writer serialization per stream (`streamer` task) | Serialize in our app layer |
+| Idempotent appends | ✅ `matchSeqNum` conditional writes | Build fencing ourselves |
+| No DB load | ✅ All I/O is object storage | Hammers our DB |
 
-**Key properties:**
-- **Durable append-only streams**: Data is durable on object storage (S3, Tigris, R2) before being acknowledged.
-- **SlateDB storage engine**: Built on [SlateDB](https://slatedb.io), which uses object storage as its primary durable layer.
-- **Single binary**: No external dependencies besides an object storage bucket.
-- **REST + streaming sessions**: HTTP API for CRUD, plus the S2S protocol for high-throughput streaming.
-- **Per-stream serialization**: Each stream has a `streamer` Tokio task that serializes appends and broadcasts to followers — the same conceptual model as our DO-per-stream.
-- **Docker-ready**: `ghcr.io/s2-streamstore/s2` with Prometheus metrics and health endpoints.
+S2's `readSession` is the key feature. It's a streaming read that follows the tail of a stream — when there's no new data, the server holds the connection and waits (up to `waitSecs`). This is exactly the primitive we need for both SSE and long-poll, without building any broadcast infrastructure in our app.
 
-**S2 concepts mapping:**
+### Managed S2 vs s2-lite
 
-| S2 Concept | Durable Streams Equivalent |
-|------------|--------------------------|
-| Basin | Project namespace |
-| Stream | Individual stream (1:1) |
-| Record | Message/op in the append log |
-| Sequence number | Byte offset within a stream |
-| Append session | Producer with fencing (epoch/seq) |
-| Read session | Long-poll / SSE reader |
+| | Managed ([s2.dev](https://s2.dev)) | s2-lite (self-hosted) |
+|---|---|---|
+| Scaling | Unlimited streams, fully managed | Single-node binary |
+| Durability | Multi-AZ object storage | Whatever you point at (S3, Tigris, MinIO) |
+| Ops burden | Zero | You run it on K8s |
+| Cost | Usage-based | Infrastructure cost only |
+| Availability | Managed SLA | You handle HA |
+
+**Recommendation:** Use **managed S2** for production. Use **s2-lite** (in-memory mode) for local dev and integration tests. s2-lite is single-node, but managed S2 scales horizontally without any changes to our code.
+
+For teams that must self-host everything: run s2-lite backed by S3 with a health-checked K8s deployment. s2-lite restarts are safe — all data is on object storage, and the process reconstructs its in-memory index from SlateDB on startup.
 
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────────────────────┐
-                    │              Kubernetes Cluster                  │
-                    │                                                  │
-   Client ────────>│  ┌──────────────────────────────────────────┐   │
-                    │  │          Elixir App (Phoenix)            │   │
-                    │  │                                          │   │
-                    │  │  Plug Router · Auth · CORS · SSE/LP     │   │
-                    │  │       │                                  │   │
-                    │  │       v                                  │   │
-                    │  │  StreamServer (GenServer per stream)     │   │
-                    │  │  - Append serialization                  │   │
-                    │  │  - Producer fencing                      │   │
-                    │  │  - Broadcast to subscribers              │   │
-                    │  │       │                                  │   │
-                    │  │       v                                  │   │
-                    │  │  S2 Client (HTTP)                        │   │
-                    │  └──────┬───────────────────────────────────┘   │
-                    │         │                                       │
-                    │         v                                       │
-                    │  ┌──────────────────┐                           │
-                    │  │    s2-lite Pod    │──────> Object Storage     │
-                    │  │  (Rust binary)   │        (S3 / Tigris)      │
-                    │  │  Port 80         │                           │
-                    │  └──────────────────┘                           │
-                    └─────────────────────────────────────────────────┘
+                        ┌─────────────────────────────────────────────┐
+                        │            Kubernetes Cluster                │
+                        │                                             │
+    Client ────────────>│  ┌───────────┐  ┌───────────┐               │
+    (SSE / long-poll /  │  │ Elixir-1  │  │ Elixir-2  │  ... N       │
+     POST append)       │  │ (stateless│  │ (stateless│               │
+                        │  │  API)     │  │  API)     │               │
+                        │  └─────┬─────┘  └─────┬─────┘               │
+                        │        │              │                     │
+                        │        └──────┬───────┘                     │
+                        │               │                             │
+                        │               v                             │
+                        │     ┌──────────────────┐                    │
+                        │     │   S2 (managed)    │───> Object Storage │
+                        │     │   or s2-lite pod  │    (S3 / Tigris)  │
+                        │     └──────────────────┘                    │
+                        └─────────────────────────────────────────────┘
 ```
 
-### Component Mapping
+**The Elixir app is a stateless HTTP proxy with auth and protocol translation.** It doesn't hold stream state, subscription state, or connection state that can't be reconstructed from S2. Any instance can handle any request.
 
-| Cloudflare Component | Elixir + S2 Equivalent | Notes |
-|---------------------|----------------------|-------|
-| Edge Worker | Phoenix/Plug router | Auth, CORS, caching, routing |
-| StreamDO (per stream) | `StreamServer` GenServer | One process per active stream, managed by `DynamicSupervisor` |
-| DO SQLite (hot log) | S2 stream | Append-only log with sequence numbers |
-| R2 (cold segments) | S2 (backed by S3/Tigris) | S2 handles hot/cold tiering internally via SlateDB |
-| DO Hibernation | GenServer timeout / `:hibernate` | OTP processes can hibernate to free heap memory |
-| `caches.default` | HTTP cache (Varnish, Nginx, CDN) | External caching layer in front of Phoenix |
-| DO `blockConcurrencyWhile` | GenServer mailbox serialization | Erlang's single-mailbox-per-process is the equivalent |
-| Service bindings (RPC) | Direct function calls | Everything runs in one BEAM node (or distributed Erlang) |
-| KV (REGISTRY) | ETS / PostgreSQL / Redis | Project registry for auth secrets |
-| Analytics Engine | Prometheus + Grafana | S2-lite exposes `/metrics`; Elixir app uses `:telemetry` |
-| Queue (fanout) | `Broadway` / `GenStage` | OTP-native backpressure and batching |
-| Cron (cleanup) | `Quantum` scheduler | Or Kubernetes CronJob |
+### What lives where
+
+| Concern | Where it lives | Why |
+|---------|---------------|-----|
+| Stream data (messages) | S2 streams | Durable, append-only, tailable |
+| Stream metadata (content-type, closed) | S2 stream records (first record = metadata) or a per-project metadata stream | Durable, not in app memory |
+| Subscription mappings | S2 metadata stream per project (e.g., `_subscriptions/{streamId}`) | Survives redeploy |
+| Session state | S2 (session = just another stream) | Clients resume by sequence number |
+| Auth secrets | Kubernetes Secrets → environment variables, or a Vault/config store | Not in S2, not in app memory |
+| Nothing | Elixir process memory | **This is the point** |
+
+## Request Flows
+
+### Append (Write)
+
+```
+Client ── POST /v1/stream/:project/:stream ──> Any Elixir instance
+                                                    │
+                                                    │ 1. Validate auth (JWT from env/config)
+                                                    │ 2. Forward to S2
+                                                    v
+                                               S2.append(basin, stream, records)
+                                                    │
+                                                    │ 3. S2 ACKs after durable write to object storage
+                                                    v
+                                               204 + Stream-Next-Offset header
+```
+
+The Elixir app does not serialize writes — S2 does that internally (one `streamer` task per stream). The app just forwards the request.
+
+```elixir
+defmodule DurableStreamsWeb.StreamController do
+  use DurableStreamsWeb, :controller
+
+  def append(conn, %{"project" => project, "stream" => stream}) do
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
+    content_type = get_req_header(conn, "content-type") |> List.first()
+
+    basin = basin_name(project)
+    record = %{body: body, headers: [{"content-type", content_type}]}
+
+    case DurableStreams.S2.append(basin, stream, [record]) do
+      {:ok, %{end_seq_num: next_offset}} ->
+        conn
+        |> put_resp_header("stream-next-offset", Integer.to_string(next_offset))
+        |> send_resp(204, "")
+
+      {:error, reason} ->
+        send_error(conn, reason)
+    end
+  end
+end
+```
+
+### SSE Live Read
+
+This is where S2's `readSession` shines. Each SSE connection maps 1:1 to an S2 read session that tails the stream. **No broadcast infrastructure needed in the Elixir app.**
+
+```
+Client ── GET /v1/stream/:project/:stream?live=sse ──> Any Elixir instance
+                                                            │
+                                                            │ 1. Open S2 read session
+                                                            │    (start: client's offset,
+                                                            │     stop: none — tail forever)
+                                                            v
+                                                       S2.readSession(basin, stream,
+                                                         start: {seqNum: offset})
+                                                            │
+                                                            │ 2. S2 pushes records as
+                                                            │    they're appended
+                                                            │ 3. Elixir bridges to SSE
+                                                            v
+                                                       SSE event stream to client
+```
+
+```elixir
+def stream_sse(conn, project, stream, offset) do
+  conn =
+    conn
+    |> put_resp_header("content-type", "text/event-stream")
+    |> put_resp_header("cache-control", "no-cache")
+    |> put_resp_header("connection", "keep-alive")
+    |> send_chunked(200)
+
+  basin = basin_name(project)
+
+  # Open a tailing read session on S2
+  # This blocks and yields records as they arrive — no polling needed
+  {:ok, session} = DurableStreams.S2.read_session(basin, stream,
+    start: %{seq_num: offset},
+    stop: :none  # tail forever
+  )
+
+  # Bridge S2 read session to SSE events
+  Enum.reduce_while(session, conn, fn record, conn ->
+    event = encode_sse_event(record)
+    case Plug.Conn.chunk(conn, event) do
+      {:ok, conn} -> {:cont, conn}
+      {:error, _} -> {:halt, conn}  # Client disconnected
+    end
+  end)
+end
+
+defp encode_sse_event(record) do
+  data = Base.encode64(record.body)
+  seq = Integer.to_string(record.seq_num)
+  "id: #{seq}\ndata: #{data}\n\n"
+end
+```
+
+When the client disconnects, the Elixir process exits, which closes the S2 read session. Clean and simple.
+
+When the client reconnects (to any Elixir instance), it sends `Last-Event-ID: <seqNum>` and the new instance opens a fresh S2 read session from that offset. **No state was lost because there was no state to lose.**
+
+### Long-Poll Read
+
+```
+Client ── GET /v1/stream/:project/:stream?offset=N ──> Any Elixir instance
+                                                            │
+                                                            │ 1. S2 read with waitSecs
+                                                            v
+                                                       S2.read(basin, stream,
+                                                         start: {seqNum: N},
+                                                         stop: {waitSecs: 30})
+                                                            │
+                                                            │ 2. Returns immediately if
+                                                            │    data exists at offset N,
+                                                            │    or waits up to 30s for
+                                                            │    new records
+                                                            v
+                                                       200 + records + Stream-Next-Offset
+```
+
+```elixir
+def long_poll(conn, project, stream, offset) do
+  basin = basin_name(project)
+
+  case DurableStreams.S2.read(basin, stream,
+    start: %{seq_num: offset},
+    stop: %{wait_secs: 30, count: 100}
+  ) do
+    {:ok, %{records: records}} when records != [] ->
+      last = List.last(records)
+      conn
+      |> put_resp_header("stream-next-offset", Integer.to_string(last.seq_num + 1))
+      |> json(encode_records(records))
+
+    {:ok, %{records: []}} ->
+      # Timeout — no new data
+      conn
+      |> put_resp_header("stream-up-to-date", "true")
+      |> send_resp(204, "")
+
+    {:error, reason} ->
+      send_error(conn, reason)
+  end
+end
+```
+
+S2's `waitSecs` means the Elixir app doesn't need to implement its own long-poll queue or parking mechanism. S2 handles the waiting.
+
+## Pub/Sub Fan-Out
+
+The current Cloudflare implementation fans out by writing copies to per-session streams. With S2, we have two design options.
+
+### Option A: Fan-Out Writes to Session Streams (Same as Current)
+
+Same model as the Cloudflare implementation — publish writes to the source stream, then copies to each subscriber's session stream. The difference: the Elixir app is stateless, so subscriber lists are stored in S2.
+
+```
+Publisher ── POST /publish/:stream ──> Any Elixir instance
+                                           │
+                                           ├─ 1. Append to source stream in S2
+                                           ├─ 2. Read subscriber list from S2
+                                           │     (stream: _meta/{project}/subs/{stream})
+                                           └─ 3. Fan out: append to each session stream
+                                                  (parallel, using Task.async_stream)
+```
+
+Subscriber lists are stored as records in a metadata stream:
+
+```
+S2 stream: _meta/{project}/subs/{stream}
+Records:
+  { action: "subscribe", session_id: "alice", ts: ... }
+  { action: "subscribe", session_id: "bob", ts: ... }
+  { action: "unsubscribe", session_id: "alice", ts: ... }
+```
+
+To get the current subscriber list, read the full metadata stream and replay the subscribe/unsubscribe events. This is fast because metadata streams are small (hundreds of records, not millions).
+
+```elixir
+defmodule DurableStreams.Subscriptions do
+  @doc """
+  Get current subscribers by replaying the subscription log.
+  """
+  def list_subscribers(basin, stream_id) do
+    meta_stream = "_meta/subs/#{stream_id}"
+
+    case DurableStreams.S2.read_all(basin, meta_stream) do
+      {:ok, records} ->
+        records
+        |> Enum.reduce(MapSet.new(), fn record, acc ->
+          event = Jason.decode!(record.body)
+          case event["action"] do
+            "subscribe" -> MapSet.put(acc, event["session_id"])
+            "unsubscribe" -> MapSet.delete(acc, event["session_id"])
+            _ -> acc
+          end
+        end)
+        |> MapSet.to_list()
+        |> then(&{:ok, &1})
+
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Fan out a message to all subscribers' session streams.
+  """
+  def fanout(basin, stream_id, payload, content_type) do
+    {:ok, subscribers} = list_subscribers(basin, stream_id)
+
+    subscribers
+    |> Task.async_stream(
+      fn session_id ->
+        session_stream = "session:#{session_id}"
+        DurableStreams.S2.append(basin, session_stream, [
+          %{body: payload, headers: [{"content-type", content_type}]}
+        ])
+      end,
+      max_concurrency: 50,
+      timeout: 10_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce(%{ok: 0, error: 0}, fn
+      {:ok, {:ok, _}}, acc -> %{acc | ok: acc.ok + 1}
+      _, acc -> %{acc | error: acc.error + 1}
+    end)
+  end
+end
+```
+
+**Trade-off:** Write amplification (N writes per publish). Same as the Cloudflare design. Works well at subscriber counts under ~1,000.
+
+### Option B: Direct Read from Source Stream (Simpler, Recommended)
+
+Instead of copying messages to per-session streams, **clients read the source stream directly.** Each client tracks its own offset. No fan-out writes needed.
+
+```
+Publisher ── POST /publish/:stream ──> Elixir ──> S2.append(stream)
+                                                      │
+Reader A ── GET /stream/:stream?live=sse ──> Elixir ──┤──> S2.readSession(stream, from: A's offset)
+Reader B ── GET /stream/:stream?live=sse ──> Elixir ──┤──> S2.readSession(stream, from: B's offset)
+Reader C ── GET /stream/:stream?live=sse ──> Elixir ──┘──> S2.readSession(stream, from: C's offset)
+```
+
+No subscription metadata. No session streams. No fan-out. Each reader opens its own S2 read session on the source stream and gets records as they're appended.
+
+**Why this works:**
+- S2's `streamer` task broadcasts to all followers of a stream. It handles the fan-out internally.
+- Each read session is independent. Adding readers doesn't affect write throughput.
+- Clients remember their offset (in `Last-Event-ID` for SSE, or in a query param for long-poll). No server-side session state.
+
+**When to use fan-out (Option A) instead:**
+- When different subscribers need different subsets of the data (filtered views)
+- When you need to transform messages per-subscriber
+- When subscribers consume from multiple source streams into one session stream
+
+**Recommendation:** Start with Option B. It's simpler, has no write amplification, and S2 handles the read fan-out natively. Add Option A only if you need per-subscriber transformations.
+
+## Thundering Herd: Why It's a Non-Issue
+
+With the Cloudflare implementation, redeploying the Worker means Durable Objects may restart, losing in-memory state (WebSocket connections, long-poll queues). Clients reconnect and re-establish everything — thundering herd.
+
+With the Elixir + S2 design:
+
+| On redeploy | What happens |
+|-------------|-------------|
+| SSE connections drop | Client reconnects to any new instance, sends `Last-Event-ID`. New instance opens S2 read session from that offset. **Sub-second recovery.** |
+| Long-poll requests abort | Client retries with same offset. New instance reads from S2. **Transparent.** |
+| In-memory state lost | **There is no in-memory state.** All state is in S2. |
+| S2 is unaffected | S2 is a separate service (or managed). It doesn't redeploy when you deploy your app. |
+
+The only "thundering herd" scenario is if S2 itself restarts. With managed S2, this is their problem. With s2-lite, the restart is fast (SlateDB replays from object storage) and clients simply retry their reads — S2 handles them once it's back.
+
+## Multi-Instance Scaling
+
+The Elixir app is stateless, so horizontal scaling is trivial:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durable-streams
+spec:
+  replicas: 4  # Scale freely
+  selector:
+    matchLabels:
+      app: durable-streams
+  template:
+    spec:
+      containers:
+        - name: app
+          image: your-registry/durable-streams:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: S2_ENDPOINT
+              value: "https://your-basin.b.s2.dev"  # Managed S2
+            - name: S2_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: s2-credentials
+                  key: token
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+```
+
+No leader election. No distributed Erlang. No process registries. No sidecar. Each instance independently talks to S2. The load balancer distributes requests.
+
+### What scales where
+
+| Bottleneck | How it scales |
+|-----------|--------------|
+| HTTP connections (SSE) | Add more Elixir instances |
+| Write throughput | S2 handles it (200 batches/sec per stream, tens of MiB/s) |
+| Read throughput | S2 handles fan-out to multiple read sessions |
+| Number of streams | Managed S2: unlimited. s2-lite: single-node, partition by basin |
+
+The only case where the Elixir layer becomes a bottleneck is if you have so many concurrent SSE connections that you run out of Erlang processes (unlikely — the BEAM handles millions). At that point, add more replicas.
 
 ## Elixir Application Structure
 
@@ -89,488 +413,299 @@ S2 provides a purpose-built durable streams API that maps cleanly to the Durable
 durable_streams/
 ├── lib/
 │   ├── durable_streams/
-│   │   ├── application.ex          # OTP application, supervision tree
-│   │   ├── s2_client.ex            # HTTP client for s2-lite (Req/Finch)
-│   │   │
-│   │   ├── streams/
-│   │   │   ├── stream_server.ex    # GenServer per stream (write serialization)
-│   │   │   ├── stream_registry.ex  # Registry + DynamicSupervisor for stream processes
-│   │   │   ├── producer.ex         # Producer fencing logic (epoch/seq)
-│   │   │   ├── offsets.ex          # Offset encoding/parsing
-│   │   │   └── broadcast.ex        # Fan-out to SSE/long-poll subscribers
-│   │   │
-│   │   ├── subscriptions/
-│   │   │   ├── subscription_server.ex  # GenServer per source stream (subscriber registry)
-│   │   │   ├── session_server.ex       # GenServer per session
-│   │   │   ├── fanout.ex              # Batched fan-out with circuit breaker
-│   │   │   └── cleanup.ex            # Periodic session expiry
-│   │   │
-│   │   ├── auth/
-│   │   │   ├── jwt.ex              # JWT verification (JOSE library)
-│   │   │   └── registry.ex         # Project signing secrets (ETS-backed)
-│   │   │
-│   │   └── telemetry.ex            # :telemetry events + Prometheus reporter
+│   │   ├── application.ex          # Minimal OTP app (Finch pool, Telemetry)
+│   │   ├── s2.ex                   # S2 HTTP client (Req + Finch)
+│   │   └── auth.ex                 # JWT verification (JOSE)
 │   │
 │   └── durable_streams_web/
 │       ├── router.ex               # Phoenix router
 │       ├── plugs/
-│       │   ├── auth.ex             # Auth plug
-│       │   └── cors.ex             # CORS plug
-│       ├── controllers/
-│       │   ├── stream_controller.ex    # PUT/POST/GET/HEAD/DELETE /v1/stream/:project/:stream
-│       │   ├── publish_controller.ex   # POST /v1/:project/publish/:stream
-│       │   ├── subscribe_controller.ex # POST /subscribe, DELETE /unsubscribe
-│       │   └── session_controller.ex   # GET/POST/DELETE /v1/:project/session/:session
-│       └── channels/
-│           └── stream_channel.ex   # Phoenix Channel for SSE/WebSocket live reads
+│       │   ├── auth_plug.ex        # JWT auth plug
+│       │   └── cors_plug.ex        # CORS plug
+│       └── controllers/
+│           ├── stream_controller.ex    # PUT/POST/GET/HEAD/DELETE
+│           ├── publish_controller.ex   # POST /publish/:stream (fan-out)
+│           └── health_controller.ex    # GET /health
 │
 ├── config/
-│   ├── config.exs
-│   ├── dev.exs
-│   ├── prod.exs
-│   └── runtime.exs                 # S2 endpoint, auth secrets, etc.
-│
-├── test/
-│   ├── streams/
-│   │   ├── stream_server_test.exs
-│   │   ├── producer_test.exs
-│   │   └── offsets_test.exs
-│   ├── subscriptions/
-│   │   ├── fanout_test.exs
-│   │   └── cleanup_test.exs
-│   └── integration/
-│       ├── stream_crud_test.exs
-│       └── publish_subscribe_test.exs
-│
+│   └── runtime.exs                 # S2_ENDPOINT, auth config from env
 ├── mix.exs
 ├── Dockerfile
-└── k8s/
-    ├── deployment.yaml
-    ├── service.yaml
-    ├── s2-lite.yaml
-    └── ingress.yaml
+└── test/
+    ├── controllers/
+    │   ├── stream_controller_test.exs
+    │   └── publish_controller_test.exs
+    └── test_helper.exs             # Starts s2-lite in-memory for tests
 ```
 
-## Core Modules
-
-### StreamServer (GenServer)
-
-The `StreamServer` is the direct equivalent of `StreamDO`. One GenServer per active stream, managed by a `Registry` + `DynamicSupervisor`. The GenServer mailbox provides the same single-writer serialization that `blockConcurrencyWhile` provides in Durable Objects.
-
-```elixir
-defmodule DurableStreams.Streams.StreamServer do
-  use GenServer
-
-  # State held in memory while stream is "active"
-  defstruct [
-    :stream_id,
-    :project_id,
-    :content_type,
-    :tail_offset,
-    :closed,
-    :created_at,
-    producers: %{},           # producer_id => %{epoch, last_seq, last_offset}
-    subscribers: MapSet.new(), # PIDs of SSE/long-poll/WS subscribers
-    long_poll_queue: []        # Parked long-poll requests
-  ]
-
-  # --- Client API ---
-
-  def start_link({project_id, stream_id}) do
-    name = via(project_id, stream_id)
-    GenServer.start_link(__MODULE__, {project_id, stream_id}, name: name)
-  end
-
-  def append(project_id, stream_id, payload, content_type, producer_headers \\ nil) do
-    GenServer.call(via(project_id, stream_id), {:append, payload, content_type, producer_headers})
-  end
-
-  def read(project_id, stream_id, offset, opts \\ []) do
-    # Reads go directly to S2 — no need to route through the GenServer
-    # unless we need to park a long-poll request
-    case opts[:live] do
-      :long_poll ->
-        GenServer.call(via(project_id, stream_id), {:read_long_poll, offset}, :timer.seconds(30))
-      _ ->
-        DurableStreams.S2Client.read(project_id, stream_id, offset)
-    end
-  end
-
-  # --- Callbacks ---
-
-  @impl true
-  def init({project_id, stream_id}) do
-    # Load stream metadata from S2 on first access
-    case DurableStreams.S2Client.head_stream(project_id, stream_id) do
-      {:ok, meta} ->
-        state = %__MODULE__{
-          stream_id: stream_id,
-          project_id: project_id,
-          content_type: meta.content_type,
-          tail_offset: meta.tail_offset,
-          closed: meta.closed,
-          created_at: meta.created_at
-        }
-        {:ok, state, hibernate_timeout()}
-
-      {:error, :not_found} ->
-        {:ok, %__MODULE__{stream_id: stream_id, project_id: project_id},
-         hibernate_timeout()}
-    end
-  end
-
-  @impl true
-  def handle_call({:append, payload, content_type, producer_headers}, _from, state) do
-    with :ok <- validate_content_type(state, content_type),
-         :ok <- validate_not_closed(state),
-         {:ok, state} <- validate_producer(state, producer_headers),
-         {:ok, next_offset} <- do_append(state, payload, content_type, producer_headers) do
-
-      new_state = %{state | tail_offset: next_offset}
-      broadcast_to_subscribers(new_state, payload, next_offset)
-      flush_long_poll_queue(new_state)
-
-      {:reply, {:ok, next_offset}, new_state, hibernate_timeout()}
-    else
-      {:error, reason} -> {:reply, {:error, reason}, state, hibernate_timeout()}
-    end
-  end
-
-  @impl true
-  def handle_info(:timeout, state) do
-    # Hibernate after inactivity — equivalent to DO hibernation.
-    # Frees heap memory but keeps the process alive.
-    {:noreply, state, :hibernate}
-  end
-
-  # --- Private ---
-
-  defp via(project_id, stream_id) do
-    {:via, Registry, {DurableStreams.StreamRegistry, {project_id, stream_id}}}
-  end
-
-  defp hibernate_timeout, do: :timer.seconds(30)
-
-  defp do_append(state, payload, content_type, producer_headers) do
-    DurableStreams.S2Client.append(
-      state.project_id,
-      state.stream_id,
-      payload,
-      content_type,
-      producer_headers
-    )
-  end
-
-  defp broadcast_to_subscribers(state, payload, next_offset) do
-    msg = {:stream_data, state.stream_id, payload, next_offset}
-    for pid <- state.subscribers, Process.alive?(pid), do: send(pid, msg)
-  end
-
-  defp flush_long_poll_queue(state) do
-    for {from, _offset} <- state.long_poll_queue do
-      GenServer.reply(from, {:ok, :data_available})
-    end
-  end
-
-  defp validate_content_type(%{content_type: nil}, _ct), do: :ok
-  defp validate_content_type(%{content_type: expected}, actual) when expected == actual, do: :ok
-  defp validate_content_type(_, _), do: {:error, :content_type_mismatch}
-
-  defp validate_not_closed(%{closed: true}), do: {:error, :stream_closed}
-  defp validate_not_closed(_), do: :ok
-
-  defp validate_producer(state, nil), do: {:ok, state}
-  defp validate_producer(state, headers) do
-    DurableStreams.Streams.Producer.validate(state, headers)
-  end
-end
-```
+There's intentionally no `GenServer`, no `Supervisor` tree beyond what Phoenix provides, no `Registry`, no `DynamicSupervisor`. The application is a thin HTTP layer.
 
 ### S2 Client
 
-A thin HTTP client wrapping the S2 REST API. S2-lite's API is the same as the managed S2 service.
-
 ```elixir
-defmodule DurableStreams.S2Client do
+defmodule DurableStreams.S2 do
   @moduledoc """
-  HTTP client for s2-lite. Each project maps to an S2 basin.
-  Each stream maps to an S2 stream within that basin.
+  HTTP client for S2. Stateless — reads config from application env.
   """
 
-  def append(project_id, stream_id, payload, _content_type, _producer_headers) do
-    basin = basin_name(project_id)
-    stream = stream_name(stream_id)
-
-    # S2 append: POST /streams/{stream}/records with S2-Basin header
-    case Req.post(base_url() <> "/streams/#{stream}/records",
-      body: encode_records([payload]),
-      headers: [{"s2-basin", basin}]
-    ) do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, body["end"]["seqNum"]}
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def append(basin, stream, records) do
+    Req.post(url("/streams/#{stream}/records"),
+      json: %{records: Enum.map(records, &encode_record/1)},
+      headers: [{"s2-basin", basin}, auth_header()]
+    )
+    |> handle_append_response()
   end
 
-  def read(project_id, stream_id, offset) do
-    basin = basin_name(project_id)
-    stream = stream_name(stream_id)
+  def read(basin, stream, opts) do
+    params = build_read_params(opts)
 
-    Req.get(base_url() <> "/streams/#{stream}/records",
-      params: [start_seq_num: offset, limit: 100],
-      headers: [{"s2-basin", basin}]
+    Req.get(url("/streams/#{stream}/records"),
+      params: params,
+      headers: [{"s2-basin", basin}, auth_header()]
+    )
+    |> handle_read_response()
+  end
+
+  @doc """
+  Opens a streaming read session. Returns a Stream that yields records.
+  Uses S2's native tailing — blocks until new data arrives.
+  """
+  def read_session(basin, stream, opts) do
+    # S2 read sessions use HTTP streaming (chunked transfer or SSE)
+    # The Req library supports streaming responses via :into option
+    params = build_read_params(opts)
+
+    Stream.resource(
+      fn -> open_read_connection(basin, stream, params) end,
+      fn conn -> read_next_record(conn) end,
+      fn conn -> close_connection(conn) end
     )
   end
 
-  def head_stream(project_id, stream_id) do
-    basin = basin_name(project_id)
-    stream = stream_name(stream_id)
-
-    case Req.get(base_url() <> "/streams/#{stream}",
-      headers: [{"s2-basin", basin}]
-    ) do
-      {:ok, %{status: 200, body: body}} -> {:ok, body}
-      {:ok, %{status: 404}} -> {:error, :not_found}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  def create_stream(project_id, stream_id, opts \\ []) do
-    basin = basin_name(project_id)
-
-    Req.post(base_url() <> "/streams",
-      json: %{stream: stream_name(stream_id)},
-      headers: [{"s2-basin", basin}]
+  def create_stream(basin, stream) do
+    Req.post(url("/streams"),
+      json: %{stream: stream},
+      headers: [{"s2-basin", basin}, auth_header()]
     )
   end
 
-  def delete_stream(project_id, stream_id) do
-    basin = basin_name(project_id)
-    stream = stream_name(stream_id)
-
-    Req.delete(base_url() <> "/streams/#{stream}",
-      headers: [{"s2-basin", basin}]
+  def check_tail(basin, stream) do
+    Req.get(url("/streams/#{stream}"),
+      headers: [{"s2-basin", basin}, auth_header()]
     )
+    |> handle_tail_response()
   end
 
-  # --- Helpers ---
+  defp url(path), do: "#{endpoint()}#{path}"
+  defp endpoint, do: Application.get_env(:durable_streams, :s2_endpoint)
+  defp auth_header, do: {"authorization", "Bearer #{s2_token()}"}
+  defp s2_token, do: Application.get_env(:durable_streams, :s2_access_token)
 
-  defp base_url, do: Application.get_env(:durable_streams, :s2_endpoint, "http://s2-lite:80")
-  defp basin_name(project_id), do: "ds-#{project_id}"
-  defp stream_name(stream_id), do: stream_id
-
-  defp encode_records(payloads) do
-    # Encode as S2 AppendInput format
-    # S2 uses a binary record format (S2S spec) for streaming,
-    # or JSON for the REST API
-    Jason.encode!(%{records: Enum.map(payloads, &%{body: Base.encode64(&1)})})
+  defp encode_record(%{body: body, headers: headers}) do
+    %{
+      body: Base.encode64(body),
+      headers: Enum.map(headers, fn {k, v} -> [k, v] end)
+    }
   end
 end
 ```
 
-### Subscription Fan-Out
+### Test Setup with s2-lite
 
-Elixir's built-in concurrency makes fan-out natural. `Task.async_stream` replaces `Promise.allSettled` batching.
+Integration tests spin up s2-lite in-memory — no external dependencies:
 
 ```elixir
-defmodule DurableStreams.Subscriptions.Fanout do
-  @batch_size 50
-  @timeout_ms 10_000
+# test/test_helper.exs
+# Start s2-lite as a Docker container for integration tests
+{_, 0} = System.cmd("docker", [
+  "run", "-d", "--name", "s2-lite-test",
+  "-p", "18080:80",
+  "ghcr.io/s2-streamstore/s2", "lite"
+])
 
-  def fanout(project_id, stream_id, payload, content_type, subscriber_ids) do
-    subscriber_ids
-    |> Stream.chunk_every(@batch_size)
-    |> Enum.reduce(%{successes: 0, failures: 0, stale: []}, fn batch, acc ->
-      results =
-        batch
-        |> Task.async_stream(
-          fn session_id ->
-            DurableStreams.S2Client.append(
-              project_id,
-              session_stream_id(session_id),
-              payload,
-              content_type,
-              nil
-            )
-          end,
-          max_concurrency: @batch_size,
-          timeout: @timeout_ms,
-          on_timeout: :kill_task
-        )
-        |> Enum.zip(batch)
-        |> Enum.reduce(acc, fn
-          {{:ok, {:ok, _offset}}, _sid}, acc ->
-            %{acc | successes: acc.successes + 1}
+# Wait for readiness
+:timer.sleep(1000)
 
-          {{:ok, {:error, {404, _}}}, sid}, acc ->
-            %{acc | stale: [sid | acc.stale]}
+Application.put_env(:durable_streams, :s2_endpoint, "http://localhost:18080")
+Application.put_env(:durable_streams, :s2_access_token, "ignored")
 
-          {_, _sid}, acc ->
-            %{acc | failures: acc.failures + 1}
-        end)
+ExUnit.start()
 
-      results
-    end)
-  end
-
-  defp session_stream_id(session_id), do: "session:#{session_id}"
-end
+# Cleanup on exit
+System.at_exit(fn _ ->
+  System.cmd("docker", ["rm", "-f", "s2-lite-test"])
+end)
 ```
 
-### Real-Time Delivery
+## S2 Protocol vs Durable Streams Protocol
 
-Phoenix Channels and SSE provide the equivalent of the internal WebSocket bridge + SSE delivery.
+The user's protocol requirements: SSE for real-time, long-poll for catch-up, and seamless offline-to-online transitions. Both the Durable Streams protocol and the S2 protocol solve these problems, but differently.
+
+| Feature | Durable Streams Protocol | S2 Protocol |
+|---------|------------------------|-------------|
+| Offset format | `readSeq_byteOffset` (segment-aware) | Integer sequence number |
+| Live tail | SSE via internal WebSocket bridge | Read session with `waitSecs` |
+| Catch-up | GET with offset | Read from any `seqNum` |
+| Cursor rotation | `Stream-Cursor` header for cache-busting | Not needed (no CDN caching layer) |
+| Producer fencing | `Producer-Id` / `Producer-Epoch` / `Producer-Seq` headers | `matchSeqNum` conditional appends |
+| Idempotent writes | Producer epoch/seq dedup | `matchSeqNum` + SDK dedupe patterns |
+| Message format | Raw body + content-type | Records with headers + body (richer) |
+
+### Recommendation: Use S2's Protocol Directly
+
+S2's protocol is simpler and already solves the same problems:
+
+- **Offline → online**: Client remembers `seqNum`, reads from there. S2 returns all records since that position instantly (catch-up), then tails for new ones (live).
+- **SSE**: The Elixir app bridges S2 read sessions to SSE. Each SSE `id:` field is the S2 `seqNum`. The client's `Last-Event-ID` maps directly to the S2 read position.
+- **Long-poll**: S2's `waitSecs` parameter on read is literally long-poll built into the storage layer.
+- **Idempotent writes**: S2's `matchSeqNum` is simpler than the epoch/seq model but achieves the same goal. For more complex dedup, use the `@s2-dev/streamstore-patterns` library's `SerializingAppendSession` which adds `_dedupe_seq` and `_writer_id` headers.
+
+There's no need to implement the Durable Streams protocol on top of S2. **Use S2's API as your client protocol** (possibly with a thin auth/CORS layer in Elixir).
+
+If you want clients to use the TypeScript SDK directly:
+
+```typescript
+import { S2, AppendInput, AppendRecord } from "@s2-dev/streamstore";
+
+const s2 = new S2({
+  accountEndpoint: "https://your-elixir-api.example.com",  // Elixir proxies to S2
+  accessToken: "your-jwt",
+});
+
+const stream = s2.basin("my-project").stream("my-stream");
+
+// Write
+await stream.append(AppendInput.create([
+  AppendRecord.string({ body: JSON.stringify({ text: "hello" }) }),
+]));
+
+// Live tail
+const session = await stream.readSession({
+  start: { from: { seqNum: lastKnownSeqNum } },
+});
+
+for await (const record of session) {
+  console.log(record.seqNum, record.body);
+}
+```
+
+## Dependencies (mix.exs)
 
 ```elixir
-defmodule DurableStreamsWeb.StreamChannel do
-  use Phoenix.Channel
-
-  def join("stream:" <> stream_key, _params, socket) do
-    [project_id, stream_id] = String.split(stream_key, "/", parts: 2)
-
-    # Subscribe this channel process to stream broadcasts
-    DurableStreams.Streams.StreamServer.subscribe(project_id, stream_id, self())
-
-    {:ok, assign(socket, project_id: project_id, stream_id: stream_id)}
-  end
-
-  # Receives broadcast from StreamServer when new data is appended
-  def handle_info({:stream_data, _stream_id, payload, next_offset}, socket) do
-    push(socket, "data", %{
-      payload: Base.encode64(payload),
-      next_offset: next_offset
-    })
-    {:noreply, socket}
-  end
+defp deps do
+  [
+    {:phoenix, "~> 1.7"},
+    {:plug_cowboy, "~> 2.7"},
+    {:req, "~> 0.5"},           # HTTP client for S2
+    {:finch, "~> 0.19"},        # Connection pooling
+    {:jose, "~> 1.11"},         # JWT verification
+    {:jason, "~> 1.4"},         # JSON
+    {:telemetry, "~> 1.3"},     # Observability
+    {:prom_ex, "~> 1.9"},       # Prometheus metrics
+  ]
 end
 ```
 
-For SSE (Server-Sent Events) without WebSocket:
-
-```elixir
-defmodule DurableStreamsWeb.StreamController do
-  use DurableStreamsWeb, :controller
-
-  def show(conn, %{"project_id" => project, "stream_id" => stream} = params) do
-    case params["live"] do
-      "sse" -> stream_sse(conn, project, stream, params["offset"] || "0")
-      "long-poll" -> long_poll(conn, project, stream, params["offset"] || "0")
-      _ -> catch_up_read(conn, project, stream, params["offset"] || "0")
-    end
-  end
-
-  defp stream_sse(conn, project, stream, offset) do
-    conn =
-      conn
-      |> put_resp_header("content-type", "text/event-stream")
-      |> put_resp_header("cache-control", "no-cache")
-      |> put_resp_header("connection", "keep-alive")
-      |> send_chunked(200)
-
-    # Subscribe to real-time updates
-    DurableStreams.Streams.StreamServer.subscribe(project, stream, self())
-
-    # Send catch-up data first, then listen for broadcasts
-    stream_loop(conn, project, stream, offset)
-  end
-
-  defp stream_loop(conn, project, stream, offset) do
-    receive do
-      {:stream_data, ^stream, payload, next_offset} ->
-        {:ok, conn} = chunk(conn, "data: #{Base.encode64(payload)}\n\n")
-        stream_loop(conn, project, stream, next_offset)
-    after
-      30_000 ->
-        {:ok, conn} = chunk(conn, ": keepalive\n\n")
-        stream_loop(conn, project, stream, offset)
-    end
-  end
-end
-```
-
-## Supervision Tree
-
-```
-DurableStreams.Application
-├── DurableStreams.StreamRegistry          # Registry for stream GenServers
-├── DurableStreams.StreamSupervisor        # DynamicSupervisor for StreamServer processes
-├── DurableStreams.SubscriptionRegistry    # Registry for subscription GenServers
-├── DurableStreams.SubscriptionSupervisor  # DynamicSupervisor for SubscriptionServer processes
-├── DurableStreams.SessionRegistry         # Registry for session GenServers
-├── DurableStreams.SessionSupervisor       # DynamicSupervisor for SessionServer processes
-├── DurableStreams.Auth.Registry           # ETS table for project signing secrets
-├── DurableStreams.Cleanup                 # Periodic session cleanup (GenServer + :timer)
-├── DurableStreamsWeb.Endpoint             # Phoenix HTTP endpoint
-└── DurableStreamsWeb.Telemetry            # Telemetry supervisor
-```
-
-Each `*Registry` is an Elixir `Registry` (built on ETS) that provides named process lookup. Each `*Supervisor` is a `DynamicSupervisor` that starts GenServer processes on demand.
-
-Key OTP property: if a `StreamServer` crashes, the supervisor restarts it. On restart, `init/1` reloads metadata from S2. In-memory state (subscriber PIDs, long-poll queue) is rebuilt naturally as clients reconnect.
-
-## Offset Encoding
-
-The Cloudflare implementation uses `readSeq_byteOffset` encoding because segments rotate from SQLite to R2. With S2, there's no segment rotation — S2 handles tiering internally. Offsets map directly to S2 sequence numbers.
-
-| Cloudflare | Elixir + S2 |
-|-----------|-------------|
-| `readSeq_byteOffset` (e.g., `0000000000000001_0000000000001234`) | S2 `seqNum` (e.g., `1234`) |
-
-For backward-compatible clients, the Elixir implementation can emit offsets in the same fixed-width format with `readSeq` always set to `0`:
-
-```elixir
-def encode_offset(seq_num) do
-  read_seq = String.pad_leading("0", 16, "0")
-  byte_off = String.pad_leading(Integer.to_string(seq_num), 16, "0")
-  "#{read_seq}_#{byte_off}"
-end
-
-def decode_offset(offset_str) do
-  [_read_seq, byte_offset] = String.split(offset_str, "_")
-  String.to_integer(byte_offset)
-end
-```
-
-Or, since S2 is a different backend, use raw integer sequence numbers for a cleaner API.
-
-## Producer Fencing
-
-S2 has native support for ordered, stateful appends via `AppendSession`. However, the Durable Streams protocol defines its own producer fencing semantics (epoch/seq). Two approaches:
-
-### Option A: Application-Level Fencing (Recommended)
-
-Keep the producer fencing logic in the Elixir `StreamServer`, exactly as the Cloudflare implementation does. The GenServer validates `Producer-Id`, `Producer-Epoch`, `Producer-Seq` before forwarding the append to S2. Producer state is held in the GenServer's in-memory state and periodically checkpointed to a metadata stream in S2.
-
-This preserves full protocol compatibility with existing clients.
-
-### Option B: S2-Native Sessions
-
-Map Durable Streams producers to S2 `AppendSession`s. S2 sessions provide ordering guarantees and pipelining. However, the S2 session model doesn't directly map to the epoch/seq fencing protocol, so a translation layer would still be needed.
-
-**Recommendation**: Option A. It's simpler, fully compatible, and the GenServer already provides the serialization point.
+No distributed Erlang libraries (`libcluster`, `horde`). No GenStage/Broadway. No ETS tables for state. Just Phoenix, an HTTP client, and auth.
 
 ## Kubernetes Deployment
 
-### Pod Topology
+### Elixir App
 
 ```yaml
-# s2-lite: single-node stream store backed by S3
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durable-streams
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1     # Rolling deploys: clients reconnect to remaining instances
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: durable-streams
+  template:
+    metadata:
+      labels:
+        app: durable-streams
+    spec:
+      containers:
+        - name: app
+          image: your-registry/durable-streams:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: S2_ENDPOINT
+              value: "https://your-basin.b.s2.dev"
+            - name: S2_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: s2-credentials
+                  key: token
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: secret-key-base
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: durable-streams
+spec:
+  selector:
+    app: durable-streams
+  ports:
+    - port: 80
+      targetPort: 4000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: durable-streams
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # SSE needs long timeouts
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"        # Disable for SSE
+spec:
+  rules:
+    - host: streams.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: durable-streams
+                port:
+                  number: 80
+```
+
+### s2-lite (for self-hosted / dev)
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: s2-lite
 spec:
-  replicas: 1  # s2-lite is single-node
+  replicas: 1          # s2-lite is single-node
   selector:
     matchLabels:
       app: s2-lite
   template:
-    metadata:
-      labels:
-        app: s2-lite
     spec:
       containers:
         - name: s2-lite
@@ -594,311 +729,62 @@ spec:
                 secretKeyRef:
                   name: s2-config
                   key: aws-secret-access-key
-            - name: AWS_ENDPOINT_URL_S3
-              valueFrom:
-                secretKeyRef:
-                  name: s2-config
-                  key: aws-endpoint-url
           readinessProbe:
             httpGet:
               path: /health
               port: 80
-            initialDelaySeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 80
-            initialDelaySeconds: 10
           resources:
             requests:
               memory: "256Mi"
               cpu: "250m"
-            limits:
-              memory: "1Gi"
-              cpu: "1000m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: s2-lite
-spec:
-  selector:
-    app: s2-lite
-  ports:
-    - port: 80
-      targetPort: 80
 ```
-
-```yaml
-# Elixir app: Durable Streams API server
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: durable-streams
-spec:
-  replicas: 2  # Horizontally scalable
-  selector:
-    matchLabels:
-      app: durable-streams
-  template:
-    metadata:
-      labels:
-        app: durable-streams
-    spec:
-      containers:
-        - name: app
-          image: your-registry/durable-streams:latest
-          ports:
-            - containerPort: 4000
-          env:
-            - name: S2_ENDPOINT
-              value: "http://s2-lite:80"
-            - name: SECRET_KEY_BASE
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: secret-key-base
-            - name: PHX_HOST
-              value: "streams.example.com"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 4000
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: durable-streams
-spec:
-  selector:
-    app: durable-streams
-  ports:
-    - port: 80
-      targetPort: 4000
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: durable-streams
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"  # SSE connections
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-spec:
-  rules:
-    - host: streams.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: durable-streams
-                port:
-                  number: 80
-```
-
-### Scaling Considerations
-
-**s2-lite is single-node.** This is the main constraint. For production workloads needing horizontal scaling of the storage layer, options include:
-
-1. **Managed S2** ([s2.dev](https://s2.dev)): The hosted service provides unlimited streams with no single-node bottleneck. Point the Elixir app at the managed endpoint instead of s2-lite.
-
-2. **Multiple s2-lite instances**: Shard basins across multiple s2-lite pods. The Elixir app routes based on project ID hash. Each instance backs to the same or different S3 buckets.
-
-3. **Distributed Erlang**: Run multiple Elixir nodes with `libcluster` for node discovery. Use consistent hashing (`:pg` or `Horde`) to assign stream GenServers to specific nodes, avoiding duplicate processes.
-
-```
-                   ┌─────────────┐
-    Client ──────>│  Ingress /   │
-                   │  Load Balancer│
-                   └──────┬──────┘
-                          │
-              ┌───────────┼───────────┐
-              v           v           v
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Elixir-1 │ │ Elixir-2 │ │ Elixir-3 │   (distributed Erlang cluster)
-        │ Streams  │ │ Streams  │ │ Streams  │
-        │ A-F      │ │ G-M      │ │ N-Z      │   (consistent hash ring)
-        └────┬─────┘ └────┬─────┘ └────┬─────┘
-             │            │            │
-             └────────────┼────────────┘
-                          v
-                   ┌──────────────┐
-                   │   s2-lite    │──────> S3
-                   └──────────────┘
-```
-
-## API Route Mapping
-
-All routes preserve the same URL structure and semantics as the Cloudflare implementation.
-
-### Core Streaming
-
-| Method | Path | Handler |
-|--------|------|---------|
-| `PUT` | `/v1/stream/:project/:stream` | `StreamController.create/2` |
-| `POST` | `/v1/stream/:project/:stream` | `StreamController.append/2` |
-| `GET` | `/v1/stream/:project/:stream` | `StreamController.show/2` |
-| `HEAD` | `/v1/stream/:project/:stream` | `StreamController.head/2` |
-| `DELETE` | `/v1/stream/:project/:stream` | `StreamController.delete/2` |
-
-### Subscriptions
-
-| Method | Path | Handler |
-|--------|------|---------|
-| `POST` | `/v1/:project/subscribe` | `SubscribeController.subscribe/2` |
-| `DELETE` | `/v1/:project/unsubscribe` | `SubscribeController.unsubscribe/2` |
-| `POST` | `/v1/:project/publish/:stream` | `PublishController.publish/2` |
-| `GET` | `/v1/:project/session/:session` | `SessionController.show/2` |
-| `POST` | `/v1/:project/session/:session/touch` | `SessionController.touch/2` |
-| `DELETE` | `/v1/:project/session/:session` | `SessionController.delete/2` |
-
-### Response Headers
-
-All protocol headers are preserved:
-
-| Header | Behavior |
-|--------|----------|
-| `Stream-Next-Offset` | S2 sequence number (or formatted offset) |
-| `Stream-Up-To-Date` | `true` when reader has caught up to tail |
-| `Stream-Closed` | `true` when stream is closed |
-| `Stream-Cursor` | Rotated cursor value for cache-busting |
-| `Cache-Control` | Set by Elixir app; honored by upstream cache |
-
-## Caching Strategy
-
-Without Cloudflare's CDN, caching must be handled by an external layer. Options:
-
-### Option A: Nginx/Varnish Reverse Proxy (Simplest)
-
-```
-Client → Nginx (cache) → Elixir App → S2
-```
-
-Nginx respects `Cache-Control` headers from the Elixir app. The cursor rotation mechanism (Chapter 6) works identically — each long-poll response includes a different `Stream-Cursor` that becomes part of the next request URL, naturally producing a new cache key.
-
-### Option B: Cloudflare (or other CDN) in Front of K8s
-
-```
-Client → Cloudflare CDN → K8s Ingress → Elixir App → S2
-```
-
-Same CDN HIT = $0 benefit as the Cloudflare-native implementation. The Elixir app sets the same `Cache-Control` headers.
-
-### Option C: No Cache (Simplest Start)
-
-For low-traffic deployments, skip caching entirely. The Elixir app handles all requests directly. Add caching later when load requires it.
-
-**Recommendation**: Start with Option C, add Option A (Nginx) when needed, graduate to Option B for high-scale.
 
 ## Cost Comparison
 
-Assuming 10K concurrent readers, 1 write/second, 30 days:
+| | Cloudflare (current) | Elixir + Managed S2 | Elixir + s2-lite |
+|---|---|---|---|
+| Compute | $8/mo (Workers @ 99% CDN HIT) | ~$30/mo (3 small K8s pods) | ~$30/mo (3 small K8s pods) |
+| Stream storage | $5 (SQLite) + $0.50 (R2) | S2 usage-based pricing | ~$2/mo (S3) |
+| Auth | $32 (KV reads) | $0 (env vars) | $0 (env vars) |
+| S2 service | — | S2 pricing (usage-based) | $0 (self-hosted) |
+| CDN proxy | $6 (VPS) | $0 (optional) | $0 (optional) |
+| Ops burden | Low (serverless) | Medium (K8s) | Medium-High (K8s + s2-lite) |
 
-| Component | Cloudflare | Elixir + S2 (self-hosted) |
-|-----------|-----------|--------------------------|
-| Compute | $8 (Worker requests at 99% CDN HIT) | ~$50-150/mo (2-3 K8s nodes) |
-| Storage (hot) | $5.20 (SQLite rows) | Included in S3 costs |
-| Storage (cold) | ~$0.50 (R2) | ~$0.50-2 (S3) |
-| Auth registry | $32.50 (KV reads) | $0 (in-memory ETS) |
-| CDN | $6 (VPS proxy) | $0-6 (optional) |
-| Monitoring | $0 (Analytics Engine) | $0 (Prometheus/Grafana on K8s) |
-| **Total** | **~$52/mo** | **~$50-160/mo** |
+The cost of managed S2 depends on volume — check [s2.dev](https://s2.dev) for current pricing. For self-hosted s2-lite, the main cost is the S3 storage and operations.
 
-**Key tradeoff**: Cloudflare is cheaper at the low end because you only pay per-request. Kubernetes has a fixed baseline cost for the nodes, but doesn't scale up with request volume (until you need more nodes). At high scale (100K+ readers), the Kubernetes approach can be more cost-effective because there's no per-request billing.
+## What We Don't Need to Build
 
-**Operational cost**: Kubernetes requires team expertise. Cloudflare Workers is operationally simpler but less flexible.
+Because S2 handles the hard parts, the Elixir app is dramatically simpler than the Cloudflare implementation:
 
-## Dependencies (mix.exs)
+| Cloudflare Component | Elixir Equivalent | Why |
+|---------------------|-------------------|-----|
+| StreamDO (Durable Object) | ❌ Not needed | S2 serializes writes |
+| SQLite hot log | ❌ Not needed | S2 is the hot log |
+| R2 cold segments | ❌ Not needed | S2 tiers to object storage internally |
+| Segment rotation | ❌ Not needed | S2 handles it |
+| DO Hibernation + WS bridge | ❌ Not needed | No DO billing model to optimize |
+| Edge cache + cursor rotation | ❌ Not needed | No CDN HIT optimization needed (no per-request billing) |
+| Long-poll queue (`LongPollQueue`) | ❌ Not needed | S2's `waitSecs` handles it |
+| Producer fencing (epoch/seq) | ❌ Not needed | S2's `matchSeqNum` or SDK patterns |
+| `caches.default` store guards | ❌ Not needed | No Workers Cache API |
+| Offset encoding (`readSeq_byteOffset`) | ❌ Not needed | S2 uses simple integer `seqNum` |
 
-```elixir
-defp deps do
-  [
-    # Web framework
-    {:phoenix, "~> 1.7"},
-    {:phoenix_live_view, "~> 1.0"},    # Optional, for admin dashboard
-    {:plug_cowboy, "~> 2.7"},
+What we **do** build:
+- Auth (JWT verification — ~50 lines)
+- CORS (standard Plug — ~20 lines)
+- SSE bridging (S2 read session → chunked response — ~40 lines)
+- Long-poll endpoint (S2 read with `waitSecs` — ~30 lines)
+- Fan-out (if using Option A — ~100 lines)
+- Health check (~5 lines)
 
-    # HTTP client for S2
-    {:req, "~> 0.5"},
-    {:finch, "~> 0.19"},
-
-    # Auth
-    {:jose, "~> 1.11"},               # JWT signing/verification
-
-    # Observability
-    {:telemetry, "~> 1.3"},
-    {:telemetry_metrics, "~> 1.0"},
-    {:telemetry_poller, "~> 1.1"},
-    {:prom_ex, "~> 1.9"},             # Prometheus metrics
-
-    # Distributed Erlang (optional, for multi-node)
-    {:libcluster, "~> 3.4"},
-    {:horde, "~> 0.9"},               # Distributed registry/supervisor
-
-    # JSON
-    {:jason, "~> 1.4"},
-
-    # Testing
-    {:mox, "~> 1.1", only: :test},
-    {:ex_machina, "~> 2.8", only: :test}
-  ]
-end
-```
-
-## Migration Path
-
-For teams currently using the Cloudflare implementation:
-
-1. **Phase 1: Deploy s2-lite + Elixir alongside Cloudflare**
-   - Run the Elixir app as a read replica, consuming from the same source streams.
-   - Verify protocol compatibility with existing clients.
-
-2. **Phase 2: Dual-write**
-   - Publishers write to both Cloudflare and Elixir backends.
-   - Compare results for consistency.
-
-3. **Phase 3: Cutover**
-   - Point clients at the Elixir endpoint.
-   - Keep Cloudflare as a fallback for one release cycle.
-
-4. **Phase 4: Decommission**
-   - Remove the Cloudflare Workers deployment.
-
-## Key Advantages of Elixir + S2
-
-1. **OTP supervision**: Automatic process restart with state recovery from S2. No equivalent in Workers runtime.
-2. **BEAM concurrency**: Millions of lightweight processes — one per stream, one per subscriber, one per SSE connection. No isolate overhead.
-3. **Built-in distribution**: Distributed Erlang / `pg` groups for multi-node scaling. No external coordination service needed.
-4. **Backpressure**: `GenStage` / `Broadway` provide native backpressure for fan-out. More robust than `Promise.allSettled` batching.
-5. **Observability**: `:telemetry` + Prometheus + Grafana. Full access to process state via `:observer` or LiveDashboard.
-6. **No vendor lock-in**: S2-lite is open source. The Elixir app runs on any Kubernetes cluster. Object storage is pluggable (S3, Tigris, MinIO).
-7. **Hot code upgrades**: BEAM supports hot code reloading — deploy without dropping connections.
-
-## Key Risks and Mitigations
-
-| Risk | Mitigation |
-|------|-----------|
-| s2-lite is single-node | Use managed S2 for production, or shard across multiple instances |
-| No CDN-native integration | Use Cloudflare/Nginx in front of K8s; cursor rotation still works |
-| GenServer bottleneck per stream | BEAM handles millions of processes; S2's streamer task is also per-stream |
-| State loss on GenServer crash | State is reconstructed from S2 on restart; only in-flight requests are lost |
-| Network hop to S2 (vs in-DO SQLite) | S2-lite runs in the same K8s cluster; latency is <1ms for in-cluster calls |
-| No WebSocket Hibernation billing trick | Not needed — BEAM processes use ~2KB idle; no per-process duration billing |
+Total application code: **~250-500 lines of Elixir**, not counting tests.
 
 ## Open Questions
 
-1. **S2 record format vs Durable Streams format**: S2 records have headers (key-value pairs) and a body. Should we map Durable Streams' content-type + body to S2's native record format, or store the raw bytes as the S2 body?
+1. **Managed S2 vs s2-lite for production**: Managed S2 is the right answer for most teams (zero ops, scales horizontally). s2-lite is for teams that must self-host everything or want to minimize external dependencies.
 
-2. **Stream metadata storage**: The Cloudflare implementation stores metadata (content-type, closed state, TTL) in a `stream_meta` SQLite table inside each DO. With S2, options include: a dedicated "meta" stream per project, a sidecar PostgreSQL/Redis, or S2 stream-level configuration (if supported).
+2. **Fan-out model**: Option B (direct read from source stream) is simpler and recommended. Option A (session streams) is available if per-subscriber filtering or multi-stream aggregation is needed.
 
-3. **Producer state durability**: The GenServer holds producer state in memory. On crash, this state is lost. Should producer state be checkpointed to a metadata stream in S2, or reconstructed by scanning the stream's recent records?
+3. **Auth passthrough**: Should the Elixir app verify JWTs and proxy to S2 with a service token? Or should clients authenticate directly with S2? The proxy approach (Elixir verifies JWT, uses its own S2 token) gives you more control over access patterns.
 
-4. **Multi-node stream affinity**: With distributed Erlang, how should stream GenServers be assigned to nodes? Consistent hashing via `Horde` is the likely answer, but needs evaluation for rebalancing behavior during node joins/leaves.
+4. **Caching**: Without Cloudflare's CDN, there's no free caching layer. For most use cases this is fine — S2 serves reads efficiently. If needed, add Nginx/Varnish in front of the Elixir app for catch-up reads (not SSE).
