@@ -150,14 +150,14 @@ Client ── (Durable Streams protocol) ──> Adapter ── (S2 API) ──>
 | Durable Streams | S2 Equivalent | Adapter Logic |
 |----------------|---------------|---------------|
 | `PUT /stream/:project/:stream` (create) | `POST /streams` (CreateStream) | Map project to S2 basin, stream name 1:1 |
-| `POST /stream/:project/:stream` (append) | `POST /streams/{stream}/records` (Append) | Wrap body as S2 record, return `Stream-Next-Offset` from `ack.end.seqNum` |
-| `GET /stream/:project/:stream?offset=N` (read) | `GET /streams/{stream}/records?seq_num=N` (Read) | Map `seqNum` ↔ offset. S2's integer seqNum replaces `readSeq_byteOffset` |
+| `POST /stream/:project/:stream` (append) | `POST /streams/{stream}/records` (Append) | Wrap body as S2 record, return `Stream-Next-Offset` from `ack.end.seq_num` |
+| `GET /stream/:project/:stream?offset=N` (read) | `GET /streams/{stream}/records?seq_num=N` (Read) | Map `seq_num` ↔ offset. S2's integer `seq_num` replaces `readSeq_byteOffset` |
 | `GET ...?live=long-poll` | Read with `wait=30` | S2's `wait` param = built-in long-poll (up to 60s) |
 | `GET ...?live=sse` | `GET /streams/{stream}/records` with `Accept: text/event-stream` | S2 natively serves SSE. Adapter can pass through or reformat `id:` field |
 | `HEAD /stream/:project/:stream` | `GET /streams/{stream}/records/tail` (CheckTail) | Return metadata as headers |
 | `DELETE /stream/:project/:stream` | `DELETE /streams/{stream}` | Direct mapping |
 | `Producer-Id` / `Producer-Epoch` / `Producer-Seq` | `match_seq_num` + `fencing_token` | S2's `match_seq_num` handles conditional appends. More complex epoch/seq would need adapter-side state. |
-| `Stream-Cursor` (cache-busting) | Adapter generates | Required for CDN collapsing (Option 4). Adapter computes deterministic cursor from response state. |
+| `Stream-Cursor` (cache-busting) | Adapter generates | Required for CDN collapsing (Option 4). Adapter derives cursor deterministically from `seq_num` + `tail.seq_num` (see Chapter 6 for cursor design). |
 | `Stream-Up-To-Date: true` | Inferred from `tail` in response | S2 returns `tail.seq_num` in read responses — adapter compares to last record's `seq_num` |
 | `Stream-Closed` | S2 `trim` command record | Use S2's command records for close semantics |
 
@@ -367,7 +367,7 @@ Adapter: POST https://s2/streams/mystream/records
          Body: { "records": [{ "body": "eyJ0ZXh0IjoiaGVsbG8ifQ==",  // base64("{"text":"hello"}")
                                "headers": [["content-type", "application/json"]] }] }
 
-S2 response: { "start": { "seqNum": 42 }, "end": { "seqNum": 43 }, "tail": { "seqNum": 43 } }
+S2 response: { "start": { "seq_num": 42 }, "end": { "seq_num": 43 }, "tail": { "seq_num": 43 } }
 
 Adapter response: 204 No Content
                   Stream-Next-Offset: 43
@@ -381,9 +381,9 @@ Client: GET /v1/stream/myproject/mystream?offset=40
 Adapter: GET https://s2/streams/mystream/records?start_seq_num=40&limit=100
          S2-Basin: ds-myproject
 
-S2 response: { "records": [{ "seqNum": 40, "body": "...", "headers": [...] },
-                            { "seqNum": 41, "body": "...", "headers": [...] }],
-               "tail": { "seqNum": 43 } }
+S2 response: { "records": [{ "seq_num": 40, "body": "...", "headers": [...] },
+                            { "seq_num": 41, "body": "...", "headers": [...] }],
+               "tail": { "seq_num": 43 } }
 
 Adapter response: 200 OK
                   Stream-Next-Offset: 42
@@ -445,7 +445,7 @@ Durable Streams uses `readSeq_byteOffset` format (e.g., `0000000000000001_000000
 | DS Feature | S2 Equivalent | Gap? |
 |-----------|---------------|------|
 | `Producer-Id` + `Producer-Epoch` + `Producer-Seq` | `matchSeqNum` (conditional append) | S2's `matchSeqNum` is per-stream, not per-producer. For single-writer streams this is equivalent. For multi-producer, the adapter would need to track producer state. |
-| Duplicate detection (same epoch+seq → idempotent 204) | `matchSeqNum` rejects mismatched seqNum | Same effect for single-writer. |
+| Duplicate detection (same epoch+seq → idempotent 204) | `match_seq_num` rejects mismatched seq_num | Same effect for single-writer. |
 | Fencing tokens | S2 `fencingToken` (native, up to 36 bytes) | Direct mapping. |
 
 For the Common Curriculum use case (single writer per stream): `matchSeqNum` is sufficient. The adapter doesn't need to implement the full epoch/seq state machine.
