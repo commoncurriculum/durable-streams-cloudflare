@@ -56,9 +56,16 @@ All analytics queries work via Cloudflare Analytics Engine API (when CF_ACCOUNT_
 ## Architecture
 
 This package uses:
-- `@durable-streams-cloudflare/estuary-client` for HTTP API calls
+- Native `fetch` API for HTTP calls to the server
 - Environment variables (`SERVER_URL`, `ADMIN_SECRET`) instead of Durable Object service bindings
 - No KV namespace or other Cloudflare bindings
+
+**Note**: The `@durable-streams-cloudflare/estuary-client` package exists but is not used in the server-side code because:
+1. It depends on axios, which uses Node.js modules (`http`, `https`) not available in Workers
+2. Using native `fetch` is more compatible with the Cloudflare Workers runtime
+3. The client-side React components can still use the estuary-client if needed for React Query hooks
+
+The estuary-client is kept as a dependency for potential future client-side use, but all server-side API calls use native fetch.
 
 ## Recommendations for Server
 
