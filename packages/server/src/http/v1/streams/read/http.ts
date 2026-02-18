@@ -1,7 +1,7 @@
 import { errorResponse, errorToResponse, ErrorCode } from "../../../shared/errors";
 import { readStream } from "./index";
 import type { StreamContext } from "../types";
-import { handleLongPoll, handleSse, handleWsUpgrade } from "../realtime/handlers";
+import { handleLongPoll, handleWsUpgrade } from "../realtime/handlers";
 
 /**
  * HTTP handler for GET /streams/{streamId}
@@ -25,14 +25,6 @@ export async function readStreamHttp(
       doneGetStream?.();
       if (!meta) return errorResponse(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
       return handleLongPoll(ctx, streamId, meta, url);
-    }
-
-    if (live === "sse") {
-      const doneGetStream = ctx.timing?.start("do.getStream");
-      const meta = await ctx.getStream(streamId);
-      doneGetStream?.();
-      if (!meta) return errorResponse(404, ErrorCode.STREAM_NOT_FOUND, "stream not found");
-      return handleSse(ctx, streamId, meta, url);
     }
 
     if (live === "ws-internal") {

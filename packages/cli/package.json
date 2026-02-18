@@ -12,19 +12,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "format": "oxfmt --write src",
+    "format": "oxlint --fix src && oxfmt --write src",
     "format:check": "oxfmt --check src",
     "lint": "oxlint src",
+    "lint:fix": "oxlint --fix src",
     "prepublishOnly": "pnpm run clean && pnpm run build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clack/prompts": "^0.10.0",
-    "jose": "^5.9.6"
+    "@clack/prompts": "^0.10.1",
+    "jose": "^5.10.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
-    "typescript": "^5.8.3"
+    "@types/node": "^22.19.11",
+    "typescript": "^5.9.3"
   },
   "license": "MIT"
 }

@@ -1,10 +1,11 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { SignJWT } from "jose";
 import { type } from "arktype";
-import { StreamDO } from "../../src/http/worker";
+import { StreamDO, StreamSubscribersDO, EstuaryDO } from "../../src/http/worker";
 import { createStreamWorker } from "../../src/http/worker";
 import type { BaseEnv } from "../../src/http/worker";
-import { createProject } from "../../src/storage/registry";
+import type { FanoutQueueMessage } from "../../src/http/v1/estuary/types";
+
 import { parseStreamPathFromUrl } from "../../src/http/shared/stream-path";
 
 // ============================================================================
@@ -25,9 +26,13 @@ const registeredProjects = new Set<string>();
 
 async function ensureProject(kv: KVNamespace, projectId: string): Promise<void> {
   if (registeredProjects.has(projectId)) return;
-  await createProject(kv, projectId, TEST_SIGNING_SECRET, {
-    corsOrigins: ["*"],
-  });
+  await kv.put(
+    projectId,
+    JSON.stringify({
+      signingSecrets: [TEST_SIGNING_SECRET],
+      corsOrigins: ["*"],
+    }),
+  );
   registeredProjects.add(projectId);
 }
 
@@ -62,6 +67,11 @@ const putStreamOptions = type({
 // provides real tokens on their behalf. Implementation tests also get tokens
 // injected — the production auth middleware validates every request.
 export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
+  // Queue handler for async fanout — delegates to production handler
+  async queue(batch: MessageBatch<FanoutQueueMessage>): Promise<void> {
+    return handler.queue!(batch, this.env, this.ctx);
+  }
+
   async fetch(request: Request): Promise<Response> {
     // Register the project for this URL so auth middleware can look it up
     const parsed = parseStreamPathFromUrl(new URL(request.url).pathname);
@@ -276,4 +286,4 @@ export default class TestCoreWorker extends WorkerEntrypoint<BaseEnv> {
   }
 }
 
-export { StreamDO };
+export { StreamDO, StreamSubscribersDO, EstuaryDO };

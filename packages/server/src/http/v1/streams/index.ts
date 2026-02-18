@@ -3,8 +3,8 @@ import { DurableObject } from "cloudflare:workers";
 import { logError } from "../../../log";
 import { LongPollQueue } from "./realtime/handlers";
 import type { SseState } from "./realtime/handlers";
-import { StreamDoStorage } from "../../../storage";
-import type { StreamMeta, ProducerState, SegmentRecord, OpsStats } from "../../../storage";
+import { StreamDoStorage } from "../../../storage/stream-do";
+import type { StreamMeta } from "../../../storage/stream-do";
 import { parseStreamPathFromUrl } from "../../shared/stream-path";
 
 import type { StreamContext, StreamEnv } from "./types";
@@ -19,7 +19,6 @@ import { SEGMENT_MAX_BYTES_DEFAULT, SEGMENT_MAX_MESSAGES_DEFAULT } from "../../s
 import { deleteStreamEntry } from "../../../storage/registry";
 import { rotateSegment as rotateSegmentImpl } from "./shared/rotate";
 import { logWarn } from "../../../log";
-import { appendStream } from "./append";
 
 type DoAppEnv = {
   Bindings: {
@@ -28,16 +27,6 @@ type DoAppEnv = {
   Variables: {
     streamContext: StreamContext;
   };
-};
-
-export type StreamIntrospection = {
-  meta: StreamMeta;
-  ops: OpsStats;
-  segments: SegmentRecord[];
-  producers: ProducerState[];
-  sseClientCount: number;
-  longPollWaiterCount: number;
-  wsClientCount: number;
 };
 
 export class StreamDO extends DurableObject<StreamEnv> {
@@ -217,60 +206,6 @@ export class StreamDO extends DurableObject<StreamEnv> {
   // RPC methods (called by edge router, estuary, subscription)
   async getStreamMeta(streamId: string): Promise<StreamMeta | null> {
     return this.getStream(streamId);
-  }
-
-  async getIntrospection(streamId: string): Promise<StreamIntrospection | null> {
-    const meta = await this.storage.getStream(streamId);
-    if (!meta) return null;
-
-    const ops = await this.storage.getOpsStatsFrom(streamId, 0);
-    const segments = await this.storage.listSegments(streamId);
-    const producers = await this.storage.listProducers(streamId);
-
-    return {
-      meta,
-      ops,
-      segments,
-      producers,
-      sseClientCount: this.sseState.clients.size,
-      longPollWaiterCount: this.longPoll.getWaiterCount(),
-      wsClientCount: this.ctx.getWebSockets().length,
-    };
-  }
-
-  async appendStreamRpc(streamId: string, payload: Uint8Array): Promise<{ tailOffset: number }> {
-    // Direct RPC method for SubscriptionDO - no HTTP overhead
-    const ctx: StreamContext = {
-      state: this.ctx,
-      env: this.env,
-      storage: this.storage,
-      longPoll: this.longPoll,
-      sseState: this.sseState,
-      getStream: (sid) => this.getStream(sid),
-      resolveOffset: (sid, meta, offsetParam) =>
-        resolveOffsetParam(this.storage, sid, meta, offsetParam),
-      encodeOffset: (sid, meta, offset) => encodeStreamOffset(this.storage, sid, meta, offset),
-      encodeTailOffset: (sid, meta) => encodeTailOffset(this.storage, sid, meta),
-      readFromOffset: (sid, meta, offset, maxChunkBytes) =>
-        this.readPath.readFromOffset(sid, meta, offset, maxChunkBytes),
-      rotateSegment: (sid, options) => this.rotateSegment(sid, options),
-      getWebSockets: (tag) => this.ctx.getWebSockets(tag),
-    };
-
-    // Call appendStream inside blockConcurrencyWhile with try/catch INSIDE
-    // so the callback never rejects (which would break the DO's input gate).
-    // Trampoline: catch inside BCW, re-throw outside.
-    const outcome = await this.ctx.blockConcurrencyWhile(async () => {
-      try {
-        const r = await appendStream(ctx, { streamId, payload });
-        return { ok: true as const, tailOffset: r.newTailOffset };
-      } catch (error) {
-        return { ok: false as const, error };
-      }
-    });
-
-    if (!outcome.ok) throw outcome.error;
-    return { tailOffset: outcome.tailOffset };
   }
 
   // Hibernation API handlers

@@ -27,13 +27,6 @@ export const deleteEstuaryResponseSchema = type({
 
 export type DeleteEstuaryResult = typeof deleteEstuaryResponseSchema.infer;
 
-export const touchEstuaryResponseSchema = type({
-  estuaryId: "string",
-  expiresAt: "number",
-});
-
-export type TouchEstuaryResult = typeof touchEstuaryResponseSchema.infer;
-
 export const getEstuaryResponseSchema = type({
   estuaryId: "string",
   estuaryStreamPath: "string",

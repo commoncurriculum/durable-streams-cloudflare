@@ -14,9 +14,59 @@ import { HttpError, ErrorCode } from "../../../shared/errors";
 import { evaluateProducer } from "../shared/producer";
 import { validateStreamSeq, buildClosedConflict } from "../shared/close";
 import { buildAppendBatch } from "../../../../storage/stream-do/append-batch";
-import { broadcastSse, broadcastWebSocket } from "../realtime/handlers";
-import { buildPreCacheResponse } from "../realtime/handlers";
+import {
+  broadcastSse,
+  broadcastSseControl,
+  broadcastWebSocket,
+  broadcastWebSocketControl,
+  buildPreCacheResponse,
+} from "../realtime/handlers";
 import type { StreamContext } from "../types";
+import type { StreamSubscribersDO } from "../../estuary/stream-subscribers-do";
+
+/**
+ * Trigger fanout to subscribed estuary streams (fire-and-forget).
+ *
+ * Extracts projectId/streamName from streamId and calls StreamSubscribersDO.fanoutOnly()
+ * which fans out the payload to all subscribers. Uses waitUntil so fanout happens
+ * asynchronously without blocking the append response.
+ */
+function triggerFanout(
+  ctx: StreamContext,
+  streamId: string,
+  payload: Uint8Array,
+  contentType: string,
+): void {
+  ctx.state.waitUntil(
+    (async () => {
+      try {
+        // Extract projectId and streamName from streamId (format: "project/stream")
+        const slashIndex = streamId.indexOf("/");
+        if (slashIndex === -1) {
+          logWarn({ streamId, component: "fanout-trigger" }, "Invalid streamId format");
+          return;
+        }
+        const projectId = streamId.slice(0, slashIndex);
+        const streamName = streamId.slice(slashIndex + 1);
+
+        // Get StreamSubscribersDO stub for this source stream
+        const subStub = ctx.env.SUBSCRIPTION_DO!.get(
+          ctx.env.SUBSCRIPTION_DO!.idFromName(streamId),
+        ) as DurableObjectStub<StreamSubscribersDO>;
+
+        // Trigger fanout (payload already written to source above)
+        await subStub.fanoutOnly(
+          projectId,
+          streamName,
+          payload.slice(0).buffer, // Clone Uint8Array and get its ArrayBuffer for RPC boundary
+          contentType,
+        );
+      } catch (err) {
+        logWarn({ streamId, component: "fanout-trigger" }, "Fanout failed", err);
+      }
+    })(),
+  );
+}
 
 export type ExecuteAppendOptions = {
   streamId: string;
@@ -265,6 +315,10 @@ export async function appendStream(
     // Notify waiters
     ctx.longPoll.notifyAll();
 
+    // Notify SSE and WebSocket clients that the stream closed
+    await broadcastSseControl(ctx, streamId, meta, meta.tail_offset, true);
+    await broadcastWebSocketControl(ctx, streamId, meta, meta.tail_offset, true);
+
     // Record metrics
     if (ctx.env.METRICS) {
       ctx.env.METRICS.writeDataPoint({
@@ -410,7 +464,16 @@ export async function appendStream(
     });
   }
 
-  // 12. Build response headers
+  // 12. Trigger fanout to subscribers (fire-and-forget)
+  //
+  // If this stream has subscribers, fan out the message to all estuary streams.
+  // This is done asynchronously via waitUntil so it doesn't block the append response.
+  // Fanout failures are logged but don't fail the source stream write.
+  if (ctx.env.SUBSCRIPTION_DO && payload.length > 0) {
+    triggerFanout(ctx, streamId, payload, meta.content_type);
+  }
+
+  // 13. Build response headers
   const nextOffsetHeader = await ctx.encodeOffset(streamId, meta, batch.newTailOffset);
   const headers = baseHeaders({
     [HEADER_STREAM_NEXT_OFFSET]: nextOffsetHeader,

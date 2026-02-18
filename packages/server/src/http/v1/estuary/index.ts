@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { logError, logInfo } from "../../../log";
 import type { StreamSubscribersDO } from "./stream-subscribers-do";
 import type { StreamDO } from "../streams";
-import { EstuaryDoStorage } from "../../../storage";
+import { EstuaryDoStorage } from "../../../storage/estuary-do";
 
 export interface EstuaryDOEnv {
   STREAMS: DurableObjectNamespace<StreamDO>;
@@ -110,7 +110,6 @@ export type {
   UnsubscribeResult,
   DeleteEstuaryResult,
   GetEstuaryResult,
-  TouchEstuaryResult,
   EstuaryInfo,
   PublishParams,
   PublishResult,

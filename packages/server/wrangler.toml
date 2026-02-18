@@ -42,13 +42,12 @@ id = "registry"
 binding = "FANOUT_QUEUE"
 queue = "subscription-fanout"
 
-# Uncomment to enable queue consumer (processes async fanout messages):
-# [[queues.consumers]]
-# queue = "subscription-fanout"
-# max_batch_size = 10
-# max_batch_timeout = 1
-# max_retries = 3
-# dead_letter_queue = "subscription-fanout-dlq"
+[[queues.consumers]]
+queue = "subscription-fanout"
+max_batch_size = 10
+max_batch_timeout = 1
+max_retries = 3
+dead_letter_queue = "subscription-fanout-dlq"
 
 [vars]
 # SEGMENT_MAX_MESSAGES = "1000"

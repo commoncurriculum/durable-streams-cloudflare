@@ -3,24 +3,24 @@
  *
  * Each source stream gets its own StreamSubscribersDO instance.
  * Tracks which estuaries subscribe to this stream.
- * Provides publish() RPC method for fanout to subscribers.
+ * Provides fanoutOnly() RPC method for fanout to subscribers.
  *
  * This is an INTERNAL DO - only called via RPC, never via HTTP.
  */
 
 import { DurableObject } from "cloudflare:workers";
 import { logInfo } from "../../../log";
-import { CIRCUIT_BREAKER_FAILURE_THRESHOLD, CIRCUIT_BREAKER_RECOVERY_MS } from "../../../constants";
+import {
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+  CIRCUIT_BREAKER_RECOVERY_MS,
+  FANOUT_QUEUE_THRESHOLD,
+  FANOUT_QUEUE_BATCH_SIZE,
+} from "../../../constants";
 import type { BaseEnv } from "../../router";
-import type {
-  PublishParams,
-  PublishResult,
-  GetSubscribersResult,
-  FanoutQueueMessage,
-} from "./types";
-import { StreamSubscribersDoStorage } from "../../../storage";
-import { publishToStream } from "./publish";
-import type { PublishContext } from "./publish";
+import type { GetSubscribersResult, FanoutQueueMessage } from "./types";
+import { StreamSubscribersDoStorage } from "../../../storage/stream-subscribers-do";
+import { fanoutToSubscribers } from "./publish/fanout";
+import { bufferToBase64 } from "../../../util/base64";
 
 export interface StreamSubscribersDOEnv extends BaseEnv {
   FANOUT_QUEUE?: Queue<FanoutQueueMessage>;
@@ -78,36 +78,121 @@ export class StreamSubscribersDO extends DurableObject<StreamSubscribersDOEnv> {
   }
 
   // ============================================================================
-  // Publish (RPC entrypoint for fanout)
+  // Fanout (RPC entrypoint)
   // ============================================================================
 
-  async publish(
+  /**
+   * Fanout-only RPC method.
+   *
+   * Called by StreamDO after it has already written to source stream.
+   * Fans out the payload to all subscribed estuary streams without re-writing to source.
+   *
+   * This is the entry point for the append → fanout flow:
+   * 1. Client POSTs to source stream
+   * 2. StreamDO.appendStream() writes to source
+   * 3. StreamDO calls this method to trigger fanout
+   * 4. This method fans out to all subscribers
+   */
+  async fanoutOnly(
     projectId: string,
     streamId: string,
-    params: PublishParams,
-  ): Promise<PublishResult> {
-    // Build context for THE ONE publish function
-    const ctx: PublishContext = {
-      env: this.env,
-      storage: this.storage,
-      nextFanoutSeq: this.nextFanoutSeq,
-      shouldAttemptInlineFanout: () => this.shouldAttemptInlineFanout(),
-      updateCircuitBreaker: (successes, failures) => this.updateCircuitBreaker(successes, failures),
-      removeStaleSubscribers: async (estuaryIds) =>
-        await this.storage.removeSubscribers(estuaryIds),
+    payload: ArrayBuffer,
+    contentType: string,
+  ): Promise<{ successCount: number; failureCount: number; fanoutMode: string }> {
+    const subscriberIds = await this.storage.getSubscriberIds();
+
+    // Early return if no subscribers
+    if (subscriberIds.length === 0) {
+      return { successCount: 0, failureCount: 0, fanoutMode: "skipped" };
+    }
+
+    // Track fanout sequence for producer-based deduplication
+    const fanoutSeq = this.nextFanoutSeq;
+    this.nextFanoutSeq++;
+    await this.storage.persistFanoutSeq(this.nextFanoutSeq);
+
+    const producerHeaders = {
+      producerId: `fanout:${streamId}`,
+      producerEpoch: "1",
+      producerSeq: fanoutSeq.toString(),
     };
 
-    // Call THE ONE publish function
-    const { result, newFanoutSeq } = await publishToStream(ctx, {
+    // Decide: queue vs inline fanout
+    const threshold = this.env.FANOUT_QUEUE_THRESHOLD
+      ? Number.parseInt(this.env.FANOUT_QUEUE_THRESHOLD, 10)
+      : FANOUT_QUEUE_THRESHOLD;
+
+    const useQueue =
+      this.env.FANOUT_QUEUE && subscriberIds.length > threshold && this.shouldAttemptInlineFanout();
+
+    if (useQueue) {
+      // Queue path: batch subscriber IDs into queue messages
+      const payloadBase64 = bufferToBase64(payload);
+
+      for (let i = 0; i < subscriberIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+        const batch = subscriberIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+        await this.env.FANOUT_QUEUE!.send({
+          projectId,
+          streamId,
+          estuaryIds: batch,
+          payload: payloadBase64,
+          contentType,
+          producerHeaders,
+        });
+      }
+
+      logInfo(
+        {
+          streamId,
+          subscribers: subscriberIds.length,
+          batches: Math.ceil(subscriberIds.length / FANOUT_QUEUE_BATCH_SIZE),
+          component: "fanout-queue",
+        },
+        "fanout queued",
+      );
+
+      return { successCount: subscriberIds.length, failureCount: 0, fanoutMode: "queued" };
+    }
+
+    // Inline path (below threshold or no queue binding or circuit open)
+    if (!this.shouldAttemptInlineFanout()) {
+      // Circuit breaker is open — if queue is available, use it as fallback
+      if (this.env.FANOUT_QUEUE) {
+        const payloadBase64 = bufferToBase64(payload);
+        for (let i = 0; i < subscriberIds.length; i += FANOUT_QUEUE_BATCH_SIZE) {
+          const batch = subscriberIds.slice(i, i + FANOUT_QUEUE_BATCH_SIZE);
+          await this.env.FANOUT_QUEUE.send({
+            projectId,
+            streamId,
+            estuaryIds: batch,
+            payload: payloadBase64,
+            contentType,
+            producerHeaders,
+          });
+        }
+        return { successCount: subscriberIds.length, failureCount: 0, fanoutMode: "circuit-open" };
+      }
+      // No queue available and circuit is open — skip fanout
+      return { successCount: 0, failureCount: subscriberIds.length, fanoutMode: "circuit-open" };
+    }
+
+    // Inline fanout
+    const result = await fanoutToSubscribers(
+      this.env,
       projectId,
-      streamId,
-      params,
-    });
+      subscriberIds,
+      payload,
+      contentType,
+      producerHeaders,
+    );
 
-    // Update sequence number
-    this.nextFanoutSeq = newFanoutSeq;
+    // Update circuit breaker and clean up stale subscribers
+    this.updateCircuitBreaker(result.successes, result.failures);
+    if (result.staleEstuaryIds.length > 0) {
+      await this.storage.removeSubscribers(result.staleEstuaryIds);
+    }
 
-    return result;
+    return { successCount: result.successes, failureCount: result.failures, fanoutMode: "inline" };
   }
 
   // ============================================================================
