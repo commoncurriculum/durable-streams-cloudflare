@@ -21,9 +21,8 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import axios from "axios";
-import type { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
-
+import { customFetch } from "../custom-fetch";
+import type { ErrorType } from "../custom-fetch";
 export type GetV1ConfigByProjectId200 = {
   corsOrigins: string[];
   isPublic: boolean;
@@ -301,6 +300,11 @@ export type PutV1ConfigByProjectId403 = {
   error: string;
 };
 
+export type GetV1ProjectsByProjectIdStreams200Item0 = {
+  createdAt: number;
+  streamId: string;
+};
+
 export type PostV1EstuarySubscribeByEstuaryPathBody = {
   /** @minLength 1 */
   estuaryId: string;
@@ -334,11 +338,6 @@ export type GetV1EstuaryByEstuaryPath200 = {
   estuaryId: string;
   estuaryStreamPath: string;
   subscriptions: GetV1EstuaryByEstuaryPath200SubscriptionsItem[];
-};
-
-export type PostV1EstuaryByEstuaryPath200 = {
-  estuaryId: string;
-  expiresAt: number;
 };
 
 export type DeleteV1EstuaryByEstuaryPath200 = {
@@ -658,15 +657,17 @@ export type DeleteV1StreamByStreamPath404 = {
   error: string;
 };
 
+type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
 /**
  * Returns 200 OK if the worker is running.
  * @summary Health check
  */
-export const getHealth = (options?: AxiosRequestConfig): Promise<AxiosResponse<string>> => {
-  return axios.get(`http://localhost:8787/health`, {
-    responseType: "text",
-    ...options,
-  });
+export const getHealth = (options?: SecondParameter<typeof customFetch>, signal?: AbortSignal) => {
+  return customFetch<string>(
+    { url: `http://localhost:8787/health`, method: "GET", signal },
+    options,
+  );
 };
 
 export const getGetHealthQueryKey = () => {
@@ -675,31 +676,31 @@ export const getGetHealthQueryKey = () => {
 
 export const getGetHealthQueryOptions = <
   TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }) => {
-  const { query: queryOptions, axios: axiosOptions } = options ?? {};
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey = queryOptions?.queryKey ?? getGetHealthQueryKey();
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) =>
-    getHealth({ signal, ...axiosOptions });
+    getHealth(requestOptions, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getHealth>>,
     TError,
     TData
-  > & { queryKey: DataTag<QueryKey, TData> };
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
 };
 
 export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>;
-export type GetHealthQueryError = AxiosError<unknown>;
+export type GetHealthQueryError = ErrorType<unknown>;
 
 export function useGetHealth<
   TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
@@ -711,13 +712,13 @@ export function useGetHealth<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetHealth<
   TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
@@ -729,38 +730,38 @@ export function useGetHealth<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetHealth<
   TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Health check
  */
 
 export function useGetHealth<
   TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetHealthQueryOptions(options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData>;
+    queryKey: DataTag<QueryKey, TData, TError>;
   };
 
   query.queryKey = queryOptions.queryKey;
@@ -774,9 +775,13 @@ export function useGetHealth<
  */
 export const getV1ConfigByProjectId = (
   projectId: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<GetV1ConfigByProjectId200>> => {
-  return axios.get(`http://localhost:8787/v1/config/${projectId}`, options);
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<GetV1ConfigByProjectId200>(
+    { url: `http://localhost:8787/v1/config/${projectId}`, method: "GET", signal },
+    options,
+  );
 };
 
 export const getGetV1ConfigByProjectIdQueryKey = (projectId?: string) => {
@@ -785,7 +790,7 @@ export const getGetV1ConfigByProjectIdQueryKey = (projectId?: string) => {
 
 export const getGetV1ConfigByProjectIdQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = AxiosError<
+  TError = ErrorType<
     GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
   >,
 >(
@@ -794,33 +799,33 @@ export const getGetV1ConfigByProjectIdQueryOptions = <
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
 ) => {
-  const { query: queryOptions, axios: axiosOptions } = options ?? {};
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey = queryOptions?.queryKey ?? getGetV1ConfigByProjectIdQueryKey(projectId);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ConfigByProjectId>>> = ({ signal }) =>
-    getV1ConfigByProjectId(projectId, { signal, ...axiosOptions });
+    getV1ConfigByProjectId(projectId, requestOptions, signal);
 
   return { queryKey, queryFn, enabled: !!projectId, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
     TError,
     TData
-  > & { queryKey: DataTag<QueryKey, TData> };
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
 };
 
 export type GetV1ConfigByProjectIdQueryResult = NonNullable<
   Awaited<ReturnType<typeof getV1ConfigByProjectId>>
 >;
-export type GetV1ConfigByProjectIdQueryError = AxiosError<
+export type GetV1ConfigByProjectIdQueryError = ErrorType<
   GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
 >;
 
 export function useGetV1ConfigByProjectId<
   TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = AxiosError<
+  TError = ErrorType<
     GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
   >,
 >(
@@ -837,13 +842,13 @@ export function useGetV1ConfigByProjectId<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1ConfigByProjectId<
   TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = AxiosError<
+  TError = ErrorType<
     GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
   >,
 >(
@@ -860,13 +865,13 @@ export function useGetV1ConfigByProjectId<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1ConfigByProjectId<
   TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = AxiosError<
+  TError = ErrorType<
     GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
   >,
 >(
@@ -875,17 +880,17 @@ export function useGetV1ConfigByProjectId<
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Get project configuration
  */
 
 export function useGetV1ConfigByProjectId<
   TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = AxiosError<
+  TError = ErrorType<
     GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
   >,
 >(
@@ -894,14 +899,14 @@ export function useGetV1ConfigByProjectId<
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetV1ConfigByProjectIdQueryOptions(projectId, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData>;
+    queryKey: DataTag<QueryKey, TData, TError>;
   };
 
   query.queryKey = queryOptions.queryKey;
@@ -916,17 +921,21 @@ export function useGetV1ConfigByProjectId<
 export const putV1ConfigByProjectId = (
   projectId: string,
   putV1ConfigByProjectIdBody: PutV1ConfigByProjectIdBody,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<PutV1ConfigByProjectId200>> => {
-  return axios.put(
-    `http://localhost:8787/v1/config/${projectId}`,
-    putV1ConfigByProjectIdBody,
+  options?: SecondParameter<typeof customFetch>,
+) => {
+  return customFetch<PutV1ConfigByProjectId200>(
+    {
+      url: `http://localhost:8787/v1/config/${projectId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: putV1ConfigByProjectIdBody,
+    },
     options,
   );
 };
 
 export const getPutV1ConfigByProjectIdMutationOptions = <
-  TError = AxiosError<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
+  TError = ErrorType<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -935,7 +944,7 @@ export const getPutV1ConfigByProjectIdMutationOptions = <
     { projectId: string; data: PutV1ConfigByProjectIdBody },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
   TError,
@@ -943,11 +952,11 @@ export const getPutV1ConfigByProjectIdMutationOptions = <
   TContext
 > => {
   const mutationKey = ["putV1ConfigByProjectId"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
@@ -955,7 +964,7 @@ export const getPutV1ConfigByProjectIdMutationOptions = <
   > = (props) => {
     const { projectId, data } = props ?? {};
 
-    return putV1ConfigByProjectId(projectId, data, axiosOptions);
+    return putV1ConfigByProjectId(projectId, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -965,7 +974,7 @@ export type PutV1ConfigByProjectIdMutationResult = NonNullable<
   Awaited<ReturnType<typeof putV1ConfigByProjectId>>
 >;
 export type PutV1ConfigByProjectIdMutationBody = PutV1ConfigByProjectIdBody;
-export type PutV1ConfigByProjectIdMutationError = AxiosError<
+export type PutV1ConfigByProjectIdMutationError = ErrorType<
   PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403
 >;
 
@@ -973,7 +982,7 @@ export type PutV1ConfigByProjectIdMutationError = AxiosError<
  * @summary Update project configuration
  */
 export const usePutV1ConfigByProjectId = <
-  TError = AxiosError<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
+  TError = ErrorType<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
   TContext = unknown,
 >(
   options?: {
@@ -983,7 +992,7 @@ export const usePutV1ConfigByProjectId = <
       { projectId: string; data: PutV1ConfigByProjectIdBody },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -998,23 +1007,276 @@ export const usePutV1ConfigByProjectId = <
 };
 
 /**
+ * Retrieve a list of all project IDs.
+ * @summary List all projects
+ */
+export const getV1Projects = (
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<string[]>(
+    { url: `http://localhost:8787/v1/projects`, method: "GET", signal },
+    options,
+  );
+};
+
+export const getGetV1ProjectsQueryKey = () => {
+  return [`http://localhost:8787/v1/projects`] as const;
+};
+
+export const getGetV1ProjectsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1Projects>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetV1ProjectsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1Projects>>> = ({ signal }) =>
+    getV1Projects(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1Projects>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1ProjectsQueryResult = NonNullable<Awaited<ReturnType<typeof getV1Projects>>>;
+export type GetV1ProjectsQueryError = ErrorType<unknown>;
+
+export function useGetV1Projects<
+  TData = Awaited<ReturnType<typeof getV1Projects>>,
+  TError = ErrorType<unknown>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1Projects>>,
+          TError,
+          Awaited<ReturnType<typeof getV1Projects>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1Projects<
+  TData = Awaited<ReturnType<typeof getV1Projects>>,
+  TError = ErrorType<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1Projects>>,
+          TError,
+          Awaited<ReturnType<typeof getV1Projects>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1Projects<
+  TData = Awaited<ReturnType<typeof getV1Projects>>,
+  TError = ErrorType<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List all projects
+ */
+
+export function useGetV1Projects<
+  TData = Awaited<ReturnType<typeof getV1Projects>>,
+  TError = ErrorType<unknown>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetV1ProjectsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * Retrieve all streams for a specific project with their metadata.
+ * @summary List streams in a project
+ */
+export const getV1ProjectsByProjectIdStreams = (
+  projectId: string,
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<[GetV1ProjectsByProjectIdStreams200Item0]>(
+    { url: `http://localhost:8787/v1/projects/${projectId}/streams`, method: "GET", signal },
+    options,
+  );
+};
+
+export const getGetV1ProjectsByProjectIdStreamsQueryKey = (projectId?: string) => {
+  return [`http://localhost:8787/v1/projects/${projectId}/streams`] as const;
+};
+
+export const getGetV1ProjectsByProjectIdStreamsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetV1ProjectsByProjectIdStreamsQueryKey(projectId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>> = ({
+    signal,
+  }) => getV1ProjectsByProjectIdStreams(projectId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!projectId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1ProjectsByProjectIdStreamsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
+>;
+export type GetV1ProjectsByProjectIdStreamsQueryError = ErrorType<unknown>;
+
+export function useGetV1ProjectsByProjectIdStreams<
+  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+          TError,
+          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1ProjectsByProjectIdStreams<
+  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+          TError,
+          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1ProjectsByProjectIdStreams<
+  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List streams in a project
+ */
+
+export function useGetV1ProjectsByProjectIdStreams<
+  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetV1ProjectsByProjectIdStreamsQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * Subscribe an estuary to a source stream. Messages published to the source are fan-out replicated to the estuary stream.
  * @summary Subscribe estuary to a stream
  */
 export const postV1EstuarySubscribeByEstuaryPath = (
   estuaryPath: string,
   postV1EstuarySubscribeByEstuaryPathBody: PostV1EstuarySubscribeByEstuaryPathBody,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<PostV1EstuarySubscribeByEstuaryPath200>> => {
-  return axios.post(
-    `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
-    postV1EstuarySubscribeByEstuaryPathBody,
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<PostV1EstuarySubscribeByEstuaryPath200>(
+    {
+      url: `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: postV1EstuarySubscribeByEstuaryPathBody,
+      signal,
+    },
     options,
   );
 };
 
 export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1023,7 +1285,7 @@ export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
     { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
   TError,
@@ -1031,11 +1293,11 @@ export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["postV1EstuarySubscribeByEstuaryPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
@@ -1043,7 +1305,7 @@ export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
   > = (props) => {
     const { estuaryPath, data } = props ?? {};
 
-    return postV1EstuarySubscribeByEstuaryPath(estuaryPath, data, axiosOptions);
+    return postV1EstuarySubscribeByEstuaryPath(estuaryPath, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1054,13 +1316,13 @@ export type PostV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
 >;
 export type PostV1EstuarySubscribeByEstuaryPathMutationBody =
   PostV1EstuarySubscribeByEstuaryPathBody;
-export type PostV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>;
+export type PostV1EstuarySubscribeByEstuaryPathMutationError = ErrorType<unknown>;
 
 /**
  * @summary Subscribe estuary to a stream
  */
 export const usePostV1EstuarySubscribeByEstuaryPath = <
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1070,7 +1332,7 @@ export const usePostV1EstuarySubscribeByEstuaryPath = <
       { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -1091,16 +1353,21 @@ export const usePostV1EstuarySubscribeByEstuaryPath = <
 export const deleteV1EstuarySubscribeByEstuaryPath = (
   estuaryPath: string,
   deleteV1EstuarySubscribeByEstuaryPathBody: DeleteV1EstuarySubscribeByEstuaryPathBody,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<DeleteV1EstuarySubscribeByEstuaryPath200>> => {
-  return axios.delete(`http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`, {
-    data: deleteV1EstuarySubscribeByEstuaryPathBody,
-    ...options,
-  });
+  options?: SecondParameter<typeof customFetch>,
+) => {
+  return customFetch<DeleteV1EstuarySubscribeByEstuaryPath200>(
+    {
+      url: `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      data: deleteV1EstuarySubscribeByEstuaryPathBody,
+    },
+    options,
+  );
 };
 
 export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1109,7 +1376,7 @@ export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
     { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
   TError,
@@ -1117,11 +1384,11 @@ export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["deleteV1EstuarySubscribeByEstuaryPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
@@ -1129,7 +1396,7 @@ export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
   > = (props) => {
     const { estuaryPath, data } = props ?? {};
 
-    return deleteV1EstuarySubscribeByEstuaryPath(estuaryPath, data, axiosOptions);
+    return deleteV1EstuarySubscribeByEstuaryPath(estuaryPath, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1140,13 +1407,13 @@ export type DeleteV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
 >;
 export type DeleteV1EstuarySubscribeByEstuaryPathMutationBody =
   DeleteV1EstuarySubscribeByEstuaryPathBody;
-export type DeleteV1EstuarySubscribeByEstuaryPathMutationError = AxiosError<unknown>;
+export type DeleteV1EstuarySubscribeByEstuaryPathMutationError = ErrorType<unknown>;
 
 /**
  * @summary Unsubscribe estuary from a stream
  */
 export const useDeleteV1EstuarySubscribeByEstuaryPath = <
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1156,7 +1423,7 @@ export const useDeleteV1EstuarySubscribeByEstuaryPath = <
       { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -1176,9 +1443,13 @@ export const useDeleteV1EstuarySubscribeByEstuaryPath = <
  */
 export const getV1EstuaryByEstuaryPath = (
   estuaryPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<GetV1EstuaryByEstuaryPath200>> => {
-  return axios.get(`http://localhost:8787/v1/estuary/${estuaryPath}`, options);
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<GetV1EstuaryByEstuaryPath200>(
+    { url: `http://localhost:8787/v1/estuary/${estuaryPath}`, method: "GET", signal },
+    options,
+  );
 };
 
 export const getGetV1EstuaryByEstuaryPathQueryKey = (estuaryPath?: string) => {
@@ -1187,39 +1458,39 @@ export const getGetV1EstuaryByEstuaryPathQueryKey = (estuaryPath?: string) => {
 
 export const getGetV1EstuaryByEstuaryPathQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   estuaryPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
 ) => {
-  const { query: queryOptions, axios: axiosOptions } = options ?? {};
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey = queryOptions?.queryKey ?? getGetV1EstuaryByEstuaryPathQueryKey(estuaryPath);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>> = ({
     signal,
-  }) => getV1EstuaryByEstuaryPath(estuaryPath, { signal, ...axiosOptions });
+  }) => getV1EstuaryByEstuaryPath(estuaryPath, requestOptions, signal);
 
   return { queryKey, queryFn, enabled: !!estuaryPath, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
     TError,
     TData
-  > & { queryKey: DataTag<QueryKey, TData> };
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
 };
 
 export type GetV1EstuaryByEstuaryPathQueryResult = NonNullable<
   Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
 >;
-export type GetV1EstuaryByEstuaryPathQueryError = AxiosError<unknown>;
+export type GetV1EstuaryByEstuaryPathQueryError = ErrorType<unknown>;
 
 export function useGetV1EstuaryByEstuaryPath<
   TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   estuaryPath: string,
   options: {
@@ -1234,13 +1505,13 @@ export function useGetV1EstuaryByEstuaryPath<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1EstuaryByEstuaryPath<
   TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   estuaryPath: string,
   options?: {
@@ -1255,44 +1526,44 @@ export function useGetV1EstuaryByEstuaryPath<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1EstuaryByEstuaryPath<
   TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   estuaryPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Get estuary info
  */
 
 export function useGetV1EstuaryByEstuaryPath<
   TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
 >(
   estuaryPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetV1EstuaryByEstuaryPathQueryOptions(estuaryPath, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData>;
+    queryKey: DataTag<QueryKey, TData, TError>;
   };
 
   query.queryKey = queryOptions.queryKey;
@@ -1301,96 +1572,21 @@ export function useGetV1EstuaryByEstuaryPath<
 }
 
 /**
- * Create or extend the TTL of an estuary stream.
- * @summary Touch estuary
- */
-export const postV1EstuaryByEstuaryPath = (
-  estuaryPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<PostV1EstuaryByEstuaryPath200>> => {
-  return axios.post(`http://localhost:8787/v1/estuary/${estuaryPath}`, undefined, options);
-};
-
-export const getPostV1EstuaryByEstuaryPathMutationOptions = <
-  TError = AxiosError<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-    TError,
-    { estuaryPath: string },
-    TContext
-  >;
-  axios?: AxiosRequestConfig;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-  TError,
-  { estuaryPath: string },
-  TContext
-> => {
-  const mutationKey = ["postV1EstuaryByEstuaryPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-    { estuaryPath: string }
-  > = (props) => {
-    const { estuaryPath } = props ?? {};
-
-    return postV1EstuaryByEstuaryPath(estuaryPath, axiosOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PostV1EstuaryByEstuaryPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>
->;
-
-export type PostV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>;
-
-/**
- * @summary Touch estuary
- */
-export const usePostV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TContext = unknown>(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-      TError,
-      { estuaryPath: string },
-      TContext
-    >;
-    axios?: AxiosRequestConfig;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV1EstuaryByEstuaryPath>>,
-  TError,
-  { estuaryPath: string },
-  TContext
-> => {
-  const mutationOptions = getPostV1EstuaryByEstuaryPathMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
-};
-
-/**
  * Delete an estuary and its underlying stream.
  * @summary Delete estuary
  */
 export const deleteV1EstuaryByEstuaryPath = (
   estuaryPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<DeleteV1EstuaryByEstuaryPath200>> => {
-  return axios.delete(`http://localhost:8787/v1/estuary/${estuaryPath}`, options);
+  options?: SecondParameter<typeof customFetch>,
+) => {
+  return customFetch<DeleteV1EstuaryByEstuaryPath200>(
+    { url: `http://localhost:8787/v1/estuary/${estuaryPath}`, method: "DELETE" },
+    options,
+  );
 };
 
 export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
-  TError = AxiosError<unknown>,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1399,7 +1595,7 @@ export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
     { estuaryPath: string },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
   TError,
@@ -1407,11 +1603,11 @@ export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["deleteV1EstuaryByEstuaryPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
@@ -1419,7 +1615,7 @@ export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
   > = (props) => {
     const { estuaryPath } = props ?? {};
 
-    return deleteV1EstuaryByEstuaryPath(estuaryPath, axiosOptions);
+    return deleteV1EstuaryByEstuaryPath(estuaryPath, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1429,12 +1625,12 @@ export type DeleteV1EstuaryByEstuaryPathMutationResult = NonNullable<
   Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>
 >;
 
-export type DeleteV1EstuaryByEstuaryPathMutationError = AxiosError<unknown>;
+export type DeleteV1EstuaryByEstuaryPathMutationError = ErrorType<unknown>;
 
 /**
  * @summary Delete estuary
  */
-export const useDeleteV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TContext = unknown>(
+export const useDeleteV1EstuaryByEstuaryPath = <TError = ErrorType<unknown>, TContext = unknown>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
@@ -1442,7 +1638,7 @@ export const useDeleteV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TC
       { estuaryPath: string },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -1462,13 +1658,16 @@ export const useDeleteV1EstuaryByEstuaryPath = <TError = AxiosError<unknown>, TC
  */
 export const putV1StreamByStreamPath = (
   streamPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<void>> => {
-  return axios.put(`http://localhost:8787/v1/stream/${streamPath}`, undefined, options);
+  options?: SecondParameter<typeof customFetch>,
+) => {
+  return customFetch<void>(
+    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "PUT" },
+    options,
+  );
 };
 
 export const getPutV1StreamByStreamPathMutationOptions = <
-  TError = AxiosError<PutV1StreamByStreamPath409>,
+  TError = ErrorType<PutV1StreamByStreamPath409>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1477,7 +1676,7 @@ export const getPutV1StreamByStreamPathMutationOptions = <
     { streamPath: string },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
   TError,
@@ -1485,11 +1684,11 @@ export const getPutV1StreamByStreamPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["putV1StreamByStreamPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
@@ -1497,7 +1696,7 @@ export const getPutV1StreamByStreamPathMutationOptions = <
   > = (props) => {
     const { streamPath } = props ?? {};
 
-    return putV1StreamByStreamPath(streamPath, axiosOptions);
+    return putV1StreamByStreamPath(streamPath, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1507,13 +1706,13 @@ export type PutV1StreamByStreamPathMutationResult = NonNullable<
   Awaited<ReturnType<typeof putV1StreamByStreamPath>>
 >;
 
-export type PutV1StreamByStreamPathMutationError = AxiosError<PutV1StreamByStreamPath409>;
+export type PutV1StreamByStreamPathMutationError = ErrorType<PutV1StreamByStreamPath409>;
 
 /**
  * @summary Create a stream
  */
 export const usePutV1StreamByStreamPath = <
-  TError = AxiosError<PutV1StreamByStreamPath409>,
+  TError = ErrorType<PutV1StreamByStreamPath409>,
   TContext = unknown,
 >(
   options?: {
@@ -1523,7 +1722,7 @@ export const usePutV1StreamByStreamPath = <
       { streamPath: string },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -1543,13 +1742,17 @@ export const usePutV1StreamByStreamPath = <
  */
 export const postV1StreamByStreamPath = (
   streamPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<void | void>> => {
-  return axios.post(`http://localhost:8787/v1/stream/${streamPath}`, undefined, options);
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<void | void>(
+    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "POST", signal },
+    options,
+  );
 };
 
 export const getPostV1StreamByStreamPathMutationOptions = <
-  TError = AxiosError<
+  TError = ErrorType<
     PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
   >,
   TContext = unknown,
@@ -1560,7 +1763,7 @@ export const getPostV1StreamByStreamPathMutationOptions = <
     { streamPath: string },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
   TError,
@@ -1568,11 +1771,11 @@ export const getPostV1StreamByStreamPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["postV1StreamByStreamPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
@@ -1580,7 +1783,7 @@ export const getPostV1StreamByStreamPathMutationOptions = <
   > = (props) => {
     const { streamPath } = props ?? {};
 
-    return postV1StreamByStreamPath(streamPath, axiosOptions);
+    return postV1StreamByStreamPath(streamPath, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1590,7 +1793,7 @@ export type PostV1StreamByStreamPathMutationResult = NonNullable<
   Awaited<ReturnType<typeof postV1StreamByStreamPath>>
 >;
 
-export type PostV1StreamByStreamPathMutationError = AxiosError<
+export type PostV1StreamByStreamPathMutationError = ErrorType<
   PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
 >;
 
@@ -1598,7 +1801,7 @@ export type PostV1StreamByStreamPathMutationError = AxiosError<
  * @summary Append to a stream
  */
 export const usePostV1StreamByStreamPath = <
-  TError = AxiosError<
+  TError = ErrorType<
     PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
   >,
   TContext = unknown,
@@ -1610,7 +1813,7 @@ export const usePostV1StreamByStreamPath = <
       { streamPath: string },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
@@ -1630,9 +1833,13 @@ export const usePostV1StreamByStreamPath = <
  */
 export const getV1StreamByStreamPath = (
   streamPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<void>> => {
-  return axios.get(`http://localhost:8787/v1/stream/${streamPath}`, options);
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<void>(
+    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "GET", signal },
+    options,
+  );
 };
 
 export const getGetV1StreamByStreamPathQueryKey = (streamPath?: string) => {
@@ -1641,39 +1848,39 @@ export const getGetV1StreamByStreamPathQueryKey = (streamPath?: string) => {
 
 export const getGetV1StreamByStreamPathQueryOptions = <
   TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+  TError = ErrorType<void | GetV1StreamByStreamPath404>,
 >(
   streamPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
 ) => {
-  const { query: queryOptions, axios: axiosOptions } = options ?? {};
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey = queryOptions?.queryKey ?? getGetV1StreamByStreamPathQueryKey(streamPath);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamByStreamPath>>> = ({
     signal,
-  }) => getV1StreamByStreamPath(streamPath, { signal, ...axiosOptions });
+  }) => getV1StreamByStreamPath(streamPath, requestOptions, signal);
 
   return { queryKey, queryFn, enabled: !!streamPath, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
     TError,
     TData
-  > & { queryKey: DataTag<QueryKey, TData> };
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
 };
 
 export type GetV1StreamByStreamPathQueryResult = NonNullable<
   Awaited<ReturnType<typeof getV1StreamByStreamPath>>
 >;
-export type GetV1StreamByStreamPathQueryError = AxiosError<void | GetV1StreamByStreamPath404>;
+export type GetV1StreamByStreamPathQueryError = ErrorType<void | GetV1StreamByStreamPath404>;
 
 export function useGetV1StreamByStreamPath<
   TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+  TError = ErrorType<void | GetV1StreamByStreamPath404>,
 >(
   streamPath: string,
   options: {
@@ -1688,13 +1895,13 @@ export function useGetV1StreamByStreamPath<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1StreamByStreamPath<
   TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+  TError = ErrorType<void | GetV1StreamByStreamPath404>,
 >(
   streamPath: string,
   options?: {
@@ -1709,44 +1916,44 @@ export function useGetV1StreamByStreamPath<
         >,
         "initialData"
       >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetV1StreamByStreamPath<
   TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+  TError = ErrorType<void | GetV1StreamByStreamPath404>,
 >(
   streamPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Read from a stream
  */
 
 export function useGetV1StreamByStreamPath<
   TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = AxiosError<void | GetV1StreamByStreamPath404>,
+  TError = ErrorType<void | GetV1StreamByStreamPath404>,
 >(
   streamPath: string,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetV1StreamByStreamPathQueryOptions(streamPath, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData>;
+    queryKey: DataTag<QueryKey, TData, TError>;
   };
 
   query.queryKey = queryOptions.queryKey;
@@ -1760,13 +1967,16 @@ export function useGetV1StreamByStreamPath<
  */
 export const deleteV1StreamByStreamPath = (
   streamPath: string,
-  options?: AxiosRequestConfig,
-): Promise<AxiosResponse<void>> => {
-  return axios.delete(`http://localhost:8787/v1/stream/${streamPath}`, options);
+  options?: SecondParameter<typeof customFetch>,
+) => {
+  return customFetch<void>(
+    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "DELETE" },
+    options,
+  );
 };
 
 export const getDeleteV1StreamByStreamPathMutationOptions = <
-  TError = AxiosError<DeleteV1StreamByStreamPath404>,
+  TError = ErrorType<DeleteV1StreamByStreamPath404>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1775,7 +1985,7 @@ export const getDeleteV1StreamByStreamPathMutationOptions = <
     { streamPath: string },
     TContext
   >;
-  axios?: AxiosRequestConfig;
+  request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
   TError,
@@ -1783,11 +1993,11 @@ export const getDeleteV1StreamByStreamPathMutationOptions = <
   TContext
 > => {
   const mutationKey = ["deleteV1StreamByStreamPath"];
-  const { mutation: mutationOptions, axios: axiosOptions } = options
+  const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
       : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, axios: undefined };
+    : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
@@ -1795,7 +2005,7 @@ export const getDeleteV1StreamByStreamPathMutationOptions = <
   > = (props) => {
     const { streamPath } = props ?? {};
 
-    return deleteV1StreamByStreamPath(streamPath, axiosOptions);
+    return deleteV1StreamByStreamPath(streamPath, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1805,13 +2015,13 @@ export type DeleteV1StreamByStreamPathMutationResult = NonNullable<
   Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>
 >;
 
-export type DeleteV1StreamByStreamPathMutationError = AxiosError<DeleteV1StreamByStreamPath404>;
+export type DeleteV1StreamByStreamPathMutationError = ErrorType<DeleteV1StreamByStreamPath404>;
 
 /**
  * @summary Delete a stream
  */
 export const useDeleteV1StreamByStreamPath = <
-  TError = AxiosError<DeleteV1StreamByStreamPath404>,
+  TError = ErrorType<DeleteV1StreamByStreamPath404>,
   TContext = unknown,
 >(
   options?: {
@@ -1821,7 +2031,7 @@ export const useDeleteV1StreamByStreamPath = <
       { streamPath: string },
       TContext
     >;
-    axios?: AxiosRequestConfig;
+    request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<

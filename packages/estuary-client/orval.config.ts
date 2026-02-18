@@ -12,6 +12,12 @@ export default defineConfig({
 			clean: true,
 			prettier: false,
 			baseUrl: "http://localhost:8787",
+			override: {
+				mutator: {
+					path: "./src/custom-fetch.ts",
+					name: "customFetch",
+				},
+			},
 		},
 	},
 });

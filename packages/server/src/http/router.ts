@@ -31,6 +31,14 @@ import {
   putConfig,
 } from "./v1/config";
 
+// Projects endpoints
+import {
+  listProjectsHandler,
+  listProjectStreamsHandler,
+  listProjectsResponseSchema,
+  listProjectStreamsResponseSchema,
+} from "./v1/projects";
+
 // Estuary endpoints
 import { subscribeHttp, subscribeRequestSchema } from "./v1/estuary/subscribe/http";
 import { unsubscribeHttp, unsubscribeRequestSchema } from "./v1/estuary/unsubscribe/http";
@@ -214,6 +222,48 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
     validator("param", projectIdParamSchema, undefined, morphFallback),
     validator("json", putConfigRequestSchema),
     putConfig,
+  );
+
+  // Projects routes
+  app.get(
+    "/v1/projects",
+    describeRoute({
+      tags: ["Projects"],
+      summary: "List all projects",
+      description: "Retrieve a list of all project IDs.",
+      responses: {
+        200: {
+          description: "List of project IDs",
+          content: {
+            "application/json": {
+              schema: resolver(listProjectsResponseSchema),
+            },
+          },
+        },
+      },
+    }),
+    listProjectsHandler,
+  );
+
+  app.get(
+    "/v1/projects/:projectId/streams",
+    describeRoute({
+      tags: ["Projects"],
+      summary: "List streams in a project",
+      description: "Retrieve all streams for a specific project with their metadata.",
+      responses: {
+        200: {
+          description: "List of streams",
+          content: {
+            "application/json": {
+              schema: resolver(listProjectStreamsResponseSchema),
+            },
+          },
+        },
+      },
+    }),
+    validator("param", projectIdParamSchema, undefined, morphFallback),
+    listProjectStreamsHandler,
   );
 
   // Estuary subscribe/unsubscribe routes
