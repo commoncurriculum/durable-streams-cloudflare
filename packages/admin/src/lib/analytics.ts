@@ -25,7 +25,7 @@ function getAdminSecret(): string {
 
 // Get auth token for admin requests
 async function getAuthToken(projectId: string): Promise<string> {
-  return mintJwt({ projectId, signingSecret: getAdminSecret() });
+  return mintJwt({ projectId }, getAdminSecret());
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +323,11 @@ export const getProjectConfig = createServerFn({ method: "GET" })
       throw new Error(`Failed to get project config: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      signingSecrets: string[];
+      corsOrigins?: string[];
+      isPublic?: boolean;
+    };
     return {
       signingSecrets: data.signingSecrets,
       corsOrigins: data.corsOrigins ?? [],
@@ -531,7 +535,10 @@ export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(async 
 export const mintStreamToken = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string }) => data)
   .handler(async ({ data }) => {
-    return getAuthToken(data.projectId);
+    const token = await getAuthToken(data.projectId);
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + 300; // 5 minutes (match token expiry)
+    return { token, expiresAt };
   });
 
 // ---------------------------------------------------------------------------
@@ -545,6 +552,8 @@ export const inspectSession = createServerFn({ method: "GET" })
     throw new Error(
       "Session inspection not available via HTTP API yet. This feature requires server-side RPC methods.",
     );
+    // eslint-disable-next-line no-unreachable
+    return { sessionId: data.sessionId, streamSubscriptions: [] as object[] };
   });
 
 export const inspectStreamSubscribers = createServerFn({ method: "GET" })
@@ -554,11 +563,13 @@ export const inspectStreamSubscribers = createServerFn({ method: "GET" })
     throw new Error(
       "Stream subscriber inspection not available via HTTP API yet. This feature requires server-side RPC methods.",
     );
+    // eslint-disable-next-line no-unreachable
+    return [] as object[];
   });
 
 export const getStreamMeta = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string; streamId: string }) => data)
-  .handler(async ({ data }) => {
+  .handler(async ({ data }): Promise<{ offset: number; contentType: string }> => {
     // TODO: This needs a server endpoint like GET /v1/streams/:streamId/meta
     throw new Error(
       "Stream metadata not available via HTTP API yet. This feature requires server-side RPC methods.",
@@ -567,10 +578,12 @@ export const getStreamMeta = createServerFn({ method: "GET" })
 
 export const listProjectSessions = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
-  .handler(async ({ data: projectId }) => {
-    // TODO: This needs a server endpoint like GET /v1/projects/:projectId/sessions
-    return [];
-  });
+  .handler(
+    async ({ data: projectId }): Promise<Array<{ sessionId: string; createdAt?: string }>> => {
+      // TODO: This needs a server endpoint like GET /v1/projects/:projectId/sessions
+      return [];
+    },
+  );
 
 // ---------------------------------------------------------------------------
 // Session Management (subscription-specific, NOT in estuary-client yet)
@@ -578,7 +591,7 @@ export const listProjectSessions = createServerFn({ method: "GET" })
 
 export const createSession = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; sessionId: string }) => data)
-  .handler(async ({ data: { projectId, sessionId } }) => {
+  .handler(async ({ data: { projectId, sessionId } }): Promise<{ sessionId: string }> => {
     // TODO: This needs a server endpoint like POST /v1/sessions
     throw new Error(
       "Session creation not available via HTTP API yet. This feature requires server-side RPC methods.",
@@ -596,9 +609,11 @@ export const sendSessionAction = createServerFn({ method: "POST" })
       body?: string;
     }) => data,
   )
-  .handler(async ({ data }) => {
-    // TODO: These need server endpoints for subscription operations
-    throw new Error(
-      "Session actions not available via HTTP API yet. This feature requires server-side RPC methods.",
-    );
-  });
+  .handler(
+    async ({ data }): Promise<{ status: number; statusText: string; body?: object }> => {
+      // TODO: These need server endpoints for subscription operations
+      throw new Error(
+        "Session actions not available via HTTP API yet. This feature requires server-side RPC methods.",
+      );
+    },
+  );
