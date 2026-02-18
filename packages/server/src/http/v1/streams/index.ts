@@ -20,7 +20,6 @@ import { deleteStreamEntry } from "../../../storage/registry";
 import { rotateSegment as rotateSegmentImpl } from "./shared/rotate";
 import { logWarn } from "../../../log";
 
-
 type DoAppEnv = {
   Bindings: {
     streamId: string;

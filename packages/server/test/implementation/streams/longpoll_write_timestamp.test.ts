@@ -68,27 +68,23 @@ describe("long-poll Stream-Write-Timestamp header", () => {
     },
   );
 
-  it(
-    "does NOT include Stream-Write-Timestamp on 204 timeout",
-    { timeout: 30000 },
-    async () => {
-      const client = createClient();
-      const streamId = uniqueStreamId("lp-wts-timeout");
+  it("does NOT include Stream-Write-Timestamp on 204 timeout", { timeout: 30000 }, async () => {
+    const client = createClient();
+    const streamId = uniqueStreamId("lp-wts-timeout");
 
-      await client.createStream(streamId, "initial", "text/plain");
+    await client.createStream(streamId, "initial", "text/plain");
 
-      // Read to get the tail offset
-      const readRes = await fetch(client.streamUrl(streamId, { offset: ZERO_OFFSET }));
-      const tailOffset = readRes.headers.get("Stream-Next-Offset")!;
-      await readRes.arrayBuffer(); // consume body
+    // Read to get the tail offset
+    const readRes = await fetch(client.streamUrl(streamId, { offset: ZERO_OFFSET }));
+    const tailOffset = readRes.headers.get("Stream-Next-Offset")!;
+    await readRes.arrayBuffer(); // consume body
 
-      // Long-poll at tail -- no new data will arrive, so it should time out
-      const response = await fetch(
-        client.streamUrl(streamId, { offset: tailOffset, live: "long-poll" }),
-      );
+    // Long-poll at tail -- no new data will arrive, so it should time out
+    const response = await fetch(
+      client.streamUrl(streamId, { offset: tailOffset, live: "long-poll" }),
+    );
 
-      expect(response.status).toBe(204);
-      expect(response.headers.get("Stream-Write-Timestamp")).toBeNull();
-    },
-  );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Stream-Write-Timestamp")).toBeNull();
+  });
 });
