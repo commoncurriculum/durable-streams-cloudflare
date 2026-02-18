@@ -305,6 +305,70 @@ export type GetV1ProjectsByProjectIdStreams200Item0 = {
   streamId: string;
 };
 
+export type GetV1StreamsByStreamIdInspect200 = {
+  closed: boolean;
+  contentType: string;
+  public: boolean;
+  streamId: string;
+  tailOffset: number;
+  closedAt?: number;
+  createdAt?: number;
+  expiresAt?: number;
+  ttlSeconds?: number;
+};
+
+export type GetV1StreamsByStreamIdInspect404Code =
+  (typeof GetV1StreamsByStreamIdInspect404Code)[keyof typeof GetV1StreamsByStreamIdInspect404Code];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const GetV1StreamsByStreamIdInspect404Code = {
+  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
+  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
+  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
+  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
+  EMPTY_BODY: "EMPTY_BODY",
+  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
+  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
+  FORBIDDEN: "FORBIDDEN",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
+  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
+  INVALID_JSON: "INVALID_JSON",
+  INVALID_OFFSET: "INVALID_OFFSET",
+  INVALID_TTL: "INVALID_TTL",
+  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
+  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
+  OFFSET_REQUIRED: "OFFSET_REQUIRED",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
+  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
+  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
+  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
+  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
+  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
+  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
+  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SEGMENT_MISSING: "SEGMENT_MISSING",
+  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
+  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
+  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
+  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  STREAM_CLOSED: "STREAM_CLOSED",
+  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
+  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
+  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
+  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
+} as const;
+
+export type GetV1StreamsByStreamIdInspect404 = {
+  code: GetV1StreamsByStreamIdInspect404Code;
+  error: string;
+};
+
 export type PostV1EstuarySubscribeByEstuaryPathBody = {
   /** @minLength 1 */
   estuaryId: string;
@@ -1243,6 +1307,140 @@ export function useGetV1ProjectsByProjectIdStreams<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetV1ProjectsByProjectIdStreamsQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * Get detailed metadata about a stream including tail offset, content type, and TTL information.
+ * @summary Inspect stream metadata
+ */
+export const getV1StreamsByStreamIdInspect = (
+  streamId: string,
+  options?: SecondParameter<typeof customFetch>,
+  signal?: AbortSignal,
+) => {
+  return customFetch<GetV1StreamsByStreamIdInspect200>(
+    { url: `http://localhost:8787/v1/streams/${streamId}/inspect`, method: "GET", signal },
+    options,
+  );
+};
+
+export const getGetV1StreamsByStreamIdInspectQueryKey = (streamId?: string) => {
+  return [`http://localhost:8787/v1/streams/${streamId}/inspect`] as const;
+};
+
+export const getGetV1StreamsByStreamIdInspectQueryOptions = <
+  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
+>(
+  streamId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetV1StreamsByStreamIdInspectQueryKey(streamId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>> = ({
+    signal,
+  }) => getV1StreamsByStreamIdInspect(streamId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!streamId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetV1StreamsByStreamIdInspectQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
+>;
+export type GetV1StreamsByStreamIdInspectQueryError = ErrorType<GetV1StreamsByStreamIdInspect404>;
+
+export function useGetV1StreamsByStreamIdInspect<
+  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
+>(
+  streamId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+          TError,
+          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1StreamsByStreamIdInspect<
+  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
+>(
+  streamId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+          TError,
+          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetV1StreamsByStreamIdInspect<
+  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
+>(
+  streamId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Inspect stream metadata
+ */
+
+export function useGetV1StreamsByStreamIdInspect<
+  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
+  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
+>(
+  streamId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetV1StreamsByStreamIdInspectQueryOptions(streamId, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

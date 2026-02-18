@@ -13,6 +13,10 @@ export const projectIdParamSchema = type({
   }),
 });
 
+export const streamIdParamSchema = type({
+  streamId: type("string > 0"),
+});
+
 export const listProjectsResponseSchema = type("string[]");
 
 export type ListProjectsResponse = typeof listProjectsResponseSchema.infer;
@@ -23,6 +27,20 @@ export const listProjectStreamsResponseSchema = type([{
 }]);
 
 export type ListProjectStreamsResponse = typeof listProjectStreamsResponseSchema.infer;
+
+export const inspectStreamResponseSchema = type({
+  streamId: "string",
+  contentType: "string",
+  tailOffset: "number",
+  closed: "boolean",
+  "public": "boolean",
+  "createdAt?": "number",
+  "closedAt?": "number",
+  "ttlSeconds?": "number",
+  "expiresAt?": "number",
+});
+
+export type InspectStreamResponse = typeof inspectStreamResponseSchema.infer;
 
 // ============================================================================
 // Handlers
@@ -48,3 +66,46 @@ export async function listProjectStreamsHandler(c: any): Promise<Response> {
   const streams = await listProjectStreams(c.env.REGISTRY, projectId);
   return c.json(streams);
 }
+
+/**
+ * GET /v1/streams/:streamId/inspect
+ * Get stream metadata (tail offset, content type, etc.)
+ */
+// biome-ignore lint: Hono context typing is complex
+export async function inspectStreamHandler(c: any): Promise<Response> {
+  const { streamId } = c.req.valid("param");
+  
+  // Get the StreamDO stub
+  const stub = c.env.STREAMS.getByName(streamId);
+  
+  // Call the getStreamMeta RPC method
+  const metadata = await stub.getStreamMeta(streamId);
+  
+  if (!metadata) {
+    return c.json({ code: "STREAM_NOT_FOUND", error: "stream not found" }, 404);
+  }
+
+  const response: InspectStreamResponse = {
+    streamId: metadata.stream_id,
+    contentType: metadata.content_type,
+    tailOffset: metadata.tail_offset,
+    closed: metadata.closed === 1,
+    public: metadata.public === 1,
+  };
+
+  if (metadata.created_at) {
+    response.createdAt = metadata.created_at;
+  }
+  if (metadata.closed_at) {
+    response.closedAt = metadata.closed_at;
+  }
+  if (metadata.ttl_seconds) {
+    response.ttlSeconds = metadata.ttl_seconds;
+  }
+  if (metadata.expires_at) {
+    response.expiresAt = metadata.expires_at;
+  }
+
+  return c.json(response);
+}
+

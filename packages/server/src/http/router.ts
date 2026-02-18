@@ -35,8 +35,11 @@ import {
 import {
   listProjectsHandler,
   listProjectStreamsHandler,
+  inspectStreamHandler,
   listProjectsResponseSchema,
   listProjectStreamsResponseSchema,
+  inspectStreamResponseSchema,
+  streamIdParamSchema,
 } from "./v1/projects";
 
 // Estuary endpoints
@@ -264,6 +267,29 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
     }),
     validator("param", projectIdParamSchema, undefined, morphFallback),
     listProjectStreamsHandler,
+  );
+
+  // Stream inspection route
+  app.get(
+    "/v1/streams/:streamId/inspect",
+    describeRoute({
+      tags: ["Streams"],
+      summary: "Inspect stream metadata",
+      description: "Get detailed metadata about a stream including tail offset, content type, and TTL information.",
+      responses: {
+        200: {
+          description: "Stream metadata",
+          content: {
+            "application/json": {
+              schema: resolver(inspectStreamResponseSchema),
+            },
+          },
+        },
+        404: { description: "Stream not found", ...errorContent },
+      },
+    }),
+    validator("param", streamIdParamSchema),
+    inspectStreamHandler,
   );
 
   // Estuary subscribe/unsubscribe routes
