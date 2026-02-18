@@ -1,19 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
-import axios from "axios";
-import {
-  getV1ConfigByProjectId,
-  putV1ConfigByProjectId,
-  putV1StreamByStreamPath,
-  postV1StreamByStreamPath,
-  getV1StreamByStreamPath,
-  deleteV1StreamByStreamPath,
-  postV1EstuarySubscribeByEstuaryPath,
-  deleteV1EstuarySubscribeByEstuaryPath,
-  getV1EstuaryByEstuaryPath,
-  postV1EstuaryByEstuaryPath,
-  deleteV1EstuaryByEstuaryPath,
-} from "@durable-streams-cloudflare/estuary-client";
 import { generateSecret, exportJWK } from "jose";
 import { mintJwt } from "./jwt";
 
@@ -36,9 +22,6 @@ function getAdminSecret(): string {
   }
   return secret;
 }
-
-// Configure axios defaults
-axios.defaults.baseURL = "";
 
 // Get auth token for admin requests
 async function getAuthToken(projectId: string): Promise<string> {
@@ -188,43 +171,25 @@ export const sendTestAction = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken("default");
 
-    try {
-      if (data.action === "create") {
-        const result = await putV1StreamByStreamPath(data.streamId, {
-          baseURL: serverUrl,
-          headers: {
-            "Content-Type": contentType,
-            Authorization: `Bearer ${token}`,
-          },
-          data: bodyBytes,
-        });
-        return {
-          status: result.status,
-          statusText: result.statusText || "OK",
-        };
-      }
+    const url =
+      data.action === "create"
+        ? `${serverUrl}/v1/stream/${data.streamId}`
+        : `${serverUrl}/v1/stream/${data.streamId}`;
+    const method = data.action === "create" ? "PUT" : "POST";
 
-      const result = await postV1StreamByStreamPath(data.streamId, {
-        baseURL: serverUrl,
-        headers: {
-          "Content-Type": contentType,
-          Authorization: `Bearer ${token}`,
-        },
-        data: bodyBytes,
-      });
-      return {
-        status: result.status,
-        statusText: result.statusText || "OK",
-      };
-    } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
-        return {
-          status: error.response.status,
-          statusText: error.response.statusText || "Error",
-        };
-      }
-      throw error;
-    }
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": contentType,
+        Authorization: `Bearer ${token}`,
+      },
+      body: bodyBytes,
+    });
+
+    return {
+      status: response.status,
+      statusText: response.statusText || (response.ok ? "OK" : "Error"),
+    };
   });
 
 // ---------------------------------------------------------------------------
@@ -251,20 +216,22 @@ export const createProject = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
-    await putV1ConfigByProjectId(
-      projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: [secret],
         corsOrigins: [],
         isPublic: false,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create project: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true, signingSecret: secret };
   });
@@ -346,17 +313,21 @@ export const getProjectConfig = createServerFn({ method: "GET" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
-    const response = await getV1ConfigByProjectId(projectId, {
-      baseURL: serverUrl,
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
+    if (!response.ok) {
+      throw new Error(`Failed to get project config: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
     return {
-      signingSecrets: response.data.signingSecrets,
-      corsOrigins: response.data.corsOrigins ?? [],
-      isPublic: response.data.isPublic ?? false,
+      signingSecrets: data.signingSecrets,
+      corsOrigins: data.corsOrigins ?? [],
+      isPublic: data.isPublic ?? false,
     };
   });
 
@@ -370,20 +341,24 @@ export const updateProjectPrivacy = createServerFn({ method: "POST" })
     const currentConfig = await getProjectConfig({ data: data.projectId });
 
     // Update with new privacy setting
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: data.isPublic,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to update project privacy: ${response.status} ${response.statusText}`,
+      );
+    }
 
     return { ok: true };
   });
@@ -400,20 +375,22 @@ export const addCorsOrigin = createServerFn({ method: "POST" })
     // Add new origin
     const updatedOrigins = [...currentConfig.corsOrigins, data.origin];
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: updatedOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to add CORS origin: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true };
   });
@@ -430,20 +407,22 @@ export const removeCorsOrigin = createServerFn({ method: "POST" })
     // Remove origin
     const updatedOrigins = currentConfig.corsOrigins.filter((o) => o !== data.origin);
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: updatedOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to remove CORS origin: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true };
   });
@@ -464,20 +443,24 @@ export const generateSigningKey = createServerFn({ method: "POST" })
     // Add new signing key
     const updatedSecrets = [...currentConfig.signingSecrets, newSecret];
 
-    await putV1ConfigByProjectId(
-      projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: updatedSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to generate signing key: ${response.status} ${response.statusText}`,
+      );
+    }
 
     return { keyCount: updatedSecrets.length, secret: newSecret };
   });
@@ -498,20 +481,22 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
       throw new Error("Cannot revoke the last signing key");
     }
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: updatedSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      {
-        baseURL: serverUrl,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to revoke signing key: ${response.status} ${response.statusText}`);
+    }
 
     return { keyCount: updatedSecrets.length };
   });
