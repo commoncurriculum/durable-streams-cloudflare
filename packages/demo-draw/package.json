@@ -18,28 +18,28 @@
   },
   "dependencies": {
     "@durable-streams/client": "^0.2.1",
-    "@tanstack/react-router": "^1",
-    "@tanstack/react-start": "^1",
+    "@tanstack/react-router": "^1.161.1",
+    "@tanstack/react-start": "^1.161.1",
     "jose": "^6.1.3",
-    "perfect-freehand": "^1",
-    "react": "^19",
-    "react-aria-components": "^1",
-    "react-dom": "^19",
-    "tailwind-merge": "^2",
-    "tailwind-variants": "^0.3",
-    "tailwindcss-react-aria-components": "^1"
+    "perfect-freehand": "^1.2.3",
+    "react": "^19.2.4",
+    "react-aria-components": "^1.15.1",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^2.6.1",
+    "tailwind-variants": "^0.3.1",
+    "tailwindcss-react-aria-components": "^1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1",
-    "@cloudflare/workers-types": "^4.20260207.0",
-    "@tailwindcss/vite": "^4",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4",
-    "tailwindcss": "^4",
+    "@cloudflare/vite-plugin": "^1.25.1",
+    "@cloudflare/workers-types": "^4.20260218.0",
+    "@tailwindcss/vite": "^4.2.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.2.0",
     "typescript": "^5.9.3",
-    "vite": "^7",
-    "vitest": "^4.0.18",
-    "wrangler": "^4.63.0"
+    "vite": "^7.3.1",
+    "vitest": "4.1.0-beta.1",
+    "wrangler": "^4.66.0"
   }
 }

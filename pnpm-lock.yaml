@@ -23,7 +23,7 @@ importers:
         specifier: ^0.28.0
         version: 0.28.0
       oxlint:
-        specifier: ^1.43.0
+        specifier: ^1.48.0
         version: 1.48.0
 
   packages/admin-core:
@@ -35,77 +35,77 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(react@19.2.4)
       '@tanstack/react-query':
-        specifier: ^5
+        specifier: ^5.90.21
         version: 5.90.21(react@19.2.4)
       '@tanstack/react-router':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-start':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       jose:
         specifier: ^6.1.3
         version: 6.1.3
       react:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4
       react-aria-components:
-        specifier: ^1
+        specifier: ^1.15.1
         version: 1.15.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react-dom:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4(react@19.2.4)
       recharts:
-        specifier: ^2
+        specifier: ^2.15.4
         version: 2.15.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       tailwind-merge:
-        specifier: ^2
+        specifier: ^2.6.1
         version: 2.6.1
       tailwind-variants:
-        specifier: ^0.3
+        specifier: ^0.3.1
         version: 0.3.1(tailwindcss@4.2.0)
       tailwindcss-react-aria-components:
-        specifier: ^1
+        specifier: ^1.2.0
         version: 1.2.0(tailwindcss@4.2.0)
     devDependencies:
       '@cloudflare/vite-plugin':
-        specifier: ^1
+        specifier: ^1.25.1
         version: 1.25.1(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))(workerd@1.20260217.0)(wrangler@4.66.0(@cloudflare/workers-types@4.20260218.0))
       '@cloudflare/workers-types':
-        specifier: ^4.20260207.0
+        specifier: ^4.20260218.0
         version: 4.20260218.0
       '@playwright/test':
-        specifier: ^1
+        specifier: ^1.58.2
         version: 1.58.2
       '@tailwindcss/vite':
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       '@types/node':
-        specifier: ^25.2.1
+        specifier: ^25.2.3
         version: 25.2.3
       '@types/react':
-        specifier: ^19
+        specifier: ^19.2.14
         version: 19.2.14
       '@types/react-dom':
-        specifier: ^19
+        specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
-        specifier: ^4
+        specifier: ^4.7.0
         version: 4.7.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       tailwindcss:
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^7
+        specifier: ^7.3.1
         version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
         specifier: 4.1.0-beta.1
         version: 4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
-        specifier: ^4.63.0
+        specifier: ^4.66.0
         version: 4.66.0(@cloudflare/workers-types@4.20260218.0)
 
   packages/admin-subscription:
@@ -117,28 +117,28 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(react@19.2.4)
       '@tanstack/react-query':
-        specifier: ^5
+        specifier: ^5.90.21
         version: 5.90.21(react@19.2.4)
       '@tanstack/react-router':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-start':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       jose:
         specifier: ^6.1.3
         version: 6.1.3
       react:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4
       react-aria-components:
         specifier: ^1.15.1
         version: 1.15.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react-dom:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4(react@19.2.4)
       recharts:
-        specifier: ^2
+        specifier: ^2.15.4
         version: 2.15.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       tailwind-merge:
         specifier: ^2.6.1
@@ -154,59 +154,59 @@ importers:
         version: 1.4.0
     devDependencies:
       '@cloudflare/vite-plugin':
-        specifier: ^1
+        specifier: ^1.25.1
         version: 1.25.1(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))(workerd@1.20260218.0)(wrangler@4.66.0(@cloudflare/workers-types@4.20260218.0))
       '@cloudflare/workers-types':
-        specifier: ^4.20260207.0
+        specifier: ^4.20260218.0
         version: 4.20260218.0
       '@playwright/test':
-        specifier: ^1
+        specifier: ^1.58.2
         version: 1.58.2
       '@tailwindcss/vite':
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       '@types/node':
-        specifier: ^25.2.1
+        specifier: ^25.2.3
         version: 25.2.3
       '@types/react':
-        specifier: ^19
+        specifier: ^19.2.14
         version: 19.2.14
       '@types/react-dom':
-        specifier: ^19
+        specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
-        specifier: ^4
+        specifier: ^4.7.0
         version: 4.7.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       tailwindcss:
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^7
+        specifier: ^7.3.1
         version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
         specifier: 4.1.0-beta.1
         version: 4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
-        specifier: ^4.63.0
+        specifier: ^4.66.0
         version: 4.66.0(@cloudflare/workers-types@4.20260218.0)
 
   packages/cli:
     dependencies:
       '@clack/prompts':
-        specifier: ^0.10.0
+        specifier: ^0.10.1
         version: 0.10.1
       jose:
-        specifier: ^5.9.6
+        specifier: ^5.10.0
         version: 5.10.0
     devDependencies:
       '@types/node':
-        specifier: ^22.15.0
+        specifier: ^22.19.11
         version: 22.19.11
       typescript:
-        specifier: ^5.8.3
+        specifier: ^5.9.3
         version: 5.9.3
 
   packages/demo-draw:
@@ -215,68 +215,68 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1
       '@tanstack/react-router':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-start':
-        specifier: ^1
+        specifier: ^1.161.1
         version: 1.161.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       jose:
         specifier: ^6.1.3
         version: 6.1.3
       perfect-freehand:
-        specifier: ^1
+        specifier: ^1.2.3
         version: 1.2.3
       react:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4
       react-aria-components:
-        specifier: ^1
+        specifier: ^1.15.1
         version: 1.15.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react-dom:
-        specifier: ^19
+        specifier: ^19.2.4
         version: 19.2.4(react@19.2.4)
       tailwind-merge:
-        specifier: ^2
+        specifier: ^2.6.1
         version: 2.6.1
       tailwind-variants:
-        specifier: ^0.3
+        specifier: ^0.3.1
         version: 0.3.1(tailwindcss@4.2.0)
       tailwindcss-react-aria-components:
-        specifier: ^1
+        specifier: ^1.2.0
         version: 1.2.0(tailwindcss@4.2.0)
     devDependencies:
       '@cloudflare/vite-plugin':
-        specifier: ^1
+        specifier: ^1.25.1
         version: 1.25.1(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))(workerd@1.20260218.0)(wrangler@4.66.0(@cloudflare/workers-types@4.20260218.0))
       '@cloudflare/workers-types':
-        specifier: ^4.20260207.0
+        specifier: ^4.20260218.0
         version: 4.20260218.0
       '@tailwindcss/vite':
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       '@types/react':
-        specifier: ^19
+        specifier: ^19.2.14
         version: 19.2.14
       '@types/react-dom':
-        specifier: ^19
+        specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
-        specifier: ^4
+        specifier: ^4.7.0
         version: 4.7.0(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       tailwindcss:
-        specifier: ^4
+        specifier: ^4.2.0
         version: 4.2.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^7
+        specifier: ^7.3.1
         version: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       vitest:
         specifier: 4.1.0-beta.1
         version: 4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
-        specifier: ^4.63.0
+        specifier: ^4.66.0
         version: 4.66.0(@cloudflare/workers-types@4.20260218.0)
 
   packages/docs:
@@ -291,14 +291,14 @@ importers:
   packages/estuary-client:
     dependencies:
       axios:
-        specifier: ^1.7.0
+        specifier: ^1.13.5
         version: 1.13.5(debug@4.4.3)
     devDependencies:
       '@tanstack/react-query':
-        specifier: ^5.0.0
+        specifier: ^5.90.21
         version: 5.90.21(react@19.2.4)
       orval:
-        specifier: ^7.0.0
+        specifier: ^7.21.0
         version: 7.21.0(openapi-types@12.1.3)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.3
@@ -314,19 +314,19 @@ importers:
         version: 6.1.3
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: ^4.20260207.0
+        specifier: ^4.20260218.0
         version: 4.20260218.0
       '@types/node':
-        specifier: ^25.2.1
+        specifier: ^25.2.3
         version: 25.2.3
       tsx:
-        specifier: ^4.19.0
+        specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: ^5.7.3
+        specifier: ^5.9.3
         version: 5.9.3
       wrangler:
-        specifier: ^4.0.0
+        specifier: ^4.66.0
         version: 4.66.0(@cloudflare/workers-types@4.20260218.0)
 
   packages/server:
@@ -347,20 +347,20 @@ importers:
         specifier: ^0.45.1
         version: 0.45.1(@cloudflare/workers-types@4.20260218.0)
       hono:
-        specifier: ^4
+        specifier: ^4.11.10
         version: 4.11.10
       hono-openapi:
         specifier: ^1.2.0
         version: 1.2.0(@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.11.10))(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(arktype@2.1.29)(quansync@0.2.11)(zod@3.25.76))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(arktype@2.1.29)(quansync@0.2.11)(zod@3.25.76))(@standard-schema/spec@1.1.0)(arktype@2.1.29)(openapi-types@12.1.3)(zod@3.25.76))(@types/json-schema@7.0.15)(hono@4.11.10)(openapi-types@12.1.3)
       loglayer:
-        specifier: ^8.2.1
+        specifier: ^8.5.0
         version: 8.5.0
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632
         version: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632(@cloudflare/workers-types@4.20260218.0)(@vitest/runner@4.1.0-beta.3)(@vitest/snapshot@4.1.0-beta.3)(vitest@4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2))
       '@cloudflare/workers-types':
-        specifier: ^4.20260207.0
+        specifier: ^4.20260218.0
         version: 4.20260218.0
       '@durable-streams/client':
         specifier: ^0.2.1
@@ -384,7 +384,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
       jose:
-        specifier: ^5.9.6
+        specifier: ^5.10.0
         version: 5.10.0
       madge:
         specifier: ^8.0.0
@@ -393,7 +393,7 @@ importers:
         specifier: ^17.1.0
         version: 17.1.0
       tsx:
-        specifier: ^4.19.0
+        specifier: ^4.21.0
         version: 4.21.0
       typescript:
         specifier: ^5.9.3
@@ -405,7 +405,7 @@ importers:
         specifier: 4.1.0-beta.1
         version: 4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
       wrangler:
-        specifier: ^4.63.0
+        specifier: ^4.66.0
         version: 4.66.0(@cloudflare/workers-types@4.20260218.0)
 
 packages:
@@ -697,8 +697,8 @@ packages:
     resolution: {integrity: sha512-SIOD2DxrRRwQ+jgzlXCqoEFiKOFqaPjhnNTGKXSRLvp1HiOvapLaFG2kEr9dYQTYe8rKrd9uvDUzmAITeNyaHQ==}
     engines: {node: '>=18.0.0'}
 
-  '@cloudflare/kv-asset-handler@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@177e94c':
-    resolution: {integrity: sha512-f46M/Us6R5/ZoKxEwXfObP0uyaUZQpzuvma8Y3bwvBND6EN1vfjCWOndpumTZ7BnGVTNJwq/C8qxFI+KKJGrVg==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@177e94c}
+  '@cloudflare/kv-asset-handler@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@a63af5a':
+    resolution: {integrity: sha512-bxHqb68DydFpjODFYvrOX08LTV4XvZKybst3azxmHYS9Eggb8rYB5ArKqMVdnAIe+HG4BY0Fy4Pos/E8BByADg==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@a63af5a}
     version: 0.4.2
     engines: {node: '>=18.0.0'}
 
@@ -711,8 +711,8 @@ packages:
       workerd:
         optional: true
 
-  '@cloudflare/unenv-preset@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@177e94c':
-    resolution: {integrity: sha512-B37E1Px1FfFVTzn4uRGhWdlU/Q1rp9ZzhMK2I1J+tHvmEvMzQk4odUdDn7rMCnrkESZFqwpElYjbXy1XKQjEDg==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@177e94c}
+  '@cloudflare/unenv-preset@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@a63af5a':
+    resolution: {integrity: sha512-B37E1Px1FfFVTzn4uRGhWdlU/Q1rp9ZzhMK2I1J+tHvmEvMzQk4odUdDn7rMCnrkESZFqwpElYjbXy1XKQjEDg==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@a63af5a}
     version: 2.13.0
     peerDependencies:
       unenv: 2.0.0-rc.24
@@ -728,7 +728,7 @@ packages:
       wrangler: ^4.66.0
 
   '@cloudflare/vitest-pool-workers@https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632':
-    resolution: {integrity: sha512-LiGDREZ2V9UZTCDmBzKZ/2C5EaESKDuZK4ajTwC0ctz7fNyhX8kzARwg0MsxBIK8yZJ4tnQnpR5AwvrdDBbbLw==, tarball: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632}
+    resolution: {integrity: sha512-MSOO51KpHVkz3I+f/feqlghDaD1hvWoLe6sCwSwocUH1qdEIU0W1+f20Sjnq5nY1s9EXTfWcMYBf07KidVZf9w==, tarball: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632}
     version: 0.12.13
     peerDependencies:
       '@vitest/runner': 4.1.0-beta.1
@@ -5718,8 +5718,8 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  miniflare@https://pkg.pr.new/cloudflare/workers-sdk/miniflare@177e94c:
-    resolution: {integrity: sha512-8i8uxF/YggIZpaqW9BR8NTIfQWO0+zLGC+6swLmYtJcNqzCFVLcH2eNw9rghLvwM9VNctY8f2jlpYTVwRzxLKA==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@177e94c}
+  miniflare@https://pkg.pr.new/cloudflare/workers-sdk/miniflare@a63af5a:
+    resolution: {integrity: sha512-L+i5nOmrWSTyv5udUUU/eOHqvdHgNB69hqj8KTnDt1Sm855iBQakphQCn1qvpcg6VwAcUULgim/qH6xoOzH4lA==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@a63af5a}
     version: 4.20260217.0
     engines: {node: '>=18.0.0'}
     hasBin: true
@@ -6619,8 +6619,8 @@ packages:
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
 
-  srvx@0.11.5:
-    resolution: {integrity: sha512-MbQgu/gbLcXjg1bhUhPXXOpeMfmDMTGSKPWeht5acXnlQNldD925eS4+bIH/qESecSkP71dU3Fmvunlai1+yzw==}
+  srvx@0.11.6:
+    resolution: {integrity: sha512-qbICRHIiLMBq5vlWrl+x7rlM75IIXwd54QWMjHSOP7/VaSMYVpX6KnwTrcU7rFC1y74WWGua0lsCCNNZ7eQNYw==}
     engines: {node: '>=20.16.0'}
     hasBin: true
 
@@ -7416,8 +7416,8 @@ packages:
       '@cloudflare/workers-types':
         optional: true
 
-  wrangler@https://pkg.pr.new/cloudflare/workers-sdk/wrangler@177e94c:
-    resolution: {integrity: sha512-rF7d/NNA6HE983QbGCWJjbhmDPapZc2E8X2YqC6r8XPG54OxBwdusiAx7V2t4rYay9bomgLQK/fdzG9zpVXcEw==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/wrangler@177e94c}
+  wrangler@https://pkg.pr.new/cloudflare/workers-sdk/wrangler@a63af5a:
+    resolution: {integrity: sha512-+pIrSQsL8GUAGV8kBUf4Ddv8ybazxbTOFPXo/kSqOCtgu7VpI3iiPGe2S5htfk5kt9pUiVCl0FBVsxKTxlX/QQ==, tarball: https://pkg.pr.new/cloudflare/workers-sdk/wrangler@a63af5a}
     version: 4.66.0
     engines: {node: '>=20.0.0'}
     hasBin: true
@@ -7988,7 +7988,7 @@ snapshots:
 
   '@cloudflare/kv-asset-handler@0.4.2': {}
 
-  '@cloudflare/kv-asset-handler@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@177e94c': {}
+  '@cloudflare/kv-asset-handler@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@a63af5a': {}
 
   '@cloudflare/unenv-preset@2.13.0(unenv@2.0.0-rc.24)(workerd@1.20260217.0)':
     dependencies:
@@ -8002,7 +8002,7 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260218.0
 
-  '@cloudflare/unenv-preset@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@177e94c(unenv@2.0.0-rc.24)(workerd@1.20260218.0)':
+  '@cloudflare/unenv-preset@https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@a63af5a(unenv@2.0.0-rc.24)(workerd@1.20260218.0)':
     dependencies:
       unenv: 2.0.0-rc.24
     optionalDependencies:
@@ -8040,9 +8040,9 @@ snapshots:
       '@vitest/snapshot': 4.1.0-beta.3
       cjs-module-lexer: 1.4.3
       esbuild: 0.27.3
-      miniflare: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@177e94c
+      miniflare: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@a63af5a
       vitest: 4.1.0-beta.1(@types/node@25.2.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
-      wrangler: https://pkg.pr.new/cloudflare/workers-sdk/wrangler@177e94c(@cloudflare/workers-types@4.20260218.0)
+      wrangler: https://pkg.pr.new/cloudflare/workers-sdk/wrangler@a63af5a(@cloudflare/workers-types@4.20260218.0)
       zod: 3.25.76
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -10819,7 +10819,7 @@ snapshots:
       pathe: 2.0.3
       picomatch: 4.0.3
       source-map: 0.7.6
-      srvx: 0.11.5
+      srvx: 0.11.6
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vite: 7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)(yaml@2.8.2)
@@ -13028,7 +13028,7 @@ snapshots:
   h3@2.0.1-rc.14:
     dependencies:
       rou3: 0.7.12
-      srvx: 0.11.5
+      srvx: 0.11.6
 
   hachure-fill@0.5.2: {}
 
@@ -14075,7 +14075,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  miniflare@https://pkg.pr.new/cloudflare/workers-sdk/miniflare@177e94c:
+  miniflare@https://pkg.pr.new/cloudflare/workers-sdk/miniflare@a63af5a:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.34.5
@@ -15256,7 +15256,7 @@ snapshots:
 
   sprintf-js@1.0.3: {}
 
-  srvx@0.11.5: {}
+  srvx@0.11.6: {}
 
   stackback@0.0.2: {}
 
@@ -16107,13 +16107,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  wrangler@https://pkg.pr.new/cloudflare/workers-sdk/wrangler@177e94c(@cloudflare/workers-types@4.20260218.0):
+  wrangler@https://pkg.pr.new/cloudflare/workers-sdk/wrangler@a63af5a(@cloudflare/workers-types@4.20260218.0):
     dependencies:
-      '@cloudflare/kv-asset-handler': https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@177e94c
-      '@cloudflare/unenv-preset': https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@177e94c(unenv@2.0.0-rc.24)(workerd@1.20260218.0)
+      '@cloudflare/kv-asset-handler': https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/kv-asset-handler@a63af5a
+      '@cloudflare/unenv-preset': https://pkg.pr.new/cloudflare/workers-sdk/@cloudflare/unenv-preset@a63af5a(unenv@2.0.0-rc.24)(workerd@1.20260218.0)
       blake3-wasm: 2.1.5
       esbuild: 0.27.3
-      miniflare: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@177e94c
+      miniflare: https://pkg.pr.new/cloudflare/workers-sdk/miniflare@a63af5a
       path-to-regexp: 6.3.0
       unenv: 2.0.0-rc.24
       workerd: 1.20260218.0
