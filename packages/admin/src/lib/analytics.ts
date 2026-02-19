@@ -4,7 +4,7 @@ import { generateSecret, exportJWK } from "jose";
 import {
   getV1Projects,
   getV1ProjectsByProjectIdStreams,
-  getV1StreamsByStreamIdInspect,
+  getV1InspectByStreamPath,
   getV1ConfigByProjectId,
   putV1ConfigByProjectId,
   putV1StreamByStreamPath,
@@ -471,7 +471,7 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
 export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: streamId }) => {
-    const result = await getV1StreamsByStreamIdInspect(streamId);
+    const result = await getV1InspectByStreamPath(streamId);
     if (result.status === 200) {
       return result.data;
     }
@@ -482,7 +482,7 @@ export const getStreamMeta = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string; streamId: string }) => data)
   .handler(async ({ data }) => {
     const doKey = `${data.projectId}/${data.streamId}`;
-    const result = await getV1StreamsByStreamIdInspect(doKey);
+    const result = await getV1InspectByStreamPath(doKey);
     if (result.status === 200) {
       return result.data;
     }

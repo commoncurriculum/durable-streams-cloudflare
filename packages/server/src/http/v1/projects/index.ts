@@ -49,6 +49,7 @@ export type InspectStreamResponse = typeof inspectStreamResponseSchema.infer;
 /**
  * GET /v1/projects
  * List all project IDs.
+ * Public endpoint - no auth required.
  */
 // biome-ignore lint: Hono context typing is complex
 export async function listProjectsHandler(c: any): Promise<Response> {
@@ -59,6 +60,7 @@ export async function listProjectsHandler(c: any): Promise<Response> {
 /**
  * GET /v1/projects/:projectId/streams
  * List streams in a project.
+ * Public endpoint - no auth required.
  */
 // biome-ignore lint: Hono context typing is complex
 export async function listProjectStreamsHandler(c: any): Promise<Response> {
@@ -68,44 +70,54 @@ export async function listProjectStreamsHandler(c: any): Promise<Response> {
 }
 
 /**
- * GET /v1/streams/:streamId/inspect
+ * GET /v1/inspect/:streamPath{.+}
  * Get stream metadata (tail offset, content type, etc.)
+ * Public endpoint - no auth required. Does not use pathParsingMiddleware.
  */
 // biome-ignore lint: Hono context typing is complex
 export async function inspectStreamHandler(c: any): Promise<Response> {
-  const { streamId } = c.req.valid("param");
+  // Get streamPath from params directly (not from context variables)
+  const streamPath = c.req.param("streamPath");
   
-  // Get the StreamDO stub
-  const stub = c.env.STREAMS.getByName(streamId);
+  if (!streamPath) {
+    return c.json({ code: "STREAM_NOT_FOUND", error: "stream path missing" }, 404);
+  }
   
-  // Call the getStreamMeta RPC method
-  const metadata = await stub.getStreamMeta(streamId);
-  
-  if (!metadata) {
-    return c.json({ code: "STREAM_NOT_FOUND", error: "stream not found" }, 404);
-  }
+  try {
+    // The streamPath is the full DO key (projectId/streamId or just streamId)
+    const stub = c.env.STREAMS.get(c.env.STREAMS.idFromName(streamPath));
+    
+    // Call the getStreamMeta RPC method
+    const metadata = await stub.getStreamMeta(streamPath);
+    
+    if (!metadata) {
+      return c.json({ code: "STREAM_NOT_FOUND", error: "stream not found" }, 404);
+    }
 
-  const response: InspectStreamResponse = {
-    streamId: metadata.stream_id,
-    contentType: metadata.content_type,
-    tailOffset: metadata.tail_offset,
-    closed: metadata.closed === 1,
-    public: metadata.public === 1,
-  };
+    const response: InspectStreamResponse = {
+      streamId: metadata.stream_id,
+      contentType: metadata.content_type,
+      tailOffset: metadata.tail_offset,
+      closed: metadata.closed === 1,
+      public: metadata.public === 1,
+    };
 
-  if (metadata.created_at) {
-    response.createdAt = metadata.created_at;
-  }
-  if (metadata.closed_at) {
-    response.closedAt = metadata.closed_at;
-  }
-  if (metadata.ttl_seconds) {
-    response.ttlSeconds = metadata.ttl_seconds;
-  }
-  if (metadata.expires_at) {
-    response.expiresAt = metadata.expires_at;
-  }
+    if (metadata.created_at) {
+      response.createdAt = metadata.created_at;
+    }
+    if (metadata.closed_at) {
+      response.closedAt = metadata.closed_at;
+    }
+    if (metadata.ttl_seconds) {
+      response.ttlSeconds = metadata.ttl_seconds;
+    }
+    if (metadata.expires_at) {
+      response.expiresAt = metadata.expires_at;
+    }
 
-  return c.json(response);
+    return c.json(response);
+  } catch (error) {
+    return c.json({ code: "INTERNAL_ERROR", error: String(error) }, 500);
+  }
 }
 

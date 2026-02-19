@@ -3,10 +3,10 @@ import { createClient, uniqueStreamId } from "../helpers";
 
 const BASE_URL = process.env.IMPLEMENTATION_TEST_URL ?? "http://localhost:8787";
 
-describe("GET /v1/streams/:streamId/inspect", () => {
+describe("GET /v1/inspect/:streamPath", () => {
   it("returns 404 for non-existent stream", async () => {
     const streamId = uniqueStreamId("inspect-notfound");
-    const response = await fetch(`${BASE_URL}/v1/streams/${streamId}/inspect`);
+    const response = await fetch(`${BASE_URL}/v1/inspect/${streamId}`);
     expect(response.status).toBe(404);
   });
 
@@ -18,7 +18,7 @@ describe("GET /v1/streams/:streamId/inspect", () => {
     await client.createStream(streamId, "initial data", "text/plain");
 
     // Inspect it
-    const response = await fetch(`${BASE_URL}/v1/streams/${streamId}/inspect`);
+    const response = await fetch(`${BASE_URL}/v1/inspect/${streamId}`);
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("application/json");
     
@@ -49,7 +49,7 @@ describe("GET /v1/streams/:streamId/inspect", () => {
     await client.appendStream(streamId, "data2", "text/plain");
 
     // Inspect it
-    const response = await fetch(`${BASE_URL}/v1/streams/${streamId}/inspect`);
+    const response = await fetch(`${BASE_URL}/v1/inspect/${streamId}`);
     expect(response.status).toBe(200);
     
     const metadata = await response.json() as { tailOffset: number };
@@ -72,7 +72,7 @@ describe("GET /v1/streams/:streamId/inspect", () => {
     expect(createResponse.status).toBe(201);
 
     // Inspect it
-    const response = await fetch(`${BASE_URL}/v1/streams/${streamId}/inspect`);
+    const response = await fetch(`${BASE_URL}/v1/inspect/${streamId}`);
     expect(response.status).toBe(200);
     
     const metadata = await response.json() as { closed: boolean; closedAt?: number };

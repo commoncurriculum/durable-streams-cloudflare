@@ -287,7 +287,7 @@ export type GetV1ProjectsByProjectIdStreams200Item0 = {
   streamId: string;
 };
 
-export type GetV1StreamsByStreamIdInspect200 = {
+export type GetV1InspectByStreamPath200 = {
   closed: boolean;
   contentType: string;
   public: boolean;
@@ -299,11 +299,11 @@ export type GetV1StreamsByStreamIdInspect200 = {
   ttlSeconds?: number;
 };
 
-export type GetV1StreamsByStreamIdInspect404Code =
-  (typeof GetV1StreamsByStreamIdInspect404Code)[keyof typeof GetV1StreamsByStreamIdInspect404Code];
+export type GetV1InspectByStreamPath404Code =
+  (typeof GetV1InspectByStreamPath404Code)[keyof typeof GetV1InspectByStreamPath404Code];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const GetV1StreamsByStreamIdInspect404Code = {
+export const GetV1InspectByStreamPath404Code = {
   BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
   CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
   CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
@@ -346,8 +346,8 @@ export const GetV1StreamsByStreamIdInspect404Code = {
   WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
 } as const;
 
-export type GetV1StreamsByStreamIdInspect404 = {
-  code: GetV1StreamsByStreamIdInspect404Code;
+export type GetV1InspectByStreamPath404 = {
+  code: GetV1InspectByStreamPath404Code;
   error: string;
 };
 
@@ -922,50 +922,44 @@ export const getV1ProjectsByProjectIdStreams = async (
  * Get detailed metadata about a stream including tail offset, content type, and TTL information.
  * @summary Inspect stream metadata
  */
-export type getV1StreamsByStreamIdInspectResponse200 = {
-  data: GetV1StreamsByStreamIdInspect200;
+export type getV1InspectByStreamPathResponse200 = {
+  data: GetV1InspectByStreamPath200;
   status: 200;
 };
 
-export type getV1StreamsByStreamIdInspectResponse404 = {
-  data: GetV1StreamsByStreamIdInspect404;
+export type getV1InspectByStreamPathResponse404 = {
+  data: GetV1InspectByStreamPath404;
   status: 404;
 };
 
-export type getV1StreamsByStreamIdInspectResponseSuccess =
-  getV1StreamsByStreamIdInspectResponse200 & {
-    headers: Headers;
-  };
-export type getV1StreamsByStreamIdInspectResponseError =
-  getV1StreamsByStreamIdInspectResponse404 & {
-    headers: Headers;
-  };
-
-export type getV1StreamsByStreamIdInspectResponse =
-  | getV1StreamsByStreamIdInspectResponseSuccess
-  | getV1StreamsByStreamIdInspectResponseError;
-
-export const getGetV1StreamsByStreamIdInspectUrl = (streamId: string) => {
-  return `http://localhost:8787/v1/streams/${streamId}/inspect`;
+export type getV1InspectByStreamPathResponseSuccess = getV1InspectByStreamPathResponse200 & {
+  headers: Headers;
+};
+export type getV1InspectByStreamPathResponseError = getV1InspectByStreamPathResponse404 & {
+  headers: Headers;
 };
 
-export const getV1StreamsByStreamIdInspect = async (
-  streamId: string,
+export type getV1InspectByStreamPathResponse =
+  | getV1InspectByStreamPathResponseSuccess
+  | getV1InspectByStreamPathResponseError;
+
+export const getGetV1InspectByStreamPathUrl = (streamPath: string) => {
+  return `http://localhost:8787/v1/inspect/${streamPath}`;
+};
+
+export const getV1InspectByStreamPath = async (
+  streamPath: string,
   options?: RequestInit,
-): Promise<getV1StreamsByStreamIdInspectResponse> => {
-  const res = await fetch(getGetV1StreamsByStreamIdInspectUrl(streamId), {
+): Promise<getV1InspectByStreamPathResponse> => {
+  const res = await fetch(getGetV1InspectByStreamPathUrl(streamPath), {
     ...options,
     method: "GET",
   });
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const data: getV1StreamsByStreamIdInspectResponse["data"] = body ? JSON.parse(body) : {};
-  return {
-    data,
-    status: res.status,
-    headers: res.headers,
-  } as getV1StreamsByStreamIdInspectResponse;
+  const data: getV1InspectByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getV1InspectByStreamPathResponse;
 };
 
 /**

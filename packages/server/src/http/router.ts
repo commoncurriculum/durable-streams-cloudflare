@@ -269,9 +269,9 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
     listProjectStreamsHandler,
   );
 
-  // Stream inspection route
+  // Stream inspection route (separate from /v1/stream/ to avoid middleware)
   app.get(
-    "/v1/streams/:streamId/inspect",
+    "/v1/inspect/:streamPath{.+}",
     describeRoute({
       tags: ["Streams"],
       summary: "Inspect stream metadata",
@@ -288,7 +288,6 @@ export function createStreamWorker<E extends BaseEnv = BaseEnv>(): ExportedHandl
         404: { description: "Stream not found", ...errorContent },
       },
     }),
-    validator("param", streamIdParamSchema),
     inspectStreamHandler,
   );
 
