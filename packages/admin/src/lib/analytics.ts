@@ -188,13 +188,12 @@ export const sendTestAction = createServerFn({ method: "POST" })
       throw new Error("contentType is required");
     }
 
-    const serverUrl = getServerUrl();
     const token = await getAuthToken("default");
 
     const bodyBytes = new TextEncoder().encode(data.body);
 
     if (data.action === "create") {
-      const response = await putV1StreamByStreamPath(data.streamId, {
+      await putV1StreamByStreamPath(data.streamId, {
         ...createFetchOptions(token),
         body: bodyBytes,
         headers: {
@@ -205,7 +204,7 @@ export const sendTestAction = createServerFn({ method: "POST" })
       return { status: 201, statusText: "Created" };
     }
 
-    const response = await postV1StreamByStreamPath(data.streamId, {
+    await postV1StreamByStreamPath(data.streamId, {
       ...createFetchOptions(token),
       body: bodyBytes,
       headers: {
@@ -232,7 +231,6 @@ export const createProject = createServerFn({ method: "POST" })
       data.signingSecret?.trim() ||
       JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
 
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
     await putV1ConfigByProjectId(projectId, {
@@ -245,8 +243,8 @@ export const createProject = createServerFn({ method: "POST" })
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const serverUrl = getServerUrl();
-  return getV1Projects();
+  const result = await getV1Projects();
+  return result.data;
 });
 
 export type ProjectListItem = {
@@ -256,15 +254,20 @@ export type ProjectListItem = {
 
 export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
   async (): Promise<ProjectListItem[]> => {
-    const serverUrl = getServerUrl();
-    const projects = await getV1Projects();
+    const projectsResult = await getV1Projects();
+    const projects = projectsResult.data;
     const results: ProjectListItem[] = [];
     
     for (const projectId of projects) {
       try {
         const token = await getAuthToken(projectId);
-        const config = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
-        results.push({ projectId, isPublic: config.isPublic ?? false });
+        const configResult = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
+        // Check if it's a success response
+        if ("data" in configResult && configResult.status === 200) {
+          results.push({ projectId, isPublic: configResult.data.isPublic ?? false });
+        } else {
+          results.push({ projectId, isPublic: false });
+        }
       } catch {
         // Skip projects we can't access
         results.push({ projectId, isPublic: false });
@@ -284,10 +287,10 @@ export type ProjectStreamRow = {
 export const getProjectStreams = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<ProjectStreamRow[]> => {
-    const serverUrl = getServerUrl();
-    const streams = await getV1ProjectsByProjectIdStreams(projectId);
+    const result = await getV1ProjectsByProjectIdStreams(projectId);
+    const streams = result.data;
     
-    return streams.map((s) => ({
+    return streams.map((s: { streamId: string; createdAt: number }) => ({
       stream_id: s.streamId,
       messages: 0,
       bytes: 0,
@@ -335,22 +338,23 @@ export interface ProjectConfig {
 export const getProjectConfig = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<ProjectConfig> => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
-
-    const config = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
+    const result = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
+    
+    if (result.status !== 200) {
+      throw new Error(`Failed to get config: ${result.status}`);
+    }
 
     return {
-      signingSecrets: config.signingSecrets,
-      corsOrigins: config.corsOrigins ?? [],
-      isPublic: config.isPublic ?? false,
+      signingSecrets: result.data.signingSecrets,
+      corsOrigins: result.data.corsOrigins ?? [],
+      isPublic: result.data.isPublic ?? false,
     };
   });
 
 export const updateProjectPrivacy = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; isPublic: boolean }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
     const currentConfig = await getProjectConfig({ data: data.projectId });
@@ -371,7 +375,6 @@ export const updateProjectPrivacy = createServerFn({ method: "POST" })
 export const addCorsOrigin = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; origin: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
     const currentConfig = await getProjectConfig({ data: data.projectId });
@@ -393,7 +396,6 @@ export const addCorsOrigin = createServerFn({ method: "POST" })
 export const removeCorsOrigin = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; origin: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
     const currentConfig = await getProjectConfig({ data: data.projectId });
@@ -415,7 +417,6 @@ export const removeCorsOrigin = createServerFn({ method: "POST" })
 export const generateSigningKey = createServerFn({ method: "POST" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
     const newSecret = JSON.stringify(
@@ -441,7 +442,6 @@ export const generateSigningKey = createServerFn({ method: "POST" })
 export const revokeSigningKey = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; secret: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
     const currentConfig = await getProjectConfig({ data: data.projectId });
@@ -471,16 +471,22 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
 export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: streamId }) => {
-    const serverUrl = getServerUrl();
-    return getV1StreamsByStreamIdInspect(streamId);
+    const result = await getV1StreamsByStreamIdInspect(streamId);
+    if (result.status === 200) {
+      return result.data;
+    }
+    throw new Error("Stream not found");
   });
 
 export const getStreamMeta = createServerFn({ method: "GET" })
   .inputValidator((data: { projectId: string; streamId: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const doKey = `${data.projectId}/${data.streamId}`;
-    return getV1StreamsByStreamIdInspect(doKey);
+    const result = await getV1StreamsByStreamIdInspect(doKey);
+    if (result.status === 200) {
+      return result.data;
+    }
+    throw new Error("Stream not found");
   });
 
 // ---------------------------------------------------------------------------
@@ -511,10 +517,9 @@ export const mintStreamToken = createServerFn({ method: "POST" })
 export const inspectEstuary = createServerFn({ method: "GET" })
   .inputValidator((data: { estuaryId: string; projectId: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-    const estuary = await getV1EstuaryByEstuaryPath(estuaryPath);
-    return {  estuaryId: data.estuaryId, ...estuary };
+    const result = await getV1EstuaryByEstuaryPath(estuaryPath);
+    return result.data;
   });
 
 export const inspectStreamSubscribers = createServerFn({ method: "GET" })
@@ -537,7 +542,6 @@ export const createEstuary = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; estuaryId: string }) => data)
   .handler(async ({ data: { projectId, estuaryId } }): Promise<{ estuaryId: string }> => {
     // Create the estuary stream
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
     const estuaryPath = `${projectId}/${estuaryId}`;
 
@@ -568,7 +572,6 @@ export const sendEstuaryAction = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
     switch (data.action) {
@@ -576,40 +579,31 @@ export const sendEstuaryAction = createServerFn({ method: "POST" })
         if (!data.estuaryId || !data.streamId) {
           throw new Error("subscribe requires estuaryId and streamId");
         }
-        const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-        const sourceStream = `${data.projectId}/${data.streamId}`;
+        const sourceStreamPath = `${data.projectId}/${data.streamId}`;
+        const estuaryId = data.estuaryId;
         
-        // First ensure the estuary stream exists
-        await putV1StreamByStreamPath(estuaryPath, {
-          ...createFetchOptions(token),
-          headers: {
-            ...createFetchOptions(token).headers,
-            "Content-Type": "application/json",
-          },
-          body: new Uint8Array(),
-        });
-
+        // Subscribe: POST /v1/estuary/subscribe/:sourceStreamPath with body { estuaryId }
         const result = await postV1EstuarySubscribeByEstuaryPath(
-          estuaryPath,
-          { sourceStream },
+          sourceStreamPath,
+          { estuaryId },
           createFetchOptions(token),
         );
-        return { status: 200, statusText: "OK", body: result };
+        return { status: 200, statusText: "OK", body: result.data };
       }
 
       case "unsubscribe": {
         if (!data.estuaryId || !data.streamId) {
           throw new Error("unsubscribe requires estuaryId and streamId");
         }
-        const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-        const sourceStream = `${data.projectId}/${data.streamId}`;
+        const sourceStreamPath = `${data.projectId}/${data.streamId}`;
+        const estuaryId = data.estuaryId;
 
         const result = await deleteV1EstuarySubscribeByEstuaryPath(
-          estuaryPath,
-          { sourceStream },
+          sourceStreamPath,
+          { estuaryId },
           createFetchOptions(token),
         );
-        return { status: 200, statusText: "OK", body: result };
+        return { status: 200, statusText: "OK", body: result.data };
       }
 
       case "publish": {
@@ -627,7 +621,7 @@ export const sendEstuaryAction = createServerFn({ method: "POST" })
             "Content-Type": data.contentType,
           },
         });
-        return { status: 200, statusText: "OK" };
+        return { status: 200, statusText: "OK", body: {} };
       }
 
       case "delete": {
@@ -637,7 +631,7 @@ export const sendEstuaryAction = createServerFn({ method: "POST" })
         const estuaryPath = `${data.projectId}/${data.estuaryId}`;
 
         await deleteV1EstuaryByEstuaryPath(estuaryPath, createFetchOptions(token));
-        return { status: 200, statusText: "OK" };
+        return { status: 200, statusText: "OK", body: {} };
       }
 
       default:

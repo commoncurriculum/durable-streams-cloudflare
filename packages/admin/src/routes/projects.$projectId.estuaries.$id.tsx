@@ -148,7 +148,7 @@ function EstuaryDetailPage() {
     <div className="space-y-6">
       {/* Back link */}
       <Link
-        to="/projects/$projectId/sessions"
+        to="/projects/$projectId/estuaries"
         params={{ projectId }}
         className="text-sm text-zinc-400 hover:text-zinc-200"
       >

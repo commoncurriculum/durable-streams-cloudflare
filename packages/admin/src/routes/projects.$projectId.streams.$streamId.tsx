@@ -1,57 +1,12 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
 import { inspectStream, sendTestAction } from "../lib/analytics";
-import { formatBytes, relTime } from "../lib/formatters";
+import { relTime } from "../lib/formatters";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { stream as readStreamClient } from "@durable-streams/client";
 import { streamUrl } from "../lib/stream-url";
 import { useCoreUrl, useStreamToken, useStreamTimeseries } from "../lib/queries";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-
-type StreamMeta = {
-  stream_id: string;
-  content_type: string;
-  closed: number;
-  tail_offset: number;
-  read_seq: number;
-  segment_start: number;
-  segment_messages: number;
-  segment_bytes: number;
-  last_stream_seq: string | null;
-  ttl_seconds: number | null;
-  expires_at: number | null;
-  created_at: number;
-  closed_at: number | null;
-  closed_by_producer_id: string | null;
-  closed_by_epoch: number | null;
-  closed_by_seq: number | null;
-};
-
-type SegmentRecord = {
-  read_seq: number;
-  start_offset: number;
-  end_offset: number;
-  size_bytes: number;
-  message_count: number;
-  created_at: number;
-};
-
-type ProducerRecord = {
-  producer_id: string;
-  epoch: number;
-  last_seq: number;
-  last_offset: number;
-  last_updated: number | null;
-};
-
-type StreamInspectData = {
-  meta: StreamMeta;
-  ops: { messageCount: number; sizeBytes: number };
-  segments: SegmentRecord[];
-  producers: ProducerRecord[];
-  sseClientCount: number;
-  longPollWaiterCount: number;
-};
 
 export const Route = createFileRoute("/projects/$projectId/streams/$streamId")({
   loader: async ({ params }) => {
@@ -60,14 +15,15 @@ export const Route = createFileRoute("/projects/$projectId/streams/$streamId")({
       const inspect = await inspectStream({ data: doKey });
       return { inspect };
     } catch {
-      return { inspect: null };
+      return { inspect: null as null };
     }
   },
   component: StreamDetailPage,
 });
 
 function StreamDetailPage() {
-  const { inspect: data } = Route.useLoaderData();
+  const loaderData = Route.useLoaderData();
+  const data = loaderData.inspect;
   const { projectId, streamId } = Route.useParams();
   const doKey = `${projectId}/${streamId}`;
 
@@ -80,7 +36,7 @@ function StreamDetailPage() {
       projectId={projectId}
       streamId={streamId}
       doKey={doKey}
-      data={data as StreamInspectData}
+      metadata={data}
     />
   );
 }
@@ -195,15 +151,23 @@ function StreamConsole({
   projectId,
   streamId,
   doKey,
-  data,
+  metadata,
 }: {
   projectId: string;
   streamId: string;
   doKey: string;
-  data: StreamInspectData;
+  metadata: {
+    streamId: string;
+    contentType: string;
+    tailOffset: number;
+    closed: boolean;
+    public: boolean;
+    createdAt?: number;
+    closedAt?: number;
+    ttlSeconds?: number;
+    expiresAt?: number;
+  };
 }) {
-  const { meta: m, ops, segments, producers } = data;
-
   const { data: coreUrl, error: coreUrlError } = useCoreUrl();
   const { data: tokenData } = useStreamToken(projectId);
   const { data: timeseriesData } = useStreamTimeseries(doKey);
@@ -231,31 +195,19 @@ function StreamConsole({
   });
 
   const metaFields: [string, string][] = [
-    ["Stream ID", m.stream_id],
-    ["Content Type", m.content_type],
-    ["Status", m.closed ? "Closed" : "Open"],
-    ["Created", relTime(m.created_at)],
-    ["Tail Offset", Number(m.tail_offset).toLocaleString() + " bytes"],
-    ["Read Seq", String(m.read_seq)],
-    ["Segment Start", Number(m.segment_start).toLocaleString()],
-    ["Segment Messages", String(m.segment_messages)],
-    ["Segment Bytes", formatBytes(m.segment_bytes)],
-    ["TTL", m.ttl_seconds ? m.ttl_seconds + "s" : "none"],
-    ["Expires", m.expires_at ? relTime(m.expires_at) : "never"],
-    ["Last Stream Seq", m.last_stream_seq != null ? String(m.last_stream_seq) : "\u2014"],
+    ["Stream ID", metadata.streamId],
+    ["Content Type", metadata.contentType],
+    ["Status", metadata.closed ? "Closed" : "Open"],
+    ["Created", metadata.createdAt ? relTime(metadata.createdAt) : "—"],
+    ["Tail Offset", Number(metadata.tailOffset).toLocaleString() + " bytes"],
+    ["Public", metadata.public ? "Yes" : "No"],
+    ["TTL", metadata.ttlSeconds ? metadata.ttlSeconds + "s" : "none"],
+    ["Expires", metadata.expiresAt ? relTime(metadata.expiresAt) : "never"],
   ];
 
-  if (m.closed) {
-    metaFields.push(["Closed At", relTime(m.closed_at)]);
-    if (m.closed_by_producer_id) {
-      metaFields.push([
-        "Closed By",
-        `${m.closed_by_producer_id} (epoch ${m.closed_by_epoch}, seq ${m.closed_by_seq})`,
-      ]);
-    }
+  if (metadata.closed && metadata.closedAt) {
+    metaFields.push(["Closed At", relTime(metadata.closedAt)]);
   }
-
-  const segmentFill = Math.min((ops.sizeBytes / (4 * 1024 * 1024)) * 100, 100);
 
   return (
     <div className="space-y-6">
@@ -271,8 +223,8 @@ function StreamConsole({
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-4">
         <h2 className="font-mono text-lg font-semibold text-blue-400">{streamId}</h2>
-        <RealtimeBadge label="SSE Clients" count={data.sseClientCount} color="cyan" />
-        <RealtimeBadge label="Long-Poll Waiters" count={data.longPollWaiterCount} color="blue" />
+        <RealtimeBadge label="SSE Clients" count={0} color="cyan" />
+        <RealtimeBadge label="Long-Poll Waiters" count={0} color="blue" />
         <SseStatusBadge status={coreUrlError ? "error" : sseStatus} />
       </div>
 
@@ -322,7 +274,7 @@ function StreamConsole({
       </div>
 
       {/* Send Message panel */}
-      <SendMessagePanel doKey={doKey} contentType={m.content_type} addEvent={addEvent} />
+      <SendMessagePanel doKey={doKey} contentType={metadata.contentType} addEvent={addEvent} />
 
       {/* Two-column layout: info left, event log right */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
@@ -343,90 +295,23 @@ function StreamConsole({
           {/* Current segment stats */}
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-5 py-4">
             <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Messages in Current Segment
+              Tail Offset
             </div>
             <div className="mt-1 font-mono text-2xl font-bold text-blue-400">
-              {ops.messageCount}
+              {Number(metadata.tailOffset).toLocaleString()}
             </div>
-            <div className="mt-2 text-xs text-zinc-500">{formatBytes(ops.sizeBytes)}</div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-all"
-                style={{ width: `${segmentFill}%` }}
-              />
-            </div>
+            <div className="mt-2 text-xs text-zinc-500">bytes</div>
           </div>
 
-          {/* Segments table */}
-          {segments.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-              <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
-                Segments ({segments.length})
-              </h3>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800">
-                    <Th>Read Seq</Th>
-                    <Th>Offset Range</Th>
-                    <Th>Size</Th>
-                    <Th>Messages</Th>
-                    <Th>Created</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {segments.map((s) => (
-                    <tr
-                      key={s.read_seq}
-                      className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                    >
-                      <Td>{s.read_seq}</Td>
-                      <Td>
-                        {Number(s.start_offset).toLocaleString()} &ndash;{" "}
-                        {Number(s.end_offset).toLocaleString()}
-                      </Td>
-                      <Td>{formatBytes(s.size_bytes)}</Td>
-                      <Td>{s.message_count}</Td>
-                      <Td>{relTime(s.created_at)}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Note about detailed data not available */}
+          <div className="rounded-lg border border-amber-800 bg-amber-950/30 px-4 py-3">
+            <div className="text-xs font-medium text-amber-400">
+              Detailed segment and producer data not available via HTTP API
             </div>
-          )}
-
-          {/* Producers table */}
-          {producers.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-              <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
-                Producers ({producers.length})
-              </h3>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800">
-                    <Th>ID</Th>
-                    <Th>Epoch</Th>
-                    <Th>Last Seq</Th>
-                    <Th>Last Offset</Th>
-                    <Th>Last Active</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {producers.map((p) => (
-                    <tr
-                      key={p.producer_id}
-                      className="border-b border-zinc-800 last:border-0 hover:bg-zinc-800/50"
-                    >
-                      <Td>{p.producer_id}</Td>
-                      <Td>{p.epoch}</Td>
-                      <Td>{p.last_seq}</Td>
-                      <Td>{Number(p.last_offset).toLocaleString()}</Td>
-                      <Td>{p.last_updated ? relTime(p.last_updated) : "\u2014"}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-1 text-xs text-zinc-500">
+              The simplified HTTP-only admin doesn't have access to internal DO state
             </div>
-          )}
+          </div>
         </div>
 
         {/* Right column: live event log */}
@@ -702,16 +587,4 @@ function LogEntry({ event }: { event: StreamEvent }) {
       )}
     </div>
   );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-      {children}
-    </th>
-  );
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="px-4 py-2 font-mono text-sm text-zinc-400">{children}</td>;
 }
