@@ -25,6 +25,13 @@ export default class ServerWorker extends WorkerEntrypoint<BaseEnv> {
   }
 }
 
-export { ServerWorker, StreamDO, StreamSubscribersDO, EstuaryDO, createStreamWorker };
+export { 
+  ServerWorker, 
+  StreamDO, 
+  StreamSubscribersDO, 
+  StreamSubscribersDO as SubscriptionDO,  // Alias for wrangler.toml compatibility
+  EstuaryDO, 
+  createStreamWorker 
+};
 export type { BaseEnv } from "./router";
 export type { ProjectEntry, StreamEntry } from "../storage/registry";

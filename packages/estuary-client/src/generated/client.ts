@@ -287,70 +287,6 @@ export type GetV1ProjectsByProjectIdStreams200Item0 = {
   streamId: string;
 };
 
-export type GetV1InspectByStreamPath200 = {
-  closed: boolean;
-  contentType: string;
-  public: boolean;
-  streamId: string;
-  tailOffset: number;
-  closedAt?: number;
-  createdAt?: number;
-  expiresAt?: number;
-  ttlSeconds?: number;
-};
-
-export type GetV1InspectByStreamPath404Code =
-  (typeof GetV1InspectByStreamPath404Code)[keyof typeof GetV1InspectByStreamPath404Code];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const GetV1InspectByStreamPath404Code = {
-  BATCH_BUILD_FAILED: "BATCH_BUILD_FAILED",
-  CONTENT_LENGTH_MISMATCH: "CONTENT_LENGTH_MISMATCH",
-  CONTENT_TYPE_MISMATCH: "CONTENT_TYPE_MISMATCH",
-  CONTENT_TYPE_REQUIRED: "CONTENT_TYPE_REQUIRED",
-  EMPTY_BODY: "EMPTY_BODY",
-  EMPTY_JSON_ARRAY: "EMPTY_JSON_ARRAY",
-  EMPTY_QUERY_PARAM: "EMPTY_QUERY_PARAM",
-  FORBIDDEN: "FORBIDDEN",
-  INTERNAL_ERROR: "INTERNAL_ERROR",
-  INVALID_CONTENT_LENGTH: "INVALID_CONTENT_LENGTH",
-  INVALID_EXPIRES_AT: "INVALID_EXPIRES_AT",
-  INVALID_JSON: "INVALID_JSON",
-  INVALID_OFFSET: "INVALID_OFFSET",
-  INVALID_TTL: "INVALID_TTL",
-  MISSING_PROJECT_OR_STREAM_ID: "MISSING_PROJECT_OR_STREAM_ID",
-  OFFSET_BEYOND_TAIL: "OFFSET_BEYOND_TAIL",
-  OFFSET_REQUIRED: "OFFSET_REQUIRED",
-  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
-  PRODUCER_EPOCH_SEQ_NOT_INTEGERS: "PRODUCER_EPOCH_SEQ_NOT_INTEGERS",
-  PRODUCER_EPOCH_SEQ_OVERFLOW: "PRODUCER_EPOCH_SEQ_OVERFLOW",
-  PRODUCER_EVAL_FAILED: "PRODUCER_EVAL_FAILED",
-  PRODUCER_HEADERS_INCOMPLETE: "PRODUCER_HEADERS_INCOMPLETE",
-  PRODUCER_ID_INVALID: "PRODUCER_ID_INVALID",
-  PRODUCER_SEQUENCE_GAP: "PRODUCER_SEQUENCE_GAP",
-  PRODUCER_SEQ_MUST_START_AT_ZERO: "PRODUCER_SEQ_MUST_START_AT_ZERO",
-  PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
-  SEGMENT_MISSING: "SEGMENT_MISSING",
-  SEGMENT_TRUNCATED: "SEGMENT_TRUNCATED",
-  SEGMENT_UNAVAILABLE: "SEGMENT_UNAVAILABLE",
-  STALE_PRODUCER_EPOCH: "STALE_PRODUCER_EPOCH",
-  STORAGE_QUOTA_EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
-  STREAM_CLOSED: "STREAM_CLOSED",
-  STREAM_CLOSED_STATUS_MISMATCH: "STREAM_CLOSED_STATUS_MISMATCH",
-  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
-  STREAM_SEQ_REGRESSION: "STREAM_SEQ_REGRESSION",
-  STREAM_TTL_MISMATCH: "STREAM_TTL_MISMATCH",
-  TOO_MANY_SSE_CONNECTIONS: "TOO_MANY_SSE_CONNECTIONS",
-  TTL_EXPIRES_MUTUALLY_EXCLUSIVE: "TTL_EXPIRES_MUTUALLY_EXCLUSIVE",
-  UNAUTHORIZED: "UNAUTHORIZED",
-  WEBSOCKET_UPGRADE_REQUIRED: "WEBSOCKET_UPGRADE_REQUIRED",
-} as const;
-
-export type GetV1InspectByStreamPath404 = {
-  code: GetV1InspectByStreamPath404Code;
-  error: string;
-};
-
 export type PostV1EstuarySubscribeByEstuaryPathBody = {
   /** @minLength 1 */
   estuaryId: string;
@@ -916,50 +852,6 @@ export const getV1ProjectsByProjectIdStreams = async (
     status: res.status,
     headers: res.headers,
   } as getV1ProjectsByProjectIdStreamsResponse;
-};
-
-/**
- * Get detailed metadata about a stream including tail offset, content type, and TTL information.
- * @summary Inspect stream metadata
- */
-export type getV1InspectByStreamPathResponse200 = {
-  data: GetV1InspectByStreamPath200;
-  status: 200;
-};
-
-export type getV1InspectByStreamPathResponse404 = {
-  data: GetV1InspectByStreamPath404;
-  status: 404;
-};
-
-export type getV1InspectByStreamPathResponseSuccess = getV1InspectByStreamPathResponse200 & {
-  headers: Headers;
-};
-export type getV1InspectByStreamPathResponseError = getV1InspectByStreamPathResponse404 & {
-  headers: Headers;
-};
-
-export type getV1InspectByStreamPathResponse =
-  | getV1InspectByStreamPathResponseSuccess
-  | getV1InspectByStreamPathResponseError;
-
-export const getGetV1InspectByStreamPathUrl = (streamPath: string) => {
-  return `http://localhost:8787/v1/inspect/${streamPath}`;
-};
-
-export const getV1InspectByStreamPath = async (
-  streamPath: string,
-  options?: RequestInit,
-): Promise<getV1InspectByStreamPathResponse> => {
-  const res = await fetch(getGetV1InspectByStreamPathUrl(streamPath), {
-    ...options,
-    method: "GET",
-  });
-
-  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  const data: getV1InspectByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
-  return { data, status: res.status, headers: res.headers } as getV1InspectByStreamPathResponse;
 };
 
 /**
