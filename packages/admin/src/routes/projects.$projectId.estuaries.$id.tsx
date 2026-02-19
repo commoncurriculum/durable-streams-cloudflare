@@ -1,27 +1,27 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { useSessionInspect, useCoreUrl, useStreamToken } from "../lib/queries";
-import { sendSessionAction } from "../lib/analytics";
+import { useEstuaryInspect, useCoreUrl, useStreamToken } from "../lib/queries";
+import { sendEstuaryAction } from "../lib/analytics";
 import { stream as readStreamClient } from "@durable-streams/client";
 import { streamUrl } from "../lib/stream-url";
 import { useDurableStream, type StreamEvent } from "../hooks/use-durable-stream";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-type SessionData = {
-  sessionId?: string;
-  session_id?: string;
-  sessionStreamPath?: string;
-  session_stream_path?: string;
+type EstuaryData = {
+  estuaryId?: string;
+  estuary_id?: string;
+  estuaryStreamPath?: string;
+  estuary_stream_path?: string;
   subscriptions?: { streamId?: string; stream_id?: string }[];
 };
 
-export const Route = createFileRoute("/projects/$projectId/sessions/$id")({
-  component: SessionDetailPage,
+export const Route = createFileRoute("/projects/$projectId/estuaries/$id")({
+  component: EstuaryDetailPage,
 });
 
-function SessionDetailPage() {
+function EstuaryDetailPage() {
   const { projectId, id } = Route.useParams();
-  const { data, isLoading, error } = useSessionInspect(id, projectId);
+  const { data, isLoading, error } = useEstuaryInspect(id, projectId);
 
   const [streamIdInput, setStreamIdInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -38,19 +38,19 @@ function SessionDetailPage() {
   });
 
   const doAction = useCallback(
-    async (action: "subscribe" | "unsubscribe" | "touch" | "delete", streamId?: string) => {
+    async (action: "subscribe" | "unsubscribe" | "delete", streamId?: string) => {
       setSending(true);
       try {
-        const payload: Parameters<typeof sendSessionAction>[0]["data"] =
+        const payload: Parameters<typeof sendEstuaryAction>[0]["data"] =
           action === "subscribe" || action === "unsubscribe"
-            ? { action, projectId, sessionId: id, streamId: streamId! }
-            : { action, projectId, sessionId: id };
+            ? { action, projectId, estuaryId: id, streamId: streamId! }
+            : { action, projectId, estuaryId: id };
 
         const MAX_RETRIES = 2;
         let lastError: unknown;
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
           try {
-            const result = await sendSessionAction({ data: payload });
+            const result = await sendEstuaryAction({ data: payload });
             const body = result.body as Record<string, unknown> | undefined;
             let message: string;
             switch (action) {
@@ -60,11 +60,8 @@ function SessionDetailPage() {
               case "unsubscribe":
                 message = `Unsubscribed from ${streamId}`;
                 break;
-              case "touch":
-                message = "Session touched";
-                break;
               case "delete":
-                message = "Session deleted";
+                message = "Estuary deleted";
                 break;
             }
             addEvent("control", message);
@@ -139,12 +136,12 @@ function SessionDetailPage() {
   }
 
   if (!data) {
-    return <div className="py-12 text-center text-zinc-500">Session not found</div>;
+    return <div className="py-12 text-center text-zinc-500">Estuary not found</div>;
   }
 
-  const d = data as SessionData;
-  const sessionId = d.sessionId || d.session_id || "\u2014";
-  const sessionStreamPath = d.sessionStreamPath || d.session_stream_path || "\u2014";
+  const d = data as EstuaryData;
+  const estuaryId = d.estuaryId || d.estuary_id || "\u2014";
+  const estuaryStreamPath = d.estuaryStreamPath || d.estuary_stream_path || "\u2014";
   const subscriptions = d.subscriptions ?? [];
 
   return (
@@ -160,10 +157,10 @@ function SessionDetailPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <MetaItem label="Session ID" value={sessionId} />
+        <MetaItem label="Estuary ID" value={estuaryId} />
         <MetaItem label="Subscriptions" value={String(subscriptions.length)} />
         <MetaItem label="Messages" value="\u2014" />
-        <MetaItem label="Session Stream" value={sessionStreamPath} />
+        <MetaItem label="Estuary Stream" value={estuaryStreamPath} />
       </div>
 
       {/* Two-column: left (chart + subscriptions) / right (subscribe + event log) */}
@@ -177,7 +174,7 @@ function SessionDetailPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={[]}>
                   <defs>
-                    <linearGradient id="sessionMsgGradient" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="estuaryMsgGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
@@ -197,7 +194,7 @@ function SessionDetailPage() {
                     type="monotone"
                     dataKey="messages"
                     stroke="#3b82f6"
-                    fill="url(#sessionMsgGradient)"
+                    fill="url(#estuaryMsgGradient)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -277,13 +274,6 @@ function SessionDetailPage() {
 
             {/* Utility actions */}
             <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => doAction("touch")}
-                disabled={sending}
-                className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
-              >
-                Touch
-              </button>
               <button
                 onClick={() => doAction("delete")}
                 disabled={sending}

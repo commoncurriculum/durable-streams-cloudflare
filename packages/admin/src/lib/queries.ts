@@ -1,12 +1,12 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   getStats,
-  getSessions,
+  getEstuaries,
   getStreams,
   getHotStreams,
   getTimeseries,
   getErrors,
-  inspectSession,
+  inspectEstuary,
   inspectStreamSubscribers,
   getProjects,
   getProjectsWithConfig,
@@ -15,7 +15,7 @@ import {
   getStreamTimeseries,
   getCoreStreamUrl,
   mintStreamToken,
-  listProjectSessions,
+  listProjectEstuaries,
 } from "./analytics";
 
 export function useStats() {
@@ -27,10 +27,10 @@ export function useStats() {
   });
 }
 
-export function useSessions() {
+export function useEstuaries() {
   return useQuery({
-    queryKey: ["sessions"],
-    queryFn: () => getSessions(),
+    queryKey: ["estuaries"],
+    queryFn: () => getEstuaries(),
     refetchInterval: 5000,
     placeholderData: keepPreviousData,
   });
@@ -72,11 +72,11 @@ export function useErrors() {
   });
 }
 
-export function useSessionInspect(sessionId: string | undefined, projectId: string | undefined) {
+export function useEstuaryInspect(estuaryId: string | undefined, projectId: string | undefined) {
   return useQuery({
-    queryKey: ["session", projectId, sessionId],
-    queryFn: () => inspectSession({ data: { sessionId: sessionId!, projectId: projectId! } }),
-    enabled: !!sessionId && !!projectId,
+    queryKey: ["estuary", projectId, estuaryId],
+    queryFn: () => inspectEstuary({ data: { estuaryId: estuaryId!, projectId: projectId! } }),
+    enabled: !!estuaryId && !!projectId,
     refetchInterval: 2000,
     placeholderData: keepPreviousData,
   });
@@ -152,10 +152,10 @@ export function useStreamToken(projectId: string | undefined) {
   });
 }
 
-export function useProjectSessions(projectId: string) {
+export function useProjectEstuaries(projectId: string) {
   return useQuery({
-    queryKey: ["projectSessions", projectId],
-    queryFn: () => listProjectSessions({ data: projectId }),
+    queryKey: ["projectEstuaries", projectId],
+    queryFn: () => listProjectEstuaries({ data: projectId }),
     refetchInterval: 5000,
     placeholderData: keepPreviousData,
   });

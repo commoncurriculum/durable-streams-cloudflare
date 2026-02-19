@@ -1,19 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
 import { generateSecret, exportJWK } from "jose";
-import {
-  getV1Projects,
-  getV1ProjectsByProjectIdStreams,
-  getV1StreamsByStreamIdInspect,
-  getV1ConfigByProjectId,
-  putV1ConfigByProjectId,
-  putV1StreamByStreamPath,
-  postV1StreamByStreamPath,
-  getV1EstuaryByEstuaryPath,
-  postV1EstuarySubscribeByEstuaryPath,
-  deleteV1EstuarySubscribeByEstuaryPath,
-  deleteV1EstuaryByEstuaryPath,
-} from "@durable-streams-cloudflare/estuary-client";
 import { mintJwt } from "./jwt";
 
 // ---------------------------------------------------------------------------
@@ -41,15 +28,6 @@ async function getAuthToken(projectId: string): Promise<string> {
   return mintJwt({ projectId }, getAdminSecret());
 }
 
-// Configure fetch to use server URL
-function createFetchOptions(token: string): RequestInit {
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Analytics (Cloudflare Analytics Engine)
 // ---------------------------------------------------------------------------
@@ -59,8 +37,6 @@ export function parseDoKey(doKey: string): { projectId: string; streamId: string
   if (i === -1) return { projectId: "default", streamId: doKey };
   return { projectId: doKey.slice(0, i), streamId: doKey.slice(i + 1) };
 }
-
-type AnalyticsRow = Record<string, string | number>;
 
 async function queryAnalytics(sql: string): Promise<AnalyticsRow[]> {
   const accountId = (env as Record<string, unknown>).CF_ACCOUNT_ID as string | undefined;
@@ -98,6 +74,8 @@ function getDatasetName(): string {
   );
 }
 
+type AnalyticsRow = Record<string, string | number>;
+
 const QUERIES = {
   systemStats: () => `
     SELECT blob2 as event_type, count() as total, sum(double2) as total_bytes
@@ -132,8 +110,8 @@ const QUERIES = {
     ORDER BY bucket
   `,
 
-  estuaryList: () => `
-    SELECT blob3 as estuary_id, min(timestamp) as first_seen, max(timestamp) as last_seen, count() as events
+  sessionList: () => `
+    SELECT blob3 as session_id, min(timestamp) as first_seen, max(timestamp) as last_seen, count() as events
     FROM ${getDatasetName()}
     WHERE timestamp > NOW() - INTERVAL '24' HOUR AND blob2 IN ('subscribe', 'unsubscribe', 'publish')
     GROUP BY blob3
@@ -166,8 +144,8 @@ export const getTimeseries = createServerFn({ method: "GET" }).handler(async () 
   return queryAnalytics(QUERIES.timeseries(60));
 });
 
-export const getEstuaries = createServerFn({ method: "GET" }).handler(async () => {
-  return queryAnalytics(QUERIES.estuaryList());
+export const getSessions = createServerFn({ method: "GET" }).handler(async () => {
+  return queryAnalytics(QUERIES.sessionList());
 });
 
 export const getErrors = createServerFn({ method: "GET" }).handler(async () => {
@@ -175,7 +153,7 @@ export const getErrors = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Stream Operations (using generated client)
+// Stream Operations (using estuary-client)
 // ---------------------------------------------------------------------------
 
 export const sendTestAction = createServerFn({ method: "POST" })
@@ -187,38 +165,40 @@ export const sendTestAction = createServerFn({ method: "POST" })
     if (!data.contentType) {
       throw new Error("contentType is required");
     }
+    const contentType = data.contentType;
+    const bodyBytes = new TextEncoder().encode(data.body);
 
     const serverUrl = getServerUrl();
     const token = await getAuthToken("default");
 
-    const bodyBytes = new TextEncoder().encode(data.body);
+    const url =
+      data.action === "create"
+        ? `${serverUrl}/v1/stream/${data.streamId}`
+        : `${serverUrl}/v1/stream/${data.streamId}`;
+    const method = data.action === "create" ? "PUT" : "POST";
 
-    if (data.action === "create") {
-      const response = await putV1StreamByStreamPath(data.streamId, {
-        ...createFetchOptions(token),
-        body: bodyBytes,
-        headers: {
-          ...createFetchOptions(token).headers,
-          "Content-Type": data.contentType,
-        },
-      });
-      return { status: 201, statusText: "Created" };
-    }
-
-    const response = await postV1StreamByStreamPath(data.streamId, {
-      ...createFetchOptions(token),
-      body: bodyBytes,
+    const response = await fetch(url, {
+      method,
       headers: {
-        ...createFetchOptions(token).headers,
-        "Content-Type": data.contentType,
+        "Content-Type": contentType,
+        Authorization: `Bearer ${token}`,
       },
+      body: bodyBytes,
     });
-    return { status: 200, statusText: "OK" };
+
+    return {
+      status: response.status,
+      statusText: response.statusText || (response.ok ? "OK" : "Error"),
+    };
   });
 
 // ---------------------------------------------------------------------------
-// Project Management (using generated client)
+// Project Management
 // ---------------------------------------------------------------------------
+
+// NOTE: These operations are NOT available in estuary-client yet.
+// They are RPC methods on the CoreService binding that aren't exposed as HTTP endpoints.
+// For now, returning placeholder responses.
 
 export const createProject = createServerFn({ method: "POST" })
   .inputValidator((data: { projectId: string; signingSecret?: string }) => data)
@@ -227,26 +207,39 @@ export const createProject = createServerFn({ method: "POST" })
     if (!projectId) throw new Error("Project ID is required");
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId))
       throw new Error("Project ID may only contain letters, numbers, hyphens, and underscores");
-
     const secret =
       data.signingSecret?.trim() ||
       JSON.stringify(await exportJWK(await generateSecret("HS256", { extractable: true })));
 
+    // TODO: This needs to be implemented in the server as an HTTP endpoint
+    // For now, we create a config with the signing secret
     const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
-    await putV1ConfigByProjectId(projectId, {
-      signingSecrets: [secret],
-      corsOrigins: [],
-      isPublic: false,
-    }, createFetchOptions(token));
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        signingSecrets: [secret],
+        corsOrigins: [],
+        isPublic: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create project: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true, signingSecret: secret };
   });
 
 export const getProjects = createServerFn({ method: "GET" }).handler(async () => {
-  const serverUrl = getServerUrl();
-  return getV1Projects();
+  // TODO: This needs a server endpoint like GET /v1/projects
+  // For now, return empty array
+  return [];
 });
 
 export type ProjectListItem = {
@@ -256,21 +249,9 @@ export type ProjectListItem = {
 
 export const getProjectsWithConfig = createServerFn({ method: "GET" }).handler(
   async (): Promise<ProjectListItem[]> => {
-    const serverUrl = getServerUrl();
-    const projects = await getV1Projects();
-    const results: ProjectListItem[] = [];
-    
-    for (const projectId of projects) {
-      try {
-        const token = await getAuthToken(projectId);
-        const config = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
-        results.push({ projectId, isPublic: config.isPublic ?? false });
-      } catch {
-        // Skip projects we can't access
-        results.push({ projectId, isPublic: false });
-      }
-    }
-    return results;
+    // TODO: This needs a server endpoint like GET /v1/projects
+    // For now, return empty array
+    return [];
   },
 );
 
@@ -284,15 +265,9 @@ export type ProjectStreamRow = {
 export const getProjectStreams = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: projectId }): Promise<ProjectStreamRow[]> => {
-    const serverUrl = getServerUrl();
-    const streams = await getV1ProjectsByProjectIdStreams(projectId);
-    
-    return streams.map((s) => ({
-      stream_id: s.streamId,
-      messages: 0,
-      bytes: 0,
-      last_seen: new Date(s.createdAt).toISOString(),
-    }));
+    // TODO: This needs a server endpoint like GET /v1/projects/:projectId/streams
+    // For now, return empty array
+    return [];
   });
 
 export type StreamTimeseriesRow = {
@@ -338,12 +313,25 @@ export const getProjectConfig = createServerFn({ method: "GET" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(projectId);
 
-    const config = await getV1ConfigByProjectId(projectId, createFetchOptions(token));
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
+    if (!response.ok) {
+      throw new Error(`Failed to get project config: ${response.status} ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as {
+      signingSecrets: string[];
+      corsOrigins?: string[];
+      isPublic?: boolean;
+    };
     return {
-      signingSecrets: config.signingSecrets,
-      corsOrigins: config.corsOrigins ?? [],
-      isPublic: config.isPublic ?? false,
+      signingSecrets: data.signingSecrets,
+      corsOrigins: data.corsOrigins ?? [],
+      isPublic: data.isPublic ?? false,
     };
   });
 
@@ -353,17 +341,28 @@ export const updateProjectPrivacy = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
+    // Get current config first
     const currentConfig = await getProjectConfig({ data: data.projectId });
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    // Update with new privacy setting
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: data.isPublic,
-      },
-      createFetchOptions(token),
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to update project privacy: ${response.status} ${response.statusText}`,
+      );
+    }
 
     return { ok: true };
   });
@@ -374,18 +373,28 @@ export const addCorsOrigin = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
+    // Get current config first
     const currentConfig = await getProjectConfig({ data: data.projectId });
+
+    // Add new origin
     const updatedOrigins = [...currentConfig.corsOrigins, data.origin];
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: updatedOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      createFetchOptions(token),
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to add CORS origin: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true };
   });
@@ -396,18 +405,28 @@ export const removeCorsOrigin = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
+    // Get current config first
     const currentConfig = await getProjectConfig({ data: data.projectId });
+
+    // Remove origin
     const updatedOrigins = currentConfig.corsOrigins.filter((o) => o !== data.origin);
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: currentConfig.signingSecrets,
         corsOrigins: updatedOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      createFetchOptions(token),
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to remove CORS origin: ${response.status} ${response.statusText}`);
+    }
 
     return { ok: true };
   });
@@ -422,18 +441,30 @@ export const generateSigningKey = createServerFn({ method: "POST" })
       await exportJWK(await generateSecret("HS256", { extractable: true })),
     );
 
+    // Get current config first
     const currentConfig = await getProjectConfig({ data: projectId });
+
+    // Add new signing key
     const updatedSecrets = [...currentConfig.signingSecrets, newSecret];
 
-    await putV1ConfigByProjectId(
-      projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: updatedSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      createFetchOptions(token),
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to generate signing key: ${response.status} ${response.statusText}`,
+      );
+    }
 
     return { keyCount: updatedSecrets.length, secret: newSecret };
   });
@@ -444,43 +475,48 @@ export const revokeSigningKey = createServerFn({ method: "POST" })
     const serverUrl = getServerUrl();
     const token = await getAuthToken(data.projectId);
 
+    // Get current config first
     const currentConfig = await getProjectConfig({ data: data.projectId });
+
+    // Remove signing key
     const updatedSecrets = currentConfig.signingSecrets.filter((s) => s !== data.secret);
 
     if (updatedSecrets.length === 0) {
       throw new Error("Cannot revoke the last signing key");
     }
 
-    await putV1ConfigByProjectId(
-      data.projectId,
-      {
+    const response = await fetch(`${serverUrl}/v1/config/${data.projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         signingSecrets: updatedSecrets,
         corsOrigins: currentConfig.corsOrigins,
         isPublic: currentConfig.isPublic,
-      },
-      createFetchOptions(token),
-    );
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to revoke signing key: ${response.status} ${response.statusText}`);
+    }
 
     return { keyCount: updatedSecrets.length };
   });
 
 // ---------------------------------------------------------------------------
-// Stream Inspection (using generated client)
+// Stream inspection (NOT in estuary-client yet)
 // ---------------------------------------------------------------------------
 
 export const inspectStream = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
-  .handler(async ({ data: streamId }) => {
-    const serverUrl = getServerUrl();
-    return getV1StreamsByStreamIdInspect(streamId);
-  });
-
-export const getStreamMeta = createServerFn({ method: "GET" })
-  .inputValidator((data: { projectId: string; streamId: string }) => data)
-  .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
-    const doKey = `${data.projectId}/${data.streamId}`;
-    return getV1StreamsByStreamIdInspect(doKey);
+  .handler(async ({ data: doKey }) => {
+    // TODO: This needs a server endpoint like GET /v1/inspect/stream/:streamId
+    // For now, throw error
+    throw new Error(
+      "Stream inspection not available via HTTP API yet. This feature requires server-side RPC methods.",
+    );
   });
 
 // ---------------------------------------------------------------------------
@@ -491,6 +527,7 @@ let cachedServerUrl: string | undefined;
 
 export const getCoreStreamUrl = createServerFn({ method: "GET" }).handler(async () => {
   if (cachedServerUrl) return cachedServerUrl;
+
   cachedServerUrl = getServerUrl();
   return cachedServerUrl;
 });
@@ -500,147 +537,83 @@ export const mintStreamToken = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const token = await getAuthToken(data.projectId);
     const now = Math.floor(Date.now() / 1000);
-    const expiresAt = now + 300; // 5 minutes
+    const expiresAt = now + 300; // 5 minutes (match token expiry)
     return { token, expiresAt };
   });
 
 // ---------------------------------------------------------------------------
-// Estuary Management (using generated client)
+// Session inspection (subscription-specific, NOT in estuary-client yet)
 // ---------------------------------------------------------------------------
 
-export const inspectEstuary = createServerFn({ method: "GET" })
-  .inputValidator((data: { estuaryId: string; projectId: string }) => data)
+export const inspectSession = createServerFn({ method: "GET" })
+  .inputValidator((data: { sessionId: string; projectId: string }) => data)
   .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
-    const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-    const estuary = await getV1EstuaryByEstuaryPath(estuaryPath);
-    return {  estuaryId: data.estuaryId, ...estuary };
+    // TODO: This needs a server endpoint like GET /v1/sessions/:sessionId
+    throw new Error(
+      "Session inspection not available via HTTP API yet. This feature requires server-side RPC methods.",
+    );
+    // eslint-disable-next-line no-unreachable
+    return { sessionId: data.sessionId, streamSubscriptions: [] as object[] };
   });
 
 export const inspectStreamSubscribers = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(async ({ data: streamId }) => {
-    // TODO: Need endpoint to list subscribers of a stream
+    // TODO: This needs a server endpoint like GET /v1/streams/:streamId/subscribers
+    throw new Error(
+      "Stream subscriber inspection not available via HTTP API yet. This feature requires server-side RPC methods.",
+    );
+    // eslint-disable-next-line no-unreachable
     return [] as object[];
   });
 
-export const listProjectEstuaries = createServerFn({ method: "GET" })
+export const getStreamMeta = createServerFn({ method: "GET" })
+  .inputValidator((data: { projectId: string; streamId: string }) => data)
+  .handler(async ({ data }): Promise<{ offset: number; contentType: string }> => {
+    // TODO: This needs a server endpoint like GET /v1/streams/:streamId/meta
+    throw new Error(
+      "Stream metadata not available via HTTP API yet. This feature requires server-side RPC methods.",
+    );
+  });
+
+export const listProjectSessions = createServerFn({ method: "GET" })
   .inputValidator((data: string) => data)
   .handler(
-    async ({ data: projectId }): Promise<Array<{ estuaryId: string; createdAt?: string }>> => {
-      // For now, return empty - need proper estuary listing endpoint
+    async ({ data: projectId }): Promise<Array<{ sessionId: string; createdAt?: string }>> => {
+      // TODO: This needs a server endpoint like GET /v1/projects/:projectId/sessions
       return [];
     },
   );
 
-export const createEstuary = createServerFn({ method: "POST" })
-  .inputValidator((data: { projectId: string; estuaryId: string }) => data)
-  .handler(async ({ data: { projectId, estuaryId } }): Promise<{ estuaryId: string }> => {
-    // Create the estuary stream
-    const serverUrl = getServerUrl();
-    const token = await getAuthToken(projectId);
-    const estuaryPath = `${projectId}/${estuaryId}`;
+// ---------------------------------------------------------------------------
+// Session Management (subscription-specific, NOT in estuary-client yet)
+// ---------------------------------------------------------------------------
 
-    await putV1StreamByStreamPath(
-      estuaryPath,
-      {
-        ...createFetchOptions(token),
-        headers: {
-          ...createFetchOptions(token).headers,
-          "Content-Type": "application/json",
-        },
-        body: new Uint8Array(),
-      },
+export const createSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { projectId: string; sessionId: string }) => data)
+  .handler(async ({ data: { projectId, sessionId } }): Promise<{ sessionId: string }> => {
+    // TODO: This needs a server endpoint like POST /v1/sessions
+    throw new Error(
+      "Session creation not available via HTTP API yet. This feature requires server-side RPC methods.",
     );
-
-    return { estuaryId };
   });
 
-export const sendEstuaryAction = createServerFn({ method: "POST" })
+export const sendSessionAction = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
-      action: "subscribe" | "unsubscribe" | "publish" | "delete";
+      action: "subscribe" | "unsubscribe" | "publish" | "touch" | "delete";
       projectId: string;
-      estuaryId?: string;
+      sessionId?: string;
       streamId?: string;
       contentType?: string;
       body?: string;
     }) => data,
   )
-  .handler(async ({ data }) => {
-    const serverUrl = getServerUrl();
-    const token = await getAuthToken(data.projectId);
-
-    switch (data.action) {
-      case "subscribe": {
-        if (!data.estuaryId || !data.streamId) {
-          throw new Error("subscribe requires estuaryId and streamId");
-        }
-        const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-        const sourceStream = `${data.projectId}/${data.streamId}`;
-        
-        // First ensure the estuary stream exists
-        await putV1StreamByStreamPath(estuaryPath, {
-          ...createFetchOptions(token),
-          headers: {
-            ...createFetchOptions(token).headers,
-            "Content-Type": "application/json",
-          },
-          body: new Uint8Array(),
-        });
-
-        const result = await postV1EstuarySubscribeByEstuaryPath(
-          estuaryPath,
-          { sourceStream },
-          createFetchOptions(token),
-        );
-        return { status: 200, statusText: "OK", body: result };
-      }
-
-      case "unsubscribe": {
-        if (!data.estuaryId || !data.streamId) {
-          throw new Error("unsubscribe requires estuaryId and streamId");
-        }
-        const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-        const sourceStream = `${data.projectId}/${data.streamId}`;
-
-        const result = await deleteV1EstuarySubscribeByEstuaryPath(
-          estuaryPath,
-          { sourceStream },
-          createFetchOptions(token),
-        );
-        return { status: 200, statusText: "OK", body: result };
-      }
-
-      case "publish": {
-        if (!data.streamId || !data.contentType || !data.body) {
-          throw new Error("publish requires streamId, contentType, and body");
-        }
-        const streamPath = `${data.projectId}/${data.streamId}`;
-        const bodyBytes = new TextEncoder().encode(data.body);
-
-        await postV1StreamByStreamPath(streamPath, {
-          ...createFetchOptions(token),
-          body: bodyBytes,
-          headers: {
-            ...createFetchOptions(token).headers,
-            "Content-Type": data.contentType,
-          },
-        });
-        return { status: 200, statusText: "OK" };
-      }
-
-      case "delete": {
-        if (!data.estuaryId) {
-          throw new Error("delete requires estuaryId");
-        }
-        const estuaryPath = `${data.projectId}/${data.estuaryId}`;
-
-        await deleteV1EstuaryByEstuaryPath(estuaryPath, createFetchOptions(token));
-        return { status: 200, statusText: "OK" };
-      }
-
-      default:
-        throw new Error(`Unknown action: ${data.action}`);
-    }
-  });
+  .handler(
+    async ({ data }): Promise<{ status: number; statusText: string; body?: object }> => {
+      // TODO: These need server endpoints for subscription operations
+      throw new Error(
+        "Session actions not available via HTTP API yet. This feature requires server-side RPC methods.",
+      );
+    },
+  );

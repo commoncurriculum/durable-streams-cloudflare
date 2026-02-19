@@ -7,17 +7,11 @@ export default defineConfig({
 		},
 		output: {
 			target: "./src/generated/client.ts",
-			client: "react-query",
+			client: "fetch",
 			mode: "single",
 			clean: true,
 			prettier: false,
 			baseUrl: "http://localhost:8787",
-			override: {
-				mutator: {
-					path: "./src/custom-fetch.ts",
-					name: "customFetch",
-				},
-			},
 		},
 	},
 });

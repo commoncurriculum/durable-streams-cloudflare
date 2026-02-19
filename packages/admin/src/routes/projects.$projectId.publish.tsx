@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { sendSessionAction } from "../lib/analytics";
+import { sendEstuaryAction } from "../lib/analytics";
 import { TextField } from "../components/ui/text-field";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
@@ -29,7 +29,7 @@ function PublishPage() {
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await sendSessionAction({
+        const res = await sendEstuaryAction({
           data: {
             action: "publish",
             projectId,

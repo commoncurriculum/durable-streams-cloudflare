@@ -16,12 +16,12 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projec
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects.$projectId.index'
 import { Route as ProjectsProjectIdStreamsRouteImport } from './routes/projects.$projectId.streams'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects.$projectId.settings'
-import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects.$projectId.sessions'
 import { Route as ProjectsProjectIdPublishRouteImport } from './routes/projects.$projectId.publish'
+import { Route as ProjectsProjectIdEstuariesRouteImport } from './routes/projects.$projectId.estuaries'
 import { Route as ProjectsProjectIdStreamsIndexRouteImport } from './routes/projects.$projectId.streams.index'
-import { Route as ProjectsProjectIdSessionsIndexRouteImport } from './routes/projects.$projectId.sessions.index'
+import { Route as ProjectsProjectIdEstuariesIndexRouteImport } from './routes/projects.$projectId.estuaries.index'
 import { Route as ProjectsProjectIdStreamsStreamIdRouteImport } from './routes/projects.$projectId.streams.$streamId'
-import { Route as ProjectsProjectIdSessionsIdRouteImport } from './routes/projects.$projectId.sessions.$id'
+import { Route as ProjectsProjectIdEstuariesIdRouteImport } from './routes/projects.$projectId.estuaries.$id'
 
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
@@ -60,16 +60,16 @@ const ProjectsProjectIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
-const ProjectsProjectIdSessionsRoute =
-  ProjectsProjectIdSessionsRouteImport.update({
-    id: '/sessions',
-    path: '/sessions',
-    getParentRoute: () => ProjectsProjectIdRoute,
-  } as any)
 const ProjectsProjectIdPublishRoute =
   ProjectsProjectIdPublishRouteImport.update({
     id: '/publish',
     path: '/publish',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
+const ProjectsProjectIdEstuariesRoute =
+  ProjectsProjectIdEstuariesRouteImport.update({
+    id: '/estuaries',
+    path: '/estuaries',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
 const ProjectsProjectIdStreamsIndexRoute =
@@ -78,11 +78,11 @@ const ProjectsProjectIdStreamsIndexRoute =
     path: '/',
     getParentRoute: () => ProjectsProjectIdStreamsRoute,
   } as any)
-const ProjectsProjectIdSessionsIndexRoute =
-  ProjectsProjectIdSessionsIndexRouteImport.update({
+const ProjectsProjectIdEstuariesIndexRoute =
+  ProjectsProjectIdEstuariesIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => ProjectsProjectIdSessionsRoute,
+    getParentRoute: () => ProjectsProjectIdEstuariesRoute,
   } as any)
 const ProjectsProjectIdStreamsStreamIdRoute =
   ProjectsProjectIdStreamsStreamIdRouteImport.update({
@@ -90,11 +90,11 @@ const ProjectsProjectIdStreamsStreamIdRoute =
     path: '/$streamId',
     getParentRoute: () => ProjectsProjectIdStreamsRoute,
   } as any)
-const ProjectsProjectIdSessionsIdRoute =
-  ProjectsProjectIdSessionsIdRouteImport.update({
+const ProjectsProjectIdEstuariesIdRoute =
+  ProjectsProjectIdEstuariesIdRouteImport.update({
     id: '/$id',
     path: '/$id',
-    getParentRoute: () => ProjectsProjectIdSessionsRoute,
+    getParentRoute: () => ProjectsProjectIdEstuariesRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -102,14 +102,14 @@ export interface FileRoutesByFullPath {
   '/projects': typeof ProjectsRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/estuaries': typeof ProjectsProjectIdEstuariesRouteWithChildren
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
+  '/projects/$projectId/estuaries/$id': typeof ProjectsProjectIdEstuariesIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
-  '/projects/$projectId/sessions/': typeof ProjectsProjectIdSessionsIndexRoute
+  '/projects/$projectId/estuaries/': typeof ProjectsProjectIdEstuariesIndexRoute
   '/projects/$projectId/streams/': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -118,9 +118,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
+  '/projects/$projectId/estuaries/$id': typeof ProjectsProjectIdEstuariesIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsIndexRoute
+  '/projects/$projectId/estuaries': typeof ProjectsProjectIdEstuariesIndexRoute
   '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRoutesById {
@@ -129,14 +129,14 @@ export interface FileRoutesById {
   '/projects': typeof ProjectsRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/estuaries': typeof ProjectsProjectIdEstuariesRouteWithChildren
   '/projects/$projectId/publish': typeof ProjectsProjectIdPublishRoute
-  '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/streams': typeof ProjectsProjectIdStreamsRouteWithChildren
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
-  '/projects/$projectId/sessions/$id': typeof ProjectsProjectIdSessionsIdRoute
+  '/projects/$projectId/estuaries/$id': typeof ProjectsProjectIdEstuariesIdRoute
   '/projects/$projectId/streams/$streamId': typeof ProjectsProjectIdStreamsStreamIdRoute
-  '/projects/$projectId/sessions/': typeof ProjectsProjectIdSessionsIndexRoute
+  '/projects/$projectId/estuaries/': typeof ProjectsProjectIdEstuariesIndexRoute
   '/projects/$projectId/streams/': typeof ProjectsProjectIdStreamsIndexRoute
 }
 export interface FileRouteTypes {
@@ -146,14 +146,14 @@ export interface FileRouteTypes {
     | '/projects'
     | '/projects/$projectId'
     | '/projects/'
+    | '/projects/$projectId/estuaries'
     | '/projects/$projectId/publish'
-    | '/projects/$projectId/sessions'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/streams'
     | '/projects/$projectId/'
-    | '/projects/$projectId/sessions/$id'
+    | '/projects/$projectId/estuaries/$id'
     | '/projects/$projectId/streams/$streamId'
-    | '/projects/$projectId/sessions/'
+    | '/projects/$projectId/estuaries/'
     | '/projects/$projectId/streams/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -162,9 +162,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/publish'
     | '/projects/$projectId/settings'
     | '/projects/$projectId'
-    | '/projects/$projectId/sessions/$id'
+    | '/projects/$projectId/estuaries/$id'
     | '/projects/$projectId/streams/$streamId'
-    | '/projects/$projectId/sessions'
+    | '/projects/$projectId/estuaries'
     | '/projects/$projectId/streams'
   id:
     | '__root__'
@@ -172,14 +172,14 @@ export interface FileRouteTypes {
     | '/projects'
     | '/projects/$projectId'
     | '/projects/'
+    | '/projects/$projectId/estuaries'
     | '/projects/$projectId/publish'
-    | '/projects/$projectId/sessions'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/streams'
     | '/projects/$projectId/'
-    | '/projects/$projectId/sessions/$id'
+    | '/projects/$projectId/estuaries/$id'
     | '/projects/$projectId/streams/$streamId'
-    | '/projects/$projectId/sessions/'
+    | '/projects/$projectId/estuaries/'
     | '/projects/$projectId/streams/'
   fileRoutesById: FileRoutesById
 }
@@ -239,18 +239,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSettingsRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
-    '/projects/$projectId/sessions': {
-      id: '/projects/$projectId/sessions'
-      path: '/sessions'
-      fullPath: '/projects/$projectId/sessions'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsRouteImport
-      parentRoute: typeof ProjectsProjectIdRoute
-    }
     '/projects/$projectId/publish': {
       id: '/projects/$projectId/publish'
       path: '/publish'
       fullPath: '/projects/$projectId/publish'
       preLoaderRoute: typeof ProjectsProjectIdPublishRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/estuaries': {
+      id: '/projects/$projectId/estuaries'
+      path: '/estuaries'
+      fullPath: '/projects/$projectId/estuaries'
+      preLoaderRoute: typeof ProjectsProjectIdEstuariesRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
     '/projects/$projectId/streams/': {
@@ -260,12 +260,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdStreamsIndexRouteImport
       parentRoute: typeof ProjectsProjectIdStreamsRoute
     }
-    '/projects/$projectId/sessions/': {
-      id: '/projects/$projectId/sessions/'
+    '/projects/$projectId/estuaries/': {
+      id: '/projects/$projectId/estuaries/'
       path: '/'
-      fullPath: '/projects/$projectId/sessions/'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsIndexRouteImport
-      parentRoute: typeof ProjectsProjectIdSessionsRoute
+      fullPath: '/projects/$projectId/estuaries/'
+      preLoaderRoute: typeof ProjectsProjectIdEstuariesIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdEstuariesRoute
     }
     '/projects/$projectId/streams/$streamId': {
       id: '/projects/$projectId/streams/$streamId'
@@ -274,30 +274,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdStreamsStreamIdRouteImport
       parentRoute: typeof ProjectsProjectIdStreamsRoute
     }
-    '/projects/$projectId/sessions/$id': {
-      id: '/projects/$projectId/sessions/$id'
+    '/projects/$projectId/estuaries/$id': {
+      id: '/projects/$projectId/estuaries/$id'
       path: '/$id'
-      fullPath: '/projects/$projectId/sessions/$id'
-      preLoaderRoute: typeof ProjectsProjectIdSessionsIdRouteImport
-      parentRoute: typeof ProjectsProjectIdSessionsRoute
+      fullPath: '/projects/$projectId/estuaries/$id'
+      preLoaderRoute: typeof ProjectsProjectIdEstuariesIdRouteImport
+      parentRoute: typeof ProjectsProjectIdEstuariesRoute
     }
   }
 }
 
-interface ProjectsProjectIdSessionsRouteChildren {
-  ProjectsProjectIdSessionsIdRoute: typeof ProjectsProjectIdSessionsIdRoute
-  ProjectsProjectIdSessionsIndexRoute: typeof ProjectsProjectIdSessionsIndexRoute
+interface ProjectsProjectIdEstuariesRouteChildren {
+  ProjectsProjectIdEstuariesIdRoute: typeof ProjectsProjectIdEstuariesIdRoute
+  ProjectsProjectIdEstuariesIndexRoute: typeof ProjectsProjectIdEstuariesIndexRoute
 }
 
-const ProjectsProjectIdSessionsRouteChildren: ProjectsProjectIdSessionsRouteChildren =
+const ProjectsProjectIdEstuariesRouteChildren: ProjectsProjectIdEstuariesRouteChildren =
   {
-    ProjectsProjectIdSessionsIdRoute: ProjectsProjectIdSessionsIdRoute,
-    ProjectsProjectIdSessionsIndexRoute: ProjectsProjectIdSessionsIndexRoute,
+    ProjectsProjectIdEstuariesIdRoute: ProjectsProjectIdEstuariesIdRoute,
+    ProjectsProjectIdEstuariesIndexRoute: ProjectsProjectIdEstuariesIndexRoute,
   }
 
-const ProjectsProjectIdSessionsRouteWithChildren =
-  ProjectsProjectIdSessionsRoute._addFileChildren(
-    ProjectsProjectIdSessionsRouteChildren,
+const ProjectsProjectIdEstuariesRouteWithChildren =
+  ProjectsProjectIdEstuariesRoute._addFileChildren(
+    ProjectsProjectIdEstuariesRouteChildren,
   )
 
 interface ProjectsProjectIdStreamsRouteChildren {
@@ -318,16 +318,16 @@ const ProjectsProjectIdStreamsRouteWithChildren =
   )
 
 interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdEstuariesRoute: typeof ProjectsProjectIdEstuariesRouteWithChildren
   ProjectsProjectIdPublishRoute: typeof ProjectsProjectIdPublishRoute
-  ProjectsProjectIdSessionsRoute: typeof ProjectsProjectIdSessionsRouteWithChildren
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
   ProjectsProjectIdStreamsRoute: typeof ProjectsProjectIdStreamsRouteWithChildren
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdEstuariesRoute: ProjectsProjectIdEstuariesRouteWithChildren,
   ProjectsProjectIdPublishRoute: ProjectsProjectIdPublishRoute,
-  ProjectsProjectIdSessionsRoute: ProjectsProjectIdSessionsRouteWithChildren,
   ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
   ProjectsProjectIdStreamsRoute: ProjectsProjectIdStreamsRouteWithChildren,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,

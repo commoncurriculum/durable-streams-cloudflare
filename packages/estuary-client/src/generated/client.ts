@@ -5,24 +5,6 @@
  * Durable Streams on Cloudflare — append-only event streams with pub/sub fan-out.
  * OpenAPI spec version: 0.8.0
  */
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type {
-  DataTag,
-  DefinedInitialDataOptions,
-  DefinedUseQueryResult,
-  MutationFunction,
-  QueryClient,
-  QueryFunction,
-  QueryKey,
-  UndefinedInitialDataOptions,
-  UseMutationOptions,
-  UseMutationResult,
-  UseQueryOptions,
-  UseQueryResult,
-} from "@tanstack/react-query";
-
-import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
 export type GetV1ConfigByProjectId200 = {
   corsOrigins: string[];
   isPublic: boolean;
@@ -721,1524 +703,628 @@ export type DeleteV1StreamByStreamPath404 = {
   error: string;
 };
 
-type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
-
 /**
  * Returns 200 OK if the worker is running.
  * @summary Health check
  */
-export const getHealth = (options?: SecondParameter<typeof customFetch>, signal?: AbortSignal) => {
-  return customFetch<string>(
-    { url: `http://localhost:8787/health`, method: "GET", signal },
-    options,
-  );
+export type getHealthResponse200 = {
+  data: string;
+  status: 200;
 };
 
-export const getGetHealthQueryKey = () => {
-  return [`http://localhost:8787/health`] as const;
+export type getHealthResponseSuccess = getHealthResponse200 & {
+  headers: Headers;
 };
 
-export const getGetHealthQueryOptions = <
-  TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
+export type getHealthResponse = getHealthResponseSuccess;
 
-  const queryKey = queryOptions?.queryKey ?? getGetHealthQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) =>
-    getHealth(requestOptions, signal);
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getHealth>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
+export const getGetHealthUrl = () => {
+  return `http://localhost:8787/health`;
 };
 
-export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>;
-export type GetHealthQueryError = ErrorType<unknown>;
+export const getHealth = async (options?: RequestInit): Promise<getHealthResponse> => {
+  const res = await fetch(getGetHealthUrl(), {
+    ...options,
+    method: "GET",
+  });
 
-export function useGetHealth<
-  TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = ErrorType<unknown>,
->(
-  options: {
-    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getHealth>>,
-          TError,
-          Awaited<ReturnType<typeof getHealth>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetHealth<
-  TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getHealth>>,
-          TError,
-          Awaited<ReturnType<typeof getHealth>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetHealth<
-  TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary Health check
- */
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-export function useGetHealth<
-  TData = Awaited<ReturnType<typeof getHealth>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetHealthQueryOptions(options);
-
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
+  const data: getHealthResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getHealthResponse;
+};
 
 /**
  * Retrieve signing secrets, CORS origins, and public flag for a project. Requires a manage-scope JWT.
  * @summary Get project configuration
  */
-export const getV1ConfigByProjectId = (
-  projectId: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<GetV1ConfigByProjectId200>(
-    { url: `http://localhost:8787/v1/config/${projectId}`, method: "GET", signal },
-    options,
-  );
+export type getV1ConfigByProjectIdResponse200 = {
+  data: GetV1ConfigByProjectId200;
+  status: 200;
 };
 
-export const getGetV1ConfigByProjectIdQueryKey = (projectId?: string) => {
-  return [`http://localhost:8787/v1/config/${projectId}`] as const;
+export type getV1ConfigByProjectIdResponse401 = {
+  data: GetV1ConfigByProjectId401;
+  status: 401;
 };
 
-export const getGetV1ConfigByProjectIdQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = ErrorType<
-    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
-  >,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetV1ConfigByProjectIdQueryKey(projectId);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ConfigByProjectId>>> = ({ signal }) =>
-    getV1ConfigByProjectId(projectId, requestOptions, signal);
-
-  return { queryKey, queryFn, enabled: !!projectId, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
+export type getV1ConfigByProjectIdResponse403 = {
+  data: GetV1ConfigByProjectId403;
+  status: 403;
 };
 
-export type GetV1ConfigByProjectIdQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV1ConfigByProjectId>>
->;
-export type GetV1ConfigByProjectIdQueryError = ErrorType<
-  GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
->;
+export type getV1ConfigByProjectIdResponse404 = {
+  data: GetV1ConfigByProjectId404;
+  status: 404;
+};
 
-export function useGetV1ConfigByProjectId<
-  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = ErrorType<
-    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
-  >,
->(
+export type getV1ConfigByProjectIdResponseSuccess = getV1ConfigByProjectIdResponse200 & {
+  headers: Headers;
+};
+export type getV1ConfigByProjectIdResponseError = (
+  | getV1ConfigByProjectIdResponse401
+  | getV1ConfigByProjectIdResponse403
+  | getV1ConfigByProjectIdResponse404
+) & {
+  headers: Headers;
+};
+
+export type getV1ConfigByProjectIdResponse =
+  | getV1ConfigByProjectIdResponseSuccess
+  | getV1ConfigByProjectIdResponseError;
+
+export const getGetV1ConfigByProjectIdUrl = (projectId: string) => {
+  return `http://localhost:8787/v1/config/${projectId}`;
+};
+
+export const getV1ConfigByProjectId = async (
   projectId: string,
-  options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-          TError,
-          Awaited<ReturnType<typeof getV1ConfigByProjectId>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1ConfigByProjectId<
-  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = ErrorType<
-    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
-  >,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-          TError,
-          Awaited<ReturnType<typeof getV1ConfigByProjectId>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1ConfigByProjectId<
-  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = ErrorType<
-    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
-  >,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary Get project configuration
- */
+  options?: RequestInit,
+): Promise<getV1ConfigByProjectIdResponse> => {
+  const res = await fetch(getGetV1ConfigByProjectIdUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
 
-export function useGetV1ConfigByProjectId<
-  TData = Awaited<ReturnType<typeof getV1ConfigByProjectId>>,
-  TError = ErrorType<
-    GetV1ConfigByProjectId401 | GetV1ConfigByProjectId403 | GetV1ConfigByProjectId404
-  >,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ConfigByProjectId>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1ConfigByProjectIdQueryOptions(projectId, options);
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
+  const data: getV1ConfigByProjectIdResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getV1ConfigByProjectIdResponse;
+};
 
 /**
  * Set signing secrets, CORS origins, and public flag for a project. Requires a manage-scope JWT.
  * @summary Update project configuration
  */
-export const putV1ConfigByProjectId = (
+export type putV1ConfigByProjectIdResponse200 = {
+  data: PutV1ConfigByProjectId200;
+  status: 200;
+};
+
+export type putV1ConfigByProjectIdResponse401 = {
+  data: PutV1ConfigByProjectId401;
+  status: 401;
+};
+
+export type putV1ConfigByProjectIdResponse403 = {
+  data: PutV1ConfigByProjectId403;
+  status: 403;
+};
+
+export type putV1ConfigByProjectIdResponseSuccess = putV1ConfigByProjectIdResponse200 & {
+  headers: Headers;
+};
+export type putV1ConfigByProjectIdResponseError = (
+  | putV1ConfigByProjectIdResponse401
+  | putV1ConfigByProjectIdResponse403
+) & {
+  headers: Headers;
+};
+
+export type putV1ConfigByProjectIdResponse =
+  | putV1ConfigByProjectIdResponseSuccess
+  | putV1ConfigByProjectIdResponseError;
+
+export const getPutV1ConfigByProjectIdUrl = (projectId: string) => {
+  return `http://localhost:8787/v1/config/${projectId}`;
+};
+
+export const putV1ConfigByProjectId = async (
   projectId: string,
   putV1ConfigByProjectIdBody: PutV1ConfigByProjectIdBody,
-  options?: SecondParameter<typeof customFetch>,
-) => {
-  return customFetch<PutV1ConfigByProjectId200>(
-    {
-      url: `http://localhost:8787/v1/config/${projectId}`,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      data: putV1ConfigByProjectIdBody,
-    },
-    options,
-  );
-};
+  options?: RequestInit,
+): Promise<putV1ConfigByProjectIdResponse> => {
+  const res = await fetch(getPutV1ConfigByProjectIdUrl(projectId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(putV1ConfigByProjectIdBody),
+  });
 
-export const getPutV1ConfigByProjectIdMutationOptions = <
-  TError = ErrorType<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-    TError,
-    { projectId: string; data: PutV1ConfigByProjectIdBody },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-  TError,
-  { projectId: string; data: PutV1ConfigByProjectIdBody },
-  TContext
-> => {
-  const mutationKey = ["putV1ConfigByProjectId"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-    { projectId: string; data: PutV1ConfigByProjectIdBody }
-  > = (props) => {
-    const { projectId, data } = props ?? {};
-
-    return putV1ConfigByProjectId(projectId, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PutV1ConfigByProjectIdMutationResult = NonNullable<
-  Awaited<ReturnType<typeof putV1ConfigByProjectId>>
->;
-export type PutV1ConfigByProjectIdMutationBody = PutV1ConfigByProjectIdBody;
-export type PutV1ConfigByProjectIdMutationError = ErrorType<
-  PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403
->;
-
-/**
- * @summary Update project configuration
- */
-export const usePutV1ConfigByProjectId = <
-  TError = ErrorType<PutV1ConfigByProjectId401 | PutV1ConfigByProjectId403>,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-      TError,
-      { projectId: string; data: PutV1ConfigByProjectIdBody },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof putV1ConfigByProjectId>>,
-  TError,
-  { projectId: string; data: PutV1ConfigByProjectIdBody },
-  TContext
-> => {
-  const mutationOptions = getPutV1ConfigByProjectIdMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
+  const data: putV1ConfigByProjectIdResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as putV1ConfigByProjectIdResponse;
 };
 
 /**
  * Retrieve a list of all project IDs.
  * @summary List all projects
  */
-export const getV1Projects = (
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<string[]>(
-    { url: `http://localhost:8787/v1/projects`, method: "GET", signal },
-    options,
-  );
+export type getV1ProjectsResponse200 = {
+  data: string[];
+  status: 200;
 };
 
-export const getGetV1ProjectsQueryKey = () => {
-  return [`http://localhost:8787/v1/projects`] as const;
+export type getV1ProjectsResponseSuccess = getV1ProjectsResponse200 & {
+  headers: Headers;
 };
 
-export const getGetV1ProjectsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1Projects>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
+export type getV1ProjectsResponse = getV1ProjectsResponseSuccess;
 
-  const queryKey = queryOptions?.queryKey ?? getGetV1ProjectsQueryKey();
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1Projects>>> = ({ signal }) =>
-    getV1Projects(requestOptions, signal);
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1Projects>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
+export const getGetV1ProjectsUrl = () => {
+  return `http://localhost:8787/v1/projects`;
 };
 
-export type GetV1ProjectsQueryResult = NonNullable<Awaited<ReturnType<typeof getV1Projects>>>;
-export type GetV1ProjectsQueryError = ErrorType<unknown>;
+export const getV1Projects = async (options?: RequestInit): Promise<getV1ProjectsResponse> => {
+  const res = await fetch(getGetV1ProjectsUrl(), {
+    ...options,
+    method: "GET",
+  });
 
-export function useGetV1Projects<
-  TData = Awaited<ReturnType<typeof getV1Projects>>,
-  TError = ErrorType<unknown>,
->(
-  options: {
-    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>> &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1Projects>>,
-          TError,
-          Awaited<ReturnType<typeof getV1Projects>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1Projects<
-  TData = Awaited<ReturnType<typeof getV1Projects>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>> &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1Projects>>,
-          TError,
-          Awaited<ReturnType<typeof getV1Projects>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1Projects<
-  TData = Awaited<ReturnType<typeof getV1Projects>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary List all projects
- */
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-export function useGetV1Projects<
-  TData = Awaited<ReturnType<typeof getV1Projects>>,
-  TError = ErrorType<unknown>,
->(
-  options?: {
-    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getV1Projects>>, TError, TData>>;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1ProjectsQueryOptions(options);
-
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
+  const data: getV1ProjectsResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getV1ProjectsResponse;
+};
 
 /**
  * Retrieve all streams for a specific project with their metadata.
  * @summary List streams in a project
  */
-export const getV1ProjectsByProjectIdStreams = (
-  projectId: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<[GetV1ProjectsByProjectIdStreams200Item0]>(
-    { url: `http://localhost:8787/v1/projects/${projectId}/streams`, method: "GET", signal },
-    options,
-  );
+export type getV1ProjectsByProjectIdStreamsResponse200 = {
+  data: [GetV1ProjectsByProjectIdStreams200Item0];
+  status: 200;
 };
 
-export const getGetV1ProjectsByProjectIdStreamsQueryKey = (projectId?: string) => {
-  return [`http://localhost:8787/v1/projects/${projectId}/streams`] as const;
-};
-
-export const getGetV1ProjectsByProjectIdStreamsQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetV1ProjectsByProjectIdStreamsQueryKey(projectId);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>> = ({
-    signal,
-  }) => getV1ProjectsByProjectIdStreams(projectId, requestOptions, signal);
-
-  return { queryKey, queryFn, enabled: !!projectId, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
-};
-
-export type GetV1ProjectsByProjectIdStreamsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
->;
-export type GetV1ProjectsByProjectIdStreamsQueryError = ErrorType<unknown>;
-
-export function useGetV1ProjectsByProjectIdStreams<
-  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-          TError,
-          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1ProjectsByProjectIdStreams<
-  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-          TError,
-          Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1ProjectsByProjectIdStreams<
-  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary List streams in a project
- */
-
-export function useGetV1ProjectsByProjectIdStreams<
-  TData = Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>,
-  TError = ErrorType<unknown>,
->(
-  projectId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1ProjectsByProjectIdStreams>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1ProjectsByProjectIdStreamsQueryOptions(projectId, options);
-
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
+export type getV1ProjectsByProjectIdStreamsResponseSuccess =
+  getV1ProjectsByProjectIdStreamsResponse200 & {
+    headers: Headers;
   };
 
-  query.queryKey = queryOptions.queryKey;
+export type getV1ProjectsByProjectIdStreamsResponse =
+  getV1ProjectsByProjectIdStreamsResponseSuccess;
 
-  return query;
-}
+export const getGetV1ProjectsByProjectIdStreamsUrl = (projectId: string) => {
+  return `http://localhost:8787/v1/projects/${projectId}/streams`;
+};
+
+export const getV1ProjectsByProjectIdStreams = async (
+  projectId: string,
+  options?: RequestInit,
+): Promise<getV1ProjectsByProjectIdStreamsResponse> => {
+  const res = await fetch(getGetV1ProjectsByProjectIdStreamsUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getV1ProjectsByProjectIdStreamsResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as getV1ProjectsByProjectIdStreamsResponse;
+};
 
 /**
  * Get detailed metadata about a stream including tail offset, content type, and TTL information.
  * @summary Inspect stream metadata
  */
-export const getV1StreamsByStreamIdInspect = (
-  streamId: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<GetV1StreamsByStreamIdInspect200>(
-    { url: `http://localhost:8787/v1/streams/${streamId}/inspect`, method: "GET", signal },
-    options,
-  );
+export type getV1StreamsByStreamIdInspectResponse200 = {
+  data: GetV1StreamsByStreamIdInspect200;
+  status: 200;
 };
 
-export const getGetV1StreamsByStreamIdInspectQueryKey = (streamId?: string) => {
-  return [`http://localhost:8787/v1/streams/${streamId}/inspect`] as const;
+export type getV1StreamsByStreamIdInspectResponse404 = {
+  data: GetV1StreamsByStreamIdInspect404;
+  status: 404;
 };
 
-export const getGetV1StreamsByStreamIdInspectQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
->(
-  streamId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetV1StreamsByStreamIdInspectQueryKey(streamId);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>> = ({
-    signal,
-  }) => getV1StreamsByStreamIdInspect(streamId, requestOptions, signal);
-
-  return { queryKey, queryFn, enabled: !!streamId, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
-};
-
-export type GetV1StreamsByStreamIdInspectQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
->;
-export type GetV1StreamsByStreamIdInspectQueryError = ErrorType<GetV1StreamsByStreamIdInspect404>;
-
-export function useGetV1StreamsByStreamIdInspect<
-  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
->(
-  streamId: string,
-  options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-          TError,
-          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1StreamsByStreamIdInspect<
-  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
->(
-  streamId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-          TError,
-          Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1StreamsByStreamIdInspect<
-  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
->(
-  streamId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary Inspect stream metadata
- */
-
-export function useGetV1StreamsByStreamIdInspect<
-  TData = Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>,
-  TError = ErrorType<GetV1StreamsByStreamIdInspect404>,
->(
-  streamId: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamsByStreamIdInspect>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1StreamsByStreamIdInspectQueryOptions(streamId, options);
-
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
+export type getV1StreamsByStreamIdInspectResponseSuccess =
+  getV1StreamsByStreamIdInspectResponse200 & {
+    headers: Headers;
+  };
+export type getV1StreamsByStreamIdInspectResponseError =
+  getV1StreamsByStreamIdInspectResponse404 & {
+    headers: Headers;
   };
 
-  query.queryKey = queryOptions.queryKey;
+export type getV1StreamsByStreamIdInspectResponse =
+  | getV1StreamsByStreamIdInspectResponseSuccess
+  | getV1StreamsByStreamIdInspectResponseError;
 
-  return query;
-}
+export const getGetV1StreamsByStreamIdInspectUrl = (streamId: string) => {
+  return `http://localhost:8787/v1/streams/${streamId}/inspect`;
+};
+
+export const getV1StreamsByStreamIdInspect = async (
+  streamId: string,
+  options?: RequestInit,
+): Promise<getV1StreamsByStreamIdInspectResponse> => {
+  const res = await fetch(getGetV1StreamsByStreamIdInspectUrl(streamId), {
+    ...options,
+    method: "GET",
+  });
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getV1StreamsByStreamIdInspectResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as getV1StreamsByStreamIdInspectResponse;
+};
 
 /**
  * Subscribe an estuary to a source stream. Messages published to the source are fan-out replicated to the estuary stream.
  * @summary Subscribe estuary to a stream
  */
-export const postV1EstuarySubscribeByEstuaryPath = (
-  estuaryPath: string,
-  postV1EstuarySubscribeByEstuaryPathBody: PostV1EstuarySubscribeByEstuaryPathBody,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<PostV1EstuarySubscribeByEstuaryPath200>(
-    {
-      url: `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: postV1EstuarySubscribeByEstuaryPathBody,
-      signal,
-    },
-    options,
-  );
+export type postV1EstuarySubscribeByEstuaryPathResponse200 = {
+  data: PostV1EstuarySubscribeByEstuaryPath200;
+  status: 200;
 };
 
-export const getPostV1EstuarySubscribeByEstuaryPathMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-    TError,
-    { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-  TError,
-  { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
-  TContext
-> => {
-  const mutationKey = ["postV1EstuarySubscribeByEstuaryPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-    { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody }
-  > = (props) => {
-    const { estuaryPath, data } = props ?? {};
-
-    return postV1EstuarySubscribeByEstuaryPath(estuaryPath, data, requestOptions);
+export type postV1EstuarySubscribeByEstuaryPathResponseSuccess =
+  postV1EstuarySubscribeByEstuaryPathResponse200 & {
+    headers: Headers;
   };
 
-  return { mutationFn, ...mutationOptions };
+export type postV1EstuarySubscribeByEstuaryPathResponse =
+  postV1EstuarySubscribeByEstuaryPathResponseSuccess;
+
+export const getPostV1EstuarySubscribeByEstuaryPathUrl = (estuaryPath: string) => {
+  return `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`;
 };
 
-export type PostV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>
->;
-export type PostV1EstuarySubscribeByEstuaryPathMutationBody =
-  PostV1EstuarySubscribeByEstuaryPathBody;
-export type PostV1EstuarySubscribeByEstuaryPathMutationError = ErrorType<unknown>;
+export const postV1EstuarySubscribeByEstuaryPath = async (
+  estuaryPath: string,
+  postV1EstuarySubscribeByEstuaryPathBody: PostV1EstuarySubscribeByEstuaryPathBody,
+  options?: RequestInit,
+): Promise<postV1EstuarySubscribeByEstuaryPathResponse> => {
+  const res = await fetch(getPostV1EstuarySubscribeByEstuaryPathUrl(estuaryPath), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(postV1EstuarySubscribeByEstuaryPathBody),
+  });
 
-/**
- * @summary Subscribe estuary to a stream
- */
-export const usePostV1EstuarySubscribeByEstuaryPath = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-      TError,
-      { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV1EstuarySubscribeByEstuaryPath>>,
-  TError,
-  { estuaryPath: string; data: PostV1EstuarySubscribeByEstuaryPathBody },
-  TContext
-> => {
-  const mutationOptions = getPostV1EstuarySubscribeByEstuaryPathMutationOptions(options);
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  return useMutation(mutationOptions, queryClient);
+  const data: postV1EstuarySubscribeByEstuaryPathResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as postV1EstuarySubscribeByEstuaryPathResponse;
 };
 
 /**
  * Remove an estuary's subscription to a source stream.
  * @summary Unsubscribe estuary from a stream
  */
-export const deleteV1EstuarySubscribeByEstuaryPath = (
-  estuaryPath: string,
-  deleteV1EstuarySubscribeByEstuaryPathBody: DeleteV1EstuarySubscribeByEstuaryPathBody,
-  options?: SecondParameter<typeof customFetch>,
-) => {
-  return customFetch<DeleteV1EstuarySubscribeByEstuaryPath200>(
-    {
-      url: `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`,
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      data: deleteV1EstuarySubscribeByEstuaryPathBody,
-    },
-    options,
-  );
+export type deleteV1EstuarySubscribeByEstuaryPathResponse200 = {
+  data: DeleteV1EstuarySubscribeByEstuaryPath200;
+  status: 200;
 };
 
-export const getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-    TError,
-    { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-  TError,
-  { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
-  TContext
-> => {
-  const mutationKey = ["deleteV1EstuarySubscribeByEstuaryPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-    { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody }
-  > = (props) => {
-    const { estuaryPath, data } = props ?? {};
-
-    return deleteV1EstuarySubscribeByEstuaryPath(estuaryPath, data, requestOptions);
+export type deleteV1EstuarySubscribeByEstuaryPathResponseSuccess =
+  deleteV1EstuarySubscribeByEstuaryPathResponse200 & {
+    headers: Headers;
   };
 
-  return { mutationFn, ...mutationOptions };
+export type deleteV1EstuarySubscribeByEstuaryPathResponse =
+  deleteV1EstuarySubscribeByEstuaryPathResponseSuccess;
+
+export const getDeleteV1EstuarySubscribeByEstuaryPathUrl = (estuaryPath: string) => {
+  return `http://localhost:8787/v1/estuary/subscribe/${estuaryPath}`;
 };
 
-export type DeleteV1EstuarySubscribeByEstuaryPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>
->;
-export type DeleteV1EstuarySubscribeByEstuaryPathMutationBody =
-  DeleteV1EstuarySubscribeByEstuaryPathBody;
-export type DeleteV1EstuarySubscribeByEstuaryPathMutationError = ErrorType<unknown>;
+export const deleteV1EstuarySubscribeByEstuaryPath = async (
+  estuaryPath: string,
+  deleteV1EstuarySubscribeByEstuaryPathBody: DeleteV1EstuarySubscribeByEstuaryPathBody,
+  options?: RequestInit,
+): Promise<deleteV1EstuarySubscribeByEstuaryPathResponse> => {
+  const res = await fetch(getDeleteV1EstuarySubscribeByEstuaryPathUrl(estuaryPath), {
+    ...options,
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deleteV1EstuarySubscribeByEstuaryPathBody),
+  });
 
-/**
- * @summary Unsubscribe estuary from a stream
- */
-export const useDeleteV1EstuarySubscribeByEstuaryPath = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-      TError,
-      { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof deleteV1EstuarySubscribeByEstuaryPath>>,
-  TError,
-  { estuaryPath: string; data: DeleteV1EstuarySubscribeByEstuaryPathBody },
-  TContext
-> => {
-  const mutationOptions = getDeleteV1EstuarySubscribeByEstuaryPathMutationOptions(options);
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  return useMutation(mutationOptions, queryClient);
+  const data: deleteV1EstuarySubscribeByEstuaryPathResponse["data"] = body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as deleteV1EstuarySubscribeByEstuaryPathResponse;
 };
 
 /**
  * Retrieve estuary metadata including subscriptions and content type.
  * @summary Get estuary info
  */
-export const getV1EstuaryByEstuaryPath = (
-  estuaryPath: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<GetV1EstuaryByEstuaryPath200>(
-    { url: `http://localhost:8787/v1/estuary/${estuaryPath}`, method: "GET", signal },
-    options,
-  );
+export type getV1EstuaryByEstuaryPathResponse200 = {
+  data: GetV1EstuaryByEstuaryPath200;
+  status: 200;
 };
 
-export const getGetV1EstuaryByEstuaryPathQueryKey = (estuaryPath?: string) => {
-  return [`http://localhost:8787/v1/estuary/${estuaryPath}`] as const;
+export type getV1EstuaryByEstuaryPathResponseSuccess = getV1EstuaryByEstuaryPathResponse200 & {
+  headers: Headers;
 };
 
-export const getGetV1EstuaryByEstuaryPathQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = ErrorType<unknown>,
->(
-  estuaryPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
+export type getV1EstuaryByEstuaryPathResponse = getV1EstuaryByEstuaryPathResponseSuccess;
 
-  const queryKey = queryOptions?.queryKey ?? getGetV1EstuaryByEstuaryPathQueryKey(estuaryPath);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>> = ({
-    signal,
-  }) => getV1EstuaryByEstuaryPath(estuaryPath, requestOptions, signal);
-
-  return { queryKey, queryFn, enabled: !!estuaryPath, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
+export const getGetV1EstuaryByEstuaryPathUrl = (estuaryPath: string) => {
+  return `http://localhost:8787/v1/estuary/${estuaryPath}`;
 };
 
-export type GetV1EstuaryByEstuaryPathQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
->;
-export type GetV1EstuaryByEstuaryPathQueryError = ErrorType<unknown>;
-
-export function useGetV1EstuaryByEstuaryPath<
-  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = ErrorType<unknown>,
->(
+export const getV1EstuaryByEstuaryPath = async (
   estuaryPath: string,
-  options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-          TError,
-          Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1EstuaryByEstuaryPath<
-  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = ErrorType<unknown>,
->(
-  estuaryPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-          TError,
-          Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1EstuaryByEstuaryPath<
-  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = ErrorType<unknown>,
->(
-  estuaryPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary Get estuary info
- */
+  options?: RequestInit,
+): Promise<getV1EstuaryByEstuaryPathResponse> => {
+  const res = await fetch(getGetV1EstuaryByEstuaryPathUrl(estuaryPath), {
+    ...options,
+    method: "GET",
+  });
 
-export function useGetV1EstuaryByEstuaryPath<
-  TData = Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>,
-  TError = ErrorType<unknown>,
->(
-  estuaryPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1EstuaryByEstuaryPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1EstuaryByEstuaryPathQueryOptions(estuaryPath, options);
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
+  const data: getV1EstuaryByEstuaryPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getV1EstuaryByEstuaryPathResponse;
+};
 
 /**
  * Delete an estuary and its underlying stream.
  * @summary Delete estuary
  */
-export const deleteV1EstuaryByEstuaryPath = (
-  estuaryPath: string,
-  options?: SecondParameter<typeof customFetch>,
-) => {
-  return customFetch<DeleteV1EstuaryByEstuaryPath200>(
-    { url: `http://localhost:8787/v1/estuary/${estuaryPath}`, method: "DELETE" },
-    options,
-  );
+export type deleteV1EstuaryByEstuaryPathResponse200 = {
+  data: DeleteV1EstuaryByEstuaryPath200;
+  status: 200;
 };
 
-export const getDeleteV1EstuaryByEstuaryPathMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-    TError,
-    { estuaryPath: string },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-  TError,
-  { estuaryPath: string },
-  TContext
-> => {
-  const mutationKey = ["deleteV1EstuaryByEstuaryPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-    { estuaryPath: string }
-  > = (props) => {
-    const { estuaryPath } = props ?? {};
-
-    return deleteV1EstuaryByEstuaryPath(estuaryPath, requestOptions);
+export type deleteV1EstuaryByEstuaryPathResponseSuccess =
+  deleteV1EstuaryByEstuaryPathResponse200 & {
+    headers: Headers;
   };
 
-  return { mutationFn, ...mutationOptions };
+export type deleteV1EstuaryByEstuaryPathResponse = deleteV1EstuaryByEstuaryPathResponseSuccess;
+
+export const getDeleteV1EstuaryByEstuaryPathUrl = (estuaryPath: string) => {
+  return `http://localhost:8787/v1/estuary/${estuaryPath}`;
 };
 
-export type DeleteV1EstuaryByEstuaryPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>
->;
+export const deleteV1EstuaryByEstuaryPath = async (
+  estuaryPath: string,
+  options?: RequestInit,
+): Promise<deleteV1EstuaryByEstuaryPathResponse> => {
+  const res = await fetch(getDeleteV1EstuaryByEstuaryPathUrl(estuaryPath), {
+    ...options,
+    method: "DELETE",
+  });
 
-export type DeleteV1EstuaryByEstuaryPathMutationError = ErrorType<unknown>;
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-/**
- * @summary Delete estuary
- */
-export const useDeleteV1EstuaryByEstuaryPath = <TError = ErrorType<unknown>, TContext = unknown>(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-      TError,
-      { estuaryPath: string },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof deleteV1EstuaryByEstuaryPath>>,
-  TError,
-  { estuaryPath: string },
-  TContext
-> => {
-  const mutationOptions = getDeleteV1EstuaryByEstuaryPathMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
+  const data: deleteV1EstuaryByEstuaryPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as deleteV1EstuaryByEstuaryPathResponse;
 };
 
 /**
  * Create a new append-only stream. The Content-Type header sets the stream's content type.
  * @summary Create a stream
  */
-export const putV1StreamByStreamPath = (
+export type putV1StreamByStreamPathResponse201 = {
+  data: void;
+  status: 201;
+};
+
+export type putV1StreamByStreamPathResponse409 = {
+  data: PutV1StreamByStreamPath409;
+  status: 409;
+};
+
+export type putV1StreamByStreamPathResponseSuccess = putV1StreamByStreamPathResponse201 & {
+  headers: Headers;
+};
+export type putV1StreamByStreamPathResponseError = putV1StreamByStreamPathResponse409 & {
+  headers: Headers;
+};
+
+export type putV1StreamByStreamPathResponse =
+  | putV1StreamByStreamPathResponseSuccess
+  | putV1StreamByStreamPathResponseError;
+
+export const getPutV1StreamByStreamPathUrl = (streamPath: string) => {
+  return `http://localhost:8787/v1/stream/${streamPath}`;
+};
+
+export const putV1StreamByStreamPath = async (
   streamPath: string,
-  options?: SecondParameter<typeof customFetch>,
-) => {
-  return customFetch<void>(
-    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "PUT" },
-    options,
-  );
-};
+  options?: RequestInit,
+): Promise<putV1StreamByStreamPathResponse> => {
+  const res = await fetch(getPutV1StreamByStreamPathUrl(streamPath), {
+    ...options,
+    method: "PUT",
+  });
 
-export const getPutV1StreamByStreamPathMutationOptions = <
-  TError = ErrorType<PutV1StreamByStreamPath409>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-    TError,
-    { streamPath: string },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationKey = ["putV1StreamByStreamPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-    { streamPath: string }
-  > = (props) => {
-    const { streamPath } = props ?? {};
-
-    return putV1StreamByStreamPath(streamPath, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PutV1StreamByStreamPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof putV1StreamByStreamPath>>
->;
-
-export type PutV1StreamByStreamPathMutationError = ErrorType<PutV1StreamByStreamPath409>;
-
-/**
- * @summary Create a stream
- */
-export const usePutV1StreamByStreamPath = <
-  TError = ErrorType<PutV1StreamByStreamPath409>,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-      TError,
-      { streamPath: string },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof putV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationOptions = getPutV1StreamByStreamPathMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
+  const data: putV1StreamByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as putV1StreamByStreamPathResponse;
 };
 
 /**
  * Append one or more messages to an existing stream. Content-Type must match the stream's content type.
  * @summary Append to a stream
  */
-export const postV1StreamByStreamPath = (
+export type postV1StreamByStreamPathResponse200 = {
+  data: void;
+  status: 200;
+};
+
+export type postV1StreamByStreamPathResponse204 = {
+  data: void;
+  status: 204;
+};
+
+export type postV1StreamByStreamPathResponse404 = {
+  data: PostV1StreamByStreamPath404;
+  status: 404;
+};
+
+export type postV1StreamByStreamPathResponse409 = {
+  data: PostV1StreamByStreamPath409;
+  status: 409;
+};
+
+export type postV1StreamByStreamPathResponse413 = {
+  data: PostV1StreamByStreamPath413;
+  status: 413;
+};
+
+export type postV1StreamByStreamPathResponseSuccess = (
+  | postV1StreamByStreamPathResponse200
+  | postV1StreamByStreamPathResponse204
+) & {
+  headers: Headers;
+};
+export type postV1StreamByStreamPathResponseError = (
+  | postV1StreamByStreamPathResponse404
+  | postV1StreamByStreamPathResponse409
+  | postV1StreamByStreamPathResponse413
+) & {
+  headers: Headers;
+};
+
+export type postV1StreamByStreamPathResponse =
+  | postV1StreamByStreamPathResponseSuccess
+  | postV1StreamByStreamPathResponseError;
+
+export const getPostV1StreamByStreamPathUrl = (streamPath: string) => {
+  return `http://localhost:8787/v1/stream/${streamPath}`;
+};
+
+export const postV1StreamByStreamPath = async (
   streamPath: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<void | void>(
-    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "POST", signal },
-    options,
-  );
-};
+  options?: RequestInit,
+): Promise<postV1StreamByStreamPathResponse> => {
+  const res = await fetch(getPostV1StreamByStreamPathUrl(streamPath), {
+    ...options,
+    method: "POST",
+  });
 
-export const getPostV1StreamByStreamPathMutationOptions = <
-  TError = ErrorType<
-    PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
-  >,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-    TError,
-    { streamPath: string },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationKey = ["postV1StreamByStreamPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-    { streamPath: string }
-  > = (props) => {
-    const { streamPath } = props ?? {};
-
-    return postV1StreamByStreamPath(streamPath, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PostV1StreamByStreamPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV1StreamByStreamPath>>
->;
-
-export type PostV1StreamByStreamPathMutationError = ErrorType<
-  PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
->;
-
-/**
- * @summary Append to a stream
- */
-export const usePostV1StreamByStreamPath = <
-  TError = ErrorType<
-    PostV1StreamByStreamPath404 | PostV1StreamByStreamPath409 | PostV1StreamByStreamPath413
-  >,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-      TError,
-      { streamPath: string },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationOptions = getPostV1StreamByStreamPathMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
+  const data: postV1StreamByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as postV1StreamByStreamPathResponse;
 };
 
 /**
  * Read messages from a stream. Supports offset/cursor query params, long-poll (Prefer: wait=N), SSE (Accept: text/event-stream), and WebSocket (Upgrade: websocket).
  * @summary Read from a stream
  */
-export const getV1StreamByStreamPath = (
-  streamPath: string,
-  options?: SecondParameter<typeof customFetch>,
-  signal?: AbortSignal,
-) => {
-  return customFetch<void>(
-    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "GET", signal },
-    options,
-  );
+export type getV1StreamByStreamPathResponse200 = {
+  data: void;
+  status: 200;
 };
 
-export const getGetV1StreamByStreamPathQueryKey = (streamPath?: string) => {
-  return [`http://localhost:8787/v1/stream/${streamPath}`] as const;
+export type getV1StreamByStreamPathResponse304 = {
+  data: void;
+  status: 304;
 };
 
-export const getGetV1StreamByStreamPathQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = ErrorType<void | GetV1StreamByStreamPath404>,
->(
-  streamPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey = queryOptions?.queryKey ?? getGetV1StreamByStreamPathQueryKey(streamPath);
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getV1StreamByStreamPath>>> = ({
-    signal,
-  }) => getV1StreamByStreamPath(streamPath, requestOptions, signal);
-
-  return { queryKey, queryFn, enabled: !!streamPath, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
+export type getV1StreamByStreamPathResponse404 = {
+  data: GetV1StreamByStreamPath404;
+  status: 404;
 };
 
-export type GetV1StreamByStreamPathQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV1StreamByStreamPath>>
->;
-export type GetV1StreamByStreamPathQueryError = ErrorType<void | GetV1StreamByStreamPath404>;
+export type getV1StreamByStreamPathResponseSuccess = getV1StreamByStreamPathResponse200 & {
+  headers: Headers;
+};
+export type getV1StreamByStreamPathResponseError = (
+  | getV1StreamByStreamPathResponse304
+  | getV1StreamByStreamPathResponse404
+) & {
+  headers: Headers;
+};
 
-export function useGetV1StreamByStreamPath<
-  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = ErrorType<void | GetV1StreamByStreamPath404>,
->(
+export type getV1StreamByStreamPathResponse =
+  | getV1StreamByStreamPathResponseSuccess
+  | getV1StreamByStreamPathResponseError;
+
+export const getGetV1StreamByStreamPathUrl = (streamPath: string) => {
+  return `http://localhost:8787/v1/stream/${streamPath}`;
+};
+
+export const getV1StreamByStreamPath = async (
   streamPath: string,
-  options: {
-    query: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-          TError,
-          Awaited<ReturnType<typeof getV1StreamByStreamPath>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1StreamByStreamPath<
-  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = ErrorType<void | GetV1StreamByStreamPath404>,
->(
-  streamPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-          TError,
-          Awaited<ReturnType<typeof getV1StreamByStreamPath>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-export function useGetV1StreamByStreamPath<
-  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = ErrorType<void | GetV1StreamByStreamPath404>,
->(
-  streamPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-/**
- * @summary Read from a stream
- */
+  options?: RequestInit,
+): Promise<getV1StreamByStreamPathResponse> => {
+  const res = await fetch(getGetV1StreamByStreamPathUrl(streamPath), {
+    ...options,
+    method: "GET",
+  });
 
-export function useGetV1StreamByStreamPath<
-  TData = Awaited<ReturnType<typeof getV1StreamByStreamPath>>,
-  TError = ErrorType<void | GetV1StreamByStreamPath404>,
->(
-  streamPath: string,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof getV1StreamByStreamPath>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetV1StreamByStreamPathQueryOptions(streamPath, options);
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
-    queryKey: DataTag<QueryKey, TData, TError>;
-  };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
+  const data: getV1StreamByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as getV1StreamByStreamPathResponse;
+};
 
 /**
  * Permanently delete a stream and all its data.
  * @summary Delete a stream
  */
-export const deleteV1StreamByStreamPath = (
+export type deleteV1StreamByStreamPathResponse204 = {
+  data: void;
+  status: 204;
+};
+
+export type deleteV1StreamByStreamPathResponse404 = {
+  data: DeleteV1StreamByStreamPath404;
+  status: 404;
+};
+
+export type deleteV1StreamByStreamPathResponseSuccess = deleteV1StreamByStreamPathResponse204 & {
+  headers: Headers;
+};
+export type deleteV1StreamByStreamPathResponseError = deleteV1StreamByStreamPathResponse404 & {
+  headers: Headers;
+};
+
+export type deleteV1StreamByStreamPathResponse =
+  | deleteV1StreamByStreamPathResponseSuccess
+  | deleteV1StreamByStreamPathResponseError;
+
+export const getDeleteV1StreamByStreamPathUrl = (streamPath: string) => {
+  return `http://localhost:8787/v1/stream/${streamPath}`;
+};
+
+export const deleteV1StreamByStreamPath = async (
   streamPath: string,
-  options?: SecondParameter<typeof customFetch>,
-) => {
-  return customFetch<void>(
-    { url: `http://localhost:8787/v1/stream/${streamPath}`, method: "DELETE" },
-    options,
-  );
-};
+  options?: RequestInit,
+): Promise<deleteV1StreamByStreamPathResponse> => {
+  const res = await fetch(getDeleteV1StreamByStreamPathUrl(streamPath), {
+    ...options,
+    method: "DELETE",
+  });
 
-export const getDeleteV1StreamByStreamPathMutationOptions = <
-  TError = ErrorType<DeleteV1StreamByStreamPath404>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-    TError,
-    { streamPath: string },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationKey = ["deleteV1StreamByStreamPath"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-    { streamPath: string }
-  > = (props) => {
-    const { streamPath } = props ?? {};
-
-    return deleteV1StreamByStreamPath(streamPath, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type DeleteV1StreamByStreamPathMutationResult = NonNullable<
-  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>
->;
-
-export type DeleteV1StreamByStreamPathMutationError = ErrorType<DeleteV1StreamByStreamPath404>;
-
-/**
- * @summary Delete a stream
- */
-export const useDeleteV1StreamByStreamPath = <
-  TError = ErrorType<DeleteV1StreamByStreamPath404>,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-      TError,
-      { streamPath: string },
-      TContext
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof deleteV1StreamByStreamPath>>,
-  TError,
-  { streamPath: string },
-  TContext
-> => {
-  const mutationOptions = getDeleteV1StreamByStreamPathMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
+  const data: deleteV1StreamByStreamPathResponse["data"] = body ? JSON.parse(body) : {};
+  return { data, status: res.status, headers: res.headers } as deleteV1StreamByStreamPathResponse;
 };
