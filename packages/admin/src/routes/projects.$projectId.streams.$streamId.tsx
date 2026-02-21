@@ -31,14 +31,7 @@ function StreamDetailPage() {
     return <CreateStreamForm projectId={projectId} streamId={streamId} doKey={doKey} />;
   }
 
-  return (
-    <StreamConsole
-      projectId={projectId}
-      streamId={streamId}
-      doKey={doKey}
-      metadata={data}
-    />
-  );
+  return <StreamConsole projectId={projectId} streamId={streamId} doKey={doKey} metadata={data} />;
 }
 
 /* ─── State A: Stream not found ─── */
