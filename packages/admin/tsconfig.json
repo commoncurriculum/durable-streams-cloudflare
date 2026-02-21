@@ -4,7 +4,8 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types", "node"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@durable-streams-cloudflare/estuary-client": ["../estuary-client/src/generated/client"]
     }
   },
   "include": ["src", "test", "*.ts"]
