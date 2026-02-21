@@ -6,7 +6,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "jsx": "react-jsx",
-    "rootDir": "src"
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"]
 }
