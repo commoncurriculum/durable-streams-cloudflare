@@ -1,0 +1,22 @@
+name = "durable-streams-admin"
+main = "src/server.ts"
+compatibility_date = "2026-02-02"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Required: URL of the durable-streams server API
+SERVER_URL = "https://durable-streams.your-subdomain.workers.dev"
+
+# Required: Admin signing secret (same format as project signing secrets)
+# Generate with: node -e "console.log(JSON.stringify(require('jose').generateSecret('HS256', { extractable: true }).then(s => require('jose').exportJWK(s))))"
+ADMIN_SECRET = "your-admin-secret-here"
+
+# Optional: Cloudflare Access JWT verification (defense-in-depth)
+# CF_ACCESS_TEAM_DOMAIN = "your-team-name"
+
+# Optional: Analytics for dashboard stats
+# CF_ACCOUNT_ID = "your-account-id"
+# CF_API_TOKEN = "your-api-token-with-analytics-read"
+
+[observability]
+enabled = true

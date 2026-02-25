@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.dom.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types", "node"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@durable-streams-cloudflare/estuary-client": ["../estuary-client/src/generated/client"]
+    }
+  },
+  "include": ["src", "test", "*.ts"]
+}

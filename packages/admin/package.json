@@ -1,13 +1,13 @@
 {
-  "name": "@durable-streams-cloudflare/admin-subscription",
+  "name": "@durable-streams-cloudflare/admin",
   "version": "0.8.0",
   "type": "module",
   "license": "MIT",
-  "description": "Admin dashboard for durable-streams subscription service on Cloudflare Workers",
+  "description": "Unified admin dashboard for durable-streams on Cloudflare Workers",
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/durable-streams-worker",
-    "directory": "packages/admin-subscription"
+    "directory": "packages/admin"
   },
   "files": [
     "src/",
@@ -21,7 +21,7 @@
     "./worker": "./dist/server/index.js"
   },
   "scripts": {
-    "dev": "vite dev --port 8789",
+    "dev": "vite dev --port 8788",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
@@ -36,6 +36,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@durable-streams-cloudflare/estuary-client": "workspace:*",
     "@durable-streams/client": "^0.2.1",
     "@heroicons/react": "^2.2.0",
     "@tanstack/react-query": "^5.90.21",
