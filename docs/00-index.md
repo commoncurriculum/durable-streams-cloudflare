@@ -43,11 +43,13 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
+14. **[Workers Cache Re-Architecture](14-workers-cache-rearchitecture.md)** -- Proposed (adversarially reviewed). Adopting Cloudflare's July 2026 Workers Cache: a Gateway + cached Reader entrypoint split, immutable content-addressed frames, and frame-polling to decouple DO load from watcher count. Supersedes Chapters 4-7 if adopted. Includes hard storage-layer prerequisites, silent-failure keying hazards, and the relay-DO-tree non-goal.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
 
-**CDN caching deep-dive** (the bulk of the investigation): 2 -> 4 -> 5 -> 6 -> 7 -> 8
+**CDN caching deep-dive** (the bulk of the investigation): 2 -> 4 -> 5 -> 6 -> 7 -> 8 -> 14
 
 **Debugging a cache miss in production**: 5 -> 7 -> 8
 
