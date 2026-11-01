@@ -728,7 +728,7 @@ packages:
       wrangler: ^4.66.0
 
   '@cloudflare/vitest-pool-workers@https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632':
-    resolution: {integrity: sha512-MSOO51KpHVkz3I+f/feqlghDaD1hvWoLe6sCwSwocUH1qdEIU0W1+f20Sjnq5nY1s9EXTfWcMYBf07KidVZf9w==, tarball: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632}
+    resolution: {integrity: sha512-IIjZB7ELHt4flrj7met8L4XUHKuhb2/QFBtF+lOKYIKRZBd2HiL6L8TGBCFDx+xvMXcPSIT2qxuQSMLU7eT5Sg==, tarball: https://pkg.pr.new/@cloudflare/vitest-pool-workers@11632}
     version: 0.12.13
     peerDependencies:
       '@vitest/runner': 4.1.0-beta.1
