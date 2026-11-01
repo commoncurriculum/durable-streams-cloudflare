@@ -67,17 +67,26 @@ export async function authorizationMiddleware(
   const method = c.req.method.toUpperCase();
   const isStreamRead = method === "GET" || method === "HEAD";
 
+  // A token with `stream_id` is for that one stream only.
+  const forAnotherStream = (claims: ProjectJwtClaims) =>
+    claims.stream_id !== undefined && claims.stream_id !== c.get("streamId");
+
   let streamMeta: StreamMeta | null = null;
   if (isStreamRead) {
     streamMeta = await getStreamMeta(c.env.REGISTRY, doKey);
     if (!streamMeta?.public) {
       if (!jwtClaims)
         return wrapAuthorizationError(401, ErrorCode.UNAUTHORIZED, "unauthorized", corsOrigin);
+      if (forAnotherStream(jwtClaims))
+        return wrapAuthorizationError(403, ErrorCode.FORBIDDEN, "forbidden", corsOrigin);
     }
   } else {
     if (!jwtClaims)
       return wrapAuthorizationError(401, ErrorCode.UNAUTHORIZED, "unauthorized", corsOrigin);
-    if (jwtClaims.scope !== "write" && jwtClaims.scope !== "manage") {
+    if (
+      (jwtClaims.scope !== "write" && jwtClaims.scope !== "manage") ||
+      forAnotherStream(jwtClaims)
+    ) {
       return wrapAuthorizationError(403, ErrorCode.FORBIDDEN, "forbidden", corsOrigin);
     }
   }
