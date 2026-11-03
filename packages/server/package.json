@@ -10,7 +10,8 @@
     "directory": "packages/server"
   },
   "files": [
-    "src/"
+    "src/",
+    "drizzle/"
   ],
   "exports": {
     ".": "./src/http/worker.ts",
