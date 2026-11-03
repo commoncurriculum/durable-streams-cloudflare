@@ -43,6 +43,8 @@ Internal design notes organized chronologically. The central question: how to de
 
 13. **[CORS Configuration](13-cors-configuration.md)** -- Per-project CORS origins stored in REGISTRY KV. Migration guide from the removed `CORS_ORIGINS` env var.
 
+14. **[Workers Cache Adoption](14-workers-cache-adoption.md)** -- Proposed. Replace the nginx dummy origin with Cloudflare's native Workers Cache (July 2026). Minimal scope: config + DNS + delete `packages/proxy`. Documents the one real behavior difference (`Authorization` requests BYPASS the native cache) and why the internal edge-cache/coalesce middleware must stay.
+
 ## Reading Order
 
 **End-to-end system understanding**: 1 -> 2 -> 3 -> 9
